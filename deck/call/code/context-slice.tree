@@ -1,0 +1,843 @@
+# `term show name <name>`: one name of the project with what a reader needs around it, sized to a token budget. An
+# agent asks this instead of searching and reading whole files: the definition and its doc comment, the forms its
+# signature names, every place in the project that uses it, and the heads of what it calls, in that order, each part
+# taken while the budget lasts and what did not fit counted.
+#
+# Ported from deck/call/code/context.ts (self-hosting, 2026-10-06), which stays as the face: it reads, parses and mills
+# the files, follows the loads, and sorts the uses by the host's collation (`localeCompare`, which Term has no word
+# for). What a definition shows, which expressions use a name, what a task calls, the budget and the text are here. A
+# size is counted as JavaScript counts a text's `length`, in UTF-16 units, since that is what the budget was measured
+# in.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/text
+  find split
+  find char-code-at
+  find starts-with
+  find substring
+
+load @term/make/compile/node
+  find expression
+  find statement
+  find type
+  find expression-span
+  find statement-span
+
+load @term/make/compile/surface
+  find is-binary-builtin
+  find is-unary-builtin
+
+load ./draft-mark
+  find is-space
+
+load ./reach-graph
+  find statements-in
+
+# what one token is taken to be, in characters: the usual measure for English and code
+task characters-per-token
+  like number
+
+  back 4
+
+form definition
+  link name, like text
+  link kind, like text
+  # where it is: a path under the project, or the import path of the module that holds it
+  link place, like text
+  link line, like number
+  # the empty text when it has none
+  link doc, like text
+  link head, like text
+  link text, like text
+
+form use
+  link in, like text
+  link place, like text
+  link line, like number
+
+# a definition as the answer carries it
+form shown
+  link name, like text
+  link kind, like text
+  link place, like text
+  link line, like number
+  link doc
+    like text
+    need false
+  link text, like text
+
+# a definition with what of it is shown: `whole`, `head`, or `place` alone
+form shown-definition
+  link name, like text
+  link kind, like text
+  link place, like text
+  link line, like number
+  link doc
+    like text
+    need false
+  link text, like text
+  link shown, like text
+
+form omitted
+  link forms, like number
+  link uses, like number
+  link calls, like number
+  link bodies, like number
+
+form context-slice
+  link name, like text
+  link budget, like float
+  # the tokens the answer takes, by the same measure as the budget
+  link used, like number
+  link definitions, like list, like shown-definition
+  # the forms its signature names, whole
+  link forms, like list, like shown
+  link uses, like list, like use
+  # the tasks it calls, each by its head
+  link calls, like list, like shown
+  # the tasks it calls that nothing the file reaches defines
+  link unresolved, like list, like text
+  link omitted, like omitted
+
+# ---- texts ----
+
+# a text's `length` as JavaScript counts it: a code point past U+FFFF is two units
+task units-of
+  take value, like text
+  like number
+
+  save count, 0
+  walk split(value, <>)
+    take point
+    save count, add(count, 1)
+    fork test, is-above(char-code-at(point, 0), 65535)
+      hold
+        save count, add(count, 1)
+  back count
+
+task is-blank
+  take value, like text
+  like boolean
+  mark private
+
+  walk split(value, <>)
+    take point
+    fork test, not(is-space(char-code-at(point, 0)))
+      hold
+        back false
+  back true
+
+# JavaScript's `trim`: every `\s` code point off both ends
+task trimmed
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-space(char-code-at(get(points, start), 0)))
+    hook hold
+      save start, add(start, 1)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(char-code-at(get(points, subtract(end, 1)), 0)))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+task is-digits
+  take points, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(points/length, 0)
+    hold
+      back false
+  walk points
+    take point
+    save code, char-code-at(point, 0)
+    fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+      hold
+        back false
+  back true
+
+task points-between
+  take points, like list, like text
+  take from, like number
+  take to, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  save at, from
+  walk test
+    hook test, is-below(at, to)
+    hook hold
+      push(out, get(points, at))
+      save at, add(at, 1)
+  back out
+
+# where the overload or module-scope suffix that ends at `end` starts (`__12`, `__in1_2`, `__any1_2`), or -1
+task suffix-start
+  take points, like list, like text
+  take end, like number
+  like number
+  mark private
+
+  # the digits it ends in
+  save at, end
+  walk test
+    hook test, and(is-above(at, 0), is-digits(points-between(points, subtract(at, 1), at)))
+    hook hold
+      save at, subtract(at, 1)
+  fork test, is-equal(at, end)
+    hold
+      back -1
+  fork test, is-below(at, 1)
+    hold
+      back -1
+  fork test, is-unequal(get(points, subtract(at, 1)), <_>)
+    hold
+      back -1
+  # `__<digits>`
+  fork test, and(is-minimum(at, 2), is-equal(get(points, subtract(at, 2)), <_>))
+    hold
+      back subtract(at, 2)
+  # `__in<digits>_<digits>` or `__any<digits>_<digits>`
+  save before, subtract(at, 1)
+  save first, before
+  walk test
+    hook test, and(is-above(first, 0), is-digits(points-between(points, subtract(first, 1), first)))
+    hook hold
+      save first, subtract(first, 1)
+  fork test, is-equal(first, before)
+    hold
+      back -1
+  save word, join(points-between(points, 0, first), <>)
+  save points-word, split(word, <>)
+  save count, points-word/length
+  fork test, and(is-minimum(count, 4), is-equal(join(points-between(points-word, subtract(count, 4), count), <>), <__in>))
+    hold
+      back subtract(first, 4)
+  fork test, and(is-minimum(count, 5), is-equal(join(points-between(points-word, subtract(count, 5), count), <>), <__any>))
+    hold
+      back subtract(first, 5)
+  back -1
+
+# The name a reader wrote, from the one the checker uses. Module scope splits a name two files define into
+# `name__in<g>_<k>`, and arity overloading into `name__<arity>` or `name__any<g>_<arity>`: every such suffix at the end
+# is taken off, as flow/code/symbols.ts `writtenName` takes them
+task written-name
+  take name, like text
+  like text
+
+  save points, split(name, <>)
+  save end, points/length
+  save start, suffix-start(points, end)
+  walk test
+    hook test, is-minimum(start, 0)
+    hook hold
+      save end, start
+      save start, suffix-start(points, end)
+  back join(points-between(points, 0, end), <>)
+
+# lines without the blank ones they end with, joined
+task trim-end
+  take lines, like list, like text
+  like text
+  mark private
+
+  save end, lines/length
+  walk test
+    hook test, and(is-above(end, 0), is-blank(get(lines, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back join(points-between(lines, 0, end), <\n>)
+
+# lines `from` up to, not including, `to`, as `slice` takes them, either end past the last line read as the last
+task lines-between
+  take lines, like list, like text
+  take from, like number
+  take to, like number
+  like list, like text
+  mark private
+
+  save end, to
+  fork test, is-above(end, lines/length)
+    hold
+      save end, lines/length
+  back points-between(lines, from, end)
+
+# a doc comment from the `#` lines above a definition: the `#` and one white space taken off each, trimmed, the empty
+# ones dropped, joined by a space
+task doc-text
+  take comments, like list, like text
+  like text
+
+  save kept, make list
+  walk comments
+    take comment
+    save points, split(comment, <>)
+    save from, 0
+    fork test, and(is-above(points/length, 0), is-equal(get(points, 0), <#>))
+      hold
+        save from, 1
+        fork test, and(is-above(points/length, 1), is-space(char-code-at(get(points, 1), 0)))
+          hold
+            save from, 2
+    save rest, trimmed(join(points-between(points, from, points/length), <>))
+    fork test, is-unequal(rest, <>)
+      hold
+        push(kept, rest)
+  back join(kept, < >)
+
+# ---- reading a definition ----
+
+# a definition's kind as the source writes it, or the empty text for a statement that defines none
+task kind-of
+  take one, like statement
+  like text
+
+  sift one
+    case function
+      back <task>
+    case record-type
+      back <form>
+    case mask
+      back <mask>
+    case bind
+      back <bind>
+    case view
+      back <view>
+    miss
+      back <>
+
+task defined-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back written-name(name)
+    case record-type
+      back written-name(name)
+    case mask
+      back written-name(name)
+    case bind
+      back written-name(name)
+    case view
+      back written-name(name)
+    miss
+      back <>
+
+task span-of
+  take one, like statement
+  like list, like number
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      push(out, span/start/line)
+      push(out, span/end/line)
+    case record-type
+      push(out, span/start/line)
+      push(out, span/end/line)
+    case mask
+      push(out, span/start/line)
+      push(out, span/end/line)
+    case bind
+      push(out, span/start/line)
+      push(out, span/end/line)
+    case view
+      push(out, span/start/line)
+      push(out, span/end/line)
+    miss
+      save nothing, 0
+  back out
+
+# the definition a statement makes of `name`, with its doc comment, its head and its whole text: the head is its lines
+# up to its body's first statement, or the whole text when it has no body below its first line
+task definition-of
+  take lines, like list, like text
+  take one, like statement
+  take wanted, like text
+  take place, like text
+  take doc-at
+    like task
+      take line, like number
+      like text
+  like maybe, like definition
+
+  save kind, kind-of(one)
+  fork test, or(is-equal(kind, <>), is-unequal(defined-name(one), wanted))
+    hold
+      back make none
+  save lines-at, span-of(one)
+  save start, get(lines-at, 0)
+  save stop, get(lines-at, 1)
+  save text, trim-end(lines-between(lines, start, add(stop, 1)))
+  save head, text
+  sift one
+    case function
+      fork test, is-above(body/length, 0)
+        hold
+          save first, -1
+          walk body
+            take each
+            save at, statement-span(each)/start/line
+            fork test, or(is-below(first, 0), is-below(at, first))
+              hold
+                save first, at
+          fork test, is-above(first, start)
+            hold
+              save head, trim-end(lines-between(lines, start, first))
+    miss
+      save nothing, 0
+  save found
+    make definition
+      bind name, wanted
+      bind kind, kind
+      bind place, place
+      bind line, add(start, 1)
+      bind doc, doc-at(start)
+      bind head, head
+      bind text, text
+  back make(some, found)
+
+# ---- the uses, and what a definition reaches ----
+
+# every form name a type mentions, its arguments included, each once in the order met
+task type-names
+  take given, like type
+  take out, like list, like text
+  like void
+
+  sift given
+    case named
+      fork test, not(contains(out, name))
+        hold
+          push(out, name)
+      walk args
+        take arg
+        type-names(arg, out)
+    case array
+      type-names(element, out)
+    case map
+      type-names(key, out)
+      type-names(value, out)
+    case function
+      walk params
+        take param
+        type-names(param, out)
+      type-names(result, out)
+    miss
+      save nothing, 0
+
+# the form names a task's signature mentions: its parameters' types, then its result's
+task signature-names
+  take one, like statement
+  like list, like text
+
+  save out, make list
+  sift one
+    case function
+      walk params
+        take param
+        sift param/type
+          case some
+            link given
+            type-names(given, out)
+          case none
+            save nothing, 0
+      sift result
+        case some
+          link given
+          type-names(given, out)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# whether an expression names `name`: a call of it, a read of it as a value, a `make` of it
+task names
+  take node, like expression
+  take query, like text
+  like boolean
+
+  sift node
+    case call
+      sift callee
+        case variable
+          link callee-name
+          back is-equal(written-name(callee-name), query)
+        miss
+          back false
+    case variable
+      back is-equal(written-name(name), query)
+    case record
+      back is-equal(name, query)
+    miss
+      back false
+
+task expressions-of
+  take one, like statement
+  like list, like expression
+  mark private
+
+  save nodes, make list
+  save block, make list
+  push(block, one)
+  statements-in(block, nodes)
+  back nodes
+
+# the lines (counted from 0) a statement uses `name` on, in order: a task's own line when its signature names it and it
+# is not the name's own definition, then every expression that names it
+task use-lines
+  take one, like statement
+  take query, like text
+  like list, like number
+
+  save out, make list
+  sift one
+    case function
+      fork test, and(is-unequal(written-name(name), query), contains(signature-names(one), query))
+        hold
+          push(out, span/start/line)
+    miss
+      save nothing, 0
+  walk expressions-of(one)
+    take node
+    fork test, names(node, query)
+      hold
+        push(out, expression-span(node)/start/line)
+  back out
+
+# the tasks a statement calls by name, written as a reader wrote them, each once in the order met, leaving out `name`
+# itself and the builtin operators
+task called-names
+  take one, like statement
+  take query, like text
+  like list, like text
+
+  save out, make list
+  walk expressions-of(one)
+    take node
+    sift node
+      case call
+        sift callee
+          case variable
+            link callee-name
+            save called, written-name(callee-name)
+            fork test, and(and(is-unequal(called, query), not(is-binary-builtin(called))), and(not(is-unary-builtin(called)), not(contains(out, called))))
+              hold
+                push(out, called)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+# ---- the budget ----
+
+# the running count of what the answer takes, in characters, against its limit
+form budget-use
+  mark shared
+  # a float, as the budget is: any budget a person asks for is taken as asked, however large
+  link limit, like float
+  link used, like number
+
+# take a part of `size` when it fits what is left
+task take-size
+  take budget, like budget-use
+  take size, like number
+  like boolean
+  mark private
+
+  fork test, is-above(to-decimal(add(budget/used, size)), budget/limit)
+    hold
+      back false
+  save budget/used, add(budget/used, size)
+  back true
+
+task shown-of
+  take one, like definition
+  take text, like text
+  like shown
+  mark private
+
+  fork test, is-unequal(one/doc, <>)
+    hold
+      back
+        make shown
+          bind name, one/name
+          bind kind, one/kind
+          bind place, one/place
+          bind line, one/line
+          bind doc, one/doc
+          bind text, text
+  back
+    make shown
+      bind name, one/name
+      bind kind, one/kind
+      bind place, one/place
+      bind line, one/line
+      bind text, text
+
+task shown-as
+  take one, like definition
+  take text, like text
+  take how, like text
+  like shown-definition
+  mark private
+
+  fork test, is-unequal(one/doc, <>)
+    hold
+      back
+        make shown-definition
+          bind name, one/name
+          bind kind, one/kind
+          bind place, one/place
+          bind line, one/line
+          bind doc, one/doc
+          bind text, text
+          bind shown, how
+  back
+    make shown-definition
+      bind name, one/name
+      bind kind, one/kind
+      bind place, one/place
+      bind line, one/line
+      bind text, text
+      bind shown, how
+
+# Take each part in order while it fits: every definition (whole when it takes no more than half the budget, else its
+# head, else its place alone), then the forms, the uses and the heads of the calls. A part that does not fit is counted,
+# never cut mid-way. A definition is always named, so a small budget never reads as a name that does not exist
+task fit
+  take name, like text
+  take budget, like float
+  take definitions, like list, like definition
+  take forms, like list, like definition
+  take uses, like list, like use
+  take calls, like list, like definition
+  take unresolved, like list, like text
+  like context-slice
+
+  save limit, multiply(budget, to-decimal(characters-per-token()))
+  save counted
+    make budget-use
+      bind limit, limit
+      bind used, 0
+  save bodies, 0
+  save shown-definitions, make list
+  walk definitions
+    take one
+    save around, add(add(units-of(one/doc), units-of(one/place)), 32)
+    save whole, add(units-of(one/text), around)
+    save fits-half, not(is-above(to-decimal(multiply(whole, 2)), limit))
+    save taken, false
+    fork test, fits-half
+      hold
+        save taken, take-size(counted, whole)
+    fork test, taken
+      hold
+        push(shown-definitions, shown-as(one, one/text, <whole>))
+      miss
+        fork test, take-size(counted, add(units-of(one/head), around))
+          hold
+            save bodies, add(bodies, 1)
+            push(shown-definitions, shown-as(one, one/head, <head>))
+          miss
+            save bodies, add(bodies, 1)
+            save counted/used, add(counted/used, add(units-of(one/place), 32))
+            save bare
+              make shown-definition
+                bind name, one/name
+                bind kind, one/kind
+                bind place, one/place
+                bind line, one/line
+                bind text, <>
+                bind shown, <place>
+            push(shown-definitions, bare)
+
+  save kept-forms, make list
+  save left-forms, 0
+  walk forms
+    take form
+    fork test, take-size(counted, add(add(units-of(form/text), units-of(form/place)), 32))
+      hold
+        push(kept-forms, shown-of(form, form/text))
+      miss
+        save left-forms, add(left-forms, 1)
+  save kept-uses, make list
+  save left-uses, 0
+  walk uses
+    take one
+    fork test, take-size(counted, add(add(units-of(one/in), units-of(one/place)), 12))
+      hold
+        push(kept-uses, one)
+      miss
+        save left-uses, add(left-uses, 1)
+  save kept-calls, make list
+  save left-calls, 0
+  walk calls
+    take call
+    fork test, take-size(counted, add(add(units-of(call/head), units-of(call/place)), 32))
+      hold
+        push(kept-calls, shown-of(call, call/head))
+      miss
+        save left-calls, add(left-calls, 1)
+
+  save counted/used, add(counted/used, units-of(join(unresolved, <, >)))
+  save used, counted/used
+  save over, modulo(used, 4)
+  save tokens, divide(subtract(used, over), 4)
+  fork test, is-above(over, 0)
+    hold
+      save tokens, add(tokens, 1)
+  back
+    make context-slice
+      bind name, name
+      bind budget, budget
+      bind used, tokens
+      bind definitions, shown-definitions
+      bind forms, kept-forms
+      bind uses, kept-uses
+      bind calls, kept-calls
+      bind unresolved, unresolved
+      bind omitted
+        make omitted
+          bind forms, left-forms
+          bind uses, left-uses
+          bind calls, left-calls
+          bind bodies, bodies
+
+# ---- the human view ----
+
+task render-context
+  take slice, like context-slice
+  like text
+
+  save out, make list
+  walk slice/definitions
+    take one
+    save kind, one/kind
+    save name, one/name
+    save place, one/place
+    save line, one/line
+    push(out, <{kind} {name}, {place}:{line}>)
+    fork test, is-unequal(read(one/doc), <>)
+      hold
+        save doc, one/doc
+        push(out, <# {doc}>)
+    fork test, is-unequal(one/text, <>)
+      hold
+        push(out, one/text)
+    fork test, is-unequal(one/shown, <whole>)
+      hold
+        fork test, is-equal(one/shown, <head>)
+          hold
+            push(out, <  (its body did not fit the budget)>)
+          miss
+            push(out, <  (its text did not fit the budget)>)
+    push(out, <>)
+
+  fork test, is-above(slice/forms/length, 0)
+    hold
+      save count, slice/forms/length
+      push(out, <forms its signature names: {count}>)
+      walk slice/forms
+        take form
+        save place, form/place
+        save line, form/line
+        push(out, <{place}:{line}>)
+        push(out, form/text)
+        push(out, <>)
+
+  save shown-uses, slice/uses/length
+  save more-uses, slice/omitted/uses
+  fork test, is-above(more-uses, 0)
+    hold
+      push(out, <used by: {shown-uses} shown, {more-uses} more>)
+    miss
+      push(out, <used by: {shown-uses}>)
+  walk slice/uses
+    take one
+    save owner, one/in
+    save place, one/place
+    save line, one/line
+    push(out, <  {owner}  {place}:{line}>)
+  push(out, <>)
+
+  fork test, is-above(slice/calls/length, 0)
+    hold
+      save count, slice/calls/length
+      push(out, <calls: {count}>)
+      walk slice/calls
+        take call
+        save place, call/place
+        save line, call/line
+        push(out, <{place}:{line}>)
+        push(out, call/text)
+        push(out, <>)
+
+  fork test, is-above(slice/unresolved/length, 0)
+    hold
+      save names, join(slice/unresolved, <, >)
+      push(out, <calls that nothing it loads defines: {names}>)
+      push(out, <>)
+
+  save left, make list
+  save omitted, slice/omitted
+  fork test, is-above(omitted/forms, 0)
+    hold
+      save n, omitted/forms
+      push(left, <{n} forms>)
+  fork test, is-above(omitted/uses, 0)
+    hold
+      save n, omitted/uses
+      push(left, <{n} uses>)
+  fork test, is-above(omitted/calls, 0)
+    hold
+      save n, omitted/calls
+      push(left, <{n} calls>)
+  fork test, is-above(omitted/bodies, 0)
+    hold
+      save n, omitted/bodies
+      fork test, is-equal(n, 1)
+        hold
+          push(left, <{n} body>)
+        miss
+          push(left, <{n} bodies>)
+  save used, slice/used
+  save budget, slice/budget
+  fork test, is-above(left/length, 0)
+    hold
+      save listed, join(left, <, >)
+      push(out, <{used} of {budget} tokens, left out: {listed}>)
+    miss
+      push(out, <{used} of {budget} tokens>)
+  save body, join(out, <\n>)
+  back <{body}\n>

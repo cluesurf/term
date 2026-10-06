@@ -1,0 +1,5738 @@
+# The first IR transformation pass: a mid-level simplifier over the compile AST. Constant folding and algebraic
+# identities, so the emitted code is leaner. This is the start of the IR pipeline (see
+# note/research/vibe/computation/plans/05-ir.md); more passes (CFG, monomorphization, Perceus reuse) layer on.
+#
+# Ported from ir/simplify.ts (self-hosting, 2026-10-06), which stays as the face. The original kept its per-run tables
+# (the specializable and small tasks, the inlining guard, the names the current function binds, every case's fields) in
+# module variables; here they are one `simplify-state`, made per run and written through. Its reflective walks
+# (`Object.entries` over any node) are compile/node-reach.tree with the keys the original skipped, `span` and `type`,
+# and the one that rewrites (`fillTemplates`) is written out over every field that can hold an expression, handing back
+# the very node it was given wherever nothing under it changed, as the original kept identity. A node the original
+# spread is check/unfolding.tree's `shallow-copy`, and `structuredClone` is a `deep-copy` bind. Integer folding is done
+# on floats and held to the safe range, as `Number.isSafeInteger` held it, where Term's integer arithmetic would stop.
+# Whether a `let` is a host global (`foreign` set) is the face's answer, since an absent text and an empty one read
+# alike here.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-number
+  find to-decimal
+  find is-finite
+  find round-down
+
+load @term/base/text
+  find char-at
+  find char-count
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find value-branch
+  find field-value
+  find map-entry
+  find template-part
+  find statement-branch
+  find match-case
+  find catch-clause
+  find function-param
+  find view-node
+  find binary-op
+  find chunk-part
+  find value-part
+  find expression-type
+
+load ../compile/node-reach
+  find reach-statements
+  find reach-expression
+  find reach-type
+  find reached
+
+load ../compile/expr-equal
+  find expressions-equal
+
+load ./egraph-arith
+  find egraph-arith
+
+load ./inline-statements
+  find inline-statements
+
+load ../compile/render-names
+  find render-names
+
+load ../check/unfolding
+  find shallow-copy
+
+bind shallow-copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-case
+  take value, like match-case
+  like match-case
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind deep-copy-expression
+  take value, like expression
+  like expression
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# A folded literal as the original built it, `{ ...folded, form: folded.kind, span }`: the fold's own `kind` rides on the
+# expression, first, and the key order is the original's. Natively the plain literal, which has no such key
+bind folded-integer
+  take value, like number
+  take at, like span
+  take plain, like expression
+  like expression
+  case node
+    text <(\{ kind: "integer", value: $value, form: "integer", span: $at \} as never)>
+  case browser
+    text <(\{ kind: "integer", value: $value, form: "integer", span: $at \} as never)>
+  case rust
+    text <$plain>
+  case swift
+    text <$plain>
+  case kotlin
+    text <$plain>
+
+bind folded-boolean
+  take value, like boolean
+  take at, like span
+  take plain, like expression
+  like expression
+  case node
+    text <(\{ kind: "boolean", value: $value, form: "boolean", span: $at \} as never)>
+  case browser
+    text <(\{ kind: "boolean", value: $value, form: "boolean", span: $at \} as never)>
+  case rust
+    text <$plain>
+  case swift
+    text <$plain>
+  case kotlin
+    text <$plain>
+
+load ../parser/diagnostic
+  find span
+
+# ---- the run's state ----
+
+form specialized
+  link params, like list, like function-param
+  link body, like list, like statement
+
+form small-task
+  link params, like list, like function-param
+  link value, like expression
+
+form simplify-state
+  mark shared
+  # the verbs and convenience forms that collapse at a constant selector: a function whose body is a single `send back`
+  # of one expression, or a single `fork case`
+  link specializable, like hash, like text, like specialized
+  # the small one-expression tasks inlined at ANY call whose arguments are pure
+  link small, like hash, like text, like small-task
+  # the names currently being inlined on this path, to break a recursive verb cycle
+  link inlining, like hash, like text, like boolean
+  # the names the function being simplified binds
+  link caller-bound, like hash, like text, like boolean
+  # every case's field names, by case name across every form
+  link case-fields, like hash, like text, like list, like text
+  # whether a `let` is a host global, `foreign` set (the face's answer)
+  link foreign
+    like task
+      take given, like statement
+      like boolean
+
+task new-state
+  take foreign
+    like task
+      take given, like statement
+      like boolean
+  like simplify-state
+  mark private
+
+  back
+    make simplify-state
+      bind specializable, make hash
+      bind small, make hash
+      bind inlining, make hash
+      bind caller-bound, make hash
+      bind case-fields, make hash
+      bind foreign, foreign
+
+task has-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take one, like text
+  like void
+  mark private
+
+  fork test, not(has-text(values, one))
+    hold
+      push(values, one)
+
+task set-of
+  take values, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk values
+    take one
+    save out/{one}, true
+  back out
+
+# ---- literals ----
+
+form fold-answer
+  # `integer` or `boolean`
+  link kind, like text
+  link whole, like number
+  link truth, like boolean
+
+task safe-whole
+  take value, like float
+  like boolean
+  mark private
+
+  fork test, not(is-finite(value))
+    hold
+      back false
+  fork test, is-unequal(round-down(value), value)
+    hold
+      back false
+  back and(is-maximum(value, 9007199254740991.0), is-minimum(value, -9007199254740991.0))
+
+task folded-whole
+  take value, like float
+  like maybe, like fold-answer
+  mark private
+
+  fork test, not(safe-whole(value))
+    hold
+      back make none
+  save made
+    make fold-answer
+      bind kind, <integer>
+      bind whole, to-number(value)
+      bind truth, false
+  back make(some, made)
+
+task folded-truth
+  take value, like boolean
+  like maybe, like fold-answer
+  mark private
+
+  save made
+    make fold-answer
+      bind kind, <boolean>
+      bind whole, 0
+      bind truth, value
+  back make(some, made)
+
+# the fold of two numbers: arithmetic within the safe integer range (beyond 2^53 a JS number rounds, and the rounded
+# literal is not the value the program wrote), a whole division and a remainder of a nonzero divisor, and a comparison
+task fold-arithmetic
+  take op, like binary-op
+  take a, like float
+  take b, like float
+  like maybe, like fold-answer
+  mark private
+
+  sift op
+    case plus
+      back folded-whole(add(a, b))
+    case minus
+      back folded-whole(subtract(a, b))
+    case times
+      back folded-whole(multiply(a, b))
+    case divide
+      fork test, is-equal(b, 0.0)
+        hold
+          back make none
+      save made
+        make fold-answer
+          bind kind, <integer>
+          bind whole, to-number(divide(a, b))
+          bind truth, false
+      back make(some, made)
+    case remainder
+      fork test, is-equal(b, 0.0)
+        hold
+          back make none
+      save made
+        make fold-answer
+          bind kind, <integer>
+          bind whole, to-number(float-remainder(a, b))
+          bind truth, false
+      back make(some, made)
+    case equal
+      back folded-truth(is-equal(a, b))
+    case unequal
+      back folded-truth(is-unequal(a, b))
+    case below
+      back folded-truth(is-below(a, b))
+    case at-most
+      back folded-truth(is-maximum(a, b))
+    case above
+      back folded-truth(is-above(a, b))
+    case at-least
+      back folded-truth(is-minimum(a, b))
+    miss
+      back make none
+
+# a remainder with the dividend's sign, as JavaScript's `%` of two numbers
+bind float-remainder
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <($a % $b)>
+  case browser
+    text <($a % $b)>
+  case rust
+    text <($a % $b)>
+  case swift
+    text <$a.truncatingRemainder(dividingBy: $b)>
+  case kotlin
+    text <($a % $b)>
+
+task folded-expression
+  take found, like fold-answer
+  take at, like span
+  like expression
+  mark private
+
+  fork test, is-equal(found/kind, <integer>)
+    hold
+      save plain
+        make expression/integer
+          bind value, found/whole
+          bind span, at
+      back folded-integer(found/whole, at, plain)
+  save plain
+    make expression/boolean
+      bind value, found/truth
+      bind span, at
+  back folded-boolean(found/truth, at, plain)
+
+task is-integer-of
+  take node, like expression
+  take wanted, like number
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back is-equal(to-decimal(value), to-decimal(wanted))
+    miss
+      back false
+
+task is-bool-of
+  take node, like expression
+  take wanted, like boolean
+  like boolean
+  mark private
+
+  sift node
+    case boolean
+      back is-equal(value, wanted)
+    miss
+      back false
+
+task boolean-of
+  take value, like boolean
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/boolean
+      bind value, value
+      bind span, at
+
+task integer-of
+  take value, like number
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, value
+      bind span, at
+
+# the comparison operator a logical negation flips to, so `!(a == b)` becomes `a != b`
+task negated-compare
+  take op, like binary-op
+  like maybe, like binary-op
+  mark private
+
+  sift op
+    case equal
+      save flipped, make unequal
+      back make(some, flipped)
+    case unequal
+      save flipped, make equal
+      back make(some, flipped)
+    case below
+      save flipped, make at-least
+      back make(some, flipped)
+    case at-most
+      save flipped, make above
+      back make(some, flipped)
+    case above
+      save flipped, make at-most
+      back make(some, flipped)
+    case at-least
+      save flipped, make below
+      back make(some, flipped)
+    miss
+      back make none
+
+task is-comparison
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift negated-compare(op)
+    case some
+      link flipped
+      back true
+    case none
+      back false
+
+task has-e
+  take value, like text
+  like boolean
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(value))
+    hook hold
+      save one, char-at(value, at)
+      fork test, or(is-equal(one, <e>), is-equal(one, <E>))
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+# the text a literal prints as at run time, on EVERY backend, or none when the backends disagree. Rust, Swift and Kotlin
+# agree with TypeScript on an integer, a boolean and a text. They disagree on a float with no fraction and on exponent
+# forms, so those stay run time
+task printed-alike
+  take node, like expression
+  like maybe, like text
+  mark private
+
+  sift node
+    case string
+      link text-value
+      back make(some, text-value)
+    case boolean
+      link truth
+      save shown, <{truth}>
+      back make(some, shown)
+    case integer
+      link whole
+      link exact
+      fork test, and(is-equal(exact, <>), safe-whole(to-decimal(whole)))
+        hold
+          save shown, <{whole}>
+          back make(some, shown)
+      back make none
+    case float
+      link fraction
+      fork test, and(and(is-finite(fraction), is-unequal(round-down(fraction), fraction)), not(has-e(<{fraction}>)))
+        hold
+          save shown, <{fraction}>
+          back make(some, shown)
+      back make none
+    miss
+      back make none
+
+# the numeric value of an integer or float literal, for constant folding comparisons across both number kinds
+task numeric-value
+  take node, like expression
+  like maybe, like float
+  mark private
+
+  sift node
+    case integer
+      link whole
+      save as-float, to-decimal(whole)
+      back make(some, as-float)
+    case float
+      link fraction
+      back make(some, fraction)
+    miss
+      back make none
+
+# a value the specializer treats as a known constant: a literal, or a variant / struct record whose fields are all
+# constant (a nullary `make lines` is the common case)
+task is-constant-expr
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case record
+      walk fields
+        take field
+        fork test, not(is-constant-expr(field/value))
+          hold
+            back false
+      back true
+    miss
+      back false
+
+# only inline when every argument is pure (a literal, a constant, or a bare variable)
+task is-pure-arg
+  take node, like expression
+  like boolean
+  mark private
+
+  fork test, is-constant-expr(node)
+    hold
+      back true
+  sift node
+    case variable
+      back true
+    miss
+      back false
+
+# an expression with no observable side effect, so an unused binding of it is safe to drop. A `call` or `await` is NOT
+# pure: it may run effects
+task is-pure-expr
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case null
+      back true
+    case unit
+      back true
+    case variable
+      back true
+    case hole
+      back true
+    case closure
+      back true
+    case binary
+      fork test, not(is-pure-expr(left))
+        hold
+          back false
+      back is-pure-expr(right)
+    case unary
+      back is-pure-expr(operand)
+    case array
+      walk items
+        take item
+        fork test, not(is-pure-expr(item))
+          hold
+            back false
+      back true
+    case record
+      walk fields
+        take field
+        fork test, not(is-pure-expr(field/value))
+          hold
+            back false
+      back true
+    case map
+      walk entries
+        take entry
+        fork test, not(is-pure-expr(entry/key))
+          hold
+            back false
+        fork test, not(is-pure-expr(entry/value))
+          hold
+            back false
+      back true
+    case member
+      fork test, not(is-pure-expr(target))
+        hold
+          back false
+      sift index
+        case some
+          link at
+          back is-pure-expr(at)
+        case none
+          back true
+    case conditional
+      walk branches
+        take branch
+        fork test, not(is-pure-expr(branch/cond))
+          hold
+            back false
+        fork test, not(is-pure-expr(branch/value))
+          hold
+            back false
+      sift otherwise
+        case some
+          link last
+          back is-pure-expr(last)
+        case none
+          back true
+    miss
+      back false
+
+# a statement that ends control flow in its block, so any statement after it in the same block is unreachable
+task is-terminator
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case return
+      back true
+    case break
+      back true
+    case continue
+      back true
+    case throw
+      back true
+    case exit
+      back true
+    miss
+      back false
+
+# a scalar literal: cheap to duplicate at every use, so it is safe to propagate
+task is-scalar-const
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case null
+      back true
+    miss
+      back false
+
+# ---- reflective reads, through compile/node-reach.tree with the keys the original skipped ----
+
+task skip-keys
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <span>)
+  push(out, <type>)
+  back out
+
+# every variable name an expression reads, nested closures included
+task names-read
+  take node, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, reach-expression(node, skip-keys())
+  walk seen/expressions
+    take one
+    sift one
+      case variable
+        add-text(out, name)
+      miss
+        save nothing, 0
+  back out
+
+# the names one match arm binds: its `link` lines, AND every field of its case, and over a caught exception every shared
+# field and prop
+task arm-names
+  take arm, like match-case
+  take arms, like list, like exception-arm
+  take state, like simplify-state
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  fork test, state/case-fields/has(arm/label)
+    hold
+      walk state/case-fields/get(arm/label)
+        take one
+        push(out, one)
+  save found, false
+  walk arms
+    take caught
+    fork test, and(not(found), is-equal(caught/label, arm/label))
+      hold
+        save found, true
+        walk caught/shared
+          take one
+          push(out, one)
+        walk caught/link
+          take one
+          push(out, one)
+  back out
+
+load ../compile/node
+  find exception-arm
+
+# every name a function binds anywhere in its body, nested closures included: parameters, `let`s, loop items and
+# indexes, an arm's fields and a handler's caught value. Coarse on purpose
+task bound-names
+  take fn, like statement
+  take state, like simplify-state
+  like hash, like text, like boolean
+  mark private
+
+  save names, make hash
+  sift fn
+    case function
+      walk params
+        take param
+        save names/{param/name}, true
+      save seen, reach-statements(body, skip-keys())
+      walk seen/statements
+        take one
+        sift one
+          case let
+            save names/{name}, true
+          case for-each
+            save names/{item}, true
+            fork test, is-unequal(index, <>)
+              hold
+                save names/{index}, true
+          case match
+            save arms, make list
+            walk exception-arms
+              take caught
+              push(arms, caught)
+            walk cases
+              take arm
+              walk arm-names(arm, arms, state)
+                take name
+                save names/{name}, true
+          case guard
+            sift catch
+              case some
+                link handler
+                fork test, is-unequal(handler/name, <>)
+                  hold
+                    save names/{handler/name}, true
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+      walk seen/expressions
+        take one
+        sift one
+          case closure
+            walk params
+              take param
+              save names/{param/name}, true
+          miss
+            save nothing, 0
+    miss
+      save nothing, 0
+  back names
+
+# ---- substitution ----
+
+# substitute parameter variables with their argument expressions when inlining. A closure that rebinds a parameter name
+# shadows it, so that name is dropped from the substitution before descending
+task substitute-expr
+  take node, like expression
+  take subst, like hash, like text, like expression
+  like expression
+
+  sift node
+    case variable
+      fork test, subst/has(name)
+        hold
+          back subst/get(name)
+      back node
+    case binary
+      save copy, shallow-copy(node)
+      sift copy
+        case binary
+          save copy/left, substitute-expr(left, subst)
+          save copy/right, substitute-expr(right, subst)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(node)
+      sift copy
+        case unary
+          save copy/operand, substitute-expr(operand, subst)
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save copy, shallow-copy(node)
+      sift copy
+        case call
+          save new-args, make list
+          walk args
+            take arg
+            push(new-args, substitute-expr(arg, subst))
+          save copy/callee, substitute-expr(callee, subst)
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case array
+      save copy, shallow-copy(node)
+      sift copy
+        case array
+          save new-items, make list
+          walk items
+            take item
+            push(new-items, substitute-expr(item, subst))
+          save copy/items, new-items
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save copy, shallow-copy(node)
+      sift copy
+        case member
+          save copy/target, substitute-expr(target, subst)
+          sift index
+            case some
+              link at
+              save walked, substitute-expr(at, subst)
+              save copy/index, make(some, walked)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save copy, shallow-copy(node)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, substitute-expr(field/value, subst)
+            push(new-fields, made)
+          save copy/fields, new-fields
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save copy, shallow-copy(node)
+      sift copy
+        case map
+          save new-entries, make list
+          walk entries
+            take entry
+            save made
+              make map-entry
+                bind key, substitute-expr(entry/key, subst)
+                bind value, substitute-expr(entry/value, subst)
+            push(new-entries, made)
+          save copy/entries, new-entries
+        miss
+          save nothing, 0
+      back copy
+    case await
+      save copy, shallow-copy(node)
+      sift copy
+        case await
+          save copy/expr, substitute-expr(expr, subst)
+        miss
+          save nothing, 0
+      back copy
+    case template
+      save copy, shallow-copy(node)
+      sift copy
+        case template
+          save new-parts, make list
+          walk parts
+            take part
+            sift part
+              case value
+                link inner
+                push(new-parts, value-part(substitute-expr(inner, subst)))
+              case chunk
+                push(new-parts, part)
+          save copy/parts, new-parts
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save copy, shallow-copy(node)
+      sift copy
+        case conditional
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, substitute-expr(branch/cond, subst)
+                bind value, substitute-expr(branch/value, subst)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          sift otherwise
+            case some
+              link last
+              save walked, substitute-expr(last, subst)
+              save copy/otherwise, make(some, walked)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    case closure
+      save inner, make hash
+      walk subst/keys()
+        take key
+        save inner/{key}, subst/get(key)
+      walk params
+        take param
+        inner/remove(param/name)
+      save copy, shallow-copy(node)
+      sift copy
+        case closure
+          save new-body, make list
+          walk body
+            take one
+            push(new-body, substitute-stmt(one, inner))
+          save copy/body, new-body
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task substitute-block
+  take body, like list, like statement
+  take subst, like hash, like text, like expression
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, substitute-stmt(one, subst))
+  back out
+
+task substitute-stmt
+  take node, like statement
+  take subst, like hash, like text, like expression
+  like statement
+
+  sift node
+    case let
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case let
+          save copy/init, substitute-expr(init, subst)
+        miss
+          save nothing, 0
+      back copy
+    case assign
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case assign
+          save copy/target, substitute-expr(target, subst)
+          save copy/value, substitute-expr(read(value), subst)
+        miss
+          save nothing, 0
+      back copy
+    case expression
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case expression
+          save copy/expr, substitute-expr(expr, subst)
+        miss
+          save nothing, 0
+      back copy
+    case return
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case return
+          sift read(value)
+            case some
+              link sent
+              save walked, substitute-expr(sent, subst)
+              save copy/value, make(some, walked)
+            case none
+              save copy/value, make none
+        miss
+          save nothing, 0
+      back copy
+    case throw
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case throw
+          save copy/value, substitute-expr(read(value), subst)
+        miss
+          save nothing, 0
+      back copy
+    case while
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case while
+          save copy/cond, substitute-expr(cond, subst)
+          save copy/body, substitute-block(body, subst)
+        miss
+          save nothing, 0
+      back copy
+    case guard
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case guard
+          save copy/body, substitute-block(body, subst)
+          sift catch
+            case some
+              link handler
+              save made
+                make catch-clause
+                  bind name, handler/name
+                  bind body, substitute-block(handler/body, subst)
+                  bind span, handler/span
+              save copy/catch, make(some, made)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case for-each
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case for-each
+          save copy/iterable, substitute-expr(iterable, subst)
+          save copy/body, substitute-block(body, subst)
+        miss
+          save nothing, 0
+      back copy
+    case if
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case if
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make statement-branch
+                bind cond, substitute-expr(branch/cond, subst)
+                bind body, substitute-block(branch/body, subst)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          sift otherwise
+            case some
+              link rest
+              save walked, substitute-block(rest, subst)
+              save copy/otherwise, make(some, walked)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    case match
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case match
+          save copy/subject, substitute-expr(subject, subst)
+          save new-cases, make list
+          walk cases
+            take arm
+            save made, shallow-copy-case(arm)
+            save made/body, substitute-block(arm/body, subst)
+            push(new-cases, made)
+          save copy/cases, new-cases
+          sift otherwise
+            case some
+              link rest
+              save walked, substitute-block(rest, subst)
+              save copy/otherwise, make(some, walked)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    case hold
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case hold
+          save copy/expr, substitute-expr(expr, subst)
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+# the substitutions still valid inside a scope that binds `names`: none for a name it rebinds, and none that would
+# substitute a variable it rebinds, which the scope would capture
+task shadow
+  take env, like hash, like text, like expression
+  take names, like list, like text
+  like hash, like text, like expression
+  mark private
+
+  save inner, make hash
+  walk env/keys()
+    take key
+    save value, env/get(key)
+    save keeps, not(has-text(names, key))
+    sift value
+      case variable
+        fork test, has-text(names, name)
+          hold
+            save keeps, false
+      miss
+        save nothing, 0
+    fork test, keeps
+      hold
+        save inner/{key}, value
+  back inner
+
+# ---- reads, for dead-binding elimination ----
+
+# (`reads` and not `into`, which a call's own `into` hides inside its arm)
+task collect-read-names
+  take node, like expression
+  take reads, like hash, like text, like boolean
+  like void
+
+  sift node
+    case variable
+      save reads/{name}, true
+    case binary
+      collect-read-names(left, reads)
+      collect-read-names(right, reads)
+    case unary
+      collect-read-names(operand, reads)
+    case call
+      collect-read-names(callee, reads)
+      walk args
+        take arg
+        collect-read-names(arg, reads)
+    case array
+      walk items
+        take item
+        collect-read-names(item, reads)
+    case map
+      walk entries
+        take entry
+        collect-read-names(entry/key, reads)
+        collect-read-names(entry/value, reads)
+    case record
+      walk fields
+        take field
+        collect-read-names(field/value, reads)
+    case member
+      collect-read-names(target, reads)
+      # a DYNAMIC segment (`read m/{at}`) reads its index variable
+      sift index
+        case some
+          link at
+          collect-read-names(at, reads)
+        case none
+          save nothing, 0
+    case await
+      collect-read-names(expr, reads)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            collect-read-names(inner, reads)
+          case chunk
+            save nothing, 0
+    case conditional
+      walk branches
+        take branch
+        collect-read-names(branch/cond, reads)
+        collect-read-names(branch/value, reads)
+      sift otherwise
+        case some
+          link last
+          collect-read-names(last, reads)
+        case none
+          save nothing, 0
+    case closure
+      collect-reads-in-body(body, reads)
+    miss
+      save nothing, 0
+
+task collect-maybe-read
+  take node, like maybe, like expression
+  take into, like hash, like text, like boolean
+  like void
+  mark private
+
+  sift node
+    case some
+      link inner
+      collect-read-names(inner, into)
+    case none
+      save nothing, 0
+
+task collect-reads-in-body
+  take body, like list, like statement
+  take into, like hash, like text, like boolean
+  like void
+
+  walk body
+    take one
+    sift one
+      case let
+        collect-read-names(init, into)
+      case assign
+        collect-read-names(target, into)
+        collect-read-names(read(value), into)
+      case expression
+        collect-read-names(expr, into)
+      case return
+        collect-maybe-read(read(value), into)
+      case throw
+        collect-read-names(read(value), into)
+      case hold
+        collect-read-names(expr, into)
+      case while
+        collect-read-names(cond, into)
+        collect-reads-in-body(body, into)
+      case guard
+        collect-reads-in-body(body, into)
+        sift catch
+          case some
+            link handler
+            collect-reads-in-body(handler/body, into)
+          case none
+            save nothing, 0
+      case for-each
+        collect-read-names(iterable, into)
+        collect-reads-in-body(body, into)
+      case if
+        walk branches
+          take branch
+          collect-read-names(branch/cond, into)
+          collect-reads-in-body(branch/body, into)
+        sift otherwise
+          case some
+            link rest
+            collect-reads-in-body(rest, into)
+          case none
+            save nothing, 0
+      case match
+        collect-read-names(subject, into)
+        walk cases
+          take arm
+          collect-reads-in-body(arm/body, into)
+        sift otherwise
+          case some
+            link rest
+            collect-reads-in-body(rest, into)
+          case none
+            save nothing, 0
+      case function
+        collect-reads-in-body(body, into)
+      miss
+        save nothing, 0
+
+# A BODY THE SOURCE WROTE NEVER COMES OUT EMPTY. The native backends read an empty body as a signature-only declaration
+# and emit the not-implemented trap in it, so a written body this pass empties keeps a bare `return`
+task keep-written
+  take written, like statement
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  sift written
+    case function
+      link written-name
+      link written-params
+      link written-body
+      fork test, and(is-equal(body/length, 0), is-above(written-body/length, 0))
+        hold
+          save out, make list
+          save made
+            make statement/return
+              bind span, span
+          push(out, made)
+          back out
+    miss
+      save nothing, 0
+  back body
+
+# dead-binding elimination: a `let x = <pure init>` whose name is read nowhere is dead. A name read in any scope keeps
+# every binding of that name. The `safe` gate prevents removing a binding that a later `assign` needs
+task drop-dead-bindings
+  take body, like list, like statement
+  take safe, like hash, like text, like boolean
+  like list, like statement
+  mark private
+
+  save reads, make hash
+  collect-reads-in-body(body, reads)
+  back prune(body, safe, reads)
+
+task prune
+  take stmts, like list, like statement
+  take safe, like hash, like text, like boolean
+  take reads, like hash, like text, like boolean
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk stmts
+    take s
+    sift s
+      case let
+        fork test, and(and(safe/has(name), is-pure-expr(init)), not(reads/has(name)))
+          hold
+            turn next
+        push(out, s)
+      case if
+        save copy, shallow-copy-statement(s)
+        sift copy
+          case if
+            save new-branches, make list
+            walk branches
+              take branch
+              save made
+                make statement-branch
+                  bind cond, branch/cond
+                  bind body, prune(branch/body, safe, reads)
+              push(new-branches, made)
+            save copy/branches, new-branches
+            sift otherwise
+              case some
+                link rest
+                save pruned, prune(rest, safe, reads)
+                save copy/otherwise, make(some, pruned)
+              case none
+                save copy/otherwise, make none
+          miss
+            save nothing, 0
+        push(out, copy)
+      case while
+        save copy, shallow-copy-statement(s)
+        sift copy
+          case while
+            save copy/body, prune(body, safe, reads)
+          miss
+            save nothing, 0
+        push(out, copy)
+      case for-each
+        save copy, shallow-copy-statement(s)
+        sift copy
+          case for-each
+            save copy/body, prune(body, safe, reads)
+          miss
+            save nothing, 0
+        push(out, copy)
+      case match
+        save copy, shallow-copy-statement(s)
+        sift copy
+          case match
+            save new-cases, make list
+            walk cases
+              take arm
+              save made, shallow-copy-case(arm)
+              save made/body, prune(arm/body, safe, reads)
+              push(new-cases, made)
+            save copy/cases, new-cases
+            sift otherwise
+              case some
+                link rest
+                save pruned, prune(rest, safe, reads)
+                save copy/otherwise, make(some, pruned)
+              case none
+                save copy/otherwise, make none
+          miss
+            save nothing, 0
+        push(out, copy)
+      case function
+        save copy, shallow-copy-statement(s)
+        sift copy
+          case function
+            save copy/body, keep-written(s, prune(body, safe, reads))
+          miss
+            save nothing, 0
+        push(out, copy)
+      miss
+        push(out, s)
+  back out
+
+# ---- constant propagation ----
+
+form binding-facts
+  link safe, like hash, like text, like boolean
+  link assigned, like hash, like text, like boolean
+
+# the closures a statement holds, the first ones met on every path: the original's walk stopped at a closure and
+# scanned its body instead, so a closure inside another is not one of them. node-reach meets a closure's own contents
+# as a contiguous run after it, so the run is skipped by the closure's own reach
+task closures-in
+  take one, like statement
+  like list, like expression
+  mark private
+
+  save out, make list
+  save single, make list
+  push(single, one)
+  save seen, reach-statements(single, skip-keys())
+  save at-expression, 0
+  save at-statement, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, seen/order/length)
+    hook hold
+      fork test, get(seen/order, i)
+        hold
+          save node, get(seen/expressions, at-expression)
+          save at-expression, add(at-expression, 1)
+          save i, add(i, 1)
+          sift node
+            case closure
+              push(out, node)
+              save inside, reach-expression(node, skip-keys())
+              # the closure itself was the one expression just taken
+              save more-expressions, subtract(inside/expressions/length, 1)
+              save more-statements, inside/statements/length
+              save at-expression, add(at-expression, more-expressions)
+              save at-statement, add(at-statement, more-statements)
+              save i, add(i, add(more-expressions, more-statements))
+            miss
+              save nothing, 0
+        miss
+          save at-statement, add(at-statement, 1)
+          save i, add(i, 1)
+  back out
+
+task count-let
+  take counts, like hash, like text, like number
+  take name, like text
+  like void
+  mark private
+
+  save before, 0
+  fork test, counts/has(name)
+    hold
+      save before, counts/get(name)
+  save counts/{name}, add(before, 1)
+
+# a closure anywhere in a statement's expressions writes the same variables: its `save` of an outer name is an `assign`
+# the scan has to see. Scanning a closure-local `let` more than once only makes it look reassigned, which keeps it
+task scan-facts
+  take stmts, like list, like statement
+  take counts, like hash, like text, like number
+  take assigned, like hash, like text, like boolean
+  like void
+  mark private
+
+  walk stmts
+    take s
+    walk closures-in(s)
+      take found
+      sift found
+        case closure
+          scan-facts(body, counts, assigned)
+        miss
+          save nothing, 0
+    sift s
+      case let
+        count-let(counts, name)
+      case assign
+        sift target
+          case variable
+            save assigned/{name}, true
+          miss
+            save nothing, 0
+      case if
+        walk branches
+          take branch
+          scan-facts(branch/body, counts, assigned)
+        sift otherwise
+          case some
+            link rest
+            scan-facts(rest, counts, assigned)
+          case none
+            save nothing, 0
+      case guard
+        scan-facts(body, counts, assigned)
+        sift catch
+          case some
+            link handler
+            scan-facts(handler/body, counts, assigned)
+          case none
+            save nothing, 0
+      case while
+        scan-facts(body, counts, assigned)
+      case for-each
+        scan-facts(body, counts, assigned)
+      case function
+        scan-facts(body, counts, assigned)
+      case match
+        walk cases
+          take arm
+          scan-facts(arm/body, counts, assigned)
+        sift otherwise
+          case some
+            link rest
+            scan-facts(rest, counts, assigned)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+task is-all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char-count(value), 0)
+    hold
+      back false
+  save digits, make list
+  push(digits, <0>)
+  push(digits, <1>)
+  push(digits, <2>)
+  push(digits, <3>)
+  push(digits, <4>)
+  push(digits, <5>)
+  push(digits, <6>)
+  push(digits, <7>)
+  push(digits, <8>)
+  push(digits, <9>)
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(value))
+    hook hold
+      fork test, not(has-text(digits, char-at(value, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# the names whose record fields some assignment writes: the base of `save x/f, ...` and `save x/f/g, ...`, never of a
+# list slot. A record is a VALUE (D1): a field write does not reassign the name, so the base is treated as reassigned
+task field-written
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, reach-statements(body, skip-keys())
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        sift target
+          case member
+            save at, target
+            save field, true
+            save base, <>
+            save rooted, false
+            walk test
+              hook test, is-member(at)
+              hook hold
+                sift at
+                  case member
+                    link inner-target
+                    link segment
+                    link inner-index
+                    sift inner-index
+                      case some
+                        link written
+                        save field, false
+                      case none
+                        fork test, is-all-digits(segment)
+                          hold
+                            save field, false
+                    save at, inner-target
+                  miss
+                    save nothing, 0
+            sift at
+              case variable
+                link root
+                save base, root
+                save rooted, true
+              miss
+                save nothing, 0
+            fork test, and(field, rooted)
+              hold
+                add-text(out, base)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task is-member
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case member
+      back true
+    miss
+      back false
+
+# the names in a function body that are safe to treat as constants: declared by exactly one `let` and never the target
+# of an `assign`, counted across the whole body
+task binding-facts-of
+  take body, like list, like statement
+  like binding-facts
+  mark private
+
+  save counts, make hash
+  save assigned, make hash
+  scan-facts(body, counts, assigned)
+  walk field-written(body)
+    take name
+    save assigned/{name}, true
+  save safe, make hash
+  walk counts/keys()
+    take name
+    fork test, and(is-equal(counts/get(name), 1), not(assigned/has(name)))
+      hold
+        save safe/{name}, true
+  back
+    make binding-facts
+      bind safe, safe
+      bind assigned, assigned
+
+task propagate-constants
+  take body, like list, like statement
+  take env, like hash, like text, like expression
+  take safe, like hash, like text, like boolean
+  take assigned, like hash, like text, like boolean
+  take state, like simplify-state
+  like list, like statement
+  mark private
+
+  save local, make hash
+  walk env/keys()
+    take key
+    save local/{key}, env/get(key)
+  save out, make list
+  walk body
+    take one
+    push(out, propagate-statement(one, local, safe, assigned, state))
+  back out
+
+task sub
+  take e, like expression
+  take env, like hash, like text, like expression
+  like expression
+  mark private
+
+  fork test, is-above(env/keys()/length, 0)
+    hold
+      back substitute-expr(e, env)
+  back e
+
+task propagate-maybe-block
+  take rest, like maybe, like list, like statement
+  take env, like hash, like text, like expression
+  take safe, like hash, like text, like boolean
+  take assigned, like hash, like text, like boolean
+  take state, like simplify-state
+  like maybe, like list, like statement
+  mark private
+
+  sift rest
+    case some
+      link body
+      save walked, propagate-constants(body, env, safe, assigned, state)
+      back make(some, walked)
+    case none
+      back make none
+
+task propagate-statement
+  take node, like statement
+  take env, like hash, like text, like expression
+  take safe, like hash, like text, like boolean
+  take assigned, like hash, like text, like boolean
+  take state, like simplify-state
+  like statement
+
+  sift node
+    case let
+      save init-of, sub(init, env)
+      save folded, simplify-expression(init-of, state)
+      # `save` always mills as mutable, so the propagatable names are precomputed per function in `safe`. A `safe`
+      # binding records either a scalar constant or a copy of a stable variable
+      save records, false
+      fork test, safe/has(name)
+        hold
+          fork test, is-scalar-const(folded)
+            hold
+              save records, true
+          sift folded
+            case variable
+              link copied
+              fork test, not(assigned/has(copied))
+                hold
+                  save records, true
+            miss
+              save nothing, 0
+      fork test, records
+        hold
+          save env/{name}, folded
+        miss
+          env/remove(name)
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case let
+          save copy/init, init-of
+        miss
+          save nothing, 0
+      back copy
+    # the TARGET of a write is a place, never a value: a variable there is left as written
+    case assign
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case assign
+          sift target
+            case variable
+              save nothing, 0
+            miss
+              save copy/target, sub(target, env)
+          save copy/value, sub(read(value), env)
+        miss
+          save nothing, 0
+      back copy
+    case return
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case return
+          sift read(value)
+            case some
+              link sent
+              save walked, sub(sent, env)
+              save copy/value, make(some, walked)
+            case none
+              save copy/value, make none
+        miss
+          save nothing, 0
+      back copy
+    case throw
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case throw
+          save copy/value, sub(read(value), env)
+        miss
+          save nothing, 0
+      back copy
+    case expression
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case expression
+          save copy/expr, sub(expr, env)
+        miss
+          save nothing, 0
+      back copy
+    case hold
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case hold
+          save copy/expr, sub(expr, env)
+        miss
+          save nothing, 0
+      back copy
+    case if
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case if
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make statement-branch
+                bind cond, sub(branch/cond, env)
+                bind body, propagate-constants(branch/body, env, safe, assigned, state)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          save copy/otherwise, propagate-maybe-block(otherwise, env, safe, assigned, state)
+        miss
+          save nothing, 0
+      back copy
+    case while
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case while
+          save copy/cond, sub(cond, env)
+          save copy/body, propagate-constants(body, env, safe, assigned, state)
+        miss
+          save nothing, 0
+      back copy
+    case guard
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case guard
+          save copy/body, propagate-constants(body, env, safe, assigned, state)
+          sift catch
+            case some
+              link handler
+              save caught, make list
+              push(caught, handler/name)
+              save made
+                make catch-clause
+                  bind name, handler/name
+                  bind body, propagate-constants(handler/body, shadow(env, caught), safe, assigned, state)
+                  bind span, handler/span
+              save copy/catch, make(some, made)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case for-each
+      save looped, make list
+      push(looped, item)
+      fork test, is-unequal(index, <>)
+        hold
+          push(looped, index)
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case for-each
+          save copy/iterable, sub(iterable, env)
+          save copy/body, propagate-constants(body, shadow(env, looped), safe, assigned, state)
+        miss
+          save nothing, 0
+      back copy
+    # an arm binds its case's fields, so a substitution naming one, or copying one, stops at the arm
+    case match
+      save arms, make list
+      walk exception-arms
+        take caught
+        push(arms, caught)
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case match
+          save copy/subject, sub(subject, env)
+          save new-cases, make list
+          walk cases
+            take arm
+            save made, shallow-copy-case(arm)
+            save made/body, propagate-constants(arm/body, shadow(env, arm-names(arm, arms, state)), safe, assigned, state)
+            push(new-cases, made)
+          save copy/cases, new-cases
+          save copy/otherwise, propagate-maybe-block(otherwise, env, safe, assigned, state)
+        miss
+          save nothing, 0
+      back copy
+    # a nested function is its own scope: a fresh environment and its own binding facts
+    case function
+      save facts, binding-facts-of(body)
+      save fresh, make hash
+      save propagated, propagate-constants(body, fresh, facts/safe, facts/assigned, state)
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case function
+          save copy/body, keep-written(node, drop-dead-bindings(propagated, facts/safe))
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+# ---- what may be inlined ----
+
+# a function whose result type is a collection currency, which the backend boxes into a reference wrapper at the
+# function boundary. Inlining or specializing such a function away would drop that boxing
+task wraps-collection
+  take fn, like statement
+  like boolean
+  mark private
+
+  sift fn
+    case function
+      sift result
+        case some
+          link written
+          sift written
+            case array
+              back true
+            case map
+              back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# a function the call specializer may inline at a constant argument: a single `send back <expr>`, or a single
+# `fork case`. Async and collection-wrapping functions are never inlined
+task specializable-body
+  take fn, like statement
+  like maybe, like list, like statement
+  mark private
+
+  sift fn
+    case function
+      fork test, or(is-equal(async, true), wraps-collection(fn))
+        hold
+          back make none
+      fork test, is-unequal(body/length, 1)
+        hold
+          back make none
+      sift get(body, 0)
+        case return
+          link sent
+          sift sent
+            case some
+              link sent-value
+              back make(some, body)
+            case none
+              back make none
+        case match
+          back make(some, body)
+        miss
+          back make none
+    miss
+      back make none
+
+task is-loose
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link written
+      sift written
+        case unknown
+          back true
+        case dynamic
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# a task the inliner may replace by its value at any call whose arguments are pure: its body is one `send back <expr>`
+# of at most 16 nodes, no `unknown` or `dynamic` at its boundary, no generics, and no type variable in its types
+task small-body
+  take fn, like statement
+  like maybe, like expression
+  mark private
+
+  sift fn
+    case function
+      fork test, or(or(is-unequal(body/length, 1), is-equal(async, true)), wraps-collection(fn))
+        hold
+          back make none
+      fork test, is-loose(result)
+        hold
+          back make none
+      walk params
+        take param
+        fork test, is-loose(param/type)
+          hold
+            back make none
+      fork test, is-above(generics/length, 0)
+        hold
+          back make none
+      sift get(body, 0)
+        case return
+          link sent
+          sift sent
+            case some
+              link value
+              fork test, and(is-maximum(expression-size(value), 16), not(has-type-variable(value)))
+                hold
+                  back make(some, value)
+              back make none
+            case none
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# a node's identity, so a node two places share is counted once, as the original's `seen` set counted it. Natively a
+# value is its own copy, so nothing is shared and every one counts
+bind node-identity
+  take value, like expression
+  like number
+  case node
+    text <__termIdentity($value)>
+  case browser
+    text <__termIdentity($value)>
+  case rust
+    text <-1>
+  case swift
+    text <-1>
+  case kotlin
+    text <(-1L)>
+
+bind statement-identity
+  take value, like statement
+  like number
+  case node
+    text <__termIdentity($value)>
+  case browser
+    text <__termIdentity($value)>
+  case rust
+    text <-1>
+  case swift
+    text <-1>
+  case kotlin
+    text <(-1L)>
+
+bind part-identity
+  take value, like template-part
+  like number
+  case node
+    text <__termIdentity($value)>
+  case browser
+    text <__termIdentity($value)>
+  case rust
+    text <-1>
+  case swift
+    text <-1>
+  case kotlin
+    text <(-1L)>
+
+# whether an identity is new to `seen`, marking it: -1 (no identity) is always new
+task first-sight
+  take seen, like hash, like number, like boolean
+  take id, like number
+  like boolean
+  mark private
+
+  fork test, is-below(id, 0)
+    hold
+      back true
+  fork test, seen/has(id)
+    hold
+      back false
+  save seen/{id}, true
+  back true
+
+# the size of an expression as the original counted it: every object with a `form` outside a type, each counted once
+# however many places share it (its expressions, the statements of its closures, and its template parts)
+task expression-size
+  take value, like expression
+  like number
+  mark private
+
+  save reached-of, reach-expression(value, skip-keys())
+  save seen, make hash
+  save count, 0
+  walk reached-of/expressions
+    take one
+    fork test, first-sight(seen, node-identity(one))
+      hold
+        save count, add(count, 1)
+        sift one
+          case template
+            walk parts
+              take part
+              fork test, first-sight(seen, part-identity(part))
+                hold
+                  save count, add(count, 1)
+          miss
+            save nothing, 0
+  walk reached-of/statements
+    take one
+    fork test, first-sight(seen, statement-identity(one))
+      hold
+        save count, add(count, 1)
+  back count
+
+task type-has-variable
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link written
+      save inside, reach-type(written, only-span())
+      walk inside/types
+        take one
+        sift one
+          case variable
+            back true
+          miss
+            save nothing, 0
+      back false
+    case none
+      back false
+
+# a type variable in a type written under a `type` key, the only place the original looked for one: an expression's own
+# type, a closure parameter's, a `let`'s and a nested task parameter's
+task has-type-variable
+  take value, like expression
+  like boolean
+  mark private
+
+  save seen, reach-expression(value, skip-keys())
+  walk seen/expressions
+    take one
+    fork test, type-has-variable(expression-type(one))
+      hold
+        back true
+    sift one
+      case closure
+        walk params
+          take param
+          fork test, type-has-variable(param/type)
+            hold
+              back true
+      miss
+        save nothing, 0
+  walk seen/statements
+    take one
+    sift one
+      case let
+        fork test, type-has-variable(type)
+          hold
+            back true
+      case function
+        walk params
+          take param
+          fork test, type-has-variable(param/type)
+            hold
+              back true
+      miss
+        save nothing, 0
+  back false
+
+task only-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <span>)
+  back out
+
+load ../compile/node
+  find generic-param
+
+# ---- folding ----
+
+task negate-of
+  take e, like expression
+  take at, like span
+  take state, like simplify-state
+  like expression
+  mark private
+
+  save op, make not
+  save made
+    make unary
+      bind op, op
+      bind operand, e
+      bind span, at
+  back simplify-expression(made, state)
+
+task simplify-expression
+  take node, like expression
+  take state, like simplify-state
+  like expression
+
+  sift node
+    case binary
+      link op-of
+      link left-of
+      link right-of
+      link at
+      save left, simplify-expression(left-of, state)
+      save right, simplify-expression(right-of, state)
+      # comparison of two numeric literals (integer or float) folds to a boolean
+      fork test, is-comparison(op-of)
+        hold
+          sift numeric-value(left)
+            case some
+              link lv
+              sift numeric-value(right)
+                case some
+                  link rv
+                  sift fold-arithmetic(op-of, lv, rv)
+                    case some
+                      link found
+                      back folded-expression(found, at)
+                    case none
+                      save nothing, 0
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+      # boolean comparison against a literal: `x == true` -> x, `x == false` -> !x, and the `!=` duals
+      save is-eq, false
+      save is-ne, false
+      sift op-of
+        case equal
+          save is-eq, true
+        case unequal
+          save is-ne, true
+        miss
+          save nothing, 0
+      fork test, or(is-eq, is-ne)
+        hold
+          fork test, is-bool-of(right, true)
+            hold
+              fork test, is-eq
+                hold
+                  back left
+              back negate-of(left, at, state)
+          fork test, is-bool-of(right, false)
+            hold
+              fork test, is-eq
+                hold
+                  back negate-of(left, at, state)
+              back left
+          fork test, is-bool-of(left, true)
+            hold
+              fork test, is-eq
+                hold
+                  back right
+              back negate-of(right, at, state)
+          fork test, is-bool-of(left, false)
+            hold
+              fork test, is-eq
+                hold
+                  back negate-of(right, at, state)
+              back right
+      # constant folding
+      sift left
+        case integer
+          link left-whole
+          sift right
+            case integer
+              link right-whole
+              sift fold-arithmetic(op-of, to-decimal(left-whole), to-decimal(right-whole))
+                case some
+                  link found
+                  back folded-expression(found, at)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      # algebraic identities
+      sift op-of
+        case plus
+          fork test, is-integer-of(right, 0)
+            hold
+              back left
+          fork test, is-integer-of(left, 0)
+            hold
+              back right
+        case minus
+          fork test, is-integer-of(right, 0)
+            hold
+              back left
+        case times
+          fork test, is-integer-of(right, 1)
+            hold
+              back left
+          fork test, is-integer-of(left, 1)
+            hold
+              back right
+          fork test, or(is-integer-of(right, 0), is-integer-of(left, 0))
+            hold
+              back integer-of(0, at)
+        case divide
+          fork test, is-integer-of(right, 1)
+            hold
+              back left
+        # x && true -> x, true && x -> x, false && x -> false; x && false -> false only when x is pure
+        case both
+          fork test, is-bool-of(right, true)
+            hold
+              back left
+          fork test, is-bool-of(left, true)
+            hold
+              back right
+          fork test, is-bool-of(left, false)
+            hold
+              back boolean-of(false, at)
+          fork test, is-bool-of(right, false)
+            hold
+              fork test, is-pure-expr(left)
+                hold
+                  back boolean-of(false, at)
+          # idempotence and absorption over pure operands
+          fork test, and(is-pure-expr(left), is-pure-expr(right))
+            hold
+              fork test, expressions-equal(left, right)
+                hold
+                  back left
+              fork test, absorbs(left, right, true)
+                hold
+                  back left
+              fork test, absorbs(right, left, true)
+                hold
+                  back right
+        case either
+          fork test, is-bool-of(right, false)
+            hold
+              back left
+          fork test, is-bool-of(left, false)
+            hold
+              back right
+          fork test, is-bool-of(left, true)
+            hold
+              back boolean-of(true, at)
+          fork test, is-bool-of(right, true)
+            hold
+              fork test, is-pure-expr(left)
+                hold
+                  back boolean-of(true, at)
+          fork test, and(is-pure-expr(left), is-pure-expr(right))
+            hold
+              fork test, expressions-equal(left, right)
+                hold
+                  back left
+              fork test, absorbs(left, right, false)
+                hold
+                  back left
+              fork test, absorbs(right, left, false)
+                hold
+                  back right
+        miss
+          save nothing, 0
+      # the greedy rules above are local peepholes; hand the assembled `+` / `-` / `*` tree to the e-graph. The new sides
+      # go in under names of their own: inside the arm below, `left` and `right` are the copy's own, the old ones
+      save new-left, left
+      save new-right, right
+      save copy, shallow-copy(node)
+      sift copy
+        case binary
+          save copy/left, new-left
+          save copy/right, new-right
+        miss
+          save nothing, 0
+      back egraph-arith(copy)
+    case unary
+      link unary-op
+      link operand-of
+      save operand, simplify-expression(operand-of, state)
+      sift unary-op
+        case not
+          # !true -> false, !false -> true
+          sift operand
+            case boolean
+              link truth
+              back boolean-of(not(truth), span)
+            # !!x -> x
+            case unary
+              link inner-op
+              link inner-operand
+              sift inner-op
+                case not
+                  back inner-operand
+                miss
+                  save nothing, 0
+            # !(a == b) -> a != b, !(a < b) -> a >= b, ...
+            case binary
+              link inner-op
+              sift negated-compare(inner-op)
+                case some
+                  link flipped
+                  save negated, shallow-copy(operand)
+                  sift negated
+                    case binary
+                      save negated/op, flipped
+                    miss
+                      save nothing, 0
+                  back negated
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      save new-operand, operand
+      save copy, shallow-copy(node)
+      sift copy
+        case unary
+          save copy/operand, new-operand
+        miss
+          save nothing, 0
+      back copy
+    case call
+      back simplify-call(node, state)
+    case array
+      save copy, shallow-copy(node)
+      sift copy
+        case array
+          save new-items, make list
+          walk items
+            take item
+            push(new-items, simplify-expression(item, state))
+          save copy/items, new-items
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save copy, shallow-copy(node)
+      sift copy
+        case member
+          save copy/target, simplify-expression(target, state)
+          sift index
+            case some
+              link at
+              save walked, simplify-expression(at, state)
+              save copy/index, make(some, walked)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save copy, shallow-copy(node)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, simplify-expression(field/value, state)
+            push(new-fields, made)
+          save copy/fields, new-fields
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save copy, shallow-copy(node)
+      sift copy
+        case map
+          save new-entries, make list
+          walk entries
+            take entry
+            save made
+              make map-entry
+                bind key, simplify-expression(entry/key, state)
+                bind value, simplify-expression(entry/value, state)
+            push(new-entries, made)
+          save copy/entries, new-entries
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      back simplify-conditional(node, state)
+    case template
+      back simplify-template(node, state)
+    miss
+      back node
+
+# `x && (x || y)` -> x when `outer` is `&&` (and the dual): the other side is the opposite operator over `one`
+task absorbs
+  take one, like expression
+  take other, like expression
+  take outer-both, like boolean
+  like boolean
+  mark private
+
+  sift other
+    case binary
+      link inner-op
+      link inner-left
+      link inner-right
+      save matches, false
+      sift inner-op
+        case either
+          save matches, outer-both
+        case both
+          save matches, not(outer-both)
+        miss
+          save nothing, 0
+      fork test, not(matches)
+        hold
+          back false
+      fork test, expressions-equal(one, inner-left)
+        hold
+          back true
+      back expressions-equal(one, inner-right)
+    miss
+      back false
+
+# prune branches whose condition folded to a constant: a false branch is unreachable and dropped, and a true branch wins
+# (later branches and the otherwise become unreachable). A leading true branch collapses the whole conditional
+task simplify-conditional
+  take node, like expression
+  take state, like simplify-state
+  like expression
+  mark private
+
+  sift node
+    case conditional
+      link given-branches
+      link given-otherwise
+      save branches, make list
+      save decided, false
+      walk given-branches
+        take branch
+        save cond, simplify-expression(branch/cond, state)
+        fork test, is-bool-of(cond, false)
+          hold
+            turn next
+        save value, simplify-expression(branch/value, state)
+        fork test, is-bool-of(cond, true)
+          hold
+            fork test, is-equal(branches/length, 0)
+              hold
+                back value
+            save made
+              make value-branch
+                bind cond, cond
+                bind value, value
+            push(branches, made)
+            save decided, true
+            halt
+        save made
+          make value-branch
+            bind cond, cond
+            bind value, value
+        push(branches, made)
+      save otherwise, make none
+      fork test, not(decided)
+        hold
+          sift given-otherwise
+            case some
+              link last
+              save walked, simplify-expression(last, state)
+              save otherwise, make(some, walked)
+            case none
+              save nothing, 0
+      fork test, is-equal(branches/length, 0)
+        hold
+          sift otherwise
+            case some
+              link last
+              back last
+            case none
+              back node
+      save new-branches, branches
+      save new-otherwise, otherwise
+      save copy, shallow-copy(node)
+      sift copy
+        case conditional
+          save copy/branches, new-branches
+          save copy/otherwise, new-otherwise
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+# a template's parts are expressions like any other, and a part that is itself a template is spliced in, its parts read
+# in the same order, so the text is built once; two chunks side by side are one
+task simplify-template
+  take node, like expression
+  take state, like simplify-state
+  like expression
+  mark private
+
+  sift node
+    case template
+      link given-parts
+      save parts, make list
+      walk given-parts
+        take part
+        save spliced, make list
+        sift part
+          case value
+            link inner
+            save simplified, simplify-expression(inner, state)
+            sift simplified
+              case template
+                link inner-parts
+                walk inner-parts
+                  take piece
+                  push(spliced, piece)
+              miss
+                push(spliced, value-part(simplified))
+          case chunk
+            push(spliced, part)
+        walk spliced
+          take piece
+          save merged, false
+          fork test, is-above(parts/length, 0)
+            hold
+              save previous, get(parts, subtract(parts/length, 1))
+              sift piece
+                case chunk
+                  link piece-text
+                  sift previous
+                    case chunk
+                      link previous-text
+                      parts/pop()
+                      push(parts, chunk-part(<{previous-text}{piece-text}>))
+                      save merged, true
+                    miss
+                      save nothing, 0
+                miss
+                  save nothing, 0
+          fork test, not(merged)
+            hold
+              push(parts, piece)
+      save new-parts, parts
+      save copy, shallow-copy(node)
+      sift copy
+        case template
+          save copy/parts, new-parts
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task simplify-call
+  take node, like expression
+  take state, like simplify-state
+  like expression
+  mark private
+
+  sift node
+    case call
+      link given-callee
+      link given-args
+      link at
+      save callee, simplify-expression(given-callee, state)
+      save args, make list
+      walk given-args
+        take arg
+        push(args, simplify-expression(arg, state))
+      sift callee
+        case variable
+          link callee-name
+          # a callee the caller binds itself (a parameter typed as a task, a `let`) is that binding and not the task of
+          # its name
+          fork test, not(state/caller-bound/has(callee-name))
+            hold
+              sift specialized-value(callee-name, args, state)
+                case some
+                  link value
+                  back value
+                case none
+                  save nothing, 0
+              fork test, state/small/has(callee-name)
+                hold
+                  save tiny, state/small/get(callee-name)
+                  # a trailing `need false` number left out is the 0 every backend passes for it, written in
+                  save missing, make list
+                  save k, args/length
+                  walk test
+                    hook test, is-below(k, tiny/params/length)
+                    hook hold
+                      push(missing, get(tiny/params, k))
+                      save k, add(k, 1)
+                  save all-zero, is-above(missing/length, 0)
+                  walk missing
+                    take param
+                    fork test, not(fills-zero(param))
+                      hold
+                        save all-zero, false
+                  fork test, all-zero
+                    hold
+                      walk missing
+                        take param
+                        save zero
+                          make expression/integer
+                            bind value, 0
+                            bind span, at
+                            bind type, param/type
+                        push(args, zero)
+                  sift small-value(callee-name, tiny, args, state)
+                    case some
+                      link value
+                      back value
+                    case none
+                      save nothing, 0
+        miss
+          save nothing, 0
+      save new-callee, callee
+      save new-args, args
+      save copy, shallow-copy(node)
+      sift copy
+        case call
+          save copy/callee, new-callee
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task fills-zero
+  take param, like function-param
+  like boolean
+  mark private
+
+  fork test, not(is-equal(param/optional, true))
+    hold
+      back false
+  sift param/fallback
+    case some
+      link given
+      back false
+    case none
+      save nothing, 0
+  sift param/type
+    case some
+      link written
+      sift written
+        case number
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# specialization: inline a specializable function when an argument is a known constant, then fold. Only when every
+# argument is pure, so no side-effecting argument is reordered or dropped when a branch is pruned
+task specialized-value
+  take name, like text
+  take args, like list, like expression
+  take state, like simplify-state
+  like maybe, like expression
+  mark private
+
+  fork test, not(state/specializable/has(name))
+    hold
+      back make none
+  save fn, state/specializable/get(name)
+  fork test, is-unequal(fn/params/length, args/length)
+    hold
+      back make none
+  save any-constant, false
+  save all-pure, true
+  walk args
+    take arg
+    fork test, is-constant-expr(arg)
+      hold
+        save any-constant, true
+    fork test, not(is-pure-arg(arg))
+      hold
+        save all-pure, false
+  fork test, or(or(not(any-constant), not(all-pure)), state/inlining/has(name))
+    hold
+      back make none
+  save subst, make hash
+  save i, 0
+  walk fn/params
+    take param
+    save subst/{param/name}, get(args, i)
+    save i, add(i, 1)
+  save state/inlining/{name}, true
+  save substituted, make list
+  walk fn/body
+    take one
+    push(substituted, substitute-stmt(one, subst))
+  save reduced, simplify-body(substituted, state)
+  state/inlining/remove(name)
+  fork test, is-equal(reduced/length, 1)
+    hold
+      sift get(reduced, 0)
+        case return
+          link sent
+          sift sent
+            case some
+              link value
+              back make(some, value)
+            case none
+              back make none
+        miss
+          back make none
+  back make none
+
+# a variable read exactly once in the small task's value, `type` and `span` aside
+task read-once
+  take value, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  save count, 0
+  save seen, reach-expression(value, skip-keys())
+  walk seen/expressions
+    take one
+    sift one
+      case variable
+        link read
+        fork test, is-equal(read, name)
+          hold
+            save count, add(count, 1)
+      miss
+        save nothing, 0
+  back is-equal(count, 1)
+
+# a small one-expression task, inlined at a call whose arguments are all pure: the value with the arguments substituted
+# for the parameters. An argument computed with no effect is taken too when its parameter is read exactly once, so
+# nothing is computed twice. Not where a name the body reads, other than its own parameters, is bound by the caller
+task small-value
+  take name, like text
+  take tiny, like small-task
+  take args, like list, like expression
+  take state, like simplify-state
+  like maybe, like expression
+  mark private
+
+  save computed, make list
+  save computed-at, -1
+  save i, 0
+  walk args
+    take arg
+    fork test, not(is-pure-arg(arg))
+      hold
+        push(computed, arg)
+        fork test, is-below(computed-at, 0)
+          hold
+            save computed-at, i
+    save i, add(i, 1)
+  save takes, is-equal(computed/length, 0)
+  fork test, is-equal(computed/length, 1)
+    hold
+      fork test, is-pure-expr(get(computed, 0))
+        hold
+          save param, get(tiny/params, computed-at)
+          save takes, read-once(tiny/value, param/name)
+  fork test, or(or(is-unequal(tiny/params/length, args/length), not(takes)), state/inlining/has(name))
+    hold
+      back make none
+  save own, make list
+  walk tiny/params
+    take param
+    push(own, param/name)
+  walk names-read(tiny/value)
+    take read
+    fork test, and(not(has-text(own, read)), state/caller-bound/has(read))
+      hold
+        back make none
+  save subst, make hash
+  save k, 0
+  walk tiny/params
+    take param
+    save subst/{param/name}, get(args, k)
+    save k, add(k, 1)
+  save state/inlining/{name}, true
+  # a COPY per call site: facts are keyed by node identity, and an emitter may rename a node it visits, so two sites
+  # must never share one
+  save value, simplify-expression(substitute-expr(deep-copy-expression(tiny/value), subst), state)
+  state/inlining/remove(name)
+  back make(some, value)
+
+# ---- statements ----
+
+task simplify-body
+  take body, like list, like statement
+  take state, like simplify-state
+  like list, like statement
+
+  save out, make list
+  walk body
+    take one
+    walk simplify-statement-splice(one, state)
+      take made
+      push(out, made)
+  # drop unreachable statements after the first terminator in this block
+  save cut, make list
+  walk out
+    take one
+    push(cut, one)
+    fork test, is-terminator(one)
+      hold
+        back cut
+  back cut
+
+task simplify-maybe-body
+  take rest, like maybe, like list, like statement
+  take state, like simplify-state
+  like maybe, like list, like statement
+  mark private
+
+  sift rest
+    case some
+      link body
+      save walked, simplify-body(body, state)
+      back make(some, walked)
+    case none
+      back make none
+
+# most statements simplify in place to a single statement; a `match` whose subject folded to a constant nullary variant
+# selects its case at compile time, splicing that case's body into the parent list
+task simplify-statement-splice
+  take node, like statement
+  take state, like simplify-state
+  like list, like statement
+  mark private
+
+  save out, make list
+  sift node
+    case match
+      link given-subject
+      link given-cases
+      link given-otherwise
+      save subject, simplify-expression(given-subject, state)
+      sift subject
+        case record
+          link record-name
+          link record-fields
+          fork test, and(is-equal(record-fields/length, 0), is-constant-expr(subject))
+            hold
+              walk given-cases
+                take arm
+                fork test, is-equal(arm/label, record-name)
+                  hold
+                    back simplify-body(arm/body, state)
+              sift given-otherwise
+                case some
+                  link rest
+                  back simplify-body(rest, state)
+                case none
+                  save nothing-to-run, make list
+                  back simplify-body(nothing-to-run, state)
+        miss
+          save nothing, 0
+      save new-subject, subject
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case match
+          save copy/subject, new-subject
+          save new-cases, make list
+          walk given-cases
+            take arm
+            save made, shallow-copy-case(arm)
+            save made/body, simplify-body(arm/body, state)
+            push(new-cases, made)
+          save copy/cases, new-cases
+          save copy/otherwise, simplify-maybe-body(given-otherwise, state)
+        miss
+          save nothing, 0
+      push(out, copy)
+      back out
+    miss
+      push(out, simplify-statement(node, state))
+      back out
+
+task simplify-statement
+  take node, like statement
+  take state, like simplify-state
+  like statement
+
+  sift node
+    case let
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case let
+          save copy/init, simplify-expression(init, state)
+        miss
+          save nothing, 0
+      back copy
+    case assign
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case assign
+          save copy/target, simplify-expression(target, state)
+          save copy/value, simplify-expression(read(value), state)
+        miss
+          save nothing, 0
+      back copy
+    case expression
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case expression
+          save copy/expr, simplify-expression(expr, state)
+        miss
+          save nothing, 0
+      back copy
+    case return
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case return
+          sift read(value)
+            case some
+              link sent
+              save walked, simplify-expression(sent, state)
+              save copy/value, make(some, walked)
+            case none
+              save copy/value, make none
+        miss
+          save nothing, 0
+      back copy
+    case while
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case while
+          save copy/cond, simplify-expression(cond, state)
+          save copy/body, simplify-body(body, state)
+        miss
+          save nothing, 0
+      back copy
+    case guard
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case guard
+          save copy/body, simplify-body(body, state)
+          sift catch
+            case some
+              link handler
+              save made
+                make catch-clause
+                  bind name, handler/name
+                  bind body, simplify-body(handler/body, state)
+                  bind span, handler/span
+              save copy/catch, make(some, made)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case for-each
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case for-each
+          save copy/iterable, simplify-expression(iterable, state)
+          save copy/body, simplify-body(body, state)
+        miss
+          save nothing, 0
+      back copy
+    case if
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case if
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make statement-branch
+                bind cond, simplify-expression(branch/cond, state)
+                bind body, simplify-body(branch/body, state)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          save copy/otherwise, simplify-maybe-body(otherwise, state)
+        miss
+          save nothing, 0
+      back copy
+    # the names this function binds, so a small task's body is not inlined where one of them would capture a name the
+    # body means as its own
+    case function
+      save outer, state/caller-bound
+      save state/caller-bound, bound-names(node, state)
+      save simplified, simplify-body(body, state)
+      save state/caller-bound, outer
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case function
+          save copy/body, simplified
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+# ---- trivial-forwarder inlining ----
+
+# the call this function forwards to verbatim (a free function or a native member), or none if it is not a trivial
+# pass-through. Awaited, argument-reordering and argument-augmenting wrappers do not qualify
+task forwarder-target
+  take fn, like statement
+  like maybe, like expression
+  mark private
+
+  sift fn
+    case function
+      fork test, or(is-equal(async, true), wraps-collection(fn))
+        hold
+          back make none
+      fork test, is-unequal(body/length, 1)
+        hold
+          back make none
+      sift get(body, 0)
+        case return
+          link sent
+          sift sent
+            case some
+              link sent-value
+              sift sent-value
+                case call
+                  link called
+                  link given
+                  fork test, is-unequal(given/length, params/length)
+                    hold
+                      back make none
+                  save i, 0
+                  walk given
+                    take arg
+                    save param, get(params, i)
+                    sift arg
+                      case variable
+                        link arg-name
+                        fork test, is-unequal(arg-name, param/name)
+                          hold
+                            back make none
+                      miss
+                        back make none
+                    save i, add(i, 1)
+                  sift called
+                    case variable
+                      link called-name
+                      fork test, is-unequal(called-name, name)
+                        hold
+                          back make(some, called)
+                      back make none
+                    case member
+                      back make(some, called)
+                    miss
+                      back make none
+                miss
+                  back make none
+            case none
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+task rewrite-expression
+  take node, like expression
+  take forwarders, like hash, like text, like expression
+  like expression
+
+  sift node
+    case binary
+      save copy, shallow-copy(node)
+      sift copy
+        case binary
+          save copy/left, rewrite-expression(left, forwarders)
+          save copy/right, rewrite-expression(right, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(node)
+      sift copy
+        case unary
+          save copy/operand, rewrite-expression(operand, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case call
+      # `chained`, not `callee`, which is the arm's own field: written to, it was declared again and read itself
+      save chained, rewrite-expression(callee, forwarders)
+      save new-args, make list
+      walk args
+        take arg
+        push(new-args, rewrite-expression(arg, forwarders))
+      # collapse a chain of wrappers in one pass, guarding against a forwarder cycle
+      save seen, make hash
+      save going, true
+      walk test
+        hook test, going
+        hook hold
+          save going, false
+          sift chained
+            case variable
+              link callee-name
+              fork test, and(forwarders/has(callee-name), not(seen/has(callee-name)))
+                hold
+                  save seen/{callee-name}, true
+                  save chained, forwarders/get(callee-name)
+                  save going, true
+            miss
+              save nothing, 0
+      save copy, shallow-copy(node)
+      sift copy
+        case call
+          save copy/callee, chained
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case array
+      save copy, shallow-copy(node)
+      sift copy
+        case array
+          save new-items, make list
+          walk items
+            take item
+            push(new-items, rewrite-expression(item, forwarders))
+          save copy/items, new-items
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save copy, shallow-copy(node)
+      sift copy
+        case member
+          save copy/target, rewrite-expression(target, forwarders)
+          sift index
+            case some
+              link at
+              save walked, rewrite-expression(at, forwarders)
+              save copy/index, make(some, walked)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save copy, shallow-copy(node)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, rewrite-expression(field/value, forwarders)
+            push(new-fields, made)
+          save copy/fields, new-fields
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save copy, shallow-copy(node)
+      sift copy
+        case map
+          save new-entries, make list
+          walk entries
+            take entry
+            save made
+              make map-entry
+                bind key, rewrite-expression(entry/key, forwarders)
+                bind value, rewrite-expression(entry/value, forwarders)
+            push(new-entries, made)
+          save copy/entries, new-entries
+        miss
+          save nothing, 0
+      back copy
+    case await
+      save copy, shallow-copy(node)
+      sift copy
+        case await
+          save copy/expr, rewrite-expression(expr, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case template
+      save copy, shallow-copy(node)
+      sift copy
+        case template
+          save new-parts, make list
+          walk parts
+            take part
+            sift part
+              case value
+                link inner
+                push(new-parts, value-part(rewrite-expression(inner, forwarders)))
+              case chunk
+                push(new-parts, part)
+          save copy/parts, new-parts
+        miss
+          save nothing, 0
+      back copy
+    case closure
+      save copy, shallow-copy(node)
+      sift copy
+        case closure
+          save new-body, make list
+          walk body
+            take one
+            push(new-body, rewrite-statement(one, forwarders))
+          save copy/body, new-body
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save copy, shallow-copy(node)
+      sift copy
+        case conditional
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, rewrite-expression(branch/cond, forwarders)
+                bind value, rewrite-expression(branch/value, forwarders)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          sift otherwise
+            case some
+              link last
+              save walked, rewrite-expression(last, forwarders)
+              save copy/otherwise, make(some, walked)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task rewrite-block
+  take body, like list, like statement
+  take forwarders, like hash, like text, like expression
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, rewrite-statement(one, forwarders))
+  back out
+
+task rewrite-maybe-block
+  take rest, like maybe, like list, like statement
+  take forwarders, like hash, like text, like expression
+  like maybe, like list, like statement
+  mark private
+
+  sift rest
+    case some
+      link body
+      save walked, rewrite-block(body, forwarders)
+      back make(some, walked)
+    case none
+      back make none
+
+task rewrite-statement
+  take node, like statement
+  take forwarders, like hash, like text, like expression
+  like statement
+
+  sift node
+    case let
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case let
+          save copy/init, rewrite-expression(init, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case assign
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case assign
+          save copy/target, rewrite-expression(target, forwarders)
+          save copy/value, rewrite-expression(read(value), forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case expression
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case expression
+          save copy/expr, rewrite-expression(expr, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case return
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case return
+          sift read(value)
+            case some
+              link sent
+              save walked, rewrite-expression(sent, forwarders)
+              save copy/value, make(some, walked)
+            case none
+              save copy/value, make none
+        miss
+          save nothing, 0
+      back copy
+    case throw
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case throw
+          save copy/value, rewrite-expression(read(value), forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case while
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case while
+          save copy/cond, rewrite-expression(cond, forwarders)
+          save copy/body, rewrite-block(body, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case guard
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case guard
+          save copy/body, rewrite-block(body, forwarders)
+          sift catch
+            case some
+              link handler
+              save made
+                make catch-clause
+                  bind name, handler/name
+                  bind body, rewrite-block(handler/body, forwarders)
+                  bind span, handler/span
+              save copy/catch, make(some, made)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case for-each
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case for-each
+          save copy/iterable, rewrite-expression(iterable, forwarders)
+          save copy/body, rewrite-block(body, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case if
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case if
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make statement-branch
+                bind cond, rewrite-expression(branch/cond, forwarders)
+                bind body, rewrite-block(branch/body, forwarders)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          save copy/otherwise, rewrite-maybe-block(otherwise, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case match
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case match
+          save copy/subject, rewrite-expression(subject, forwarders)
+          save new-cases, make list
+          walk cases
+            take arm
+            save made, shallow-copy-case(arm)
+            save made/body, rewrite-block(arm/body, forwarders)
+            push(new-cases, made)
+          save copy/cases, new-cases
+          save copy/otherwise, rewrite-maybe-block(otherwise, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case hold
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case hold
+          save copy/expr, rewrite-expression(expr, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    case function
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case function
+          save copy/body, rewrite-block(body, forwarders)
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+# ---- references ----
+
+task count-name
+  take counts, like hash, like text, like number
+  take name, like text
+  like void
+  mark private
+
+  save before, 0
+  fork test, counts/has(name)
+    hold
+      save before, counts/get(name)
+  save counts/{name}, add(before, 1)
+
+# count every `variable` occurrence by name (callee or value position), so a wrapper still used as a first-class value
+# is kept while one that is only ever called directly is dropped
+task count-references
+  take node, like expression
+  take counts, like hash, like text, like number
+  like void
+
+  sift node
+    case variable
+      count-name(counts, name)
+    case binary
+      count-references(left, counts)
+      count-references(right, counts)
+    case unary
+      count-references(operand, counts)
+    case call
+      count-references(callee, counts)
+      walk args
+        take arg
+        count-references(arg, counts)
+    case array
+      walk items
+        take item
+        count-references(item, counts)
+    case member
+      count-references(target, counts)
+      sift index
+        case some
+          link at
+          count-references(at, counts)
+        case none
+          save nothing, 0
+    case record
+      walk fields
+        take field
+        count-references(field/value, counts)
+    case map
+      walk entries
+        take entry
+        count-references(entry/key, counts)
+        count-references(entry/value, counts)
+    case await
+      count-references(expr, counts)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            count-references(inner, counts)
+          case chunk
+            save nothing, 0
+    case closure
+      walk body
+        take one
+        count-references-statement(one, counts)
+    case conditional
+      walk branches
+        take branch
+        count-references(branch/cond, counts)
+        count-references(branch/value, counts)
+      sift otherwise
+        case some
+          link last
+          count-references(last, counts)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task count-block
+  take body, like list, like statement
+  take counts, like hash, like text, like number
+  like void
+  mark private
+
+  walk body
+    take one
+    count-references-statement(one, counts)
+
+task count-maybe-block
+  take rest, like maybe, like list, like statement
+  take counts, like hash, like text, like number
+  like void
+  mark private
+
+  sift rest
+    case some
+      link body
+      count-block(body, counts)
+    case none
+      save nothing, 0
+
+# the render + reactive runtime primitives a view's emitter synthesizes as raw calls, which no call node shows
+task view-runtime
+  like list, like text
+  mark private
+
+  save names, render-names()
+  save out, make list
+  push(out, names/element)
+  push(out, names/text)
+  push(out, names/dynamic)
+  push(out, names/attribute)
+  push(out, names/event)
+  push(out, <append>)
+  push(out, names/show)
+  push(out, names/each)
+  push(out, names/integers)
+  push(out, <make-signal>)
+  push(out, <read-signal>)
+  push(out, <write-signal>)
+  push(out, <make-effect>)
+  back out
+
+task count-references-statement
+  take node, like statement
+  take counts, like hash, like text, like number
+  like void
+
+  sift node
+    case let
+      count-references(init, counts)
+    case assign
+      count-references(target, counts)
+      count-references(read(value), counts)
+    case expression
+      count-references(expr, counts)
+    case return
+      sift read(value)
+        case some
+          link sent
+          count-references(sent, counts)
+        case none
+          save nothing, 0
+    case throw
+      count-references(read(value), counts)
+    case while
+      count-references(cond, counts)
+      count-block(body, counts)
+    case guard
+      count-block(body, counts)
+      sift catch
+        case some
+          link handler
+          count-block(handler/body, counts)
+        case none
+          save nothing, 0
+    case for-each
+      count-references(iterable, counts)
+      count-block(body, counts)
+    case if
+      walk branches
+        take branch
+        count-references(branch/cond, counts)
+        count-block(branch/body, counts)
+      count-maybe-block(otherwise, counts)
+    case match
+      count-references(subject, counts)
+      walk cases
+        take arm
+        count-block(arm/body, counts)
+      count-maybe-block(otherwise, counts)
+    case hold
+      count-references(expr, counts)
+    # a parameter's `fall` default is a use too: a task named only there was dropped, and the emitted default named a
+    # function that no longer existed (view-cap's `cap-message` and `make-view-caps`, 2026-10-06)
+    case function
+      walk params
+        take param
+        sift param/fallback
+          case some
+            link default-value
+            count-references(default-value, counts)
+          case none
+            save nothing, 0
+      count-block(body, counts)
+    # the render-runtime ABI the view's emitter will synthesize, plus the user expressions inside the view tree
+    case view
+      walk view-runtime()
+        take name
+        count-name(counts, name)
+      count-references-zone(body, counts)
+    miss
+      save nothing, 0
+
+# count name references inside a view tree so a user helper used only from a view is not mistaken for dead code
+task count-references-zone
+  take nodes, like list, like view-node
+  take counts, like hash, like text, like number
+  like void
+  mark private
+
+  walk nodes
+    take one
+    sift one
+      case element
+        walk attributes
+          take attribute
+          count-references(attribute/value, counts)
+        walk props
+          take prop
+          count-references(prop/value, counts)
+        count-references-zone(children, counts)
+      case read
+        count-references(read(value), counts)
+      case save
+        count-references(read(value), counts)
+      case fork
+        walk branches
+          take branch
+          count-references(branch/cond, counts)
+          count-references-zone(branch/body, counts)
+        save rest, make list
+        walk otherwise
+          take inner
+          push(rest, inner)
+        count-references-zone(rest, counts)
+      case walk
+        count-references(iterable, counts)
+        count-references-zone(body, counts)
+      miss
+        save nothing, 0
+
+# the variable a forwarder's target starts from: `job` for `job.state`, `abs` for `abs`
+task root-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    case member
+      back root-of(target)
+    miss
+      back <>
+
+# the functions a mask instance implements its tasks with, by the form and the task rather than by the function's own
+# name, so no reference count sees it
+task instance-implementations
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save worn, make hash
+  walk program
+    take one
+    sift one
+      case instance
+        walk methods
+          take method
+          save key, <{target}:{method}>
+          save worn/{key}, true
+      miss
+        save nothing, 0
+  save kept, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            save key, <{owner/form}:{owner/name}>
+            fork test, worn/has(key)
+              hold
+                save kept/{name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back kept
+
+# `roots` are the entry module's public functions: kept even when unreferenced. Only internal wrappers are eligible to be
+# dropped once their calls are inlined away
+task inline-forwarders
+  take program, like list, like statement
+  take roots, like maybe, like list, like text
+  take state, like simplify-state
+  like list, like statement
+  mark private
+
+  save forwarders, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        sift forwarder-target(one)
+          case some
+            link target
+            save forwarders/{fn-name}, target
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  fork test, is-equal(forwarders/keys()/length, 0)
+    hold
+      back program
+  # HYGIENE: when the target starts with a name the caller binds itself, the caller's binding captures it, so such a
+  # call keeps its wrapper; and a forwarder whose own name the caller binds is not reached by that name there at all
+  save rewritten, make list
+  walk program
+    take one
+    sift one
+      case function
+        save bound, bound-names(one, state)
+        save visible, make hash
+        walk forwarders/keys()
+          take name
+          save target, forwarders/get(name)
+          fork test, and(not(bound/has(name)), not(bound/has(root-of(target))))
+            hold
+              save visible/{name}, target
+        fork test, is-equal(visible/keys()/length, forwarders/keys()/length)
+          hold
+            push(rewritten, rewrite-statement(one, forwarders))
+          miss
+            push(rewritten, rewrite-statement(one, visible))
+      miss
+        push(rewritten, rewrite-statement(one, forwarders))
+  save counts, make hash
+  walk rewritten
+    take one
+    count-references-statement(one, counts)
+  save worn, instance-implementations(program)
+  save out, make list
+  walk rewritten
+    take one
+    save dropped, false
+    sift one
+      case function
+        fork test, and(and(forwarders/has(name), not(counts/has(name))), and(not(is-root(roots, name)), not(worn/has(name))))
+          hold
+            save dropped, true
+      miss
+        save nothing, 0
+    fork test, not(dropped)
+      hold
+        push(out, one)
+  back out
+
+task is-root
+  take roots, like maybe, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  sift roots
+    case some
+      link given
+      back has-text(given, name)
+    case none
+      back false
+
+# drop ambient host globals that nothing references, and the one a function of the same name already binds
+task drop-unused-host-globals
+  take program, like list, like statement
+  take state, like simplify-state
+  like list, like statement
+  mark private
+
+  save counts, make hash
+  walk program
+    take one
+    count-references-statement(one, counts)
+  save functions, make hash
+  walk program
+    take one
+    sift one
+      case function
+        save functions/{name}, true
+      miss
+        save nothing, 0
+  save out, make list
+  walk program
+    take one
+    save dropped, false
+    sift one
+      case let
+        fork test, state/foreign(one)
+          hold
+            fork test, or(not(counts/has(name)), functions/has(name))
+              hold
+                save dropped, true
+      miss
+        save nothing, 0
+    fork test, not(dropped)
+      hold
+        push(out, one)
+  back out
+
+# drop specializable functions that no longer have any reference after inlining and specialization, to a fixpoint: a
+# function used only by another now-dead function becomes dead next round
+task drop-dead-functions
+  take program, like list, like statement
+  take droppable, like hash, like text, like boolean
+  take roots, like maybe, like list, like text
+  like list, like statement
+  mark private
+
+  save worn, instance-implementations(program)
+  save current, program
+  walk test
+    hook test, true
+    hook hold
+      save counts, make hash
+      walk current
+        take one
+        count-references-statement(one, counts)
+      save next, make list
+      walk current
+        take one
+        save dropped, false
+        sift one
+          case function
+            fork test, and(and(droppable/has(name), not(counts/has(name))), and(not(is-root(roots, name)), not(worn/has(name))))
+              hold
+                save dropped, true
+          miss
+            save nothing, 0
+        fork test, not(dropped)
+          hold
+            push(next, one)
+      fork test, is-equal(next/length, current/length)
+        hold
+          back next
+      save current, next
+  back current
+
+# ---- the pass ----
+
+# run the simplifier over a whole program: collapse pass-through wrappers, drop unused host globals, fold constants and
+# identities, specialize constant-selector verbs to their native branch, and drop the verbs that fully unwrapped away
+task simplify
+  take program, like list, like statement
+  take roots, like maybe, like list, like text
+  take foreign
+    like task
+      take given, like statement
+      like boolean
+  like list, like statement
+
+  save state, new-state(foreign)
+  # every case's fields, which an arm with no `link` lines binds by their own names
+  walk program
+    take one
+    sift one
+      case record-type
+        walk variants
+          take variant
+          save names, make list
+          fork test, state/case-fields/has(variant/name)
+            hold
+              walk state/case-fields/get(variant/name)
+                take known
+                push(names, known)
+          walk variant/fields
+            take field
+            add-text(names, field/name)
+          save state/case-fields/{variant/name}, names
+      miss
+        save nothing, 0
+  # an interpolation that reads only module constants is filled here, at compile time, before propagation can make a
+  # local look constant too
+  save inlined, fill-templates(drop-unused-host-globals(inline-forwarders(program, roots, state), state), state)
+  # constant propagation: substitute scalar constants forward through each function body, then drop the dead bindings
+  save propagated, make list
+  walk inlined
+    take one
+    sift one
+      case function
+        save fresh-env, make hash
+        save no-safe, make hash
+        save no-assigned, make hash
+        push(propagated, propagate-statement(one, fresh-env, no-safe, no-assigned, state))
+      miss
+        push(propagated, one)
+  # the functions the call specializer may inline at a constant argument, and the small one-expression tasks
+  walk propagated
+    take one
+    sift one
+      case function
+        sift specializable-body(one)
+          case some
+            link found
+            save made
+              make specialized
+                bind params, params
+                bind body, found
+            save state/specializable/{name}, made
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk propagated
+    take one
+    sift one
+      case function
+        sift small-body(one)
+          case some
+            link value
+            save made
+              make small-task
+                bind params, params
+                bind value, value
+            save state/small/{name}, made
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  save folded, make list
+  walk propagated
+    take one
+    push(folded, simplify-statement(one, state))
+  save droppable, make hash
+  walk state/specializable/keys()
+    take name
+    save droppable/{name}, true
+  walk state/small/keys()
+    take name
+    save droppable/{name}, true
+  # then the small tasks of statements over a recursive form, inlined where their call is a statement, a `let`'s value
+  # or an argument of such a call. One inlined everywhere is dropped like any task above, but only when the roots are
+  # known: without them anything may call it
+  save statements, inline-statements(folded)
+  sift roots
+    case some
+      link given
+      walk statements/inlined
+        take name
+        save droppable/{name}, true
+    case none
+      save nothing, 0
+  back drop-dead-functions(statements/program, droppable, roots)
+
+# ---- interpolation, filled at compile time where it can be ----
+# THE RULE: an interpolation in a text (`<area {a}>`) whose value is a module constant that folds is filled HERE, at
+# compile time, and the text is emitted as a plain literal; any other interpolation is filled at run time by the
+# backend. It runs BEFORE constant propagation, so what it folds is exactly what the rule names. Inside a `fork case`
+# arm nothing is filled from a module constant: an arm binds its variant's fields as locals by their own names, and one
+# could shadow the constant.
+
+# the top-level immutable `host` constants whose value folds, in declaration order so one may be built from an earlier
+# one. A constant assigned to anywhere is not one
+task collect-module-constants
+  take program, like list, like statement
+  take state, like simplify-state
+  like hash, like text, like expression
+  mark private
+
+  save assigned, make hash
+  save seen, reach-statements(program, skip-keys())
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        sift target
+          case variable
+            save assigned/{name}, true
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  save found, make hash
+  walk program
+    take one
+    sift one
+      case let
+        fork test, or(or(is-equal(mutable, true), state/foreign(one)), assigned/has(name))
+          hold
+            turn next
+        save start, init
+        fork test, is-above(found/keys()/length, 0)
+          hold
+            save start, substitute-expr(init, found)
+        save value, simplify-expression(start, state)
+        sift printed-alike(value)
+          case some
+            link shown
+            save found/{name}, value
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back found
+
+form fill-context
+  link constants, like hash, like text, like expression
+  link state, like simplify-state
+
+# One text template: when every interpolated part reads only module constants the enclosing code does not bind itself
+# and folds to a literal printed alike everywhere, the whole template becomes one string. Otherwise it is returned
+# untouched, for the backend to fill at run time
+task fill-template
+  take node, like expression
+  take bound, like hash, like text, like boolean
+  take ctx, like fill-context
+  like expression
+  mark private
+
+  sift node
+    case template
+      link given-parts
+      link at
+      save printed, <>
+      walk given-parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save printed, <{printed}{chunk-text}>
+          case value
+            link inner
+            walk names-read(inner)
+              take read
+              fork test, or(bound/has(read), not(ctx/constants/has(read)))
+                hold
+                  back node
+            save folded, simplify-expression(substitute-expr(deep-copy-expression(inner), ctx/constants), ctx/state)
+            sift printed-alike(folded)
+              case some
+                link shown
+                save printed, <{printed}{shown}>
+              case none
+                back node
+      back
+        make expression/string
+          bind value, printed
+          bind span, at
+    miss
+      back node
+
+# every name a function, a closure, a component or anything else holding `params` binds anywhere inside itself: its
+# parameters, its lets, its loop variables, its closures' parameters, and (as the original read any `params` it met)
+# the names of the named types a function type takes. Over-collecting only sends a fill to run time
+task names-bound-in
+  take seen, like reached
+  take into, like hash, like text, like boolean
+  like void
+  mark private
+
+  walk seen/statements
+    take one
+    sift one
+      case function
+        walk params
+          take param
+          save into/{param/name}, true
+      case view
+        walk params
+          take param
+          save into/{param/name}, true
+      case bind
+        walk params
+          take param
+          save into/{param/name}, true
+      case let
+        save into/{name}, true
+      case for-each
+        save into/{item}, true
+        fork test, is-unequal(index, <>)
+          hold
+            save into/{index}, true
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          save into/{param/name}, true
+      miss
+        save nothing, 0
+  walk seen/types
+    take one
+    sift one
+      case function
+        walk params
+          take param
+          sift param
+            case named
+              save into/{name}, true
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+
+task scope-of-statement
+  take node, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save single, make list
+  push(single, node)
+  save into, make hash
+  names-bound-in(reach-statements(single, skip-keys()), into)
+  back into
+
+task scope-of-expression
+  take node, like expression
+  like hash, like text, like boolean
+  mark private
+
+  save into, make hash
+  names-bound-in(reach-expression(node, skip-keys()), into)
+  back into
+
+task scope-of-type
+  take node, like type
+  like hash, like text, like boolean
+  mark private
+
+  save into, make hash
+  names-bound-in(reach-type(node, skip-keys()), into)
+  back into
+
+# the bound names inside a scope: the ones around it, and when it is the first scope met on the way down, its own (an
+# inner scope's are a part of the outer one's, which already holds everything under it)
+form fill-scope
+  link names, like hash, like text, like boolean
+  link scoped, like boolean
+
+task enter-scope
+  take scope, like fill-scope
+  take own, like hash, like text, like boolean
+  like fill-scope
+  mark private
+
+  fork test, scope/scoped
+    hold
+      back scope
+  back
+    make fill-scope
+      bind names, own
+      bind scoped, true
+
+task unchanged-expressions
+  take before, like list, like expression
+  take after, like list, like expression
+  like boolean
+  mark private
+
+  back is-equal(before, after)
+
+task fill-list
+  take values, like list, like expression
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, fill-expression(one, scope, arm, ctx))
+  fork test, is-equal(out, values)
+    hold
+      back values
+  back out
+
+task fill-block
+  take values, like list, like statement
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, fill-statement(one, scope, arm, ctx))
+  fork test, is-equal(out, values)
+    hold
+      back values
+  back out
+
+task fill-maybe
+  take given, like maybe, like expression
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      save walked, fill-expression(inner, scope, arm, ctx)
+      fork test, is-equal(walked, inner)
+        hold
+          back given
+      back make(some, walked)
+    case none
+      back given
+
+task fill-maybe-type
+  take given, like maybe, like type
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link inner
+      save walked, fill-type(inner, scope, arm, ctx)
+      fork test, is-equal(walked, inner)
+        hold
+          back given
+      back make(some, walked)
+    case none
+      back given
+
+task fill-maybe-block
+  take given, like maybe, like list, like statement
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like list, like statement
+  mark private
+
+  sift given
+    case some
+      link inner
+      save walked, fill-block(inner, scope, arm, ctx)
+      fork test, is-equal(walked, inner)
+        hold
+          back given
+      back make(some, walked)
+    case none
+      back given
+
+task fill-field-values
+  take values, like list, like field-value
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like field-value
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    save walked, fill-expression(one/value, scope, arm, ctx)
+    fork test, is-equal(walked, one/value)
+      hold
+        push(out, one)
+      miss
+        save made
+          make field-value
+            bind name, one/name
+            bind value, walked
+        push(out, made)
+  fork test, is-equal(out, values)
+    hold
+      back values
+  back out
+
+task fill-type
+  take node, like type
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like type
+  mark private
+
+  sift node
+    case array
+      save walked, fill-type(element, scope, arm, ctx)
+      fork test, is-equal(walked, element)
+        hold
+          back node
+      save copy, shallow-copy-type(node)
+      sift copy
+        case array
+          save copy/element, walked
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save walked-key, fill-type(key, scope, arm, ctx)
+      save walked-value, fill-type(value, scope, arm, ctx)
+      fork test, and(is-equal(walked-key, key), is-equal(walked-value, value))
+        hold
+          back node
+      save copy, shallow-copy-type(node)
+      sift copy
+        case map
+          save copy/key, walked-key
+          save copy/value, walked-value
+        miss
+          save nothing, 0
+      back copy
+    case named
+      save given-args, make list
+      walk args
+        take one
+        push(given-args, one)
+      save given-values, make list
+      walk value-args
+        take one
+        push(given-values, one)
+      save walked-args, make list
+      walk given-args
+        take one
+        push(walked-args, fill-type(one, scope, arm, ctx))
+      save walked-values, fill-list(given-values, scope, arm, ctx)
+      fork test, and(is-equal(walked-args, given-args), is-equal(walked-values, given-values))
+        hold
+          back node
+      save copy, shallow-copy-type(node)
+      sift copy
+        case named
+          fork test, is-above(walked-args/length, 0)
+            hold
+              save copy/args, walked-args
+          fork test, is-above(walked-values/length, 0)
+            hold
+              save copy/value-args, walked-values
+        miss
+          save nothing, 0
+      back copy
+    case function
+      save inner, enter-scope(scope, scope-of-type(node))
+      save walked-params, make list
+      walk params
+        take one
+        push(walked-params, fill-type(one, inner, arm, ctx))
+      save walked-result, fill-type(result, inner, arm, ctx)
+      fork test, and(is-equal(walked-params, params), is-equal(walked-result, result))
+        hold
+          back node
+      save copy, shallow-copy-type(node)
+      sift copy
+        case function
+          save copy/params, walked-params
+          save copy/result, walked-result
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+bind shallow-copy-type
+  take value, like type
+  like type
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# one expression with every template under it filled where the rule allows, the very node when nothing under it changed
+task fill-expression
+  take node, like expression
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like expression
+
+  sift node
+    case template
+      fork test, arm
+        hold
+          back node
+      back fill-template(node, scope/names, ctx)
+    case binary
+      save walked-left, fill-expression(left, scope, arm, ctx)
+      save walked-right, fill-expression(right, scope, arm, ctx)
+      fork test, and(is-equal(walked-left, left), is-equal(walked-right, right))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case binary
+          save copy/left, walked-left
+          save copy/right, walked-right
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save walked, fill-expression(operand, scope, arm, ctx)
+      fork test, is-equal(walked, operand)
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case unary
+          save copy/operand, walked
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save walked-callee, fill-expression(callee, scope, arm, ctx)
+      save walked-args, fill-list(args, scope, arm, ctx)
+      save walked-into, fill-maybe-type(into, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-callee, callee), is-equal(walked-args, args)), is-equal(walked-into, into))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case call
+          save copy/callee, walked-callee
+          save copy/args, walked-args
+          save copy/into, walked-into
+        miss
+          save nothing, 0
+      back copy
+    case array
+      save walked, fill-list(items, scope, arm, ctx)
+      fork test, is-equal(walked, items)
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case array
+          save copy/items, walked
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save walked-entries, make list
+      walk entries
+        take entry
+        save walked-key, fill-expression(entry/key, scope, arm, ctx)
+        save walked-value, fill-expression(entry/value, scope, arm, ctx)
+        fork test, and(is-equal(walked-key, entry/key), is-equal(walked-value, entry/value))
+          hold
+            push(walked-entries, entry)
+          miss
+            save made
+              make map-entry
+                bind key, walked-key
+                bind value, walked-value
+            push(walked-entries, made)
+      fork test, is-equal(walked-entries, entries)
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case map
+          save copy/entries, walked-entries
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save walked-fields, fill-field-values(fields, scope, arm, ctx)
+      save given-positional, make list
+      walk positional
+        take one
+        push(given-positional, one)
+      save walked-positional, fill-list(given-positional, scope, arm, ctx)
+      fork test, and(is-equal(walked-fields, fields), is-equal(walked-positional, given-positional))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case record
+          save copy/fields, walked-fields
+          fork test, is-above(walked-positional/length, 0)
+            hold
+              save copy/positional, walked-positional
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save walked-target, fill-expression(target, scope, arm, ctx)
+      save walked-index, fill-maybe(index, scope, arm, ctx)
+      fork test, and(is-equal(walked-target, target), is-equal(walked-index, index))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case member
+          save copy/target, walked-target
+          save copy/index, walked-index
+        miss
+          save nothing, 0
+      back copy
+    case await
+      save walked, fill-expression(expr, scope, arm, ctx)
+      fork test, is-equal(walked, expr)
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case await
+          save copy/expr, walked
+        miss
+          save nothing, 0
+      back copy
+    # a closure starts the names it binds, on top of the ones around it
+    case closure
+      save inner, enter-scope(scope, scope-of-expression(node))
+      save walked-body, fill-block(body, inner, arm, ctx)
+      save walked-result, fill-maybe-type(result, inner, arm, ctx)
+      fork test, and(is-equal(walked-body, body), is-equal(walked-result, result))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case closure
+          save copy/body, walked-body
+          save copy/result, walked-result
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save walked-branches, make list
+      walk branches
+        take branch
+        save walked-cond, fill-expression(branch/cond, scope, arm, ctx)
+        save walked-value, fill-expression(branch/value, scope, arm, ctx)
+        fork test, and(is-equal(walked-cond, branch/cond), is-equal(walked-value, branch/value))
+          hold
+            push(walked-branches, branch)
+          miss
+            save made
+              make value-branch
+                bind cond, walked-cond
+                bind value, walked-value
+            push(walked-branches, made)
+      save walked-otherwise, fill-maybe(otherwise, scope, arm, ctx)
+      fork test, and(is-equal(walked-branches, branches), is-equal(walked-otherwise, otherwise))
+        hold
+          back node
+      save copy, shallow-copy(node)
+      sift copy
+        case conditional
+          save copy/branches, walked-branches
+          save copy/otherwise, walked-otherwise
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task fill-function-params
+  take params, like list, like function-param
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like function-param
+  mark private
+
+  save out, make list
+  walk params
+    take param
+    save walked, fill-maybe(param/fallback, scope, arm, ctx)
+    fork test, is-equal(walked, param/fallback)
+      hold
+        push(out, param)
+      miss
+        save made, shallow-copy-param(param)
+        save made/fallback, walked
+        push(out, made)
+  fork test, is-equal(out, params)
+    hold
+      back params
+  back out
+
+bind shallow-copy-param
+  take value, like function-param
+  like function-param
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a task's or a mask task's written signature: its parameters' types sit under `type` keys, and its result does not
+task fill-signature
+  take given, like maybe, like declared-signature
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like declared-signature
+  mark private
+
+  sift given
+    case some
+      link signature
+      save own, make hash
+      sift signature/result
+        case some
+          link written
+          save own, scope-of-type(written)
+        case none
+          save nothing, 0
+      save inner, enter-scope(scope, own)
+      save walked, fill-maybe-type(signature/result, inner, arm, ctx)
+      fork test, is-equal(walked, signature/result)
+        hold
+          back given
+      save made
+        make declared-signature
+          bind params, signature/params
+          bind result, walked
+      back make(some, made)
+    case none
+      back given
+
+load ../compile/node
+  find declared-signature
+  find form-field
+  find form-variant
+  find form-extend
+  find closure-param
+  find view-branch
+  find view-attribute
+  find dock-route
+  find dock-method
+  find dock-call
+  find dock-argument
+  find dock-send
+  find dock-hook
+  find dock-component
+  find universal
+  find mask-task
+
+task fill-form-fields
+  take fields, like list, like form-field
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like form-field
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save walked, fill-maybe(field/fallback, scope, arm, ctx)
+    fork test, is-equal(walked, field/fallback)
+      hold
+        push(out, field)
+      miss
+        save made, shallow-copy-field(field)
+        save made/fallback, walked
+        push(out, made)
+  fork test, is-equal(out, fields)
+    hold
+      back fields
+  back out
+
+bind shallow-copy-field
+  take value, like form-field
+  like form-field
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-variant
+  take value, like form-variant
+  like form-variant
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-extend
+  take value, like form-extend
+  like form-extend
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task fill-variants
+  take variants, like list, like form-variant
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like form-variant
+  mark private
+
+  save out, make list
+  walk variants
+    take variant
+    save given, make list
+    walk variant/index-values
+      take one
+      push(given, one)
+    save walked, fill-list(given, scope, arm, ctx)
+    fork test, is-equal(walked, given)
+      hold
+        push(out, variant)
+      miss
+        save made, shallow-copy-variant(variant)
+        save made/index-values, walked
+        push(out, made)
+  fork test, is-equal(out, variants)
+    hold
+      back variants
+  back out
+
+task fill-extend
+  take given, like maybe, like form-extend
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like form-extend
+  mark private
+
+  sift given
+    case some
+      link extended
+      save walked-base, fill-type(extended/base, scope, arm, ctx)
+      save walked-links, fill-form-fields(extended/links, scope, arm, ctx)
+      save walked-pins, fill-field-values(extended/pins, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-base, extended/base), is-equal(walked-links, extended/links)), is-equal(walked-pins, extended/pins))
+        hold
+          back given
+      save made, shallow-copy-extend(extended)
+      save made/base, walked-base
+      save made/links, walked-links
+      save made/pins, walked-pins
+      back make(some, made)
+    case none
+      back given
+
+task fill-mask-tasks
+  take tasks, like list, like mask-task
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like mask-task
+  mark private
+
+  save out, make list
+  walk tasks
+    take one
+    save given, make(some, one/signature)
+    save walked, fill-signature(given, scope, arm, ctx)
+    fork test, is-equal(walked, given)
+      hold
+        push(out, one)
+      miss
+        sift walked
+          case some
+            link signature
+            save made
+              make mask-task
+                bind name, one/name
+                bind signature, signature
+                bind default, one/default
+            push(out, made)
+          case none
+            push(out, one)
+  fork test, is-equal(out, tasks)
+    hold
+      back tasks
+  back out
+
+task fill-universals
+  take given, like list, like universal
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like universal
+  mark private
+
+  save out, make list
+  walk given
+    take one
+    save walked, fill-expression(one/expr, scope, arm, ctx)
+    fork test, is-equal(walked, one/expr)
+      hold
+        push(out, one)
+      miss
+        save made, shallow-copy-universal(one)
+        save made/expr, walked
+        push(out, made)
+  fork test, is-equal(out, given)
+    hold
+      back given
+  back out
+
+bind shallow-copy-universal
+  take value, like universal
+  like universal
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task fill-maybe-statement
+  take given, like maybe, like statement
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like maybe, like statement
+  mark private
+
+  sift given
+    case some
+      link inner
+      save walked, fill-statement(inner, scope, arm, ctx)
+      fork test, is-equal(walked, inner)
+        hold
+          back given
+      back make(some, walked)
+    case none
+      back given
+
+task copied-expressions
+  take values, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task copied-statements
+  take values, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+# one statement with every template under it filled where the rule allows, the very statement when nothing changed
+task fill-statement
+  take node, like statement
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like statement
+
+  sift node
+    case let
+      save walked, fill-expression(init, scope, arm, ctx)
+      fork test, is-equal(walked, init)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case let
+          save copy/init, walked
+        miss
+          save nothing, 0
+      back copy
+    case assign
+      save walked-target, fill-expression(target, scope, arm, ctx)
+      save walked-value, fill-expression(read(value), scope, arm, ctx)
+      fork test, and(is-equal(walked-target, target), is-equal(walked-value, read(value)))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case assign
+          save copy/target, walked-target
+          save copy/value, walked-value
+        miss
+          save nothing, 0
+      back copy
+    case expression
+      save walked, fill-expression(expr, scope, arm, ctx)
+      fork test, is-equal(walked, expr)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case expression
+          save copy/expr, walked
+        miss
+          save nothing, 0
+      back copy
+    case if
+      save walked-branches, make list
+      walk branches
+        take branch
+        save walked-cond, fill-expression(branch/cond, scope, arm, ctx)
+        save walked-body, fill-block(branch/body, scope, arm, ctx)
+        fork test, and(is-equal(walked-cond, branch/cond), is-equal(walked-body, branch/body))
+          hold
+            push(walked-branches, branch)
+          miss
+            save made
+              make statement-branch
+                bind cond, walked-cond
+                bind body, walked-body
+            push(walked-branches, made)
+      save walked-otherwise, fill-maybe-block(otherwise, scope, arm, ctx)
+      fork test, and(is-equal(walked-branches, branches), is-equal(walked-otherwise, otherwise))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case if
+          save copy/branches, walked-branches
+          save copy/otherwise, walked-otherwise
+        miss
+          save nothing, 0
+      back copy
+    case while
+      save walked-cond, fill-expression(cond, scope, arm, ctx)
+      save walked-body, fill-block(body, scope, arm, ctx)
+      # a `need false` list, read where it is walked, so nothing is written into the node
+      save given-must, make list
+      walk read(must)
+        take one
+        push(given-must, one)
+      save walked-must, fill-list(given-must, scope, arm, ctx)
+      save walked-down, fill-maybe(down, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-cond, cond), is-equal(walked-body, body)), and(is-equal(walked-must, given-must), is-equal(walked-down, down)))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case while
+          save copy/cond, walked-cond
+          save copy/body, walked-body
+          fork test, is-above(walked-must/length, 0)
+            hold
+              save copy/must, walked-must
+          save copy/down, walked-down
+        miss
+          save nothing, 0
+      back copy
+    # inside a `fork case` arm nothing is filled from a module constant, so the arms are left as they are
+    case match
+      save walked-subject, fill-expression(subject, scope, arm, ctx)
+      save walked-otherwise, fill-maybe-block(otherwise, scope, arm, ctx)
+      fork test, and(is-equal(walked-subject, subject), is-equal(walked-otherwise, otherwise))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case match
+          save copy/subject, walked-subject
+          save copy/otherwise, walked-otherwise
+        miss
+          save nothing, 0
+      back copy
+    case for-each
+      save walked-iterable, fill-expression(iterable, scope, arm, ctx)
+      save walked-body, fill-block(body, scope, arm, ctx)
+      save given-must, make list
+      walk read(must)
+        take one
+        push(given-must, one)
+      save walked-must, fill-list(given-must, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-iterable, iterable), is-equal(walked-body, body)), is-equal(walked-must, given-must))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case for-each
+          save copy/iterable, walked-iterable
+          save copy/body, walked-body
+          fork test, is-above(walked-must/length, 0)
+            hold
+              save copy/must, walked-must
+        miss
+          save nothing, 0
+      back copy
+    case return
+      save walked, fill-maybe(read(value), scope, arm, ctx)
+      fork test, is-equal(walked, read(value))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case return
+          save copy/value, walked
+        miss
+          save nothing, 0
+      back copy
+    case guard
+      save walked-body, fill-block(body, scope, arm, ctx)
+      save walked-catch, catch
+      sift catch
+        case some
+          link handler
+          save walked-handler, fill-block(handler/body, scope, arm, ctx)
+          fork test, not(is-equal(walked-handler, handler/body))
+            hold
+              save made
+                make catch-clause
+                  bind name, handler/name
+                  bind body, walked-handler
+                  bind span, handler/span
+              save walked-catch, make(some, made)
+        case none
+          save nothing, 0
+      fork test, and(is-equal(walked-body, body), is-equal(walked-catch, catch))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case guard
+          save copy/body, walked-body
+          save copy/catch, walked-catch
+        miss
+          save nothing, 0
+      back copy
+    case throw
+      save walked, fill-expression(read(value), scope, arm, ctx)
+      fork test, is-equal(walked, read(value))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case throw
+          save copy/value, walked
+        miss
+          save nothing, 0
+      back copy
+    case hold
+      save walked, fill-expression(expr, scope, arm, ctx)
+      fork test, is-equal(walked, expr)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case hold
+          save copy/expr, walked
+        miss
+          save nothing, 0
+      back copy
+    # a function starts the names it binds, on top of the ones around it
+    case function
+      save inner, enter-scope(scope, scope-of-statement(node))
+      save walked-params, fill-function-params(params, inner, arm, ctx)
+      save walked-body, fill-block(body, inner, arm, ctx)
+      save walked-result, fill-maybe-type(result, inner, arm, ctx)
+      save walked-shape, fill-maybe-statement(stub-shape, inner, arm, ctx)
+      save given-stub-body, make list
+      walk stub-body
+        take one
+        push(given-stub-body, one)
+      save walked-stub-body, fill-block(given-stub-body, inner, arm, ctx)
+      save given-universals, make list
+      walk universals
+        take one
+        push(given-universals, one)
+      save walked-universals, fill-universals(given-universals, inner, arm, ctx)
+      save given-have, make list
+      walk read(have)
+        take one
+        push(given-have, one)
+      save walked-have, fill-list(given-have, inner, arm, ctx)
+      save given-must, make list
+      walk read(must)
+        take one
+        push(given-must, one)
+      save walked-must, fill-list(given-must, inner, arm, ctx)
+      save walked-down, fill-maybe(down, inner, arm, ctx)
+      save walked-declared, fill-signature(declared, inner, arm, ctx)
+      save same-head, and(and(is-equal(walked-params, params), is-equal(walked-body, body)), and(is-equal(walked-result, result), is-equal(walked-shape, stub-shape)))
+      save same-tail, and(and(and(is-equal(walked-stub-body, given-stub-body), is-equal(walked-universals, given-universals)), and(is-equal(walked-have, given-have), is-equal(walked-must, given-must))), and(is-equal(walked-down, down), is-equal(walked-declared, declared)))
+      fork test, and(same-head, same-tail)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case function
+          save copy/params, walked-params
+          save copy/body, walked-body
+          save copy/result, walked-result
+          save copy/stub-shape, walked-shape
+          fork test, is-above(walked-stub-body/length, 0)
+            hold
+              save copy/stub-body, walked-stub-body
+          fork test, is-above(walked-universals/length, 0)
+            hold
+              save copy/universals, walked-universals
+          fork test, is-above(walked-have/length, 0)
+            hold
+              save copy/have, walked-have
+          fork test, is-above(walked-must/length, 0)
+            hold
+              save copy/must, walked-must
+          save copy/down, walked-down
+          save copy/declared, walked-declared
+        miss
+          save nothing, 0
+      back copy
+    case record-type
+      save walked-fields, fill-form-fields(fields, scope, arm, ctx)
+      save walked-variants, fill-variants(variants, scope, arm, ctx)
+      save walked-alias, fill-maybe-type(alias, scope, arm, ctx)
+      save walked-extend, fill-extend(extend, scope, arm, ctx)
+      save given-pins, make list
+      walk pins
+        take one
+        push(given-pins, one)
+      save walked-pins, fill-field-values(given-pins, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-fields, fields), is-equal(walked-variants, variants)), and(and(is-equal(walked-alias, alias), is-equal(walked-extend, extend)), is-equal(walked-pins, given-pins)))
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case record-type
+          save copy/fields, walked-fields
+          save copy/variants, walked-variants
+          save copy/alias, walked-alias
+          save copy/extend, walked-extend
+          fork test, is-above(walked-pins/length, 0)
+            hold
+              save copy/pins, walked-pins
+        miss
+          save nothing, 0
+      back copy
+    case mask
+      save given-tasks, make list
+      walk tasks
+        take one
+        push(given-tasks, one)
+      save walked-tasks, fill-mask-tasks(given-tasks, scope, arm, ctx)
+      fork test, is-equal(walked-tasks, given-tasks)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case mask
+          save copy/tasks, walked-tasks
+        miss
+          save nothing, 0
+      back copy
+    case bind
+      save inner, enter-scope(scope, scope-of-statement(node))
+      save walked-result, fill-maybe-type(result, inner, arm, ctx)
+      fork test, is-equal(walked-result, result)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case bind
+          save copy/result, walked-result
+        miss
+          save nothing, 0
+      back copy
+    case view
+      save inner, enter-scope(scope, scope-of-statement(node))
+      save walked-body, fill-views(body, inner, arm, ctx)
+      fork test, is-equal(walked-body, body)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case view
+          save copy/body, walked-body
+        miss
+          save nothing, 0
+      back copy
+    case dock
+      save walked-route, fill-route(route, scope, arm, ctx)
+      fork test, is-equal(walked-route, route)
+        hold
+          back node
+      save copy, shallow-copy-statement(node)
+      sift copy
+        case dock
+          save copy/route, walked-route
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task copied-universals
+  take values, like list, like universal
+  like list, like universal
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task copied-field-values
+  take values, like list, like field-value
+  like list, like field-value
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task copied-mask-tasks
+  take values, like list, like mask-task
+  like list, like mask-task
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+bind shallow-copy-view
+  take value, like view-node
+  like view-node
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task fill-views
+  take nodes, like list, like view-node
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like view-node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, fill-view(one, scope, arm, ctx))
+  fork test, is-equal(out, nodes)
+    hold
+      back nodes
+  back out
+
+task fill-view
+  take node, like view-node
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like view-node
+  mark private
+
+  sift node
+    case element
+      save walked-attributes, make list
+      walk attributes
+        take attribute
+        save walked, fill-expression(attribute/value, scope, arm, ctx)
+        fork test, is-equal(walked, attribute/value)
+          hold
+            push(walked-attributes, attribute)
+          miss
+            save made
+              make view-attribute
+                bind name, attribute/name
+                bind value, walked
+                bind event, attribute/event
+                bind span, attribute/span
+            push(walked-attributes, made)
+      save walked-props, fill-field-values(props, scope, arm, ctx)
+      save walked-children, fill-views(children, scope, arm, ctx)
+      fork test, and(and(is-equal(walked-attributes, attributes), is-equal(walked-props, props)), is-equal(walked-children, children))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case element
+          save copy/attributes, walked-attributes
+          save copy/props, walked-props
+          save copy/children, walked-children
+        miss
+          save nothing, 0
+      back copy
+    case read
+      save walked, fill-expression(read(value), scope, arm, ctx)
+      fork test, is-equal(walked, read(value))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case read
+          save copy/value, walked
+        miss
+          save nothing, 0
+      back copy
+    case fork
+      save walked-branches, make list
+      walk branches
+        take branch
+        save walked-cond, fill-expression(branch/cond, scope, arm, ctx)
+        save walked-body, fill-views(branch/body, scope, arm, ctx)
+        fork test, and(is-equal(walked-cond, branch/cond), is-equal(walked-body, branch/body))
+          hold
+            push(walked-branches, branch)
+          miss
+            save made
+              make view-branch
+                bind cond, walked-cond
+                bind body, walked-body
+            push(walked-branches, made)
+      save given-otherwise, make list
+      walk otherwise
+        take inner
+        push(given-otherwise, inner)
+      save walked-otherwise, fill-views(given-otherwise, scope, arm, ctx)
+      fork test, and(is-equal(walked-branches, branches), is-equal(walked-otherwise, given-otherwise))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case fork
+          save copy/branches, walked-branches
+          fork test, is-above(walked-otherwise/length, 0)
+            hold
+              save copy/otherwise, walked-otherwise
+        miss
+          save nothing, 0
+      back copy
+    case walk
+      save walked-iterable, fill-expression(iterable, scope, arm, ctx)
+      save walked-body, fill-views(body, scope, arm, ctx)
+      fork test, and(is-equal(walked-iterable, iterable), is-equal(walked-body, body))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case walk
+          save copy/iterable, walked-iterable
+          save copy/body, walked-body
+        miss
+          save nothing, 0
+      back copy
+    case save
+      save walked, fill-expression(read(value), scope, arm, ctx)
+      fork test, is-equal(walked, read(value))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case save
+          save copy/value, walked
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save walked, fill-expression(read(value), scope, arm, ctx)
+      fork test, is-equal(walked, read(value))
+        hold
+          back node
+      save copy, shallow-copy-view(node)
+      sift copy
+        case call
+          save copy/value, walked
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back node
+
+task fill-arguments
+  take given, like list, like dock-argument
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like dock-argument
+  mark private
+
+  save out, make list
+  walk given
+    take one
+    save walked, fill-expression(one/value, scope, arm, ctx)
+    fork test, is-equal(walked, one/value)
+      hold
+        push(out, one)
+      miss
+        save made
+          make dock-argument
+            bind name, one/name
+            bind value, walked
+        push(out, made)
+  fork test, is-equal(out, given)
+    hold
+      back given
+  back out
+
+# a dock call that names parameters is a scope of its own, as any record holding `params` was
+task fill-calls
+  take given, like list, like dock-call
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like dock-call
+  mark private
+
+  save out, make list
+  walk given
+    take one-call
+    save inner, scope
+    fork test, is-above(one-call/params/length, 0)
+      hold
+        save own, make hash
+        walk one-call/args
+          take argument
+          names-bound-in(reach-expression(argument/value, skip-keys()), own)
+        save inner, enter-scope(scope, own)
+    save walked, fill-arguments(one-call/args, inner, arm, ctx)
+    fork test, is-equal(walked, one-call/args)
+      hold
+        push(out, one-call)
+      miss
+        save made, shallow-copy-call(one-call)
+        save made/args, walked
+        push(out, made)
+  fork test, is-equal(out, given)
+    hold
+      back given
+  back out
+
+bind shallow-copy-call
+  take value, like dock-call
+  like dock-call
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task fill-sends
+  take given, like list, like dock-send
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like list, like dock-send
+  mark private
+
+  save out, make list
+  walk given
+    take one
+    save walked, fill-maybe(one/value, scope, arm, ctx)
+    fork test, is-equal(walked, one/value)
+      hold
+        push(out, one)
+      miss
+        save made
+          make dock-send
+            bind name, one/name
+            bind value, walked
+        push(out, made)
+  fork test, is-equal(out, given)
+    hold
+      back given
+  back out
+
+bind shallow-copy-route
+  take value, like dock-route
+  like dock-route
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-method
+  take value, like dock-method
+  like dock-method
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task fill-route
+  take route, like dock-route
+  take scope, like fill-scope
+  take arm, like boolean
+  take ctx, like fill-context
+  like dock-route
+  mark private
+
+  save walked-methods, make list
+  walk route/methods
+    take method
+    save walked-calls, fill-calls(method/calls, scope, arm, ctx)
+    save walked-sends, fill-sends(method/sends, scope, arm, ctx)
+    fork test, and(is-equal(walked-calls, method/calls), is-equal(walked-sends, method/sends))
+      hold
+        push(walked-methods, method)
+      miss
+        save made, shallow-copy-method(method)
+        save made/calls, walked-calls
+        save made/sends, walked-sends
+        push(walked-methods, made)
+  save walked-calls, fill-calls(route/calls, scope, arm, ctx)
+  save walked-component, route/component
+  sift route/component
+    case some
+      link component
+      save walked-props, fill-arguments(component/props, scope, arm, ctx)
+      fork test, not(is-equal(walked-props, component/props))
+        hold
+          save made
+            make dock-component
+              bind name, component/name
+              bind props, walked-props
+          save walked-component, make(some, made)
+    case none
+      save nothing, 0
+  save walked-directives, fill-sends(route/directives, scope, arm, ctx)
+  save walked-sends, fill-sends(route/sends, scope, arm, ctx)
+  save walked-hooks, make list
+  walk route/hooks
+    take hook
+    save hook-calls, fill-calls(hook/calls, scope, arm, ctx)
+    fork test, is-equal(hook-calls, hook/calls)
+      hold
+        push(walked-hooks, hook)
+      miss
+        save made
+          make dock-hook
+            bind name, hook/name
+            bind calls, hook-calls
+        push(walked-hooks, made)
+  save walked-children, make list
+  walk route/children
+    take child
+    push(walked-children, fill-route(child, scope, arm, ctx))
+  save same-a, and(and(is-equal(walked-methods, route/methods), is-equal(walked-calls, route/calls)), is-equal(walked-component, route/component))
+  save same-b, and(and(is-equal(walked-directives, route/directives), is-equal(walked-sends, route/sends)), and(is-equal(walked-hooks, route/hooks), is-equal(walked-children, route/children)))
+  fork test, and(same-a, same-b)
+    hold
+      back route
+  save copy, shallow-copy-route(route)
+  save copy/methods, walked-methods
+  save copy/calls, walked-calls
+  save copy/component, walked-component
+  save copy/directives, walked-directives
+  save copy/sends, walked-sends
+  save copy/hooks, walked-hooks
+  save copy/children, walked-children
+  back copy
+
+# Fill every template in the program that reads only module constants. A node is copied only on the path to a template
+# that changed, so every other node keeps its identity (facts are keyed by it)
+task fill-templates
+  take program, like list, like statement
+  take state, like simplify-state
+  like list, like statement
+
+  save constants, collect-module-constants(program, state)
+  fork test, is-equal(constants/keys()/length, 0)
+    hold
+      back program
+  save ctx
+    make fill-context
+      bind constants, constants
+      bind state, state
+  save outside
+    make fill-scope
+      bind names, make hash
+      bind scoped, false
+  back fill-block(program, outside, false, ctx)

@@ -43,6 +43,11 @@ import type { CodeHold } from '@term/deck/code/form'
 
 import { frontDir, userHome } from '@term/call/code/home'
 import { frontOf, installedVersions } from '@term/call/code/need'
+import * as plan from '@term/call/code/need-files'
+
+// THE TEXTS AN INSTALL WRITES AND ITS DECISIONS ABOUT A PAYLOAD'S FILES are Term since 2026-10-06,
+// call/code/need-files.tree: the install.tree, the file list, the Windows shim, which files are linked to a version
+// already here, and which entries tar still extracts. This face talks to the registry, hashes, runs tar and links.
 
 /** The toolchain's package name (09, "The name"). */
 export const PACKAGE = '@term/code'
@@ -239,7 +244,7 @@ export function linkFront(version: string): void {
   mkdirSync(nodePath.dirname(front), { recursive: true })
 
   if (windows) {
-    writeFileSync(next, `@"%~dp0..\\code\\${version}\\term\\bin\\term.cmd" %* & exit /b\r\n`)
+    writeFileSync(next, plan.frontShimText(version))
   } else {
     symlinkSync(nodePath.join('..', 'code', version, 'term', 'bin', 'term'), next)
   }
@@ -339,17 +344,7 @@ async function install(input: {
 }
 
 function writeInstall(input: { file: string; install: Install }): void {
-  writeFileSync(
-    input.file,
-    [
-      '# What this install of term is. Written by https://term.surf/load and `term self`; read by `term self`.',
-      'install',
-      `  code <${input.install.version}>`,
-      `  form <${input.install.platform}>`,
-      `  hash <${input.install.hash}>`,
-      '',
-    ].join('\n'),
-  )
+  writeFileSync(input.file, plan.installText(input.install.version, input.install.platform, input.install.hash))
 }
 
 // Unpack a payload beside the others and write its install.tree. Into a temporary directory first, renamed into place
@@ -387,9 +382,8 @@ export type ListedFile = { path: string; hash: string; mode: string }
  * `pnpm term:release` runs this before it packs each platform, so the list travels inside the signed layer.
  */
 export function writeFileList(root: string): ListedFile[] {
-  const listed = filesUnder(root)
-    .filter(path => path !== FILE_LIST)
-    .sort()
+  const listed = plan
+    .sortedPaths(filesUnder(root).filter(path => path !== FILE_LIST))
     .map(path => {
       const file = nodePath.join(root, path)
 
@@ -400,15 +394,7 @@ export function writeFileList(root: string): ListedFile[] {
       }
     })
 
-  writeFileSync(
-    nodePath.join(root, FILE_LIST),
-    [
-      '# Every file in this release, with its sha256 and mode. Written by `pnpm term:release`, inside the signed layer.',
-      '# An install reads it to hard-link each file a version already installed holds alike (term self load).',
-      ...listed.flatMap(one => [`file <${one.path}>`, `  hash <${one.hash}>`, `  mode <${one.mode}>`]),
-      '',
-    ].join('\n'),
-  )
+  writeFileSync(nodePath.join(root, FILE_LIST), plan.fileListText(listed))
 
   return listed
 }
@@ -472,24 +458,9 @@ export async function extractShared(input: { archive: string; into: string; othe
 
   const mine = readFileList(listFile)
   const theirs = mine ? input.others.map(root => ({ root, listed: readFileList(nodePath.join(root, FILE_LIST)) })).filter(one => one.listed) : []
-  const links: { from: string; to: string; path: string }[] = []
-
-  for (const file of mine?.values() ?? []) {
-    // tar reads a name as a pattern, so a name with a glob character could match another file: it is extracted
-    if (/[*?[\\]/.test(file.path)) {
-      continue
-    }
-
-    const match = theirs.find(one => {
-      const other = one.listed!.get(file.path)
-
-      return other && other.hash === file.hash && other.mode === file.mode
-    })
-
-    if (match) {
-      links.push({ from: nodePath.join(match.root, file.path), to: nodePath.join(input.into, 'term', file.path), path: file.path })
-    }
-  }
+  // which files are linked, and from which version, is need-files.tree `shared-files`
+  const shared = plan.sharedFiles([...(mine?.values() ?? [])], theirs.map((one, at) => ({ at, listed: one.listed! })))
+  const links = shared.map(file => ({ from: nodePath.join(theirs[file.at]!.root, file.path), to: nodePath.join(input.into, 'term', file.path), path: file.path }))
 
   if (links.length === 0) {
     execFileSync(TAR, ['-xzf', input.archive, '-C', input.into])
@@ -537,9 +508,10 @@ export async function extractShared(input: { archive: string; into: string; othe
   // EVERY OTHER ENTRY, from tar's own listing rather than the file list, so a symlink or anything else the list does not
   // name still arrives. Named with `-T`, never excluded with `-X`: tar matches each entry against every pattern, and
   // 4,600 exclusions took 5.4 s where the whole extract takes 1.1 s, while a few dozen names cost nothing
-  const rest = execFileSync(TAR, ['-tzf', input.archive], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
-    .split('\n')
-    .filter(entry => entry !== '' && !entry.endsWith('/') && !linked.has(entry))
+  const rest = plan.restEntries(
+    execFileSync(TAR, ['-tzf', input.archive], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }),
+    new Map([...linked].map(entry => [entry, true])),
+  )
 
   if (rest.length > 0) {
     const names = `${input.archive}.names`

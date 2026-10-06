@@ -15,8 +15,9 @@ form canvas-image-data, name <CanvasImageData>
   task create-image-data, name <createImageData>
     take sw, like native-number
     take sh, like native-number
-    take settings, like maybe
-      like image-data-settings
+    take settings
+      like maybe
+        like image-data-settings
     like image-data
 
   task create-image-data, name <createImageData>
@@ -28,8 +29,9 @@ form canvas-image-data, name <CanvasImageData>
     take sy, like native-number
     take sw, like native-number
     take sh, like native-number
-    take settings, like maybe
-      like image-data-settings
+    take settings
+      like maybe
+        like image-data-settings
     like image-data
 
   task put-image-data, name <putImageData>

@@ -15,8 +15,10 @@ form text-decoder, name <TextDecoder>
   base text-decoder-common
 
   task decode, name <decode>
-    take input, like maybe
-      like buffer-source
-    take options, like maybe
-      like text-decode-options
+    take input
+      like maybe
+        like buffer-source
+    take options
+      like maybe
+        like text-decode-options
     like native-string

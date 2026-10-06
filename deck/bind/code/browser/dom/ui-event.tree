@@ -34,14 +34,18 @@ form ui-event, name <UIEvent>
 
   task init-ui-event, name <initUIEvent>
     take type-arg, like native-string
-    take bubbles-arg, like maybe
-      like native-boolean
-    take cancelable-arg, like maybe
-      like native-boolean
-    take view-arg, like maybe
-      like or
-        like window
-        like native-null
-    take detail-arg, like maybe
-      like native-number
+    take bubbles-arg
+      like maybe
+        like native-boolean
+    take cancelable-arg
+      like maybe
+        like native-boolean
+    take view-arg
+      like maybe
+        like or
+          like window
+          like native-null
+    take detail-arg
+      like maybe
+        like native-number
     like native-void

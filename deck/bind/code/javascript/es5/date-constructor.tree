@@ -19,16 +19,21 @@ form date-constructor, name <DateConstructor>
   task utc, name <UTC>
     take year, like native-number
     take month, like native-number
-    take date, like maybe
-      like native-number
-    take hours, like maybe
-      like native-number
-    take minutes, like maybe
-      like native-number
-    take seconds, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take date
+      like maybe
+        like native-number
+    take hours
+      like maybe
+        like native-number
+    take minutes
+      like maybe
+        like native-number
+    take seconds
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task now, name <now>
@@ -47,14 +52,19 @@ form date-constructor, name <DateConstructor>
   hook make
     take year, like native-number
     take month, like native-number
-    take date, like maybe
-      like native-number
-    take hours, like maybe
-      like native-number
-    take minutes, like maybe
-      like native-number
-    take seconds, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take date
+      like maybe
+        like native-number
+    take hours
+      like maybe
+        like native-number
+    take minutes
+      like maybe
+        like native-number
+    take seconds
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like date

@@ -21,6 +21,7 @@ form idb-database, name <IDBDatabase>
         like native-string
         like iterable
           like native-string
-    take mode, like maybe
-      like idb-transaction-mode
+    take mode
+      like maybe
+        like idb-transaction-mode
     like idb-transaction

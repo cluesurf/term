@@ -39,6 +39,7 @@ form media-session, name <MediaSession>
     like native-void
 
   task set-position-state, name <setPositionState>
-    take state, like maybe
-      like media-position-state
+    take state
+      like maybe
+        like media-position-state
     like native-void

@@ -21,6 +21,7 @@
 import path from 'path'
 import os from 'os'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, symlinkSync, writeFileSync } from 'fs'
+import * as ignore from '@term/call/code/home-ignore'
 
 // the directory under `.base`, the toolchain package's own name
 export const HOME = path.join('@term', 'code')
@@ -238,14 +239,9 @@ function linkBack(input: { from: string; to: string }): boolean {
 
 // The rules `term wake` writes keep a project's memory in git and everything else under `.base/` out of it, one rule
 // per level. Written for the old folder, they would ignore the moved memory, and git would read every remembered fact
-// as deleted. So exactly those lines are renamed, and nothing else in the file is touched
-export const IGNORE_RENAMES: [string, string][] = [
-  ['!.base/@cluesurf/', '!.base/@term/'],
-  ['.base/@cluesurf/*', '.base/@term/*'],
-  ['!.base/@cluesurf/term/', '!.base/@term/code/'],
-  ['.base/@cluesurf/term/*', '.base/@term/code/*'],
-  ['!.base/@cluesurf/term/memory/', '!.base/@term/code/memory/'],
-]
+// as deleted. So exactly those lines are renamed, and nothing else in the file is touched. Which lines, and when, is
+// Term since 2026-10-06, call/code/home-ignore.tree
+export const IGNORE_RENAMES: [string, string][] = ignore.ignoreRenames().map(rename => [rename.from, rename.to])
 
 export function renameIgnoreRules(file: string): void {
   let text: string
@@ -256,17 +252,11 @@ export function renameIgnoreRules(file: string): void {
     return
   }
 
-  const lines = text.split('\n')
-
   // only the block `term wake` wrote, whole: a file a person wrote with one similar line is theirs
-  if (!IGNORE_RENAMES.every(([from]) => lines.some(line => line.trim() === from))) {
-    return
-  }
+  const renamed = ignore.renamedIgnore(text)
 
-  const renamed = lines.map(line => IGNORE_RENAMES.find(([from]) => line.trim() === from)?.[1] ?? line)
-
-  if (renamed.some((line, at) => line !== lines[at])) {
-    writeFileSync(file, renamed.join('\n'))
+  if (renamed !== '') {
+    writeFileSync(file, renamed)
   }
 }
 

@@ -14,6 +14,7 @@ form reg-exp-constructor, name <RegExpConstructor>
       like or
         like reg-exp
         like native-string
-    take flags, like maybe
-      like native-string
+    take flags
+      like maybe
+        like native-string
     like reg-exp

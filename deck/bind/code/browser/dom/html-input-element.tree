@@ -241,8 +241,9 @@ form html-input-element, name <HTMLInputElement>
     take replacement, like native-string
     take start, like native-number
     take end, like native-number
-    take selection-mode, like maybe
-      like selection-mode
+    take selection-mode
+      like maybe
+        like selection-mode
     like native-void
 
   task set-selection-range, name <setSelectionRange>
@@ -254,21 +255,24 @@ form html-input-element, name <HTMLInputElement>
       like or
         like native-number
         like native-null
-    take direction, like maybe
-      like or
-        text <forward>
-        text <backward>
-        text <none>
+    take direction
+      like maybe
+        like or
+          text <forward>
+          text <backward>
+          text <none>
     like native-void
 
   task step-down, name <stepDown>
-    take n, like maybe
-      like native-number
+    take n
+      like maybe
+        like native-number
     like native-void
 
   task step-up, name <stepUp>
-    take n, like maybe
-      like native-number
+    take n
+      like maybe
+        like native-number
     like native-void
 
   task add-event-listener, name <addEventListener>
@@ -284,19 +288,21 @@ form html-input-element, name <HTMLInputElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -312,17 +318,19 @@ form html-input-element, name <HTMLInputElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

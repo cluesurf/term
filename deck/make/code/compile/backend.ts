@@ -7,9 +7,19 @@ import type {
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
-import { listLengthTasks, loweredListMembers, loweredMapMembers } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks } from '@term/make/code/compile/lowered-members'
+import * as shapes from '@term/make/code/compile/backend-shapes'
 
 const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
+
+// The shapes every backend detects alike (a map's keys or values, a native collection or string call or read, a
+// text-valued expression, the names a body reassigns, a `fill` spec, a valued return, the function parameters a task may
+// keep, a two-slot swap, a scalar type) are compile/backend-shapes.tree (self-hosting, 2026-10-06). What follows here
+// unboxes their answers to the shapes the emitters hold, and keeps the analyses later in this file.
+
+type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
+const unbox = <T>(value: Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
+const boxed = <T>(value: T | undefined): Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -18,31 +28,19 @@ const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 export function mapCollect(
   callee: Expression,
 ): { target: Expression; name: 'keys' | 'values' } | undefined {
-  if (
-    callee.form === 'member' &&
-    callee.target.type?.kind === 'map' &&
-    (callee.name === 'keys' || callee.name === 'values')
-  ) {
-    return { target: callee.target, name: callee.name }
-  }
-
-  return undefined
+  return unbox(shapes.mapCollectOf(callee as never)) as { target: Expression; name: 'keys' | 'values' } | undefined
 }
 
 // ---- native collection operations ----
 // The stdlib `hash` / `list` forms are written against the JS collection API (`map.set`, `map.has`, `array.push`, ...).
 // On a typed backend that vocabulary does not exist verbatim, so each backend lowers these operations to its own
-// platform idiom. The shape is detected once here, by the receiver's TYPE (a map or an array), and the operation name.
+// platform idiom. The shape is detected once, by the receiver's TYPE (a map or an array), and the operation name.
 // The receiver type means a user struct with a field called `set` or `size` never matches.
 export type CollectionOp = {
   target: Expression
   op: string
   kind: 'map' | 'array'
 }
-
-// the members every emitter lowers, the one table the checker reads too (compile/lowered-members.ts)
-const MAP_METHODS: ReadonlySet<string> = new Set(loweredMapMembers())
-const ARRAY_METHODS: ReadonlySet<string> = new Set(loweredListMembers())
 
 // the extra trait the element type needs for an array op that goes beyond `Clone`: equality (`includes` / `indexOf`)
 // or string rendering (`join`). A backend reads this to constrain the element generic of a method that uses the op.
@@ -57,270 +55,57 @@ export const ARRAY_OP_BOUND: Record<string, 'eq' | 'display'> = {
 export function collectionCall(
   callee: Expression,
 ): CollectionOp | undefined {
-  if (callee.form !== 'member') {
-    return undefined
-  }
-
-  const kind = callee.target.type?.kind
-
-  if (kind === 'map' && MAP_METHODS.has(callee.name)) {
-    return { target: callee.target, op: callee.name, kind: 'map' }
-  }
-
-  if (kind === 'array' && ARRAY_METHODS.has(callee.name)) {
-    return { target: callee.target, op: callee.name, kind: 'array' }
-  }
-
-  return undefined
+  return unbox(shapes.collectionCall(callee as never)) as CollectionOp | undefined
 }
 
 export type StringOp = { target: Expression; op: string }
 
-// a native string METHOD CALL (`value.charAt(i)`) on a text receiver
 // is the value a text? The primitive, or the stdlib's `text` form named as such
 export function isText(type: { kind: string; name?: string } | undefined): boolean {
-  return type?.kind === 'string' || (type?.kind === 'named' && type.name === 'text')
+  return shapes.isText(boxed(type) as never)
 }
 
+// a native string METHOD CALL (`value.charAt(i)`) on a text receiver
 export function stringCall(callee: Expression): StringOp | undefined {
-  if (callee.form !== 'member' || !isText(callee.target.type)) {
-    return undefined
-  }
-
-  const op = hostMethod(callee.name)
-
-  return isStringMethod(op) ? { target: callee.target, op } : undefined
+  return unbox(shapes.stringCall(callee as never)) as StringOp | undefined
 }
-
-// the host string methods whose answer is a text
-const TEXT_RESULTS = new Set([
-  'charAt',
-  'at',
-  'substring',
-  'slice',
-  'toLowerCase',
-  'toUpperCase',
-  'trim',
-  'trimStart',
-  'trimEnd',
-  'padStart',
-  'padEnd',
-  'replace',
-  'replaceAll',
-  'repeat',
-  'concat',
-])
 
 // is this expression a text: typed one, or a host string method answering one, which the checker leaves `unknown`
 // (`char-at`'s body is `value.charAt(index)`, and so is every call of it once inlined)
 export function textValued(e: Expression): boolean {
-  if (isText(e.type)) {
-    return true
-  }
-
-  const text = e.form === 'call' ? stringCall(e.callee) : undefined
-
-  return text !== undefined && TEXT_RESULTS.has(text.op)
+  return shapes.textValued(e as never)
 }
 
 // a native string PROPERTY READ (`value.length`) on a text receiver
 export function stringRead(node: Expression): StringOp | undefined {
-  if (node.form !== 'member' || !isText(node.target.type) || node.name !== 'length') {
-    return undefined
-  }
-
-  return { target: node.target, op: 'length' }
+  return unbox(shapes.stringRead(node as never)) as StringOp | undefined
 }
 
 // a native collection PROPERTY READ (`map.size`, `array.length`) on a map/array receiver
 export function collectionRead(
   node: Expression,
 ): CollectionOp | undefined {
-  if (node.form !== 'member') {
-    return undefined
-  }
-
-  const kind = node.target.type?.kind
-
-  if (kind === 'map' && node.name === 'size') {
-    return { target: node.target, op: 'size', kind: 'map' }
-  }
-
-  if (kind === 'array' && node.name === 'length') {
-    return { target: node.target, op: 'length', kind: 'array' }
-  }
-
-  return undefined
+  return unbox(shapes.collectionRead(node as never)) as CollectionOp | undefined
 }
 
 // the names reassigned anywhere in a body. Rust, Swift, and Kotlin parameters are immutable, so a reassigned one is
-// shadowed by a mutable local at the top of the function. This descends into closure bodies: a parameter reassigned
-// only inside a nested closure still needs the shadow, since the closure captures the enclosing (mutable) local,
-// never the parameter itself. Shared by the three native backends so the analysis cannot drift between them.
-function reassignedExpr(expr: Expression, into: Set<string>): void {
-  switch (expr.form) {
-    case 'closure':
-      reassigned(expr.body, into)
-      break
-    case 'call':
-      reassignedExpr(expr.callee, into)
-      expr.args.forEach(a => reassignedExpr(a, into))
-      break
-    case 'binary':
-      reassignedExpr(expr.left, into)
-      reassignedExpr(expr.right, into)
-      break
-    case 'unary':
-      reassignedExpr(expr.operand, into)
-      break
-    case 'array':
-      expr.items.forEach(i => reassignedExpr(i, into))
-      break
-    case 'map':
-      expr.entries.forEach(e => {
-        reassignedExpr(e.key, into)
-        reassignedExpr(e.value, into)
-      })
-      break
-    case 'record':
-      expr.fields.forEach(f => reassignedExpr(f.value, into))
-      break
-    case 'member':
-      reassignedExpr(expr.target, into)
-      break
-    case 'await':
-      reassignedExpr(expr.expr, into)
-      break
-    case 'template':
-      for (const part of expr.parts) {
-        if (part.form === 'value') {
-          reassignedExpr(part.value, into)
-        }
-      }
-
-      break
-    case 'conditional':
-      expr.branches.forEach(b => {
-        reassignedExpr(b.cond, into)
-        reassignedExpr(b.value, into)
-      })
-
-      if (expr.otherwise) {
-        reassignedExpr(expr.otherwise, into)
-      }
-
-      break
-    default:
-      break
-  }
-}
-
+// shadowed by a mutable local at the top of the function. This descends into closure bodies. A slot of a list or a
+// map written by index, or by a literal position, reassigns nothing: every native backend holds those by reference.
+// Shared by the three native backends so the analysis cannot drift between them.
 export function reassigned(
   body: Statement[],
   into: Set<string>,
 ): void {
-  for (const s of body) {
-    switch (s.form) {
-      case 'let':
-        reassignedExpr(s.init, into)
-        break
-      case 'assign': {
-        // `save x, v` reassigns x; `save x/field, v` mutates x in place, which a by-value parameter needs a mutable
-        // shadow for just the same. `save xs/{i}, v` and `save xs/0, v` on a LIST or MAP are not either: every
-        // native backend holds a list and a map by reference (SeedList, Rc<RefCell<..>>, MutableList), and writes the
-        // element through it, so the binding stays immutable. Counting them made Swift write `var perm = perm` and
-        // `var xs = ...` that it then warned were never mutated. The same holds for a list reached through a record's
-        // field (`save b/items/0, v`): the list is held by reference there too, and a field a record owns as a plain
-        // list is never written through its path (`ownedFields` refuses that), so the record stays immutable
-        const element =
-          s.target.form === 'member' &&
-          (s.target.target.type?.kind === 'array' || s.target.target.type?.kind === 'map') &&
-          (s.target.index !== undefined || /^\d+$/.test(s.target.name))
-
-        if (element) {
-          reassignedExpr(s.value, into)
-
-          if (s.target.form === 'member' && s.target.index) {
-            reassignedExpr(s.target.index, into)
-          }
-
-          break
-        }
-
-        let target: Expression = s.target
-
-        while (target.form === 'member') {
-          target = target.target
-        }
-
-        if (target.form === 'variable') {
-          into.add(target.name)
-        }
-
-        reassignedExpr(s.value, into)
-        break
-      }
-      case 'expression':
-        reassignedExpr(s.expr, into)
-        break
-      case 'return':
-        if (s.value) {
-          reassignedExpr(s.value, into)
-        }
-
-        break
-      case 'throw':
-        reassignedExpr(s.value, into)
-        break
-      case 'if':
-        s.branches.forEach(b => {
-          reassignedExpr(b.cond, into)
-          reassigned(b.body, into)
-        })
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'match':
-        reassignedExpr(s.subject, into)
-        s.cases.forEach(c => reassigned(c.body, into))
-
-        if (s.otherwise) {
-          reassigned(s.otherwise, into)
-        }
-
-        break
-      case 'while':
-        reassignedExpr(s.cond, into)
-        reassigned(s.body, into)
-        break
-      case 'guard':
-        reassigned(s.body, into)
-
-        if (s.catch) {
-          reassigned(s.catch.body, into)
-        }
-
-        break
-      case 'for-each':
-        reassignedExpr(s.iterable, into)
-        reassigned(s.body, into)
-        break
-      default:
-        break
-    }
+  for (const name of shapes.reassigned(body as never)) {
+    into.add(name)
   }
 }
 
 // Shared backend machinery. Every code generator must handle every AST form, on every target.
 //
 // `exhausted` makes that a COMPILE-TIME invariant. Route the `default` branch of any form switch through it: when a
-// case is missing, `node` is not narrowed to `never`, so the call fails to typecheck. When a new Expression or
-// Statement form is added to the language, every backend that has not added a case stops compiling. So "every
-// backend supports everything the language will ever have" is enforced by the type checker, not by hope. If a form
-// ever does reach it at runtime (e.g. a hand-built AST), it throws loudly rather than emitting silent wrong code.
+// case is missing, `node` is not narrowed to `never`, so the call fails to typecheck. If a form ever does reach it at
+// runtime (e.g. a hand-built AST), it throws loudly rather than emitting silent wrong code.
 export function exhausted(node: never): never {
   throw new Error(
     `backend: unhandled AST form ${JSON.stringify(
@@ -329,24 +114,22 @@ export function exhausted(node: never): never {
   )
 }
 
-// A target that cannot express a form (a GPU shader cannot throw; the HVM pure fragment has no stored closures) emits this marker
-// instead of silently dropping or miscompiling the construct. The marker is a comment in the target's syntax, so the
-// generated source still parses but the gap is visible and greppable (SEED-UNSUPPORTED), never silent.
+// A target that cannot express a form (a GPU shader cannot throw; the HVM pure fragment has no stored closures) emits
+// this marker instead of silently dropping or miscompiling the construct. The marker is a comment in the target's
+// syntax, so the generated source still parses but the gap is visible and greppable (SEED-UNSUPPORTED), never silent.
 export function unsupported(
   target: string,
   form: string,
   comment: string,
 ): string {
-  return `${comment} SEED-UNSUPPORTED on ${target}: "${form}" is outside this target's fragment`
+  return shapes.unsupported(target, form, comment)
 }
 
 // ---- filling a form from data ----
 
-// the shape a `call fill / <data> / like <form>` walks: one entry per field with its kind. A kind is `text`,
-// `number`, `decimal`, `flag`, `data` (a field of the package's own `data` form, passed through), `list` (with its
-// item), `form` (with its own spec, recursively) or `any` (a type with no data spelling, which a typed backend
-// refuses at compile time). A form that reaches itself is cut at the second visit and read as `any`. The TypeScript
-// emitter walks the spec at run time; the native emitters generate a function per form from it.
+// the shape a `call fill / <data> / like <form>` walks: one entry per field with its kind. A form that reaches itself
+// is cut at the second visit and read as `any`. The TypeScript emitter walks the spec at run time; the native
+// emitters generate a function per form from it.
 export type FormKind =
   | { kind: 'text' | 'number' | 'decimal' | 'flag' | 'data' | 'any' }
   | { kind: 'list'; item: FormKind }
@@ -357,301 +140,53 @@ export type FormSpec = { form: string; fields: { name: string; optional: boolean
 export type RecordFields = Map<string, { name: string; type: Type; optional?: boolean }[]>
 
 export function formSpec(type: Type, records: RecordFields, seen: Set<string> = new Set()): FormSpec {
-  const name = type.kind === 'named' ? type.name : ''
-  const fields = records.get(name) ?? []
-  const inner = new Set(seen).add(name)
-
-  return {
-    form: name,
-    fields: fields.map(f => ({ name: f.name, optional: Boolean(f.optional), kind: formKind(f.type, records, inner) })),
-  }
+  return shapes.formSpecOf(type as never, records as never, [...seen]) as FormSpec
 }
 
 export function formKind(type: Type | undefined, records: RecordFields, seen: Set<string>): FormKind {
-  switch (type?.kind) {
-    case 'string':
-      return { kind: 'text' }
-    case 'boolean':
-      return { kind: 'flag' }
-    case 'number':
-      return { kind: 'number' }
-    case 'float':
-      return { kind: 'decimal' }
-    case 'array':
-      return { kind: 'list', item: formKind(type.element, records, seen) }
-    case 'named': {
-      if (type.name === 'text') {
-        return { kind: 'text' }
-      }
-
-      if (type.name === 'boolean') {
-        return { kind: 'flag' }
-      }
-
-      if (/^(number|integer|natural|size|count|index|u?int(8|16|32|64)?)$/.test(type.name)) {
-        return { kind: 'number' }
-      }
-
-      if (/^(decimal|float(32|64)?|double|real)$/.test(type.name)) {
-        return { kind: 'decimal' }
-      }
-
-      if (type.name === 'data') {
-        return { kind: 'data' }
-      }
-
-      if (type.name === 'list') {
-        return { kind: 'list', item: formKind(type.args?.[0], records, seen) }
-      }
-
-      if (records.has(type.name) && !seen.has(type.name)) {
-        return { kind: 'form', spec: formSpec(type, records, seen) }
-      }
-
-      return { kind: 'any' }
-    }
-    default:
-      return { kind: 'any' }
-  }
+  return shapes.formKindOf(boxed(type) as never, records as never, [...seen]) as FormKind
 }
 
 // every form a spec reaches, the outer one first, each once
 export function specForms(spec: FormSpec, into: Map<string, FormSpec> = new Map()): Map<string, FormSpec> {
-  if (into.has(spec.form)) {
-    return into
+  for (const one of shapes.specForms(spec as never, [...into.keys()])) {
+    into.set(one.form, one as FormSpec)
   }
-
-  into.set(spec.form, spec)
-
-  const walk = (kind: FormKind): void => {
-    if (kind.kind === 'form') {
-      specForms(kind.spec, into)
-    } else if (kind.kind === 'list') {
-      walk(kind.item)
-    }
-  }
-
-  spec.fields.forEach(f => walk(f.kind))
 
   return into
 }
 
 // a field whose type has no data spelling cannot be filled on a typed backend: the build says which
 export function refuseAny(spec: FormSpec, backend: string): void {
-  const walk = (kind: FormKind, at: string): void => {
-    if (kind.kind === 'any') {
-      throw new Error(`"fill" with a form: ${at} has a type with no data form, so it cannot be filled on ${backend}`)
-    } else if (kind.kind === 'list') {
-      walk(kind.item, `an item of ${at}`)
-    } else if (kind.kind === 'form') {
-      kind.spec.fields.forEach(f => walk(f.kind, `field "${f.name}" of "${kind.spec.form}"`))
-    }
-  }
+  const refused = unbox(shapes.refuseAny(spec as never, backend))
 
-  spec.fields.forEach(f => walk(f.kind, `field "${f.name}" of "${spec.form}"`))
+  if (refused !== undefined) {
+    throw new Error(refused)
+  }
 }
 
 // does any path of this body `return <value>`? A task with no declared result but a valued return still
 // needs a non-void native result type (the gradual Any / boxed dynamic).
 export function hasValuedReturn(body: import('@term/make/code/compile/node').Statement[]): boolean {
-  for (const s of body) {
-    switch (s.form) {
-      case 'return': {
-        // a `send back <unit call>` forwards nothing: not a valued return. An await's type rides on the
-        // inner call when the await node itself was not typed.
-        const returned =
-          s.value?.form === 'await'
-            ? (s.value.type ?? s.value.expr.type)
-            : s.value?.type
-
-        // only a KNOWN CONCRETE non-unit type counts: an untyped or unknown-typed dock forward may be a
-        // unit shim, and guessing valued turns `return io::file_write(...)` into a type error. A valued
-        // dock forward annotates its task (`like unknown`) instead.
-        if (
-          s.value &&
-          returned &&
-          returned.kind !== 'unit' &&
-          returned.kind !== 'unknown'
-        ) {
-          return true
-        }
-
-        break
-      }
-      case 'if':
-        if (
-          s.branches.some(b => hasValuedReturn(b.body)) ||
-          (s.otherwise && hasValuedReturn(s.otherwise))
-        ) {
-          return true
-        }
-
-        break
-      case 'while':
-      case 'for-each':
-        if (hasValuedReturn(s.body)) {
-          return true
-        }
-
-        break
-      case 'match':
-        if (
-          s.cases.some(c => hasValuedReturn(c.body)) ||
-          (s.otherwise && hasValuedReturn(s.otherwise))
-        ) {
-          return true
-        }
-
-        break
-      case 'guard':
-        if (
-          hasValuedReturn(s.body) ||
-          (s.catch && hasValuedReturn(s.catch.body))
-        ) {
-          return true
-        }
-
-        break
-      default:
-        break
-    }
-  }
-
-  return false
+  return shapes.hasValuedReturn(body as never)
 }
 
 // The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3, in its first and
 // most conservative form). A parameter stays NON-escaping only when every mention of it is the callee of a call made
-// directly in the task's body: passed as an argument, returned, stored, read inside a closure, or written (a written
-// parameter is copied into a `var`), it escapes. Anything this cannot see is treated as escaping, which is what every
-// parameter was before, so a mistake can only cost the optimization and never the build.
+// directly in the task's body; anything this cannot see is treated as escaping, so a mistake can only cost the
+// optimization and never the build.
 export function escapingParams(fn: Extract<Statement, { form: 'function' }>): Set<string> {
-  const names = new Set(fn.params.filter(p => p.type?.kind === 'function').map(p => p.name))
-  const escapes = new Set<string>()
-
-  if (names.size === 0) {
-    return escapes
-  }
-
-  type Loose = { form?: string; [key: string]: unknown }
-  const seen = new Set<object>()
-  const visit = (value: unknown, inClosure: boolean): void => {
-    if (typeof value !== 'object' || value === null || seen.has(value)) {
-      return
-    }
-
-    seen.add(value)
-
-    if (Array.isArray(value)) {
-      value.forEach(v => visit(v, inClosure))
-
-      return
-    }
-
-    const node = value as Loose
-    const inside = inClosure || node.form === 'closure'
-
-    if (node.form === 'variable' && names.has(node.name as string)) {
-      escapes.add(node.name as string)
-    }
-
-    if (node.form === 'assign' && (node.target as Loose).form === 'variable' && names.has((node.target as Loose).name as string)) {
-      escapes.add((node.target as Loose).name as string)
-    }
-
-    for (const [key, child] of Object.entries(node)) {
-      if (key === 'type' || key === 'span') {
-        continue
-      }
-
-      // the callee of a direct call outside any closure is the one use that does not escape
-      const callee = child as Loose | null
-      if (node.form === 'call' && key === 'callee' && !inside && callee?.form === 'variable' && names.has(callee.name as string)) {
-        continue
-      }
-
-      visit(child, inside)
-    }
-  }
-
-  visit(fn.body, false)
-
-  return escapes
+  return new Set(shapes.escapingParams(fn as never))
 }
 
 // The three-statement swap of two list slots, `save t, read xs/{i}` / `save xs/{i}, read xs/{j}` / `save xs/{j}, read
-// t`, with the temporary read nowhere after. Rust writes it as `slice::swap` under one borrow where the three
-// statements took four, and Kotlin as `Collections.swap`. Swift does not: `swapAt` through `SeedList.data` measured
-// slower than the three statements (swift.ts, `block`). It stops where the three statements stop, before any write: each call
-// checks both indexes before it moves anything. The indexes are a variable or an integer literal, so reading them
-// once is reading them three times. Returns undefined for anything else, which is then emitted statement by statement
+// t`, with the temporary read nowhere after. Rust writes it as `slice::swap` and Kotlin as `Collections.swap`; Swift
+// keeps the three statements (swift.ts, `block`). Returns undefined for anything else, which is then emitted statement
+// by statement
 export type Swap = { list: Expression; first: Expression; second: Expression; temp: string }
 
 export function swapAt(body: Statement[], at: number): Swap | undefined {
-  const [hold, move, put] = [body[at], body[at + 1], body[at + 2]]
-
-  if (hold?.form !== 'let' || move?.form !== 'assign' || put?.form !== 'assign' || move.op !== '=' || put.op !== '=') {
-    return undefined
-  }
-
-  // a slot of a LIST read by a dynamic index, off a plain variable; a hash read `table/{key}` is not one
-  const slot = (node: Expression): { list: string; index: Expression } | undefined =>
-    node.form === 'member' &&
-    node.index !== undefined &&
-    node.target.form === 'variable' &&
-    node.target.type?.kind === 'array' &&
-    (node.index.form === 'variable' || node.index.form === 'integer')
-      ? { list: node.target.name, index: node.index }
-      : undefined
-  const same = (a: Expression, b: Expression): boolean =>
-    (a.form === 'variable' && b.form === 'variable' && a.name === b.name) ||
-    (a.form === 'integer' && b.form === 'integer' && a.value === b.value)
-
-  const read = slot(hold.init)
-  const firstWrite = slot(move.target)
-  const secondRead = slot(move.value)
-  const secondWrite = slot(put.target)
-
-  if (
-    !read ||
-    !firstWrite ||
-    !secondRead ||
-    !secondWrite ||
-    ![firstWrite, secondRead, secondWrite].every(s => s.list === read.list) ||
-    !same(read.index, firstWrite.index) ||
-    !same(secondRead.index, secondWrite.index) ||
-    put.value.form !== 'variable' ||
-    put.value.name !== hold.name ||
-    [read.index, secondRead.index].some(i => i.form === 'variable' && (i.name === hold.name || i.name === read.list)) ||
-    mentions(body.slice(at + 3), hold.name)
-  ) {
-    return undefined
-  }
-
-  return { list: (hold.init as Extract<Expression, { form: 'member' }>).target, first: read.index, second: secondRead.index, temp: hold.name }
-}
-
-// is the name read anywhere in these statements (closures and nested blocks included)
-function mentions(body: Statement[], name: string): boolean {
-  const walk = (value: unknown): boolean => {
-    if (Array.isArray(value)) {
-      return value.some(walk)
-    }
-
-    if (value === null || typeof value !== 'object') {
-      return false
-    }
-
-    const node = value as Record<string, unknown>
-
-    if (node.form === 'variable' && node.name === name) {
-      return true
-    }
-
-    return Object.entries(node).some(([key, child]) => key !== 'type' && key !== 'span' && walk(child))
-  }
-
-  return walk(body)
+  return unbox(shapes.swapAt(body as never, at)) as Swap | undefined
 }
 
 // F1, the first and narrowest slice (note/term/codegen/shared.md): the list PARAMETERS a task may take LENT, as
@@ -671,17 +206,8 @@ function mentions(body: Statement[], name: string): boolean {
 // `gate` is the same filter `impl Fn` uses: a top-level synchronous task, defined once, never used as a value.
 export type Lend = 'read' | 'write'
 
-const SCALAR_NAMES = new Set(['text', 'boolean', 'number', 'integer', 'float'])
-
 export function scalarType(type: Type | undefined): boolean {
-  return (
-    type !== undefined &&
-    (type.kind === 'number' ||
-      type.kind === 'float' ||
-      type.kind === 'boolean' ||
-      type.kind === 'string' ||
-      (type.kind === 'named' && SCALAR_NAMES.has(type.name) && !type.args?.length))
-  )
+  return shapes.scalarType(boxed(type) as never)
 }
 
 export function lendableParams(

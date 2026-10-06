@@ -92,10 +92,11 @@ form service-worker-container, name <ServiceWorkerContainer>
       like service-worker-registration
 
   task get-registration, name <getRegistration>
-    take client-url, like maybe
-      like or
-        like native-string
-        like url
+    take client-url
+      like maybe
+        like or
+          like native-string
+          like url
     like promise
       like or
         like service-worker-registration
@@ -111,8 +112,9 @@ form service-worker-container, name <ServiceWorkerContainer>
       like or
         like native-string
         like url
-    take options, like maybe
-      like registration-options
+    take options
+      like maybe
+        like registration-options
     like promise
       like service-worker-registration
 
@@ -132,19 +134,21 @@ form service-worker-container, name <ServiceWorkerContainer>
             like service-worker-container-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -160,17 +164,19 @@ form service-worker-container, name <ServiceWorkerContainer>
             like service-worker-container-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

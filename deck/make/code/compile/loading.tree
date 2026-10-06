@@ -1,0 +1,1012 @@
+# Module loading: resolve a program's `load @path` directives so the stdlib (base.tree) is the single source of truth
+# for `form` definitions, rather than redefining them ad-hoc in every file. The entry file plus every module it
+# (transitively) loads are collected in dependency order, then compiled as one merged program. Circular loads are
+# handled (each module is included exactly once). File reading is delegated to a resolver.
+#
+# Ported from compile/load.ts (self-hosting, 2026-10-06), which stays as the face: it keeps the parse memo (module
+# state, one per build), the build cache's hook that hands back a module's scan without parsing it, and the shapes its
+# callers hold. A resolver, a parse and a scan are tasks handed in. An absent alias in a scan is `none` here and
+# `undefined` there.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find substring
+  find split
+  find starts-with
+  find ends-with
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse-result
+  find render-head
+
+load ./templates
+  find span-of-whole
+
+# what a module's text imports, read from its parse tree: its `load` / `bear` paths, whether it has a top-level `view`
+# (a component, whose emitter synthesizes render-runtime calls) or a web route, the built-in bit words it names, and per
+# import path the names its `find` lines ask for
+form import-find
+  link path, like text
+  link bear, like boolean
+  link names, like list, like text
+  link spans, like list, like span
+  # the name each `find` is bound under here when the line aliases it (`find x, name y` -> `y`)
+  link aliases, like list, like maybe, like text
+  # where the path is written, for a refusal of a load that resolves to nothing
+  link at
+    like maybe, like span
+    need false
+  # `base <dir>` under the load: resolve from the package root (it imports nothing)
+  link base
+    like maybe, like text
+    need false
+
+form import-scan
+  link paths, like list, like text
+  link has-zone, like boolean
+  # a top-level web route (`hook /path`), whose lowering calls the route runtime
+  link has-route, like boolean
+  link finds, like list, like import-find
+  # the built-in bit words the module names, which reach @term/base/bit with no `load`
+  link bits
+    like maybe, like list, like text
+    need false
+
+form source
+  link file, like text
+  link text, like text
+  # set by a resolver when a package path named a file in the package's code root AND one in its package root
+  link shadowed
+    like text
+    need false
+
+# how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root
+form load-how
+  link base
+    like text
+    need false
+
+# what each module imports BY NAME, resolved to files: a `find`ed name -> every file a `load` / `bear` that finds it
+# resolved to, and the files the module re-exports with `bear`. `at` is where each name's first `find` line is,
+# `aliases` the files each alias a find names reached, and `plain` the files a name was found in without an alias
+form module-scope
+  link finds, like hash, like text, like list, like text
+  link bears, like list, like text
+  link at
+    like maybe, like hash, like text, like span
+    need false
+  link aliases
+    like maybe, like hash, like text, like list, like text
+    need false
+  link plain
+    like maybe, like hash, like text, like list, like text
+    need false
+
+form load-ask
+  link path, like text
+  link how
+    like maybe, like load-how
+    need false
+
+# one module's own part of an import walk, for the text it was walked at: its import scope, the modules it loads in
+# order, the question that found each, the files they are, and the loads nothing answers
+form walked-module
+  link text, like text
+  link own, like module-scope
+  link deps, like list, like source
+  link asks, like list, like load-ask
+  link edges, like list, like text
+  link diagnostics, like list, like diagnostic
+
+form collected
+  link sources, like list, like source
+  link diagnostics, like list, like diagnostic
+  link scope, like hash, like text, like module-scope
+  link edges, like hash, like text, like list, like text
+
+# one entry of a file's finds, and a file's import scope, as a Term pass takes them: each map a list, in its order
+form scope-find
+  link name, like text
+  link targets, like list, like text
+  link at
+    like maybe, like span
+    need false
+
+form file-scope
+  link file, like text
+  link finds, like list, like scope-find
+  link bears, like list, like text
+  link aliases
+    like maybe, like list, like scope-find
+    need false
+  link plain
+    like maybe, like list, like scope-find
+    need false
+  # whether the scope kept a `plain` map at all, which check/overload reads apart from an empty one
+  link has-plain
+    like maybe, like boolean
+    need false
+
+# ---- the runtimes a module is given without writing a load ----
+
+# the render runtime backing a view: a module with a top-level `view` calls what the emitter synthesizes
+task view-runtime-module
+  like text
+  mark private
+
+  back <@cluesurf/site/code/view/render>
+
+# what a lowered route table calls (compile/route-lower.ts)
+task route-runtime-module
+  like text
+  mark private
+
+  back <@cluesurf/site/code/view/route-runtime>
+
+# THE BIT WORDS ARE BUILT IN (decisions-2026-10.md, D3): `bitwise-and` and the rest need no `load`, as `add` needs none
+task bit-module
+  like text
+  mark private
+
+  back <@term/base/bit>
+
+task bit-words
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <bitwise-and>)
+  push(out, <bitwise-or>)
+  push(out, <bitwise-exclusive-or>)
+  push(out, <bitwise-not>)
+  push(out, <shift-left>)
+  push(out, <shift-right>)
+  push(out, <unsigned-shift-right>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+task without-text
+  take values, like list, like text
+  take dropped, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    fork test, is-unequal(one, dropped)
+      hold
+        push(out, one)
+  back out
+
+# ---- reading the tree ----
+
+# a group's first node rendered as written, so an interpolated path keeps its braces: `load .../native/{platform}/float`
+# reaches the resolver with `{platform}` intact
+task head-name
+  take value, like node
+  like maybe, like text
+  mark private
+
+  sift value
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      save first, get(nodes, 0)
+      sift first
+        case name
+          save written, render-head(first)
+          back make(some, written)
+        miss
+          back make none
+    miss
+      back make none
+
+task child-at
+  take value, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  sift value
+    case group
+      fork test, is-below(at, nodes/length)
+        hold
+          save found, get(nodes, at)
+          back make(some, found)
+      back make none
+    miss
+      back make none
+
+# the head of a child that is a group
+task group-head-at
+  take value, like node
+  take at, like number
+  like maybe, like text
+  mark private
+
+  sift child-at(value, at)
+    case some
+      link found
+      sift found
+        case group
+          back head-name(found)
+        miss
+          back make none
+    case none
+      back make none
+
+task head-is
+  take value, like node
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift head-name(value)
+    case some
+      link found
+      back is-equal(found, wanted)
+    case none
+      back false
+
+# every bit word named anywhere in the module, at any depth: a call in longhand, in lean, the task passed as a value,
+# and inside a text literal's `{...}` or a path's `x/{...}`, which each hold a tree of their own
+task bits-in
+  take value, like node
+  take bits, like list, like text
+  take words, like list, like text
+  like void
+  mark private
+
+  sift value
+    case group
+      sift head-name(value)
+        case some
+          link word
+          fork test, and(has-text(words, word), not(has-text(bits, word)))
+            hold
+              push(bits, word)
+        case none
+          save nothing, 0
+      walk nodes
+        take one
+        bits-in(one, bits, words)
+    case text
+      walk parts
+        take one
+        bits-in(one, bits, words)
+    case name
+      walk parts
+        take one
+        bits-in(one, bits, words)
+    case interpolation
+      sift group
+        case some
+          link held
+          bits-in(held, bits, words)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task scan-imports
+  take tree, like root-node
+  like import-scan
+
+  save paths, make list
+  save finds, make list
+  save bits, make list
+  save has-zone, false
+  save has-route, false
+  save words, bit-words()
+  sift tree
+    case root
+      link top
+      walk top
+        take one
+        bits-in(one, bits, words)
+      walk top
+        take group
+        sift group
+          case group
+            save keyword, <>
+            save has-keyword, false
+            sift head-name(group)
+              case some
+                link word
+                save keyword, word
+                save has-keyword, true
+              case none
+                save nothing, 0
+            # a module that defines a task by a bit word's name means its own
+            fork test, and(has-keyword, is-equal(keyword, <task>))
+              hold
+                save named, <>
+                sift group-head-at(group, 1)
+                  case some
+                    link word
+                    save named, word
+                  case none
+                    save nothing, 0
+                sift child-at(group, 1)
+                  case some
+                    link second
+                    sift second
+                      case group
+                        save bits, without-text(bits, named)
+                      miss
+                        save nothing, 0
+                  case none
+                    save nothing, 0
+            # `view` is the component head in both roles, and means the emitter will synthesize render-runtime calls
+            fork test, and(has-keyword, is-equal(keyword, <view>))
+              hold
+                save has-zone, true
+                turn next
+            # a web route: `hook` whose name is a path. A CLI command (`hook make`) is not one
+            fork test, and(has-keyword, is-equal(keyword, <hook>))
+              hold
+                sift group-head-at(group, 1)
+                  case some
+                    link named
+                    fork test, starts-with(named, </>)
+                      hold
+                        save has-route, true
+                  case none
+                    save nothing, 0
+                turn next
+            fork test, not(and(has-keyword, or(is-equal(keyword, <load>), is-equal(keyword, <bear>))))
+              hold
+                turn next
+            # the path is the first child. A `<...>` text path parses as a text node, not a name, and is not a plain
+            # import path, so it is skipped the way the checker skips it
+            save load-nodes, nodes
+            sift child-at(group, 1)
+              case some
+                link first
+                sift first
+                  case group
+                    sift head-name(first)
+                      case some
+                        link path
+                        push(paths, path)
+                        save names, make list
+                        save spans, make list
+                        save aliases, make list
+                        save base, <>
+                        save has-base, false
+                        save at, 2
+                        walk test
+                          hook test, is-below(at, load-nodes/length)
+                          hook hold
+                            save child, get(load-nodes, at)
+                            save at, add(at, 1)
+                            # `base <dir>` beside the `find` lines. Not a find: it names where the path resolves
+                            fork test, and(head-is(child, <base>), is-equal(keyword, <load>))
+                              hold
+                                save has-base, true
+                                save base, <>
+                                save base-word, group-head-at(child, 1)
+                                sift base-word
+                                  case some
+                                    link word
+                                    save base, word
+                                  case none
+                                    save has-base, false
+                                turn next
+                            fork test, not(head-is(child, <find>))
+                              hold
+                                turn next
+                            sift group-head-at(child, 1)
+                              case some
+                                link name
+                                push(names, name)
+                                push(spans, span-of-whole(child))
+                                # `find x, name y`: the comma leaves `name y` a sibling of `x` under the `find`
+                                save alias, make none
+                                save looked, false
+                                save k, 2
+                                sift child
+                                  case group
+                                    link child-nodes
+                                    walk test
+                                      hook test, and(not(looked), is-below(k, child-nodes/length))
+                                      hook hold
+                                        save candidate, get(child-nodes, k)
+                                        fork test, head-is(candidate, <name>)
+                                          hold
+                                            save looked, true
+                                            save alias, group-head-at(candidate, 1)
+                                        save k, add(k, 1)
+                                  miss
+                                    save nothing, 0
+                                push(aliases, alias)
+                              case none
+                                save nothing, 0
+                        save path-span, span-of-whole(first)
+                        save found
+                          make import-find
+                            bind path, path
+                            bind bear, is-equal(keyword, <bear>)
+                            bind names, names
+                            bind spans, spans
+                            bind aliases, aliases
+                            bind at, make(some, path-span)
+                        fork test, has-base
+                          hold
+                            save found/base, make(some, base)
+                        push(finds, found)
+                      case none
+                        save nothing, 0
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+  save scan
+    make import-scan
+      bind paths, paths
+      bind has-zone, has-zone
+      bind has-route, has-route
+      bind finds, finds
+  fork test, is-above(bits/length, 0)
+    hold
+      save scan/bits, make(some, bits)
+  back scan
+
+# the scan of a module's parse, nothing for one that does not parse: its own diagnostics are raised where it is
+# compiled, and guessing at its imports here would only bury them
+task scan-parsed
+  take parsed, like parse-result
+  like import-scan
+
+  fork test, parsed/ok
+    hold
+      back scan-imports(parsed/tree)
+  back
+    make import-scan
+      bind paths, make list
+      bind has-zone, false
+      bind has-route, false
+      bind finds, make list
+
+# ---- the walk ----
+
+# another deck's module: `@scope/name/...`, outside `@term`, whose decks ship with the compiler, and not the local `@/`
+# alias. Only such a path that resolves to nothing is refused at the load: it can only mean the deck is missing
+task is-third-party
+  take path, like text
+  like boolean
+  mark private
+
+  fork test, or(starts-with(path, <@term/>), starts-with(path, <@/>))
+    hold
+      back false
+  # `^@[^/]+\/[^/]+`
+  fork test, or(is-below(char-count(path), 4), is-unequal(char-at(path, 0), <@>))
+    hold
+      back false
+  save at, 1
+  walk test
+    hook test, and(is-below(at, char-count(path)), is-unequal(char-at(path, at), </>))
+    hook hold
+      save at, add(at, 1)
+  fork test, or(is-equal(at, 1), is-minimum(add(at, 1), char-count(path)))
+    hold
+      back false
+  back is-unequal(char-at(path, add(at, 1)), </>)
+
+# a file that IS a per-backend bit module, `.../base/code/native/<one segment>/bit.tree`
+task is-native-bit
+  take file, like text
+  like boolean
+  mark private
+
+  fork test, not(ends-with(file, </bit.tree>))
+    hold
+      back false
+  save stem, substring(file, 0, subtract(char-count(file), 9))
+  save cut, -1
+  save at, subtract(char-count(stem), 1)
+  walk test
+    hook test, and(is-below(cut, 0), is-minimum(at, 0))
+    hook hold
+      fork test, is-equal(char-at(stem, at), </>)
+        hold
+          save cut, at
+      save at, subtract(at, 1)
+  fork test, or(is-below(cut, 0), is-equal(cut, subtract(char-count(stem), 1)))
+    hold
+      back false
+  back ends-with(substring(stem, 0, cut), </base/code/native>)
+
+task some-ends-with
+  take paths, like list, like text
+  take suffix, like text
+  like boolean
+  mark private
+
+  walk paths
+    take one
+    fork test, ends-with(one, suffix)
+      hold
+        back true
+  back false
+
+task appended
+  take values, like maybe, like list, like text
+  take one, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  sift values
+    case some
+      link given
+      walk given
+        take each
+        push(out, each)
+    case none
+      save nothing, 0
+  push(out, one)
+  back out
+
+# one module's own part: its scan, the runtimes it is given, its loads resolved, its import scope, its refusals
+task walk-one
+  take given, like source
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like source
+  take scan
+    like task
+      take given, like source
+      like import-scan
+  like walked-module
+  mark private
+
+  save found, make list
+  save deps, make list
+  save asks, make list
+  save out, make list
+  save scanned, scan(given)
+  # a copy: the runtimes below are added to it, and the scan may be the cache's own
+  save paths, make list
+  walk scanned/paths
+    take one
+    push(paths, one)
+  save finds-of, make hash
+  save bears, make list
+  save at-of, make hash
+  save aliases-of, make hash
+  save plain-of, make hash
+  # a module with a view implicitly depends on the render runtime, unless it loads it or IS it
+  fork test, and(and(scanned/has-zone, not(some-ends-with(paths, <view/render>))), not(ends-with(given/file, <view/render.tree>)))
+    hold
+      push(paths, view-runtime-module())
+  # a module with a web route implicitly depends on the route runtime (native-navigation-0002)
+  fork test, and(and(scanned/has-route, not(some-ends-with(paths, <view/route-runtime>))), not(ends-with(given/file, <view/route-runtime.tree>)))
+    hold
+      push(paths, route-runtime-module())
+  # a module naming a built-in bit word is given the bit module and a `find` of each word, unless it loads the module
+  # itself or is the module, or one of its per-backend files
+  save finds, make list
+  walk scanned/finds
+    take one
+    push(finds, one)
+  save bits, make list
+  sift scanned/bits
+    case some
+      link named
+      save bits, named
+    case none
+      save nothing, 0
+  save loads-bits, false
+  walk paths
+    take one
+    fork test, or(is-equal(one, bit-module()), ends-with(one, </base/code/bit>))
+      hold
+        save loads-bits, true
+  fork test, and(and(is-above(bits/length, 0), not(loads-bits)), and(not(ends-with(given/file, </base/code/bit.tree>)), not(is-native-bit(given/file))))
+    hold
+      push(paths, bit-module())
+      # no spans: nothing was written, so a refusal of one of them points at its use, never at a `find` line
+      save no-aliases, make list
+      walk bits
+        take each
+        push(no-aliases, make none)
+      save injected
+        make import-find
+          bind path, bit-module()
+          bind bear, false
+          bind names, bits
+          bind spans, make list
+          bind aliases, no-aliases
+      push(finds, injected)
+  walk paths
+    take path
+    save base, <>
+    save has-base, false
+    walk finds
+      take entry
+      fork test, and(not(has-base), is-equal(entry/path, path))
+        hold
+          sift entry/base
+            case some
+              link written
+              save base, written
+              save has-base, true
+            case none
+              save nothing, 0
+    save how, make none
+    fork test, has-base
+      hold
+        save asked
+          make load-how
+            bind base, base
+        save how, make(some, asked)
+    sift resolve(path, given/file, how)
+      case some
+        link dependency
+        walk finds
+          take entry
+          fork test, is-equal(entry/path, path)
+            hold
+              fork test, entry/bear
+                hold
+                  push(bears, dependency/file)
+              save i, 0
+              walk entry/names
+                take name
+                save had, make none
+                fork test, finds-of/has(name)
+                  hold
+                    save prior, finds-of/get(name)
+                    save had, make(some, prior)
+                save finds-of/{name}, appended(had, dependency/file)
+                save alias, make none
+                fork test, is-below(i, entry/aliases/length)
+                  hold
+                    save alias, get(entry/aliases, i)
+                sift alias
+                  case some
+                    link aliased
+                    save had-alias, make none
+                    fork test, aliases-of/has(aliased)
+                      hold
+                        save prior, aliases-of/get(aliased)
+                        save had-alias, make(some, prior)
+                    save aliases-of/{aliased}, appended(had-alias, dependency/file)
+                  case none
+                    save had-plain, make none
+                    fork test, plain-of/has(name)
+                      hold
+                        save prior, plain-of/get(name)
+                        save had-plain, make(some, prior)
+                    save plain-of/{name}, appended(had-plain, dependency/file)
+                fork test, and(not(at-of/has(name)), is-below(i, entry/spans/length))
+                  hold
+                    save written, get(entry/spans, i)
+                    save at-of/{name}
+                      make span
+                        bind start, written/start
+                        bind end, written/end
+                        bind file, make(some, given/file)
+                save i, add(i, 1)
+        fork test, is-unequal(dependency/file, given/file)
+          hold
+            push(out, dependency/file)
+        push(deps, dependency)
+        save ask
+          make load-ask
+            bind path, path
+        fork test, has-base
+          hold
+            save ask/how, how
+        push(asks, ask)
+      case none
+        # another deck's module that nothing answers: the deck is not installed. Refused here, at the load. Anything
+        # else unresolved (a stdlib module a platform lacks, a relative path) is left to the checker
+        fork test, and(is-third-party(path), not(has-base))
+          hold
+            save written-at, make none
+            save looked, false
+            walk scanned/finds
+              take entry
+              fork test, and(not(looked), is-equal(entry/path, path))
+                hold
+                  save looked, true
+                  save written-at, entry/at
+            save deck, join(take-two(split(path, </>)), </>)
+            save at-span
+              make span
+                bind start, origin()
+                bind end, origin()
+                bind file, make(some, given/file)
+            sift written-at
+              case some
+                link written
+                save at-span
+                  make span
+                    bind start, written/start
+                    bind end, written/end
+                    bind file, make(some, given/file)
+              case none
+                save nothing, 0
+            save input
+              make diagnostic-input
+                bind file, given/file
+                bind span, at-span
+                bind message, make(some, <{deck} is not installed, so nothing answers `load {path}`>)
+            save refusal, make unresolved-load
+            push(found, diagnose(refusal, input))
+  save own
+    make module-scope
+      bind finds, finds-of
+      bind bears, bears
+      bind at, make(some, at-of)
+      bind aliases, make(some, aliases-of)
+      bind plain, make(some, plain-of)
+  back
+    make walked-module
+      bind text, given/text
+      bind own, own
+      bind deps, deps
+      bind asks, asks
+      bind edges, out
+      bind diagnostics, found
+
+task origin
+  like position
+  mark private
+
+  back
+    make position
+      bind line, 0
+      bind column, 0
+
+task take-two
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save at, 0
+  walk values
+    take one
+    fork test, is-below(at, 2)
+      hold
+        push(out, one)
+    save at, add(at, 1)
+  back out
+
+# the walk's state, one reference every visit writes through
+form walk-state
+  mark shared
+  link ordered, like list, like source
+  link diagnostics, like list, like diagnostic
+  link scope, like hash, like text, like module-scope
+  link edges, like hash, like text, like list, like text
+  link done, like hash, like text, like boolean
+  link active, like hash, like text, like boolean
+
+task visit
+  take given, like source
+  take state, like walk-state
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like source
+  take scan
+    like task
+      take given, like source
+      like import-scan
+  take walked, like hash, like text, like walked-module
+  take keeps, like boolean
+  like void
+  mark private
+
+  # already included, or a cycle: stop
+  fork test, or(state/done/has(given/file), state/active/has(given/file))
+    hold
+      back
+  save state/active/{given/file}, true
+  save reused, false
+  fork test, walked/has(given/file)
+    hold
+      save known, walked/get(given/file)
+      save reused, is-equal(known/text, given/text)
+  save one, walked-or-fresh(given, reused, walked, resolve, scan)
+  fork test, and(not(reused), keeps)
+    hold
+      save walked/{given/file}, one
+  save state/scope/{given/file}, one/own
+  walk one/diagnostics
+    take found
+    push(state/diagnostics, found)
+  fork test, is-above(one/edges/length, 0)
+    hold
+      save edges-copy, make list
+      walk one/edges
+        take edge
+        push(edges-copy, edge)
+      save state/edges/{given/file}, edges-copy
+  save deps, one/deps
+  fork test, reused
+    hold
+      # a module whose text is unchanged keeps its walk, but a module it loads may have changed, so a kept walk asks
+      # again for the sources it visits rather than visiting the texts it was walked with
+      save deps, make list
+      save i, 0
+      walk one/asks
+        take ask
+        sift resolve(ask/path, given/file, ask/how)
+          case some
+            link fresh
+            push(deps, fresh)
+          case none
+            push(deps, get(one/deps, i))
+        save i, add(i, 1)
+  walk deps
+    take dependency
+    visit(dependency, state, resolve, scan, walked, keeps)
+  state/active/remove(given/file)
+  save state/done/{given/file}, true
+  # pushed after its dependencies, so they come first
+  push(state/ordered, given)
+
+task walked-or-fresh
+  take given, like source
+  take reused, like boolean
+  take walked, like hash, like text, like walked-module
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like source
+  take scan
+    like task
+      take given, like source
+      like import-scan
+  like walked-module
+  mark private
+
+  fork test, reused
+    hold
+      back walked/get(given/file)
+  back walk-one(given, resolve, scan)
+
+# the entry plus every module it transitively loads, dependencies first (so forms are defined before use). `walked`
+# keeps each module's own part across walks when `keeps` is set: a module's part depends on its file, its text and the
+# resolver alone, so a build that shares one resolver shares one memo
+task collect-modules
+  take entry, like source
+  take resolve
+    like task
+      take path, like text
+      take from, like text
+      take how, like maybe, like load-how
+      like maybe, like source
+  take scan
+    like task
+      take given, like source
+      like import-scan
+  take walked, like hash, like text, like walked-module
+  take keeps, like boolean
+  like collected
+
+  save state
+    make walk-state
+      bind ordered, make list
+      bind diagnostics, make list
+      bind scope, make hash
+      bind edges, make hash
+      bind done, make hash
+      bind active, make hash
+  visit(entry, state, resolve, scan, walked, keeps)
+  back
+    make collected
+      bind sources, state/ordered
+      bind diagnostics, state/diagnostics
+      bind scope, state/scope
+      bind edges, state/edges
+
+# the import scope as the ported passes take it (check/private.tree, check/scope.tree)
+task scope-list
+  take scope, like hash, like text, like module-scope
+  like list, like file-scope
+
+  save out, make list
+  walk scope/keys()
+    take file
+    save own, scope/get(file)
+    save finds, make list
+    walk own/finds/keys()
+      take name
+      save one
+        make scope-find
+          bind name, name
+          bind targets, own/finds/get(name)
+      sift own/at
+        case some
+          link spans
+          fork test, spans/has(name)
+            hold
+              save one/at, make(some, spans/get(name))
+        case none
+          save nothing, 0
+      push(finds, one)
+    save made
+      make file-scope
+        bind file, file
+        bind finds, finds
+        bind bears, own/bears
+    sift own/aliases
+      case some
+        link map
+        save listed, entries-of(map)
+        save made/aliases, make(some, listed)
+      case none
+        save nothing, 0
+    sift own/plain
+      case some
+        link map
+        save listed, entries-of(map)
+        save made/plain, make(some, listed)
+        save made/has-plain, make(some, true)
+      case none
+        save nothing, 0
+    push(out, made)
+  back out
+
+task entries-of
+  take map, like hash, like text, like list, like text
+  like list, like scope-find
+  mark private
+
+  save out, make list
+  walk map/keys()
+    take name
+    save one
+      make scope-find
+        bind name, name
+        bind targets, map/get(name)
+    push(out, one)
+  back out

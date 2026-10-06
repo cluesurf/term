@@ -1,0 +1,133 @@
+# The compiler cache's decisions (call/code/cache-store.ts, `<kind>/<version>/<shard>/<key>.json.gz`): the byte budget
+# of each kind, which version namespaces are dead, and which entries go when a namespace is
+# over its budget. Everything a cache holds is rebuildable, so none of this can change a result: the worst case is a
+# slower next build.
+#
+# Ported from deck/call/code/cache-store.ts (self-hosting, 2026-10-06), which stays as the face: it lists and stats the
+# folders, and removes what this module names, through a task it hands in, so an entry that cannot be removed is not
+# counted as freed. A key's shard stays there: it is the key's first two UTF-16 units, which can be half a pair.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+# the byte budget per kind, enforced against the CURRENT version's directory. Generous on purpose: a project that trips
+# it is doing something the author should hear about rather than something routine
+task budget-for
+  take kind, like text
+  like number
+
+  fork test, is-equal(kind, <mill>)
+    hold
+      back multiply(4, multiply(1024, multiply(1024, 1024)))
+  # the separate build's units, machine-wide, the standard library's shared by every project
+  fork test, is-equal(kind, <unit>)
+    hold
+      back multiply(4, multiply(1024, multiply(1024, 1024)))
+  back multiply(2, multiply(1024, multiply(1024, 1024)))
+
+form namespace
+  link name, like text
+  link when, like float
+
+task newest-first
+  take a, like namespace
+  take b, like namespace
+  like ordering
+  mark private
+
+  fork test, is-above(a/when, b/when)
+    hold
+      back make less
+  fork test, is-below(a/when, b/when)
+    hold
+      back make greater
+  back make equal
+
+# the version namespaces to remove: every one but `current` and the newest `keep - 1` of the rest, newest first
+task doomed-versions
+  take versions, like list, like namespace
+  take current, like text
+  take keep, like number
+  like list, like text
+
+  save others, make list
+  walk versions
+    take one
+    fork test, is-unequal(one/name, current)
+      hold
+        push(others, one)
+  save skip, subtract(keep, 1)
+  fork test, is-below(skip, 0)
+    hold
+      save skip, 0
+  save out, make list
+  save at, 0
+  walk sort(others, newest-first)
+    take one
+    fork test, not(is-below(at, skip))
+      hold
+        push(out, one/name)
+    save at, add(at, 1)
+  back out
+
+form cache-entry
+  link file, like text
+  link size, like number
+  link when, like float
+
+form evicted
+  link removed, like number
+  link freed, like number
+
+task oldest-first
+  take a, like cache-entry
+  take b, like cache-entry
+  like ordering
+  mark private
+
+  fork test, is-below(a/when, b/when)
+    hold
+      back make less
+  fork test, is-above(a/when, b/when)
+    hold
+      back make greater
+  back make equal
+
+# Hold a namespace under its byte budget by dropping the least recently used first. `remove` answers whether the entry
+# went; one that did not is neither counted nor subtracted
+task evict
+  take entries, like list, like cache-entry
+  take budget, like number
+  take remove
+    like task
+      take file, like text
+      like boolean
+  like evicted
+
+  save total, 0
+  walk entries
+    take entry
+    save total, add(total, entry/size)
+  save removed, 0
+  save freed, 0
+  fork test, is-above(total, budget)
+    hold
+      walk sort(entries, oldest-first)
+        take entry
+        fork test, not(is-above(total, budget))
+          hold
+            halt
+        fork test, remove(entry/file)
+          hold
+            save total, subtract(total, entry/size)
+            save freed, add(freed, entry/size)
+            save removed, add(removed, 1)
+  back
+    make evicted
+      bind removed, removed
+      bind freed, freed

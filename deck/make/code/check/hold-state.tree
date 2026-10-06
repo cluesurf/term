@@ -1,0 +1,77 @@
+# The hold prover's module state, as one record the parts of check/holds.ts read and write. The original kept each
+# table in a module variable of holds.ts; while the prover moves to Term in parts (self-hosting, 2026-10-06), the face
+# builds ONE `hold-state` and both sides read it, so a table a ported part fills is the table the TypeScript left in
+# holds.ts reads. A Term hash is a TypeScript `Map` by reference, so neither side copies one.
+#
+# What each table is:
+#   - `applications`: THE ATOMS an application of a quantified function or a call of a pure task becomes, by key, with
+#     the function it calls and the variables its arguments read. Never cleared, as the original's was not
+#   - `applied-functions`: the quantified FUNCTIONS of the theorem being walked, whose calls are atoms
+#   - `recurrences`: the program's tasks recognized as recurrences over a counting parameter
+#   - `pure-tasks`: the program's pure tasks, whose calls are atoms too
+#   - `text-params`: the parameters of the task being walked that are declared text
+
+load @term/base/list
+  find list
+
+load ../compile/node
+  find expression
+
+# an atom: the function an application calls, and the variables its arguments read, through nested applications
+form hold-atom
+  link function, like text
+  link variables, like list, like text
+
+# one guarded value of a recurrence: the value under its guards
+form guarded
+  link guards, like list, like expression
+  link value, like expression
+
+# a task recognized as a recurrence over its counting parameter: its base case and its guarded steps
+form recurrence
+  link params, like list, like text
+  link counter, like number
+  link base, like expression
+  link steps, like list, like guarded
+
+form hold-state
+  mark shared
+  link applications, like hash, like text, like hold-atom
+  link applied-functions, like hash, like text, like boolean
+  link recurrences, like hash, like text, like recurrence
+  link pure-tasks, like hash, like text, like boolean
+  link text-params, like hash, like text, like boolean
+
+task fresh-hold-state
+  like hold-state
+
+  save applications, atom-table()
+  save applied, flag-table()
+  save recurrences, recurrence-table()
+  save pure, flag-table()
+  save texts, flag-table()
+  back
+    make hold-state
+      bind applications, applications
+      bind applied-functions, applied
+      bind recurrences, recurrences
+      bind pure-tasks, pure
+      bind text-params, texts
+
+task atom-table
+  like hash, like text, like hold-atom
+  mark private
+
+  back make hash
+
+task flag-table
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task recurrence-table
+  like hash, like text, like recurrence
+  mark private
+
+  back make hash

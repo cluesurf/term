@@ -24,9 +24,10 @@ form parse-ask
   link file, like text
   link text, like text
 
-# the head word of a group, or nothing when its first node is not a name
+# the head word of a group, or nothing when its first node is not a name. A group here is the docked parser's own node,
+# a host value, so it is `dynamic`: it crossed a native boundary, which is what `dynamic` says (D1)
 task head-name
-  take group, like unknown
+  take group, like dynamic
 
   like text
 
@@ -40,7 +41,7 @@ task head-name
 
 # the first ARGUMENT of a group: `deck @term/site` gives `@term/site`
 task argument-of
-  take group, like unknown
+  take group, like dynamic
 
   like text
 
@@ -56,9 +57,9 @@ task argument-of
 task groups-of
   take nodes
     like list
-    like unknown
+      like dynamic
 
-  like list, like unknown
+  like list, like dynamic
 
   save found, make list
 
@@ -110,7 +111,7 @@ task manifest-value
 task first-value
   take groups
     like list
-    like unknown
+      like dynamic
   take head, like text
 
   like text

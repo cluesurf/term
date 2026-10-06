@@ -30,36 +30,45 @@ load @term/base/text
   find index-of
   find contains
 
+# the command tree's own forms, the ones hook-dispatch.ts reads as `DockRoute`: every route, take and call here is one
+# of these, typed, where they were `unknown` and each field read off them a value the gradual seam had to refuse (D1)
+load @term/make/compile/node
+  find dock-route
+  find dock-take
+  find dock-call
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 # One resolved command: the path walked, the task to run, and the arguments it takes.
 form dispatch-answer
   link ok, like boolean
   link error, like text
-  link command, like list
-    like text
+  link command
+    like list
+      like text
   link task, like text
 
 # the route whose path is this token, among the ones at this level
 task route-named
-  take routes
-    like list
-    like unknown
+  take routes, like list, like dock-route
   take token, like text
 
-  like unknown
+  like maybe, like dock-route
 
   walk routes
     take site, name one
     fork test
-      is-equal read(one/path), token
+      is-equal one/path, token
       hold
-        back one
-  back make void
+        back make(some, one)
+  back make none
 
 # the full name a short letter stands for, so `-t` resolves to `--title`
 task name-for-short
-  take takes
-    like list
-    like unknown
+  take takes, like list, like dock-take
   take letter, like text
 
   like text
@@ -67,16 +76,14 @@ task name-for-short
   walk takes
     take site, name one
     fork test
-      is-equal read(one/short), letter
+      is-equal one/short, letter
       hold
-        back read one/name
+        back one/name
   back letter
 
 # does any take of this route collect the rest?
 task is-variadic
-  take takes
-    like list
-    like unknown
+  take takes, like list, like dock-take
 
   like boolean
 
@@ -90,19 +97,16 @@ task is-variadic
 
 # is this value one the take allows? A take with no `pick` allows anything.
 task is-allowed
-  take take, like unknown
+  take allowed, like dock-take
   take value, like text
 
   like boolean
 
-  save choices, read take/choices
+  # `choices` is `need false`: a take with no `pick` reads it as the empty list, and allows anything
+  save choices, allowed/choices
 
   fork test
-    is-equal choices, make void
-    hold
-      back true
-  fork test
-    is-equal read(choices/length), code 0
+    is-equal choices/length, 0
     hold
       back true
   walk choices
@@ -115,12 +119,10 @@ task is-allowed
 
 # the command path an argv names, descending while the next bare token is a subcommand
 task command-path
-  take routes
-    like list
-    like unknown
+  take routes, like list, like dock-route
   take argv
     like list
-    like text
+      like text
 
   like list, like text
 
@@ -133,29 +135,26 @@ task command-path
       starts-with token, <->
       hold
         back found
-    save next, route-named level, token
-    fork test
-      is-equal read(next), make void
-      hold
+    sift route-named(level, token)
+      case some
+        found/push token
+        save level, value/children
+      case none
         back found
-    found/push token
-    save level, read next/children
   back found
 
 # The route an argv resolves to, or nothing when the first token names no command. The caller reports the error,
 # because it knows whether an empty argv means "no command" or "show the help".
 task route-for
-  take routes
-    like list
-    like unknown
+  take routes, like list, like dock-route
   take argv
     like list
-    like text
+      like text
 
-  like unknown
+  like maybe, like dock-route
 
   save level, routes
-  save current, make void
+  save current, make none
 
   walk argv
     take site, name token
@@ -163,26 +162,25 @@ task route-for
       starts-with token, <->
       hold
         back current
-    save next, route-named level, token
-    fork test
-      is-equal read(next), make void
-      hold
+    sift route-named(level, token)
+      case some
+        save current, make(some, value)
+        save level, value/children
+      case none
         back current
-    save current, read next
-    save level, read next/children
   back current
 
 # The task a resolved command runs: the first `call` its route carries, which is what `task <name>` under a `hook`
 # becomes.
 task task-for
-  take route, like unknown
+  take route, like dock-route
 
   like text
 
-  save calls, read route/calls
+  save calls, route/calls
 
   fork test
-    is-above read(calls/length), code 0
+    is-above calls/length, 0
     hold
-      back read calls/0/name
+      back calls/0/name
   back <>

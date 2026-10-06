@@ -39,8 +39,9 @@ form readonly-array, name <ReadonlyArray>
             like t
         like native-boolean
         rank value, like s
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like or
       like s
       like native-undefined
@@ -54,8 +55,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like or
       like t
       like native-undefined
@@ -69,6 +71,7 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-number

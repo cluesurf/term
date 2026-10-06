@@ -28,15 +28,15 @@ import { SWIFT_MODULE } from '@term/call/code/cask'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
-
-// the iOS the app asks for, the one the simulator builds name
-const IOS_MINIMUM = '17.0'
+// what the build decides beside the compiler and Xcode: the app's names, its start line, the project, the team, the
+// install manifest and which of xcodebuild's lines to keep
+import * as words from '@term/call/code/uikit-words'
 
 // an app folder's name as the app is named after it, and its bundle identifier
 export function uikitIdentity(root: string): { name: string; identifier: string } {
-  const name = basename(root).replace(/[^A-Za-z0-9]/g, '') || 'App'
+  const identity = words.uikitIdentityOf(basename(root))
 
-  return { name, identifier: `surf.term.${name.toLowerCase()}` }
+  return { name: identity.name, identifier: identity.identifier }
 }
 
 const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
@@ -64,7 +64,7 @@ function programSource(input: { root: string; entry: string }): string {
   const swift = emitSwift(result.program)
   const prelude = nativePrelude(result.program, 'ios', readRuntime, swift)
   // `main` throws when anything it reaches can raise, and a raise nothing handles ends the program
-  const start = /func main\(\)[^{]*throws/.test(swift) ? 'try main()' : 'main()'
+  const start = words.startLine(swift)
 
   return ['import Foundation', prelude, swift, start, ''].join('\n')
 }
@@ -93,100 +93,27 @@ export function xcodeProject(input: { name: string; identifier: string; version:
     projectDebug: id(`${name}:project-debug`),
     projectRelease: id(`${name}:project-release`),
   }
-  const quote = (value: string): string => `"${value.replace(/"/g, '\\"')}"`
-  const settings = (entries: Record<string, string>): string =>
-    Object.entries(entries)
-      .map(([key, value]) => `\t\t\t\t${key} = ${quote(value)};`)
-      .join('\n')
-  const target = (optimize: boolean): string =>
-    settings({
-      CODE_SIGN_STYLE: 'Automatic',
-      ...(input.team ? { DEVELOPMENT_TEAM: input.team } : {}),
-      CURRENT_PROJECT_VERSION: input.version,
-      GENERATE_INFOPLIST_FILE: 'YES',
-      INFOPLIST_KEY_CFBundleDisplayName: name,
-      INFOPLIST_KEY_UILaunchScreen_Generation: 'YES',
-      INFOPLIST_KEY_UIRequiresFullScreen: 'YES',
-      // portrait and both landscapes: a Term app reads its width as a signal and adapts, so locking it upright would
-      // only hide that (cask.ts `assembleIosBundle`)
-      INFOPLIST_KEY_UISupportedInterfaceOrientations: 'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight',
-      IPHONEOS_DEPLOYMENT_TARGET: IOS_MINIMUM,
-      MARKETING_VERSION: input.version,
-      OTHER_SWIFT_FLAGS: '-enforce-exclusivity=unchecked',
-      PRODUCT_BUNDLE_IDENTIFIER: input.identifier,
-      PRODUCT_NAME: '$(TARGET_NAME)',
-      // never the app's own name, which may be an Apple framework's (cask.ts SWIFT_MODULE)
-      PRODUCT_MODULE_NAME: SWIFT_MODULE,
-      SWIFT_COMPILATION_MODE: optimize ? 'wholemodule' : 'singlefile',
-      SWIFT_OPTIMIZATION_LEVEL: optimize ? '-O' : '-Onone',
-      SWIFT_VERSION: '5.0',
-      TARGETED_DEVICE_FAMILY: '1,2',
-      // the usage strings the app's device capabilities need (device-declare.ts), into the generated Info.plist
-      ...Object.fromEntries(Object.entries(input.usage ?? {}).map(([key, text]) => [`INFOPLIST_KEY_${key}`, text])),
-    })
-  const project = settings({ SDKROOT: 'iphoneos', IPHONEOS_DEPLOYMENT_TARGET: IOS_MINIMUM })
+  // in the order the project text takes them (uikit-words.tree `xcode-project`)
+  const ordered = [ids.file, ids.build, ids.product, ids.main, ids.sources, ids.products, ids.phase, ids.target, ids.targetList, ids.targetDebug, ids.targetRelease, ids.project, ids.projectList, ids.projectDebug, ids.projectRelease]
+  const usage = Object.entries(input.usage ?? {}).map(([key, said]) => ({ key, said }))
 
-  return `// !$*UTF8*$!
-{
-	archiveVersion = 1;
-	classes = {
-	};
-	objectVersion = 56;
-	objects = {
-		${ids.build} = {isa = PBXBuildFile; fileRef = ${ids.file}; };
-		${ids.file} = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		${ids.product} = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ${quote(`${name}.app`)}; sourceTree = BUILT_PRODUCTS_DIR; };
-		${ids.main} = {isa = PBXGroup; children = (${ids.sources}, ${ids.products}, ); sourceTree = "<group>"; };
-		${ids.sources} = {isa = PBXGroup; children = (${ids.file}, ); path = ${quote(name)}; sourceTree = "<group>"; };
-		${ids.products} = {isa = PBXGroup; children = (${ids.product}, ); name = Products; sourceTree = "<group>"; };
-		${ids.phase} = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (${ids.build}, ); runOnlyForDeploymentPostprocessing = 0; };
-		${ids.target} = {isa = PBXNativeTarget; buildConfigurationList = ${ids.targetList}; buildPhases = (${ids.phase}, ); buildRules = (); dependencies = (); name = ${quote(name)}; productName = ${quote(name)}; productReference = ${ids.product}; productType = "com.apple.product-type.application"; };
-		${ids.targetList} = {isa = XCConfigurationList; buildConfigurations = (${ids.targetDebug}, ${ids.targetRelease}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		${ids.targetDebug} = {isa = XCBuildConfiguration; buildSettings = {
-${target(false)}
-			}; name = Debug; };
-		${ids.targetRelease} = {isa = XCBuildConfiguration; buildSettings = {
-${target(true)}
-			}; name = Release; };
-		${ids.project} = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500; }; buildConfigurationList = ${ids.projectList}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = ${ids.main}; productRefGroup = ${ids.products}; projectDirPath = ""; projectRoot = ""; targets = (${ids.target}, ); };
-		${ids.projectList} = {isa = XCConfigurationList; buildConfigurations = (${ids.projectDebug}, ${ids.projectRelease}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		${ids.projectDebug} = {isa = XCBuildConfiguration; buildSettings = {
-${project}
-			}; name = Debug; };
-		${ids.projectRelease} = {isa = XCBuildConfiguration; buildSettings = {
-${project}
-			}; name = Release; };
-	};
-	rootObject = ${ids.project};
-}
-`
+  // never the app's own name as its module, which may be an Apple framework's (cask.ts SWIFT_MODULE)
+  return words.xcodeProject(name, input.identifier, input.version, input.team ?? '', usage, SWIFT_MODULE, ordered)
 }
 
 // The team of the one Apple signing identity in the keychain, when there is exactly one team among them
 export function signingTeam(): string | undefined {
   const listed = spawnSync('security', ['find-identity', '-v', '-p', 'codesigning'], { encoding: 'utf8' }).stdout ?? ''
-  const teams = new Set([...listed.matchAll(/"Apple (?:Distribution|Development): [^"]*\(([A-Z0-9]{10})\)"/g)].map(found => found[1]))
 
-  return teams.size === 1 ? [...teams][0] : undefined
+  return words.signingTeam(listed) || undefined
 }
 
 // The install page an iPhone opens: an itms-services link to the manifest, which names the .ipa. Both must be served
 // over HTTPS with a certificate the phone trusts, from `base`
 function installPage(input: { name: string; identifier: string; version: string; base: string; out: string }): string {
-  const manifest = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>items</key><array><dict>
-<key>assets</key><array><dict><key>kind</key><string>software-package</string><key>url</key><string>${input.base}/${input.name}.ipa</string></dict></array>
-<key>metadata</key><dict><key>bundle-identifier</key><string>${input.identifier}</string><key>bundle-version</key><string>${input.version}</string><key>kind</key><string>software</string><key>title</key><string>${input.name}</string></dict>
-</dict></array></dict></plist>
-`
-  writeFileSync(join(input.out, 'manifest.plist'), manifest)
+  writeFileSync(join(input.out, 'manifest.plist'), words.installManifest(input.name, input.identifier, input.version, input.base))
   const page = join(input.out, 'index.html')
-  writeFileSync(
-    page,
-    `<!doctype html><meta name="viewport" content="width=device-width"><title>${input.name}</title>` +
-      `<p><a href="itms-services://?action=download-manifest&amp;url=${encodeURIComponent(`${input.base}/manifest.plist`)}">Install ${input.name} ${input.version}</a></p>\n`,
-  )
+  writeFileSync(page, words.installPage(input.name, input.version, encodeURIComponent(`${input.base}/manifest.plist`)))
 
   return page
 }
@@ -196,7 +123,7 @@ function run(command: string, args: string[], cwd: string): void {
 
   if (ran.status !== 0) {
     // xcodebuild's own error lines, which name the setting or the profile at fault
-    const said = `${ran.stdout}${ran.stderr}`.split('\n').filter(line => /error:|warning: .*(sign|profile)|No profiles|No Accounts|requires a provisioning/i.test(line))
+    const said = `${ran.stdout}${ran.stderr}`.split('\n').filter(line => words.isFailureLine(line))
     throw refusal(`${command} ${args[0]} failed: ${(said.length ? said : `${ran.stdout}${ran.stderr}`.split('\n').slice(-20)).join('\n').slice(0, 2400)}`, '')
   }
 }
@@ -249,13 +176,7 @@ export async function makeUikit(input: { root: string; entry?: string; team?: st
   // signed for the team: Xcode makes or fetches the ad hoc profile for the phones registered to it
   run('xcodebuild', ['archive', ...common, '-archivePath', archive, '-allowProvisioningUpdates', `DEVELOPMENT_TEAM=${team}`, '-quiet'], out)
   const options = join(out, 'export.plist')
-  writeFileSync(
-    options,
-    `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>method</key><string>release-testing</string><key>signingStyle</key><string>automatic</string><key>teamID</key><string>${team}</string><key>compileBitcode</key><false/><key>thinning</key><string>&lt;none&gt;</string></dict></plist>
-`,
-  )
+  writeFileSync(options, words.exportOptions(team))
   const exported = join(out, 'export')
   rmSync(exported, { recursive: true, force: true })
   run('xcodebuild', ['-exportArchive', '-archivePath', archive, '-exportOptionsPlist', options, '-exportPath', exported, '-allowProvisioningUpdates'], out)

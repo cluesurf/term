@@ -11,8 +11,9 @@ form performance-observer-entry-list, name <PerformanceObserverEntryList>
 
   task get-entries-by-name, name <getEntriesByName>
     take name, like native-string
-    take type, like maybe
-      like native-string
+    take type
+      like maybe
+        like native-string
     like performance-entry-list
 
   task get-entries-by-type, name <getEntriesByType>

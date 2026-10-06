@@ -33,8 +33,9 @@ form form-data, name <FormData>
       like or
         like native-string
         like blob
-    take file-name, like maybe
-      like native-string
+    take file-name
+      like maybe
+        like native-string
     like native-void
 
   task delete, name <delete>
@@ -62,8 +63,9 @@ form form-data, name <FormData>
       like or
         like native-string
         like blob
-    take file-name, like maybe
-      like native-string
+    take file-name
+      like maybe
+        like native-string
     like native-void
 
   task for-each, name <forEach>
@@ -73,6 +75,7 @@ form form-data, name <FormData>
         take key, like native-string
         take parent, like form-data
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

@@ -16,6 +16,7 @@ form file-system-file-entry, name <FileSystemFileEntry>
 
   task file, name <file>
     take success-callback, like file-callback
-    take error-callback, like maybe
-      like error-callback
+    take error-callback
+      like maybe
+        like error-callback
     like native-void

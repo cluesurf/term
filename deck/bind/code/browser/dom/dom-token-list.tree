@@ -65,8 +65,9 @@ form dom-token-list, name <DOMTokenList>
 
   task toggle, name <toggle>
     take token, like native-string
-    take force, like maybe
-      like native-boolean
+    take force
+      like maybe
+        like native-boolean
     like native-boolean
 
   task for-each, name <forEach>
@@ -76,8 +77,9 @@ form dom-token-list, name <DOMTokenList>
         take key, like native-number
         take parent, like dom-token-list
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   mesh index, like native-number

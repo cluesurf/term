@@ -166,20 +166,17 @@ export function analyze(
     // the layout, held to the file's own milled program (format/format.ts formatReport)
     format: () =>
       diagnostics.length ? source.text : format(source, { lean: options?.lean ?? false, role: options?.role ?? null }),
+    // a file that does not mill still gets the rules that read its TEXT and TREE (L053, the line rules), over an
+    // empty program, which no program rule finds anything in: those are the rules whose fix is what makes it mill,
+    // an old `note unsafe` guard among them (2026-10-06)
     lint: (config: LintConfig = {}) =>
-      program
-        ? lint(program, source.file, source.text, {
-            lean: options?.lean ?? false,
-            ...config,
-            suppress,
-          })
-        : [],
+      lint(program ?? [], source.file, source.text, {
+        lean: options?.lean ?? false,
+        ...config,
+        suppress,
+      }),
     fix: (config: LintConfig = {}) => {
-      if (!program) {
-        return source.text
-      }
-
-      const findings = lint(program, source.file, source.text, {
+      const findings = lint(program ?? [], source.file, source.text, {
         lean: options?.lean ?? false,
         ...config,
         suppress,

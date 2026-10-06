@@ -1,0 +1,91 @@
+# tree/code in Term, against the bytes the spec gives (note/term/host/10-code.md) and the reference codec writes
+# (test/compile/host-code.ts holds the reference to the same worked example). Runs on every backend the package builds
+# for. Run: term test, from deck/host.
+
+# `read` is Term's own word in a lean file, so the package's reader is imported under another name
+load ../code/base
+  find read, name read-data
+  find write
+  find to-code
+  find to-code-all
+  find from-code
+  find code-defect
+
+load @term/base/bytes
+  find from-hex
+  find to-hex
+
+# the long form of a data file's text, through tree/code and back
+task through-code
+  take input, like text
+  like text
+  save values, from-code(to-code(read-data(input)))
+  back write(values/0)
+
+# decode then encode: the canonical bytes come back unchanged
+task recode
+  take hex, like text
+  like text
+  back to-hex(to-code-all(from-code(from-hex(hex))))
+
+# how a stream is refused, by the name the reference gives the same defect
+task refusal
+  take hex, like text
+  like text
+  fork
+    mark unsafe
+    save values, from-code(from-hex(hex))
+    back <accepted>
+  halt take
+    take defect
+    sift defect
+      case code-defect
+        back problem
+      miss
+        back <another defect>
+
+test <the worked example of the spec is the bytes Term writes>
+  want hold
+    is-equal(to-hex(to-code(read-data(<list member\n  mesh\n    host name, \<ada\>\n    host age, 36\n    host active, true\n  mesh\n    host name, \<alan\>\n    host age, 41\n    host active, false\n>))), <d3545201012aa1466d656d62657282a3446e616d654361676546616374697665436164611c08e1c144616c616e1c0de0>)
+
+# each in the shortest exact form: a single (-3.5), a whole decimal (2.0), a double (0.1), a negative, and an integer
+# past 32 bits. The bytes are the reference codec's for the same text
+test <every kind of literal is the bytes the reference writes>
+  want hold
+    is-equal(to-hex(to-code(read-data(<host a, -3.5\nhost b, true\nhost c, void\nhost f, 2.0\nhost g, 0.1\nhost h, -40\nhost i, 1099511627776\n>))), <d3545201012aa74161416241634166416741684169e4c0600000e1e2e502e33fb999999999999a3c0b1ce4ffffffff1f>)
+
+test <every literal round trips through tree/code>
+  want hold
+    is-equal(through-code(<host a, -3.5\nhost b, true\nhost c, void\nhost d, \<a \\\<b\\\> \{c\}\>\nhost e, 0x1f\nhost f, 2.0\nhost g, 0.1\nhost h, -40\nhost i, 1099511627776\nhost j, \<\>\n>), write(read-data(<host a, -3.5\nhost b, true\nhost c, void\nhost d, \<a \\\<b\\\> \{c\}\>\nhost e, 0x1f\nhost f, 2.0\nhost g, 0.1\nhost h, -40\nhost i, 1099511627776\nhost j, \<\>\n>)))
+
+test <text past ASCII round trips byte for byte>
+  want hold
+    is-equal(through-code(<host a, \<é 世界 😀 👩‍👩‍👧\>\nhost b, \<line\\nbreak\>\n>), write(read-data(<host a, \<é 世界 😀 👩‍👩‍👧\>\nhost b, \<line\\nbreak\>\n>)))
+
+test <records with the same keys share one shape, and repeated text one entry>
+  want hold
+    is-equal(through-code(<list users\n  mesh\n    host name, \<ada\>\n    host role, \<admin\>\n  mesh\n    host name, \<alan\>\n    host role, \<admin\>\n  mesh\n    host name, \<grace\>\n    host role, \<admin\>\n>), write(read-data(<list users\n  mesh\n    host name, \<ada\>\n    host role, \<admin\>\n  mesh\n    host name, \<alan\>\n    host role, \<admin\>\n  mesh\n    host name, \<grace\>\n    host role, \<admin\>\n>)))
+
+test <decode then encode gives back the canonical bytes>
+  want hold
+    is-equal(recode(<d3545201012aa1466d656d62657282a3446e616d654361676546616374697665436164611c08e1c144616c616e1c0de0>), <d3545201012aa1466d656d62657282a3446e616d654361676546616374697665436164611c08e1c144616c616e1c0de0>)
+
+test <a stream without the header, or of another version, is refused by name>
+  want hold
+    and(is-equal(refusal(<7b7d>), <not-tree-code>), is-equal(refusal(<d354520201>), <unknown-version>))
+
+test <a spelling other than the canonical one is refused by name>
+  want hold
+    and(and(is-equal(refusal(<d354520101031c8000>), <non-canonical>), is-equal(refusal(<d3545201010782426869426869>), <non-canonical>)), is-equal(refusal(<d35452010109e33ff0000000000000>), <non-canonical>))
+
+test <a reserved tag, a short frame and broken UTF-8 are refused by name>
+  want hold
+    and(and(is-equal(refusal(<d35452010102e600>), <unknown-tag>), is-equal(refusal(<d35452010109e0>), <truncated>)), is-equal(refusal(<d3545201010342c328>), <bad-text>))
+
+test <a broken reference, a repeated key and a compressed frame are refused by name>
+  want hold
+    and(and(is-equal(refusal(<d3545201010163>), <bad-reference>), is-equal(refusal(<d35452010106a24161600001>), <repeated-key>)), is-equal(refusal(<d35452010203050000>), <no-decompressor>))
+
+test <a stream that ends with the end marker is accepted>
+  want hold
+    is-equal(refusal(<d35452010101e000>), <accepted>)

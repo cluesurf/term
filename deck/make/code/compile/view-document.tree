@@ -1,0 +1,4361 @@
+# The `view` role: the reader for the sandboxed document dialect a page or a guide is written in.
+#
+# Four statement heads reach this reader and not one of them declares anything the author wrote. `load` reaches the
+# approved catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host resolves
+# before rendering, and `view` defines the document. `tree` and `fuse` never arrive: the expander removes them on the
+# parse tree before any reader runs. What this reader will NOT build is as much the point as what it will: no computed
+# local, no attribute or event handler, no unbounded loop. Every refusal is `document-refused`. See note/term/view/.
+#
+# Ported from compile/view.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - every form is the original's type field for field and tag for tag (`form`), so a read document passes to and
+#     from TypeScript as it is
+#   - the closures `readView` shared (the diagnostics, the names claimed so far, the file read so far, the catalog,
+#     the caps and the lean switch) are one `view-reader`, `mark shared`
+#   - a catalog arrives as `view-catalog`, its sets as lists in their insertion order, because the nearest-name hint
+#     walks them in that order and keeps the LAST of equally near names
+#   - a name's length and its edit distance count UTF-16 units, as `length` and `a[i]` did
+#   - the whole gate is here (`check-view`): parse, macro cycles before expansion, fuses of a macro nothing declares,
+#     the size the macros would expand to, then the read of the expanded tree. The face converts a caller's templates
+#     the way compile/template.ts does
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find split
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ./node
+  find statement
+  find expression
+  find view-node
+  find closure-param
+  find field-value
+  find view-branch
+
+load ./view-cap
+  find view-caps
+  find make-view-caps
+  find cap-message
+
+load ./render-names
+  find render-names
+
+load ./templates
+  find tree-template
+  find template-problem
+  find collect-templates
+  find expand-templates
+
+load ./host-data
+  find host-value
+  find host-entry
+  find write-long
+
+load ./catalog-read
+  find catalog-query
+  find catalog-field
+
+load ../check/eliminate
+  find utf16-order
+
+# ---- the forms ----
+
+form road
+  link step, like list, like text
+
+form view-like
+  link name, like text
+  link arg, like list, like view-like
+
+form view-take
+  link name, like text
+  link like
+    like maybe, like view-like
+    need false
+  link span, like span
+
+form view-bind
+  link term, like text
+  link bond, like view-seed
+  link span, like span
+
+form view-seed
+  case text
+    link value, like text
+    link span, like span
+  # `code <mark>`: a reference to a record by its mark
+  case code
+    link value, like text
+    link span, like span
+  case mark
+    link value, like float
+    link span, like span
+  case wave
+    link value, like boolean
+    link span, like span
+  case read
+    link value, like road
+    link span, like span
+  case call
+    link value, like seed-call
+    link span, like span
+
+form seed-call
+  link name, like text
+  link bind, like list, like view-bind
+  link slot, like list, like view-seed
+  # synthesized by the reader, never written by an author: a `walk size`'s range skips the operator catalog
+  link made
+    like maybe, like boolean
+    need false
+
+form view-body
+  case view
+    link value, like view-use
+    link span, like span
+  case text
+    link value, like text
+    link span, like span
+  case walk
+    link value, like view-walk
+    link span, like span
+  case fork
+    link value, like view-fork
+    link span, like span
+
+form view-use
+  link name, like text
+  link bind, like list, like view-bind
+  link node, like list, like view-body
+
+form view-walk
+  link road, like view-seed
+  link next, like list, like walk-next
+
+form walk-next
+  link site
+    like maybe, like text
+    need false
+  link node, like list, like view-body
+
+form view-fork
+  link hook, like list, like fork-hook
+
+form fork-hook
+  case test
+    link seed, like view-seed
+    link span, like span
+  case hold
+    link node, like list, like view-body
+    link span, like span
+  case miss
+    link node, like list, like view-body
+    link span, like span
+
+form view-def
+  link name, like text
+  link take, like list, like view-take
+  link node, like list, like view-body
+  link span, like span
+
+form load-find
+  link name, like text
+  link alias
+    like maybe, like text
+    need false
+
+form view-load
+  link path, like text
+  link find, like list, like load-find
+  link span, like span
+
+form view-host
+  link name, like text
+  link bond
+    like maybe, like view-seed
+    need false
+  link like
+    like maybe, like view-like
+    need false
+  link span, like span
+
+form view-hold
+  link name, like text
+  link bind, like list, like view-bind
+  link slot, like list, like view-seed
+  link span, like span
+
+form view-meet
+  link mode, like text
+  link hold, like list, like view-hold
+  link meet, like list, like view-meet
+  link span, like span
+
+form view-sort
+  link way, like text
+  link road, like road
+  link span, like span
+
+form view-find
+  link name, like text
+  link task, like text
+  link meet
+    like maybe, like view-meet
+    need false
+  link hold, like list, like view-hold
+  link sort, like list, like view-sort
+  link size
+    like maybe, like float
+    need false
+  link slot
+    like maybe, like float
+    need false
+  link span, like span
+
+form view-file
+  link load, like list, like view-load
+  link host, like list, like view-host
+  link find, like list, like view-find
+  link view, like list, like view-def
+
+form view-result
+  link ok, like boolean
+  link file, like view-file
+  link diagnostics, like list, like diagnostic
+
+# the four closed vocabularies, each set a list in its insertion order
+form view-catalog
+  link view, like list, like text
+  link call, like list, like text
+  link load, like list, like text
+  link task, like hash, like text, like catalog-query
+
+# what `readView`'s closures shared
+form view-reader
+  mark shared
+  link file, like text
+  link diagnostics, like list, like diagnostic
+  link names, like hash, like text, like text
+  link out, like view-file
+  link lean, like boolean
+
+# the counts the bound check keeps as it walks
+form view-tally
+  mark shared
+  link nodes, like number
+  link calls, like number
+
+# ---- JavaScript's numbers and lengths ----
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <(if $value.fract() == 0.0 && $value.abs() \< 1e21 \{ format!("\{\}", $value as i64) \} else \{ $value.to_string() \})>
+  case swift
+    text <($value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \< 1e15 ? String(Int64($value)) : String($value))>
+  case kotlin
+    text <(if ($value % 1.0 == 0.0 && Math.abs($value) \< 1e15) $value.toLong().toString() else $value.toString())>
+
+# a number kept as it was read, into a field typed `number`: the original put a decimal there unchanged
+bind as-number
+  take value, like float
+  like number
+  case node
+    text <$value>
+  case browser
+    text <$value>
+  case rust
+    text <($value as i64)>
+  case swift
+    text <Int64($value)>
+  case kotlin
+    text <($value.toLong())>
+
+# `Math.floor(n / 3)`
+bind floor-third
+  take value, like number
+  like number
+  case node
+    text <Math.floor($value / 3)>
+  case browser
+    text <Math.floor($value / 3)>
+  case rust
+    text <($value.div_euclid(3))>
+  case swift
+    text <Int64((Double($value) / 3).rounded(.down))>
+  case kotlin
+    text <Math.floorDiv($value, 3L)>
+
+# a text's UTF-16 units, each as a text, as `a[i]` read them
+bind utf16-units
+  take value, like text
+  like list, like text
+  case node
+    text <Array.from(\{ length: $value.length \}, (_, i) =\> $value[i]!)>
+  case browser
+    text <Array.from(\{ length: $value.length \}, (_, i) =\> $value[i]!)>
+  case rust
+    text <($value.encode_utf16().map(|u| String::from_utf16_lossy(&[u])).collect::\<Vec\<String\>\>())>
+  case swift
+    text <($value.utf16.map \{ String(utf16CodeUnits: [$0], count: 1) \})>
+  case kotlin
+    text <($value.map \{ it.toString() \}.toMutableList())>
+
+# ---- the refusals ----
+
+form refused-word
+  link word, like text
+  link why, like text
+
+task refused-entry
+  take word, like text
+  take why, like text
+  like refused-word
+  mark private
+
+  back
+    make refused-word
+      bind word, word
+      bind why, why
+
+# A word the dialect refuses where a STATEMENT or a BODY NODE is expected, and what to say instead, in the order the
+# original's map held them. `dock` is written twice there, and a map keeps its first place
+task view-refused-heads
+  like list, like refused-word
+
+  save out, make list
+  push(out, refused-entry(<task>, <a document cannot declare a function. Use `call` to apply one from the operator catalog>))
+  push(out, refused-entry(<dock>, <a document cannot reach a native module>))
+  push(out, refused-entry(<save>, <a document cannot hold state. A value comes from a `host`, a `find`, or a `take`>))
+  push(out, refused-entry(<form>, <a document cannot declare a type>))
+  push(out, refused-entry(<hook>, <a `hook` belongs inside a `walk` or a `fork`, never at the top of a file>))
+  push(out, refused-entry(<test>, <a document cannot declare a test>))
+  push(out, refused-entry(<mask>, <a document cannot declare a trait>))
+  push(out, refused-entry(<bear>, <a document cannot re-export>))
+  push(out, refused-entry(<halt>, <a document cannot raise>))
+  push(out, refused-entry(<tree>, <a macro is expanded before this point, so a `tree` here means the expander did not run>))
+  push(out, refused-entry(<fuse>, <a macro is expanded before this point, so a `fuse` here means the expander did not run>))
+  push(out, refused-entry(<note>, <a document carries no metadata. `note async` and `note unsafe` have no meaning here, and a comment is `#`>))
+  push(out, refused-entry(<wait>, <nothing a document writes is asynchronous. Every query is resolved before rendering starts>))
+  push(out, refused-entry(<roll>, <a document declares nothing for the hive>))
+  push(out, refused-entry(<tell>, <a document decides nothing about what a customer is told>))
+  push(out, refused-entry(<rule>, <a document declares no theorem>))
+  push(out, refused-entry(<line>, <a document is not a command>))
+  push(out, refused-entry(<seed>, <a document sets no attribute and no event handler. A component takes its values by `bind`>))
+  back out
+
+# The operators people reach for that no catalog should register, and the reason for each
+task refused-calls
+  like list, like refused-word
+  mark private
+
+  save out, make list
+  push(out, refused-entry(<random>, <it is not deterministic, so a document would render differently on the server and in the browser, and differently on two reads>))
+  push(out, refused-entry(<uuid>, <it is not deterministic, so a document would render differently on the server and in the browser, and differently on two reads>))
+  push(out, refused-entry(<now>, <it is not deterministic. The host passes the time in as a `host` parameter, which also makes a document testable>))
+  push(out, refused-entry(<resolve>, <it performs input and output, and a renderer does neither. That is what lets one compiled document run on a server and in a browser>))
+  push(out, refused-entry(<walk>, <iteration is the `walk` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<loop>, <iteration is the `walk` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<branch>, <branching is the `fork` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<switch>, <branching is the `fork` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<match>, <branching is the `fork` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<pick>, <branching is the `fork` head, and two spellings of one thing drift apart>))
+  push(out, refused-entry(<attempt>, <it catches an error, and a document has nothing to catch>))
+  push(out, refused-entry(<parse-json>, <it turns text into a shape nothing typed>))
+  back out
+
+task why-of
+  take words, like list, like refused-word
+  take word, like text
+  like maybe, like text
+  mark private
+
+  walk words
+    take one
+    fork test, is-equal(one/word, word)
+      hold
+        save why, one/why
+        back make(some, why)
+  back make none
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-text
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  fork test, has-text(into, one)
+    hold
+      back
+  push(into, one)
+
+task one-of-words
+  take word, like text
+  take words, like text
+  like boolean
+  mark private
+
+  back has-text(split(words, < >), word)
+
+task is-body-head
+  take head, like text
+  like boolean
+  mark private
+
+  back one-of-words(head, <bind seed view text walk fork hook>)
+
+# ---- node helpers, local as the original's were ----
+
+task kids-in
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task kid-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, kids/length))
+    hold
+      save found, get(kids, at)
+      back make(some, found)
+  back make none
+
+task tail-from
+  take kids, like list, like node
+  take from, like number
+  like list, like node
+  mark private
+
+  save out, make list
+  save at, from
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+# a group's nodes after its head
+task rest-of
+  take group, like node
+  like list, like node
+  mark private
+
+  back tail-from(kids-in(group), 1)
+
+# after its head and its key
+task after-key
+  take group, like node
+  like list, like node
+  mark private
+
+  back tail-from(kids-in(group), 2)
+
+# a name's or a text's chunks joined, nothing unescaped
+task literal-text
+  take one, like node
+  like text
+  mark private
+
+  save out, <>
+  save held, make list
+  sift one
+    case name
+      save held, parts
+    case text
+      save held, parts
+    miss
+      save nothing, 0
+  walk held
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        save nothing, 0
+  back out
+
+task is-word-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case name
+      back true
+    case text
+      back true
+    miss
+      back false
+
+task is-name-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case name
+      back true
+    miss
+      back false
+
+task is-text-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      back true
+    miss
+      back false
+
+task head-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  sift kid-at(kids-in(group), 0)
+    case some
+      link head-node
+      fork test, is-name-node(head-node)
+        hold
+          save word, literal-text(head-node)
+          back make(some, word)
+    case none
+      save nothing, 0
+  back make none
+
+task key-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  sift kid-at(kids-in(group), 1)
+    case some
+      link key-node
+      fork test, is-word-node(key-node)
+        hold
+          save word, literal-text(key-node)
+          back make(some, word)
+      fork test, is-group(key-node)
+        hold
+          sift kid-at(kids-in(key-node), 0)
+            case some
+              link inner
+              fork test, is-name-node(inner)
+                hold
+                  save word, literal-text(inner)
+                  back make(some, word)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# the first text a group holds after its head, bare or as the head of a group
+task text-in
+  take group, like node
+  like maybe, like text
+  mark private
+
+  walk rest-of(group)
+    take one
+    fork test, is-text-node(one)
+      hold
+        save word, literal-text(one)
+        back make(some, word)
+    fork test, is-group(one)
+      hold
+        sift kid-at(kids-in(one), 0)
+          case some
+            link inner
+            fork test, is-text-node(inner)
+              hold
+                save word, literal-text(inner)
+                back make(some, word)
+          case none
+            save nothing, 0
+  back make none
+
+task number-value
+  take one, like node
+  like maybe, like float
+  mark private
+
+  sift one
+    case integer
+      save whole, to-decimal(value)
+      back make(some, whole)
+    case decimal
+      save fraction, value
+      back make(some, fraction)
+    case radix
+      save whole, to-decimal(value)
+      back make(some, whole)
+    miss
+      back make none
+
+# the first number a group holds after its head, bare or as the head of a group
+task number-in
+  take group, like node
+  like maybe, like float
+  mark private
+
+  walk rest-of(group)
+    take one
+    sift number-value(one)
+      case some
+        link known
+        back make(some, known)
+      case none
+        save nothing, 0
+    fork test, is-group(one)
+      hold
+        sift kid-at(kids-in(one), 0)
+          case some
+            link inner
+            sift number-value(inner)
+              case some
+                link known
+                back make(some, known)
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+  back make none
+
+task zero-span
+  like span
+  mark private
+
+  save at
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, at
+      bind end, at
+
+task first-chunk-span
+  take held, like list, like node
+  like span
+  mark private
+
+  walk held
+    take part
+    sift part
+      case chunk
+        back span
+      miss
+        save nothing, 0
+  back zero-span()
+
+task span-of
+  take one, like node
+  like span
+  mark private
+
+  sift one
+    case integer
+      back span
+    case decimal
+      back span
+    case radix
+      back span
+    case name
+      back first-chunk-span(parts)
+    case text
+      back first-chunk-span(parts)
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          back span-of(get(nodes, 0))
+    miss
+      save nothing, 0
+  back zero-span()
+
+task word-or
+  take given, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# a word that is there and not empty, as JavaScript's `if (name)` read it
+task given-word
+  take given, like maybe, like text
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      back is-unequal(known, <>)
+    case none
+      back false
+
+task is-head
+  take one, like node
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(is-group(one))
+    hold
+      back false
+  sift head-of(one)
+    case some
+      link known
+      back is-equal(known, word)
+    case none
+      back false
+
+task find-headed
+  take kids, like list, like node
+  take word, like text
+  like maybe, like node
+  mark private
+
+  walk kids
+    take one
+    fork test, is-head(one, word)
+      hold
+        back make(some, one)
+  back make none
+
+# ---- reading ----
+
+task refuse
+  take reader, like view-reader
+  take at, like span
+  take message, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, reader/file
+      bind span, at
+      bind message, make(some, message)
+  push(reader/diagnostics, diagnose(make(document-refused), input))
+
+task claim
+  take reader, like view-reader
+  take name, like text
+  take kind, like text
+  take at, like span
+  mark private
+
+  fork test, reader/names/has(name)
+    hold
+      save held, reader/names/get(name)
+      refuse(reader, at, <"{name}" is already declared by a {held}. A read has one answer, so a name is used once>)
+      back
+  save reader/names/{name}, kind
+
+task empty-file
+  like view-file
+  mark private
+
+  save loads, make list
+  save hosts, make list
+  save finds, make list
+  save views, make list
+  back
+    make view-file
+      bind load, loads
+      bind host, hosts
+      bind find, finds
+      bind view, views
+
+task name-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task read-view
+  take tree, like root-node
+  take file, like text
+  take catalog, like maybe, like view-catalog
+  take caps, like view-caps
+  take lean, like boolean
+  like view-result
+
+  save found, make list
+  save reader
+    make view-reader
+      bind file, file
+      bind diagnostics, found
+      bind names, name-table()
+      bind out, empty-file()
+      bind lean, lean
+  save out, reader/out
+  save refused, view-refused-heads()
+
+  sift tree
+    case root
+      walk nodes
+        take group
+        fork test, not(is-group(group))
+          hold
+            refuse(reader, span-of(group), <a document is a list of statements>)
+            turn next
+        save head, head-of(group)
+        save head-word, word-or(head, <>)
+        fork test, given-word(head)
+          hold
+            sift why-of(refused, head-word)
+              case some
+                link why
+                refuse(reader, span-of(group), <"{head-word}" is not part of a document: {why}>)
+                turn next
+              case none
+                save nothing, 0
+        fork test, and(given-word(head), is-equal(head-word, <load>))
+          hold
+            sift read-load(reader, group)
+              case some
+                link made
+                push(out/load, made)
+              case none
+                save nothing, 0
+            turn next
+        fork test, and(given-word(head), is-equal(head-word, <host>))
+          hold
+            sift read-host(reader, group)
+              case some
+                link made
+                claim(reader, made/name, <host>, made/span)
+                push(out/host, made)
+              case none
+                save nothing, 0
+            turn next
+        fork test, and(given-word(head), is-equal(head-word, <find>))
+          hold
+            sift read-find(reader, group)
+              case some
+                link made
+                claim(reader, made/name, <find>, made/span)
+                push(out/find, made)
+              case none
+                save nothing, 0
+            turn next
+        fork test, and(given-word(head), is-equal(head-word, <view>))
+          hold
+            sift read-def(reader, group)
+              case some
+                link made
+                claim(reader, made/name, <view>, made/span)
+                push(out/view, made)
+              case none
+                save nothing, 0
+            turn next
+        save shown, word-or(head, <?>)
+        refuse(reader, span-of(group), <"{shown}" is not a statement of a document. A document has load, host, find and view, and nothing else>)
+
+  check-bounds(reader, caps)
+  sift catalog
+    case some
+      link known
+      check-catalog(reader, known)
+    case none
+      save nothing, 0
+  check-constants(reader)
+  check-refused-calls(reader)
+  check-unread(reader)
+  check-scopes(reader)
+
+  back
+    make view-result
+      bind ok, is-equal(found/length, 0)
+      bind file, out
+      bind diagnostics, found
+
+# ---- load ----
+
+task read-load
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-load
+  mark private
+
+  save at, span-of(group)
+  save path-read, key-of(group)
+  fork test, not(given-word(path-read))
+    hold
+      refuse(reader, at, <a `load` names a package: `load @view/text`>)
+      back make none
+  save path, word-or(path-read, <>)
+  fork test, or(starts-with(path, <.>), starts-with(path, </>))
+    hold
+      refuse(reader, at, <"{path}" is a file path. A document loads a package from the approved catalog and never a file>)
+      back make none
+
+  save finds, load-finds()
+  walk after-key(group)
+    take child
+    fork test, not(is-group(child))
+      hold
+        turn next
+    fork test, not(is-head(child, <find>))
+      hold
+        save shown, word-or(head-of(child), <?>)
+        refuse(reader, span-of(child), <a `load` holds `find` lines, never "{shown}">)
+        turn next
+    save name-read, key-of(child)
+    fork test, not(given-word(name-read))
+      hold
+        refuse(reader, span-of(child), <a `find` names what is taken: `find heading`>)
+        turn next
+    save name, word-or(name-read, <>)
+    save alias, make none
+    sift find-headed(rest-of(child), <name>)
+      case some
+        link alias-node
+        save alias, key-of(alias-node)
+      case none
+        save nothing, 0
+    # the name it is taken under: the alias when there is one, even an empty one
+    save taken, word-or(alias, name)
+    save twice, false
+    walk finds
+      take one
+      save held, one/name
+      sift one/alias
+        case some
+          link one-alias
+          save held, one-alias
+        case none
+          save nothing, 0
+      fork test, is-equal(held, taken)
+        hold
+          save twice, true
+    fork test, twice
+      hold
+        refuse(reader, span-of(child), <"{taken}" is taken twice from "{path}">)
+        turn next
+    fork test, given-word(alias)
+      hold
+        save made
+          make load-find
+            bind name, name
+            bind alias, alias
+        push(finds, made)
+      miss
+        save none-alias, make none
+        save made
+          make load-find
+            bind name, name
+            bind alias, none-alias
+        push(finds, made)
+
+  save made
+    make view-load
+      bind path, path
+      bind find, finds
+      bind span, at
+  back make(some, made)
+
+task load-finds
+  like list, like load-find
+  mark private
+
+  back make list
+
+# ---- host ----
+
+task read-host
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-host
+  mark private
+
+  save at, span-of(group)
+  save name-read, key-of(group)
+  fork test, not(given-word(name-read))
+    hold
+      refuse(reader, at, <a `host` names a value: `host title, text \<Vowels\>` or `host slug, like text`>)
+      back make none
+  save name, word-or(name-read, <>)
+  save parts, after-key(group)
+  save none-bond, make none
+  save none-like, make none
+  sift find-headed(parts, <like>)
+    case some
+      link like-node
+      save like-read, read-like(like-node)
+      save made
+        make view-host
+          bind name, name
+          bind bond, none-bond
+          bind like, make(some, like-read)
+          bind span, at
+      back make(some, made)
+    case none
+      save nothing, 0
+  sift kid-at(parts, 0)
+    case some
+      link value-node
+      sift read-seed(reader, value-node)
+        case some
+          link bond
+          save made
+            make view-host
+              bind name, name
+              bind bond, make(some, bond)
+              bind like, none-like
+              bind span, at
+          back make(some, made)
+        case none
+          back make none
+    case none
+      refuse(reader, at, <"{name}" has no value and no type. A constant is `host {name}, \<value\>`, a parameter is `host {name}, like \<type\>`>)
+      back make none
+
+task read-like
+  take group, like node
+  like view-like
+  mark private
+
+  save args, make list
+  walk rest-of(group)
+    take one
+    fork test, is-head(one, <like>)
+      hold
+        push(args, read-like(one))
+  back
+    make view-like
+      bind name, word-or(key-of(group), <>)
+      bind arg, args
+
+# ---- find ----
+
+task read-find
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-find
+  mark private
+
+  save at, span-of(group)
+  save name-read, key-of(group)
+  fork test, not(given-word(name-read))
+    hold
+      refuse(reader, at, <a `find` names its result: `find vowel`>)
+      back make none
+  save name, word-or(name-read, <>)
+
+  save task-read, make none
+  save meet, make none
+  save size, make none
+  save slot, make none
+  save holds, make list
+  save sorts, make list
+
+  walk after-key(group)
+    take child
+    fork test, not(is-group(child))
+      hold
+        turn next
+    save child-head, head-of(child)
+    save child-word, word-or(child-head, <>)
+    fork test, and(given-word(child-head), is-equal(child-word, <task>))
+      hold
+        sift text-in(child)
+          case none
+            refuse(reader, span-of(child), <a `task` names a catalog query as text: `task \<filter:phoneme\>`>)
+          case some
+            link value
+            sift task-read
+              case some
+                link had
+                refuse(reader, span-of(child), <"{name}" names a query twice>)
+              case none
+                save task-read, make(some, value)
+        turn next
+    fork test, and(given-word(child-head), is-equal(child-word, <meet>))
+      hold
+        sift read-meet(reader, child)
+          case some
+            link group-meet
+            sift meet
+              case some
+                link had
+                refuse(reader, span-of(child), <"{name}" has two `meet` groups. Nest one inside the other>)
+              case none
+                save meet, make(some, group-meet)
+          case none
+            save nothing, 0
+        turn next
+    fork test, and(given-word(child-head), is-equal(child-word, <hold>))
+      hold
+        sift read-hold(reader, child)
+          case some
+            link one
+            push(holds, one)
+          case none
+            save nothing, 0
+        turn next
+    fork test, and(given-word(child-head), is-equal(child-word, <sort>))
+      hold
+        sift read-sort(reader, child)
+          case some
+            link one
+            save key, join(one/road/step, </>)
+            save had, false
+            walk sorts
+              take held
+              fork test, is-equal(join(held/road/step, </>), key)
+                hold
+                  save had, true
+            fork test, had
+              hold
+                refuse(reader, one/span, <"{name}" sorts on "{key}" twice, and the second one decides nothing>)
+              miss
+                push(sorts, one)
+          case none
+            save nothing, 0
+        turn next
+    fork test, and(given-word(child-head), or(is-equal(child-word, <size>), is-equal(child-word, <slot>)))
+      hold
+        sift number-in(child)
+          case none
+            refuse(reader, span-of(child), <a `{child-word}` takes a whole number>)
+          case some
+            link value
+            fork test, is-equal(child-word, <size>)
+              hold
+                fork test, is-below(value, 1.0)
+                  hold
+                    refuse(reader, span-of(child), <a `size` asks for at least one row, and this one asks for {js-text(value)}>)
+                  miss
+                    save size, make(some, value)
+              miss
+                fork test, is-below(value, 0.0)
+                  hold
+                    refuse(reader, span-of(child), <a `slot` starts at zero or later, and this one starts at {js-text(value)}>)
+                  miss
+                    save slot, make(some, value)
+        turn next
+    save shown, word-or(child-head, <?>)
+    refuse(reader, span-of(child), <"{shown}" is not part of a `find`. A find has task, meet, hold, sort, size and slot>)
+
+  sift task-read
+    case none
+      refuse(reader, at, <"{name}" names no query. A find calls one: `task \<select:language\>`>)
+      back make none
+    case some
+      link task-name
+      save made
+        make view-find
+          bind name, name
+          bind task, task-name
+          bind meet, meet
+          bind hold, holds
+          bind sort, sorts
+          bind size, size
+          bind slot, slot
+          bind span, at
+      back make(some, made)
+
+task read-meet
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-meet
+  mark private
+
+  save at, span-of(group)
+  save mode-read, key-of(group)
+  save mode, word-or(mode-read, <>)
+  fork test, or(not(given-word(mode-read)), not(one-of-words(mode, <and or not>)))
+    hold
+      save shown, word-or(mode-read, <?>)
+      refuse(reader, at, <a `meet` is and, or, or not, never "{shown}">)
+      back make none
+  save holds, make list
+  save meets, make list
+  walk after-key(group)
+    take child
+    fork test, not(is-group(child))
+      hold
+        turn next
+    fork test, is-head(child, <hold>)
+      hold
+        sift read-hold(reader, child)
+          case some
+            link one
+            push(holds, one)
+          case none
+            save nothing, 0
+        turn next
+    fork test, is-head(child, <meet>)
+      hold
+        sift read-meet(reader, child)
+          case some
+            link one
+            push(meets, one)
+          case none
+            save nothing, 0
+        turn next
+    save shown, word-or(head-of(child), <?>)
+    refuse(reader, span-of(child), <a `meet` holds `hold` and `meet`, never "{shown}">)
+  save count, add(holds/length, meets/length)
+  fork test, is-equal(count, 0)
+    hold
+      refuse(reader, at, <a `meet {mode}` groups nothing, so it decides nothing>)
+    miss
+      fork test, and(is-equal(mode, <not>), is-unequal(count, 1))
+        hold
+          refuse(reader, at, <a `meet not` takes exactly one child, and this one has {count}>)
+  save made
+    make view-meet
+      bind mode, mode
+      bind hold, holds
+      bind meet, meets
+      bind span, at
+  back make(some, made)
+
+form read-arguments
+  link bind, like list, like view-bind
+  link slot, like list, like view-seed
+
+task read-hold
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-hold
+  mark private
+
+  save at, span-of(group)
+  save name-read, key-of(group)
+  fork test, not(given-word(name-read))
+    hold
+      refuse(reader, at, <a `hold` names a predicate: `hold is-equal`>)
+      back make none
+  save name, word-or(name-read, <>)
+  save given, arguments-of(reader, group, <hold>, name)
+  fork test, is-equal(add(given/bind/length, given/slot/length), 0)
+    hold
+      refuse(reader, at, <"{name}" has nothing to compare>)
+  save made
+    make view-hold
+      bind name, name
+      bind bind, given/bind
+      bind slot, given/slot
+      bind span, at
+  back make(some, made)
+
+task read-sort
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-sort
+  mark private
+
+  save at, span-of(group)
+  save way-read, key-of(group)
+  save way, word-or(way-read, <>)
+  fork test, or(not(given-word(way-read)), not(one-of-words(way, <rise fall>)))
+    hold
+      save shown, word-or(way-read, <?>)
+      refuse(reader, at, <a `sort` is rise or fall, never "{shown}">)
+      back make none
+  sift find-headed(after-key(group), <read>)
+    case some
+      link read-node
+      save made
+        make view-sort
+          bind way, way
+          bind road, road-of(read-node)
+          bind span, at
+      back make(some, made)
+    case none
+      refuse(reader, at, <a `sort` names its key: `sort fall, read self/frequency`>)
+      back make none
+
+# ---- the view definition and its body ----
+
+task read-def
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-def
+  mark private
+
+  save at, span-of(group)
+  save name-read, key-of(group)
+  fork test, not(given-word(name-read))
+    hold
+      refuse(reader, at, <a `view` names itself: `view page`>)
+      back make none
+  save name, word-or(name-read, <>)
+  save takes, make list
+  save body, make list
+  walk after-key(group)
+    take child
+    fork test, not(is-group(child))
+      hold
+        turn next
+    fork test, is-head(child, <take>)
+      hold
+        save take-read, key-of(child)
+        fork test, not(given-word(take-read))
+          hold
+            refuse(reader, span-of(child), <a `take` names a parameter: `take slug, like text`>)
+            turn next
+        save take-name, word-or(take-read, <>)
+        save like-node, find-headed(after-key(child), <like>)
+        fork test, reader/names/has(take-name)
+          hold
+            save shadowed, reader/names/get(take-name)
+            refuse(reader, span-of(child), <"{take-name}" is already declared by a {shadowed}, so a `read {take-name}` would have two answers>)
+            turn next
+        save twice, false
+        walk takes
+          take one
+          fork test, is-equal(one/name, take-name)
+            hold
+              save twice, true
+        fork test, twice
+          hold
+            refuse(reader, span-of(child), <"{take-name}" is taken twice by "{name}", so the component would carry the parameter twice>)
+            turn next
+        save like-read, make none
+        sift like-node
+          case some
+            link known
+            save like-type, read-like(known)
+            save like-read, make(some, like-type)
+          case none
+            save nothing, 0
+        save made
+          make view-take
+            bind name, take-name
+            bind like, like-read
+            bind span, span-of(child)
+        push(takes, made)
+        turn next
+    sift read-body(reader, child)
+      case some
+        link one
+        push(body, one)
+      case none
+        save nothing, 0
+  save made
+    make view-def
+      bind name, name
+      bind take, takes
+      bind node, body
+      bind span, at
+  back make(some, made)
+
+task bound-twice
+  take binds, like list, like view-bind
+  take term, like text
+  like boolean
+  mark private
+
+  walk binds
+    take one
+    fork test, is-equal(one/term, term)
+      hold
+        back true
+  back false
+
+task read-body
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-body
+  mark private
+
+  save at, span-of(group)
+  save head, head-of(group)
+  save head-word, word-or(head, <>)
+  fork test, given-word(head)
+    hold
+      sift why-of(view-refused-heads(), head-word)
+        case some
+          link why
+          refuse(reader, at, <"{head-word}" is not part of a document: {why}>)
+          back make none
+        case none
+          save nothing, 0
+
+  fork test, and(given-word(head), is-equal(head-word, <view>))
+    hold
+      save name-read, key-of(group)
+      fork test, not(given-word(name-read))
+        hold
+          refuse(reader, at, <a `view` in a body names a component: `view text/heading`>)
+          back make none
+      save name, word-or(name-read, <>)
+      save binds, make list
+      save children, make list
+      walk after-key(group)
+        take child
+        fork test, not(is-group(child))
+          hold
+            turn next
+        fork test, is-head(child, <bind>)
+          hold
+            sift read-bind(reader, child)
+              case some
+                link one
+                fork test, bound-twice(binds, one/term)
+                  hold
+                    refuse(reader, one/span, <"{one/term}" is bound twice on "{name}">)
+                  miss
+                    push(binds, one)
+              case none
+                save nothing, 0
+            turn next
+        fork test, is-head(child, <seed>)
+          hold
+            refuse(reader, span-of(child), <a document cannot set an attribute or an event handler. A component takes its values by `bind`>)
+            turn next
+        # the lean surface: a plain-name child that is not a body node and carries a value is a `bind`
+        fork test, and(reader/lean, is-lean-bind(child))
+          hold
+            sift read-lean-bind(reader, child)
+              case some
+                link one
+                fork test, bound-twice(binds, one/term)
+                  hold
+                    refuse(reader, one/span, <"{one/term}" is bound twice on "{name}">)
+                  miss
+                    push(binds, one)
+              case none
+                save nothing, 0
+            turn next
+        sift read-body(reader, child)
+          case some
+            link one
+            push(children, one)
+          case none
+            save nothing, 0
+      save use
+        make view-use
+          bind name, name
+          bind bind, binds
+          bind node, children
+      save made
+        make view
+          bind value, use
+          bind span, at
+      back make(some, made)
+
+  fork test, and(given-word(head), is-equal(head-word, <text>))
+    hold
+      sift text-in(group)
+        case some
+          link value
+          save made
+            make text
+              bind value, value
+              bind span, at
+          back make(some, made)
+        case none
+          refuse(reader, at, <a `text` node holds text: `text \<Vowels\>`>)
+          back make none
+
+  fork test, and(given-word(head), is-equal(head-word, <walk>))
+    hold
+      back read-walk(reader, group)
+
+  fork test, and(given-word(head), is-equal(head-word, <fork>))
+    hold
+      back read-fork(reader, group)
+
+  save shown, word-or(head, <?>)
+  refuse(reader, at, <"{shown}" is not part of a document body. A body has view, text, walk and fork>)
+  back make none
+
+task mark-seed
+  take value, like float
+  take at, like span
+  like view-seed
+  mark private
+
+  back
+    make mark
+      bind value, value
+      bind span, at
+
+task read-walk
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-body
+  mark private
+
+  save at, span-of(group)
+  save mode-read, key-of(group)
+  save mode, word-or(mode-read, <>)
+  fork test, and(given-word(mode-read), is-equal(mode, <test>))
+    hold
+      refuse(reader, at, <a `walk test` has no end of its own, so a document cannot use one. `walk list` ends at the list and `walk size` at its bound>)
+      back make none
+
+  # `walk size` is normalized into a `walk list` over `range(base, head)`
+  fork test, and(given-word(mode-read), is-equal(mode, <size>))
+    hold
+      save parts, make list
+      walk after-key(group)
+        take one
+        fork test, is-group(one)
+          hold
+            push(parts, one)
+      # `walk size, read total` is the short form, counting from zero
+      save short, make none
+      walk after-key(group)
+        take one
+        fork test, is-group(one)
+          hold
+            fork test, and(not(is-head(one, <bind>)), not(is-head(one, <hook>)))
+              hold
+                save short, make(some, one)
+                halt
+      save base, bound-seed(reader, parts, <base>)
+      sift base
+        case none
+          save zero-seed, mark-seed(0.0, at)
+          save base, make(some, zero-seed)
+        case some
+          link known
+          save nothing, 0
+      save head-seed, bound-seed(reader, parts, <head>)
+      sift head-seed
+        case none
+          sift short
+            case some
+              link short-node
+              save head-seed, read-seed(reader, short-node)
+            case none
+              save nothing, 0
+        case some
+          link known
+          save nothing, 0
+      sift head-seed
+        case none
+          refuse(reader, at, <a `walk size` names how far it counts: `walk size / bind base, 0 / bind head, 100`, or `walk size, read total`>)
+          back make none
+        case some
+          link head-known
+          sift base
+            case some
+              link base-known
+              save too-short, false
+              save base-number, 0.0
+              save head-number, 0.0
+              sift base-known
+                case mark
+                  link base-value
+                  sift head-known
+                    case mark
+                      link head-value
+                      save base-number, base-value
+                      save head-number, head-value
+                      save too-short, is-maximum(head-value, base-value)
+                    miss
+                      save nothing, 0
+                miss
+                  save nothing, 0
+              fork test, too-short
+                hold
+                  refuse(reader, at, <a `walk size` from {js-text(base-number)} to {js-text(head-number)} draws nothing. The head is the bound it counts TO>)
+                  back make none
+              save names, render-names()
+              save none-binds, make list
+              save slots, make list
+              push(slots, base-known)
+              push(slots, head-known)
+              save range-call
+                make seed-call
+                  bind name, names/integers
+                  bind bind, none-binds
+                  bind slot, slots
+                  bind made, make(some, true)
+              save road
+                make call
+                  bind value, range-call
+                  bind span, at
+              save nexts, read-walk-next(reader, group)
+              save walked
+                make view-walk
+                  bind road, road
+                  bind next, nexts
+              save made
+                make walk
+                  bind value, walked
+                  bind span, at
+              back make(some, made)
+            case none
+              back make none
+
+  fork test, or(not(given-word(mode-read)), is-unequal(mode, <list>))
+    hold
+      save shown, word-or(mode-read, <?>)
+      refuse(reader, at, <a `walk` is list or size, never "{shown}">)
+      back make none
+
+  save road-node, make none
+  walk after-key(group)
+    take one
+    fork test, and(is-group(one), not(is-head(one, <hook>)))
+      hold
+        save road-node, make(some, one)
+        halt
+  sift road-node
+    case none
+      refuse(reader, at, <a `walk list` names what it walks: `walk list, read vowel`>)
+      back make none
+    case some
+      link known
+      sift read-seed(reader, known)
+        case none
+          back make none
+        case some
+          link road
+          save nexts, read-walk-next(reader, group)
+          save walked
+            make view-walk
+              bind road, road
+              bind next, nexts
+          save made
+            make walk
+              bind value, walked
+              bind span, at
+          back make(some, made)
+
+# the value of `bind <word>, <value>` among a walk's parts
+task bound-seed
+  take reader, like view-reader
+  take parts, like list, like node
+  take word, like text
+  like maybe, like view-seed
+  mark private
+
+  walk parts
+    take one
+    fork test, and(is-head(one, <bind>), given-word(key-of(one)))
+      hold
+        fork test, is-equal(word-or(key-of(one), <>), word)
+          hold
+            sift kid-at(after-key(one), 0)
+              case some
+                link value
+                back read-seed(reader, value)
+              case none
+                back make none
+  back make none
+
+task read-walk-next
+  take reader, like view-reader
+  take group, like node
+  like list, like walk-next
+  mark private
+
+  save nexts, make list
+  walk rest-of(group)
+    take child
+    fork test, not(is-head(child, <hook>))
+      hold
+        turn next
+    save kind-read, key-of(child)
+    fork test, not(and(given-word(kind-read), is-equal(word-or(kind-read, <>), <next>)))
+      hold
+        save shown, word-or(kind-read, <?>)
+        refuse(reader, span-of(child), <a `walk` holds `hook next`, never "hook {shown}">)
+        turn next
+    save site, make none
+    save body, make list
+    walk after-key(child)
+      take inner
+      fork test, not(is-group(inner))
+        hold
+          turn next
+      fork test, is-head(inner, <take>)
+        hold
+          sift find-headed(rest-of(inner), <name>)
+            case some
+              link name-node
+              save site, key-of(name-node)
+            case none
+              save site, key-of(inner)
+          turn next
+      sift read-body(reader, inner)
+        case some
+          link one
+          push(body, one)
+        case none
+          save nothing, 0
+    save made
+      make walk-next
+        bind site, site
+        bind node, body
+    push(nexts, made)
+
+  fork test, is-above(nexts/length, 1)
+    hold
+      refuse(reader, span-of(group), <a `walk` has one `hook next` and this one has {nexts/length}. The lowering renders the first, so the rest would vanish without being named>)
+  fork test, is-equal(nexts/length, 0)
+    hold
+      refuse(reader, span-of(group), <a `walk` names what to render per item: `hook next`>)
+  back nexts
+
+task read-fork
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-body
+  mark private
+
+  save at, span-of(group)
+  save mode-read, key-of(group)
+  save mode, word-or(mode-read, <>)
+  fork test, and(given-word(mode-read), is-equal(mode, <case>))
+    hold
+      refuse(reader, at, <a `fork case` matches the variants of a form, and a document declares none. Use `fork test`>)
+      back make none
+  fork test, or(not(given-word(mode-read)), is-unequal(mode, <test>))
+    hold
+      save shown, word-or(mode-read, <?>)
+      refuse(reader, at, <a `fork` is test, never "{shown}">)
+      back make none
+
+  save hooks, make list
+  walk after-key(group)
+    take child
+    fork test, not(is-head(child, <hook>))
+      hold
+        refuse(reader, span-of(child), <a `fork` holds `hook test`, `hook hold` and `hook miss`>)
+        turn next
+    save kind-read, key-of(child)
+    save kind, word-or(kind-read, <>)
+    save inner, make list
+    walk after-key(child)
+      take one
+      fork test, is-group(one)
+        hold
+          push(inner, one)
+    fork test, and(given-word(kind-read), is-equal(kind, <test>))
+      hold
+        save seed, make none
+        sift kid-at(inner, 0)
+          case some
+            link first
+            save seed, read-seed(reader, first)
+          case none
+            save nothing, 0
+        sift seed
+          case none
+            refuse(reader, span-of(child), <a `hook test` names the value it branches on>)
+          case some
+            link known
+            save made
+              make test
+                bind seed, known
+                bind span, span-of(child)
+            push(hooks, made)
+        turn next
+    fork test, and(given-word(kind-read), or(is-equal(kind, <hold>), is-equal(kind, <miss>)))
+      hold
+        save body, make list
+        walk inner
+          take one
+          sift read-body(reader, one)
+            case some
+              link built
+              push(body, built)
+            case none
+              save nothing, 0
+        fork test, is-equal(kind, <hold>)
+          hold
+            save made
+              make hold
+                bind node, body
+                bind span, span-of(child)
+            push(hooks, made)
+          miss
+            save made
+              make miss
+                bind node, body
+                bind span, span-of(child)
+            push(hooks, made)
+        turn next
+    save shown, word-or(kind-read, <?>)
+    refuse(reader, span-of(child), <a `fork` holds hook test, hook hold and hook miss, never "hook {shown}">)
+
+  # every `hook hold` needs a `hook test` before it
+  save pending, false
+  save any-test, false
+  walk hooks
+    take one
+    sift one
+      case test
+        link test-seed
+        link test-span
+        save any-test, true
+        fork test, pending
+          hold
+            refuse(reader, test-span, <a `hook test` follows a `hook hold`, so the one before it branches on nothing>)
+        save pending, true
+      case hold
+        link hold-node
+        link hold-span
+        fork test, not(pending)
+          hold
+            refuse(reader, hold-span, <a `hook hold` with no `hook test` before it branches on nothing>)
+        save pending, false
+      miss
+        save nothing, 0
+  fork test, pending
+    hold
+      refuse(reader, at, <a `hook test` with no `hook hold` after it decides nothing>)
+  fork test, not(any-test)
+    hold
+      refuse(reader, at, <a `fork test` branches on nothing. It needs a `hook test`>)
+  save forked
+    make view-fork
+      bind hook, hooks
+  save made
+    make fork
+      bind value, forked
+      bind span, at
+  back make(some, made)
+
+# ---- values ----
+
+task read-bind
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-bind
+  mark private
+
+  save at, span-of(group)
+  save term-read, key-of(group)
+  fork test, not(given-word(term-read))
+    hold
+      refuse(reader, at, <a `bind` names what it sets: `bind text, read title`>)
+      back make none
+  save term, word-or(term-read, <>)
+  sift kid-at(after-key(group), 0)
+    case none
+      refuse(reader, at, <"{term}" is bound to nothing>)
+      back make none
+    case some
+      link value-node
+      sift read-seed(reader, value-node)
+        case some
+          link bond
+          save made
+            make view-bind
+              bind term, term
+              bind bond, bond
+              bind span, at
+          back make(some, made)
+        case none
+          back make none
+
+# `label <save>` under a lean placement: a head that is not a body head, over a value
+task is-lean-bind
+  take child, like node
+  like boolean
+  mark private
+
+  sift head-of(child)
+    case some
+      link head
+      back and(not(is-body-head(head)), is-above(kids-in(child)/length, 1))
+    case none
+      back false
+
+task read-lean-bind
+  take reader, like view-reader
+  take group, like node
+  like maybe, like view-bind
+  mark private
+
+  save at, span-of(group)
+  save term-read, head-of(group)
+  fork test, not(given-word(term-read))
+    hold
+      back make none
+  save term, word-or(term-read, <>)
+  save values, rest-of(group)
+  fork test, is-above(values/length, 1)
+    hold
+      refuse(reader, at, <"{term}" is given {values/length} values, and a component input takes one>)
+      back make none
+  sift read-seed(reader, get(values, 0))
+    case some
+      link bond
+      save made
+        make view-bind
+          bind term, term
+          bind bond, bond
+          bind span, at
+      back make(some, made)
+    case none
+      back make none
+
+task arguments-of
+  take reader, like view-reader
+  take group, like node
+  take what, like text
+  take name, like text
+  like read-arguments
+  mark private
+
+  save binds, make list
+  save slots, make list
+  # a parenthesis after the callee holds the callee's OWN children, so both places are read and joined
+  save given, make list
+  sift kid-at(rest-of(group), 0)
+    case some
+      link callee
+      fork test, is-group(callee)
+        hold
+          walk rest-of(callee)
+            take one
+            push(given, one)
+    case none
+      save nothing, 0
+  walk after-key(group)
+    take one
+    push(given, one)
+  walk given
+    take child
+    # a bare `<vowel>` is the text it says, as `text <vowel>` is
+    fork test, is-text-node(child)
+      hold
+        sift read-seed(reader, child)
+          case some
+            link one
+            push(slots, one)
+          case none
+            save nothing, 0
+        turn next
+    fork test, not(is-group(child))
+      hold
+        turn next
+    fork test, is-head(child, <bind>)
+      hold
+        sift read-bind(reader, child)
+          case some
+            link one
+            push(binds, one)
+          case none
+            save nothing, 0
+        turn next
+    sift read-seed(reader, child)
+      case some
+        link one
+        push(slots, one)
+      case none
+        save nothing, 0
+  fork test, and(is-above(binds/length, 0), is-above(slots/length, 0))
+    hold
+      refuse(reader, span-of(group), <"{name}" mixes positional and named arguments in one {what}. Use one spelling or the other>)
+  back
+    make read-arguments
+      bind bind, binds
+      bind slot, slots
+
+task read-seed
+  take reader, like view-reader
+  take one, like node
+  like maybe, like view-seed
+  mark private
+
+  save at, span-of(one)
+  sift number-value(one)
+    case some
+      link value
+      save made, mark-seed(value, at)
+      back make(some, made)
+    case none
+      save nothing, 0
+  fork test, is-text-node(one)
+    hold
+      save made
+        make text
+          bind value, literal-text(one)
+          bind span, at
+      back make(some, made)
+  fork test, not(is-group(one))
+    hold
+      refuse(reader, at, <a value is text, a number, true, false, a `read`, or a `call`>)
+      back make none
+
+  save head, head-of(one)
+  save head-word, word-or(head, <>)
+  fork test, and(given-word(head), is-equal(head-word, <text>))
+    hold
+      sift text-in(one)
+        case some
+          link value
+          save made
+            make text
+              bind value, value
+              bind span, at
+          back make(some, made)
+        case none
+          refuse(reader, at, <a `text` holds text: `text \<vowel\>`>)
+          back make none
+  # `code <quenya>` is a record reference by mark, `code 20` is a number
+  fork test, and(given-word(head), is-equal(head-word, <code>))
+    hold
+      sift text-in(one)
+        case some
+          link mark
+          save made
+            make code
+              bind value, mark
+              bind span, at
+          back make(some, made)
+        case none
+          save nothing, 0
+      sift number-in(one)
+        case some
+          link value
+          save made, mark-seed(value, at)
+          back make(some, made)
+        case none
+          refuse(reader, at, <a `code` holds a number (`code 20`) or a record mark (`code \<quenya\>`)>)
+          back make none
+  fork test, and(given-word(head), is-equal(head-word, <true>))
+    hold
+      save made
+        make wave
+          bind value, true
+          bind span, at
+      back make(some, made)
+  fork test, and(given-word(head), is-equal(head-word, <false>))
+    hold
+      save made
+        make wave
+          bind value, false
+          bind span, at
+      back make(some, made)
+  fork test, and(given-word(head), is-equal(head-word, <read>))
+    hold
+      save made
+        make read
+          bind value, road-of(one)
+          bind span, at
+      back make(some, made)
+  fork test, and(given-word(head), is-equal(head-word, <call>))
+    hold
+      save name-read, key-of(one)
+      fork test, not(given-word(name-read))
+        hold
+          refuse(reader, at, <a `call` names an operator: `call titlecase`>)
+          back make none
+      save name, word-or(name-read, <>)
+      save given, arguments-of(reader, one, <call>, name)
+      save none-made, make none
+      save called
+        make seed-call
+          bind name, name
+          bind bind, given/bind
+          bind slot, given/slot
+          bind made, none-made
+      save made
+        make call
+          bind value, called
+          bind span, at
+      back make(some, made)
+  sift number-in(one)
+    case some
+      link bare
+      save made, mark-seed(bare, at)
+      back make(some, made)
+    case none
+      save shown, word-or(head, <?>)
+      refuse(reader, at, <"{shown}" is not a value. A value is text, a number, true, false, a `read`, or a `call`>)
+      back make none
+
+task road-of
+  take group, like node
+  like road
+  mark private
+
+  save steps, make list
+  walk split(word-or(key-of(group), <>), </>)
+    take step
+    fork test, is-unequal(step, <>)
+      hold
+        push(steps, step)
+  back
+    make road
+      bind step, steps
+
+# ---- the arguments of a seed ----
+
+task seed-args
+  take seed-value, like seed-call
+  like list, like view-seed
+  mark private
+
+  save out, make list
+  walk seed-value/slot
+    take one
+    push(out, one)
+  walk seed-value/bind
+    take one
+    push(out, one/bond)
+  back out
+
+task hold-args
+  take hold, like view-hold
+  like list, like view-seed
+  mark private
+
+  save out, make list
+  walk hold/slot
+    take one
+    push(out, one)
+  walk hold/bind
+    take one
+    push(out, one/bond)
+  back out
+
+task seed-span
+  take seed, like view-seed
+  like span
+  mark private
+
+  sift seed
+    case text
+      back span
+    case code
+      back span
+    case mark
+      back span
+    case wave
+      back span
+    case read
+      back span
+    case call
+      back span
+
+task body-span
+  take node, like view-body
+  like span
+  mark private
+
+  sift node
+    case view
+      back span
+    case text
+      back span
+    case walk
+      back span
+    case fork
+      back span
+
+# ---- every bound has a number ----
+
+task first-span
+  take out, like view-file
+  like maybe, like span
+  mark private
+
+  fork test, is-above(out/view/length, 0)
+    hold
+      save at, get(out/view, 0)/span
+      back make(some, at)
+  fork test, is-above(out/find/length, 0)
+    hold
+      save at, get(out/find, 0)/span
+      back make(some, at)
+  fork test, is-above(out/host/length, 0)
+    hold
+      save at, get(out/host, 0)/span
+      back make(some, at)
+  back make none
+
+task cap-of
+  take caps, like view-caps
+  take cap, like text
+  like number
+  mark private
+
+  fork test, is-equal(cap, <find>)
+    hold
+      back caps/find
+  fork test, is-equal(cap, <host>)
+    hold
+      back caps/host
+  fork test, is-equal(cap, <view>)
+    hold
+      back caps/view
+  fork test, is-equal(cap, <node>)
+    hold
+      back caps/node
+  back caps/call-sum
+
+task over
+  take reader, like view-reader
+  take caps, like view-caps
+  take cap, like text
+  take said, like number
+  mark private
+
+  fork test, is-above(said, cap-of(caps, cap))
+    hold
+      sift first-span(reader/out)
+        case some
+          link at
+          refuse(reader, at, cap-message(cap, said, caps))
+        case none
+          save nothing, 0
+
+task seed-depth
+  take reader, like view-reader
+  take caps, like view-caps
+  take tally, like view-tally
+  take seed, like view-seed
+  take depth, like number
+  mark private
+
+  sift seed
+    case call
+      link called
+      link call-span
+      save tally/calls, add(tally/calls, 1)
+      fork test, is-above(depth, caps/call-deep)
+        hold
+          refuse(reader, call-span, cap-message(<callDeep>, depth, caps))
+          back
+      walk seed-args(called)
+        take one
+        seed-depth(reader, caps, tally, one, add(depth, 1))
+    miss
+      save nothing, 0
+
+# the bound of a counted walk when it is a literal range, else the iteration cap
+task counted-bound
+  take road, like view-seed
+  take caps, like view-caps
+  like float
+  mark private
+
+  sift road
+    case call
+      link called
+      link call-span
+      save names, render-names()
+      fork test, and(is-equal(called/name, names/integers), is-minimum(called/slot/length, 2))
+        hold
+          save first, get(called/slot, 0)
+          save second, get(called/slot, 1)
+          sift first
+            case mark
+              link base-value
+              sift second
+                case mark
+                  link head-value
+                  save span-of-range, subtract(head-value, base-value)
+                  fork test, is-above(span-of-range, 0.0)
+                    hold
+                      back span-of-range
+                  back 0.0
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  back to-decimal(caps/walk-wide)
+
+task product-of
+  take bounds, like list, like float
+  like float
+  mark private
+
+  save total, 1.0
+  walk bounds
+    take one
+    save total, multiply(total, one)
+  back total
+
+task measure
+  take reader, like view-reader
+  take caps, like view-caps
+  take tally, like view-tally
+  take nodes, like list, like view-body
+  take depth, like number
+  take walks, like list, like float
+  mark private
+
+  fork test, is-above(depth, caps/deep)
+    hold
+      fork test, is-above(nodes/length, 0)
+        hold
+          refuse(reader, body-span(get(nodes, 0)), cap-message(<deep>, depth, caps))
+      back
+  walk nodes
+    take node
+    save tally/nodes, add(tally/nodes, 1)
+    sift node
+      case view
+        link use
+        link use-span
+        walk use/bind
+          take one
+          seed-depth(reader, caps, tally, one/bond, 1)
+        measure(reader, caps, tally, use/node, add(depth, 1), walks)
+      case walk
+        link walked
+        link walk-span
+        seed-depth(reader, caps, tally, walked/road, 1)
+        save inner, make list
+        walk walks
+          take one
+          push(inner, one)
+        push(inner, counted-bound(walked/road, caps))
+        fork test, is-above(inner/length, caps/walk-deep)
+          hold
+            refuse(reader, walk-span, cap-message(<walkDeep>, inner/length, caps))
+            turn next
+        save product, product-of(inner)
+        fork test, is-above(product, to-decimal(caps/walk-sum))
+          hold
+            refuse(reader, walk-span, cap-message(<walkSum>, as-number(product), caps))
+            turn next
+        walk walked/next
+          take next-one
+          measure(reader, caps, tally, next-one/node, add(depth, 1), inner)
+      case fork
+        link forked
+        link fork-span
+        walk forked/hook
+          take hook
+          sift hook
+            case test
+              link hook-seed
+              seed-depth(reader, caps, tally, hook-seed, 1)
+            case hold
+              link hook-nodes
+              measure(reader, caps, tally, hook-nodes, add(depth, 1), walks)
+            case miss
+              link hook-nodes
+              measure(reader, caps, tally, hook-nodes, add(depth, 1), walks)
+      miss
+        save nothing, 0
+
+task check-bounds
+  take reader, like view-reader
+  take caps, like view-caps
+  mark private
+
+  save out, reader/out
+  over(reader, caps, <find>, out/find/length)
+  over(reader, caps, <host>, out/host/length)
+  over(reader, caps, <view>, out/view/length)
+  save tally
+    make view-tally
+      bind nodes, 0
+      bind calls, 0
+  save none-walks, make list
+  walk out/view
+    take def
+    measure(reader, caps, tally, def/node, 1, none-walks)
+  over(reader, caps, <node>, tally/nodes)
+  over(reader, caps, <callSum>, tally/calls)
+
+# ---- the four closed vocabularies ----
+
+# the nearest registered name, so a typo says what was probably meant
+task near
+  take said, like text
+  take known, like list, like text
+  like text
+  mark private
+
+  save best, make none
+  save cost, floor-third(utf16-units(said)/length)
+  fork test, is-below(cost, 2)
+    hold
+      save cost, 2
+  walk known
+    take one
+    save far, distance(said, one)
+    fork test, is-maximum(far, cost)
+      hold
+        save cost, far
+        save best, make(some, one)
+  sift best
+    case some
+      link name
+      fork test, is-unequal(name, <>)
+        hold
+          back <Did you mean "{name}"?>
+    case none
+      save nothing, 0
+  fork test, is-equal(known/length, 0)
+    hold
+      back <The catalog registers none.>
+  back <The catalog registers {known/length}.>
+
+task smallest
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# edit distance over UTF-16 units
+task distance
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  save left, utf16-units(a)
+  save right, utf16-units(b)
+  save row, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, right/length)
+    hook hold
+      push(row, j)
+      save j, add(j, 1)
+  save i, 1
+  walk test
+    hook test, is-maximum(i, left/length)
+    hook hold
+      save last, get(row, 0)
+      save row/0, i
+      save j, 1
+      walk test
+        hook test, is-maximum(j, right/length)
+        hook hold
+          save keep, get(row, j)
+          save change, 1
+          fork test, is-equal(get(left, subtract(i, 1)), get(right, subtract(j, 1)))
+            hold
+              save change, 0
+          save row/{j}, smallest(smallest(add(get(row, j), 1), add(get(row, subtract(j, 1)), 1)), add(last, change))
+          save last, keep
+          save j, add(j, 1)
+      save i, add(i, 1)
+  back get(row, right/length)
+
+task query-names
+  take queries, like hash, like text, like catalog-query
+  like list, like text
+  mark private
+
+  save out, make list
+  walk queries/keys()
+    take one
+    push(out, one)
+  back out
+
+task field-names
+  take fields, like hash, like text, like catalog-field
+  like list, like text
+  mark private
+
+  save out, make list
+  walk fields/keys()
+    take one
+    push(out, one)
+  back out
+
+task join-steps
+  take steps, like list, like text
+  take from, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, from
+  walk test
+    hook test, is-below(at, steps/length)
+    hook hold
+      push(kept, get(steps, at))
+      save at, add(at, 1)
+  back join(kept, </>)
+
+task check-hold-field
+  take reader, like view-reader
+  take hold, like view-hold
+  take task-name, like text
+  take query, like catalog-query
+  mark private
+
+  save args, hold-args(hold)
+  fork test, is-equal(args/length, 0)
+    hold
+      back
+  save steps, make list
+  sift get(args, 0)
+    case read
+      link first-road
+      save steps, first-road/step
+    miss
+      save nothing, 0
+  fork test, or(is-below(steps/length, 2), is-unequal(get(steps, 0), <self>))
+    hold
+      back
+  save field, join-steps(steps, 1)
+  fork test, not(query/site/has(field))
+    hold
+      refuse(reader, hold/span, <"{task-name}" has no filterable field "{field}". {near(field, field-names(query/site))}>)
+      back
+  save known, query/site/get(field)
+  fork test, not(has-text(known/hold, hold/name))
+    hold
+      save accepted, join(sort(known/hold, utf16-order), <, >)
+      fork test, is-equal(accepted, <>)
+        hold
+          save accepted, <nothing>
+      refuse(reader, hold/span, <"{field}" does not accept "{hold/name}", because no index answers it. It accepts {accepted}>)
+
+task check-meet-fields
+  take reader, like view-reader
+  take meet, like view-meet
+  take task-name, like text
+  take query, like catalog-query
+  mark private
+
+  walk meet/hold
+    take hold
+    check-hold-field(reader, hold, task-name, query)
+  walk meet/meet
+    take inner
+    check-meet-fields(reader, inner, task-name, query)
+
+task seen-calls
+  take reader, like view-reader
+  take catalog, like view-catalog
+  take seed, like view-seed
+  mark private
+
+  sift seed
+    case call
+      link called
+      link call-span
+      save made, false
+      sift called/made
+        case some
+          link known
+          save made, known
+        case none
+          save nothing, 0
+      sift why-of(refused-calls(), called/name)
+        case some
+          link why
+          save made, or(made, true)
+        case none
+          save nothing, 0
+      fork test, and(not(made), not(has-text(catalog/call, called/name)))
+        hold
+          refuse(reader, call-span, <"{called/name}" is not a registered operator. {near(called/name, catalog/call)}>)
+      walk seed-args(called)
+        take one
+        seen-calls(reader, catalog, one)
+    miss
+      save nothing, 0
+
+task seen-nodes
+  take reader, like view-reader
+  take catalog, like view-catalog
+  take nodes, like list, like view-body
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case view
+        link use
+        link use-span
+        fork test, not(has-text(catalog/view, use/name))
+          hold
+            refuse(reader, use-span, <"{use/name}" is not a component this document may place. {near(use/name, catalog/view)}>)
+        walk use/bind
+          take one
+          seen-calls(reader, catalog, one/bond)
+        seen-nodes(reader, catalog, use/node)
+      case walk
+        link walked
+        seen-calls(reader, catalog, walked/road)
+        walk walked/next
+          take next-one
+          seen-nodes(reader, catalog, next-one/node)
+      case fork
+        link forked
+        walk forked/hook
+          take hook
+          sift hook
+            case test
+              link hook-seed
+              seen-calls(reader, catalog, hook-seed)
+            case hold
+              link hook-nodes
+              seen-nodes(reader, catalog, hook-nodes)
+            case miss
+              link hook-nodes
+              seen-nodes(reader, catalog, hook-nodes)
+      miss
+        save nothing, 0
+
+task check-catalog
+  take reader, like view-reader
+  take catalog, like view-catalog
+  mark private
+
+  save out, reader/out
+  walk out/load
+    take load
+    fork test, not(has-text(catalog/load, load/path))
+      hold
+        refuse(reader, load/span, <"{load/path}" is not a package this document may load. {near(load/path, catalog/load)}>)
+
+  walk out/find
+    take find
+    fork test, not(catalog/task/has(find/task))
+      hold
+        refuse(reader, find/span, <"{find/task}" is not a registered query. {near(find/task, query-names(catalog/task))}>)
+        turn next
+    save query, catalog/task/get(find/task)
+    sift query/size
+      case some
+        link cap
+        sift find/size
+          case some
+            link asked
+            fork test, is-above(asked, cap)
+              hold
+                refuse(reader, find/span, <"{find/name}" asks for {js-text(asked)} and "{find/task}" caps at {js-text(cap)}>)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+    walk find/hold
+      take hold
+      check-hold-field(reader, hold, find/task, query)
+    sift find/meet
+      case some
+        link meet
+        check-meet-fields(reader, meet, find/task, query)
+      case none
+        save nothing, 0
+    walk find/sort
+      take sort
+      save field, join-steps(sort/road/step, 1)
+      save sorts, false
+      fork test, query/site/has(field)
+        hold
+          save sorts, query/site/get(field)/sort
+      fork test, not(sorts)
+        hold
+          refuse(reader, sort/span, <"{find/task}" does not sort on "{field}", because no ordered index answers it>)
+
+  walk out/view
+    take def
+    seen-nodes(reader, catalog, def/node)
+  walk out/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        seen-calls(reader, catalog, bond)
+      case none
+        save nothing, 0
+  walk out/find
+    take find
+    walk find/hold
+      take hold
+      walk hold-args(hold)
+        take one
+        seen-calls(reader, catalog, one)
+
+# ---- a constant may be built from another, and never from itself ----
+
+form ring-walk
+  mark shared
+  link clean, like list, like text
+
+task host-reads
+  take seed, like view-seed
+  take bonds, like hash, like text, like view-seed
+  take into, like list, like text
+  mark private
+
+  sift seed
+    case read
+      link road
+      fork test, is-above(road/step/length, 0)
+        hold
+          save head, get(road/step, 0)
+          fork test, bonds/has(head)
+            hold
+              add-text(into, head)
+    case call
+      link called
+      walk seed-args(called)
+        take one
+        host-reads(one, bonds, into)
+    miss
+      save nothing, 0
+
+task index-in
+  take names, like list, like text
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# the cycle a name is in, joined by `word`, or nothing: depth first over a graph, with the names proven acyclic shared
+task ring-in
+  take name, like text
+  take path, like list, like text
+  take seen, like list, like text
+  take edges, like hash, like text, like list, like text
+  take clean, like ring-walk
+  take word, like text
+  take stop-unknown, like boolean
+  like maybe, like text
+  mark private
+
+  fork test, has-text(clean/clean, name)
+    hold
+      back make none
+  fork test, has-text(seen, name)
+    hold
+      save at, index-in(path, name)
+      fork test, is-equal(at, -1)
+        hold
+          save at, 0
+      save ring, make list
+      save k, at
+      walk test
+        hook test, is-below(k, path/length)
+        hook hold
+          push(ring, get(path, k))
+          save k, add(k, 1)
+      push(ring, name)
+      save joined, join(ring, < {word} >)
+      back make(some, joined)
+  fork test, and(stop-unknown, not(edges/has(name)))
+    hold
+      back make none
+  push(seen, name)
+  save next-path, make list
+  walk path
+    take one
+    push(next-path, one)
+  push(next-path, name)
+  fork test, edges/has(name)
+    hold
+      walk edges/get(name)
+        take one
+        sift ring-in(one, next-path, seen, edges, clean, word, stop-unknown)
+          case some
+            link found
+            back make(some, found)
+          case none
+            save nothing, 0
+  pop(seen)
+  push(clean/clean, name)
+  back make none
+
+task check-constants
+  take reader, like view-reader
+  mark private
+
+  save out, reader/out
+  save bonds, bond-table()
+  walk out/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        save bonds/{host/name}, bond
+      case none
+        save nothing, 0
+  save edges, edge-table()
+  walk bonds/keys()
+    take name
+    save reads, make list
+    host-reads(bonds/get(name), bonds, reads)
+    save edges/{name}, reads
+  save none-clean, make list
+  save clean
+    make ring-walk
+      bind clean, none-clean
+  walk out/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        save none-path, make list
+        save none-seen, make list
+        sift ring-in(host/name, none-path, none-seen, edges, clean, <reads>, false)
+          case some
+            link ring
+            refuse(reader, host/span, <a constant cannot be built from itself, and this one is: {ring}>)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+
+task bond-table
+  like hash, like text, like view-seed
+  mark private
+
+  back make hash
+
+task edge-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+# ---- the operators no catalog may register ----
+
+task always-refused
+  take reader, like view-reader
+  take seed, like view-seed
+  mark private
+
+  sift seed
+    case call
+      link called
+      link call-span
+      save made, false
+      sift called/made
+        case some
+          link known
+          save made, known
+        case none
+          save nothing, 0
+      fork test, not(made)
+        hold
+          sift why-of(refused-calls(), called/name)
+            case some
+              link why
+              refuse(reader, call-span, <"{called/name}" is not an operator a document may apply: {why}>)
+            case none
+              save nothing, 0
+      walk seed-args(called)
+        take one
+        always-refused(reader, one)
+    miss
+      save nothing, 0
+
+# every seed a body holds, in the order the original's walk took them
+task body-seeds
+  take nodes, like list, like view-body
+  take into, like list, like view-seed
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case view
+        link use
+        walk use/bind
+          take one
+          push(into, one/bond)
+        body-seeds(use/node, into)
+      case walk
+        link walked
+        push(into, walked/road)
+        walk walked/next
+          take next-one
+          body-seeds(next-one/node, into)
+      case fork
+        link forked
+        walk forked/hook
+          take hook
+          sift hook
+            case test
+              link hook-seed
+              push(into, hook-seed)
+            case hold
+              link hook-nodes
+              body-seeds(hook-nodes, into)
+            case miss
+              link hook-nodes
+              body-seeds(hook-nodes, into)
+      miss
+        save nothing, 0
+
+# every seed a meet holds, its holds first then its meets
+task meet-seeds
+  take meet, like view-meet
+  take into, like list, like view-seed
+  mark private
+
+  walk meet/hold
+    take hold
+    walk hold-args(hold)
+      take one
+      push(into, one)
+  walk meet/meet
+    take inner
+    meet-seeds(inner, into)
+
+task check-refused-calls
+  take reader, like view-reader
+  mark private
+
+  save out, reader/out
+  save seeds, make list
+  walk out/view
+    take def
+    body-seeds(def/node, seeds)
+  walk out/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        push(seeds, bond)
+      case none
+        save nothing, 0
+  walk out/find
+    take find
+    walk find/hold
+      take hold
+      walk hold-args(hold)
+        take one
+        push(seeds, one)
+    sift find/meet
+      case some
+        link meet
+        meet-seeds(meet, seeds)
+      case none
+        save nothing, 0
+  walk seeds
+    take one
+    always-refused(reader, one)
+
+# ---- nothing declared for nothing ----
+
+task note-reads
+  take seed, like view-seed
+  take heads, like list, like text
+  mark private
+
+  sift seed
+    case read
+      link road
+      fork test, is-above(road/step/length, 0)
+        hold
+          add-text(heads, get(road/step, 0))
+    case call
+      link called
+      walk seed-args(called)
+        take one
+        note-reads(one, heads)
+    miss
+      save nothing, 0
+
+task check-unread
+  take reader, like view-reader
+  mark private
+
+  save out, reader/out
+  save seeds, make list
+  walk out/view
+    take def
+    body-seeds(def/node, seeds)
+  walk out/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        push(seeds, bond)
+      case none
+        save nothing, 0
+  walk out/find
+    take find
+    walk find/hold
+      take hold
+      walk hold-args(hold)
+        take one
+        push(seeds, one)
+    sift find/meet
+      case some
+        link meet
+        meet-seeds(meet, seeds)
+      case none
+        save nothing, 0
+  save heads, make list
+  walk seeds
+    take one
+    note-reads(one, heads)
+  walk out/find
+    take find
+    fork test, not(has-text(heads, find/name))
+      hold
+        refuse(reader, find/span, <nothing reads "{find/name}", and the host resolves every query before rendering, so this one costs a request per render for a result no one uses>)
+  walk out/load
+    take load
+    fork test, is-equal(load/find/length, 0)
+      hold
+        refuse(reader, load/span, <"{load/path}" is loaded and nothing is taken from it>)
+
+# ---- every read resolves ----
+
+task check-find-seed
+  take reader, like view-reader
+  take seed, like view-seed
+  take find-name, like text
+  take host-names, like list, like text
+  take find-names, like list, like text
+  mark private
+
+  sift seed
+    case read
+      link road
+      link read-span
+      save head, <>
+      fork test, is-above(road/step/length, 0)
+        hold
+          save head, get(road/step, 0)
+      fork test, is-equal(head, <self>)
+        hold
+          back
+      fork test, has-text(find-names, head)
+        hold
+          refuse(reader, read-span, <"{find-name}" filters on the result of "{head}". A filter that reads another query is a join, and a query is resolved before any other runs>)
+          back
+      fork test, not(has-text(host-names, head))
+        hold
+          refuse(reader, read-span, <"{head}" is not in scope in a filter. A filter reads `self` for the record under test, or a `host`, and nothing else>)
+    case call
+      link called
+      walk called/slot
+        take one
+        check-find-seed(reader, one, find-name, host-names, find-names)
+      walk called/bind
+        take one
+        check-find-seed(reader, one/bond, find-name, host-names, find-names)
+    miss
+      save nothing, 0
+
+task check-find-hold
+  take reader, like view-reader
+  take hold, like view-hold
+  take find-name, like text
+  take host-names, like list, like text
+  take find-names, like list, like text
+  mark private
+
+  walk hold/slot
+    take one
+    check-find-seed(reader, one, find-name, host-names, find-names)
+  walk hold/bind
+    take one
+    check-find-seed(reader, one/bond, find-name, host-names, find-names)
+
+task check-find-meet
+  take reader, like view-reader
+  take meet, like view-meet
+  take find-name, like text
+  take host-names, like list, like text
+  take find-names, like list, like text
+  mark private
+
+  walk meet/hold
+    take hold
+    check-find-hold(reader, hold, find-name, host-names, find-names)
+  walk meet/meet
+    take inner
+    check-find-meet(reader, inner, find-name, host-names, find-names)
+
+task check-body-seed
+  take reader, like view-reader
+  take seed, like view-seed
+  take scope, like list, like text
+  take view-name, like text
+  mark private
+
+  sift seed
+    case read
+      link road
+      link read-span
+      save head, <>
+      fork test, is-above(road/step/length, 0)
+        hold
+          save head, get(road/step, 0)
+      fork test, not(has-text(scope, head))
+        hold
+          fork test, is-equal(head, <self>)
+            hold
+              refuse(reader, read-span, <"{view-name}" reads `self`, which names the record under test inside a filter and nothing in a body>)
+            miss
+              refuse(reader, read-span, <"{head}" is not in scope in "{view-name}". A body reads a take, a host, a find, or the item of a walk it is inside>)
+    case call
+      link called
+      walk called/slot
+        take one
+        check-body-seed(reader, one, scope, view-name)
+      walk called/bind
+        take one
+        check-body-seed(reader, one/bond, scope, view-name)
+    miss
+      save nothing, 0
+
+task check-body
+  take reader, like view-reader
+  take nodes, like list, like view-body
+  take scope, like list, like text
+  take view-name, like text
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case view
+        link use
+        walk use/bind
+          take one
+          check-body-seed(reader, one/bond, scope, view-name)
+        check-body(reader, use/node, scope, view-name)
+      case walk
+        link walked
+        check-body-seed(reader, walked/road, scope, view-name)
+        walk walked/next
+          take next-one
+          save inner, make list
+          walk scope
+            take one
+            push(inner, one)
+          sift next-one/site
+            case some
+              link site
+              fork test, is-unequal(site, <>)
+                hold
+                  add-text(inner, site)
+            case none
+              save nothing, 0
+          check-body(reader, next-one/node, inner, view-name)
+      case fork
+        link forked
+        walk forked/hook
+          take hook
+          sift hook
+            case test
+              link hook-seed
+              check-body-seed(reader, hook-seed, scope, view-name)
+            case hold
+              link hook-nodes
+              check-body(reader, hook-nodes, scope, view-name)
+            case miss
+              link hook-nodes
+              check-body(reader, hook-nodes, scope, view-name)
+      miss
+        save nothing, 0
+
+# the components a body places, at any depth
+task places
+  take nodes, like list, like view-body
+  take into, like list, like text
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case view
+        link use
+        add-text(into, use/name)
+        places(use/node, into)
+      case walk
+        link walked
+        walk walked/next
+          take next-one
+          places(next-one/node, into)
+      case fork
+        link forked
+        walk forked/hook
+          take hook
+          sift hook
+            case hold
+              link hook-nodes
+              places(hook-nodes, into)
+            case miss
+              link hook-nodes
+              places(hook-nodes, into)
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+
+task check-scopes
+  take reader, like view-reader
+  mark private
+
+  save out, reader/out
+  save host-names, make list
+  walk out/host
+    take host
+    add-text(host-names, host/name)
+  save find-names, make list
+  walk out/find
+    take find
+    add-text(find-names, find/name)
+
+  walk out/find
+    take find
+    walk find/hold
+      take hold
+      check-find-hold(reader, hold, find/name, host-names, find-names)
+    sift find/meet
+      case some
+        link meet
+        check-find-meet(reader, meet, find/name, host-names, find-names)
+      case none
+        save nothing, 0
+    walk find/sort
+      take sort
+      save first-step, <>
+      fork test, is-above(sort/road/step/length, 0)
+        hold
+          save first-step, get(sort/road/step, 0)
+      fork test, is-unequal(first-step, <self>)
+        hold
+          refuse(reader, sort/span, <"{find/name}" sorts on "{join(sort/road/step, </>)}". A sort key is a field of `self`>)
+
+  # a view that places itself never finishes rendering
+  save placed, edge-table()
+  walk out/view
+    take def
+    save into, make list
+    places(def/node, into)
+    save placed/{def/name}, into
+  save none-clean, make list
+  save clean
+    make ring-walk
+      bind clean, none-clean
+  walk out/view
+    take def
+    save none-path, make list
+    save none-seen, make list
+    sift ring-in(def/name, none-path, none-seen, placed, clean, <places>, true)
+      case some
+        link ring
+        refuse(reader, def/span, <a view cannot place itself, and this one does: {ring}>)
+      case none
+        save nothing, 0
+
+  walk out/view
+    take def
+    save scope, make list
+    walk def/take
+      take one
+      add-text(scope, one/name)
+    walk host-names
+      take one
+      add-text(scope, one)
+    walk find-names
+      take one
+      add-text(scope, one)
+    check-body(reader, def/node, scope, def/name)
+
+# ---- the one gate ----
+
+task group-children
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+task template-table
+  like hash, like text, like tree-template
+  mark private
+
+  back make hash
+
+task enum-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task check-view
+  take source, like token-source
+  take catalog, like maybe, like view-catalog
+  take caps, like maybe, like view-caps
+  take given-tree, like maybe, like root-node
+  take given-templates, like hash, like text, like tree-template
+  take lean, like boolean
+  like view-result
+
+  save tree, make none
+  sift given-tree
+    case some
+      link known
+      save tree, make(some, known)
+    case none
+      save parsed, parse(source)
+      fork test, not(parsed/ok)
+        hold
+          back
+            make view-result
+              bind ok, false
+              bind file, empty-file()
+              bind diagnostics, parsed/diagnostics
+      save parsed-tree, parsed/tree
+      save tree, make(some, parsed-tree)
+  sift tree
+    case some
+      link root
+      save rings, view-cycles(root, source/file)
+      fork test, is-above(rings/length, 0)
+        hold
+          back failed(rings)
+      # this file's macros, plus every one the module graph brought in
+      save templates, template-table()
+      walk given-templates/keys()
+        take key
+        save templates/{key}, given-templates/get(key)
+      save collected, collect-templates(root)
+      walk collected/keys()
+        take key
+        save templates/{key}, collected/get(key)
+      save known, make list
+      walk templates/keys()
+        take key
+        push(known, key)
+      save missing, view-fused(root, source/file, known)
+      fork test, is-above(missing/length, 0)
+        hold
+          back failed(missing)
+      # what it WOULD expand to, before it does: every macro this file declares, by name
+      save bodies, body-table()
+      walk group-children(root)
+        take node
+        fork test, is-head(node, <tree>)
+          hold
+            sift key-of(node)
+              case some
+                link name
+                fork test, is-unequal(name, <>)
+                  hold
+                    save bodies/{name}, node
+              case none
+                save nothing, 0
+      save given-caps, make-view-caps()
+      sift caps
+        case some
+          link known-caps
+          save given-caps, known-caps
+        case none
+          save nothing, 0
+      save bomb, view-bomb(root, source/file, bodies, given-caps/node)
+      fork test, is-above(bomb/length, 0)
+        hold
+          back failed(bomb)
+      save problems, make list
+      save expanded, expand-templates(root, templates, enum-table(), problems)
+      back read-view(expanded, source/file, catalog, given-caps, lean)
+    case none
+      back failed(make list)
+
+task failed
+  take diagnostics, like list, like diagnostic
+  like view-result
+  mark private
+
+  back
+    make view-result
+      bind ok, false
+      bind file, empty-file()
+      bind diagnostics, diagnostics
+
+task body-table
+  like hash, like text, like node
+  mark private
+
+  back make hash
+
+# ---- macro cycles, fuses and size, before expansion ----
+
+task refusal-at
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  back diagnose(make(document-refused), input)
+
+task fuses-in
+  take group, like node
+  take have, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  mark private
+
+  walk kids-in(group)
+    take node
+    fork test, not(is-group(node))
+      hold
+        turn next
+    fork test, is-head(node, <fuse>)
+      hold
+        sift key-of(node)
+          case some
+            link name
+            fork test, and(is-unequal(name, <>), not(has-text(have, name)))
+              hold
+                push(out, refusal-at(file, span-of(node), <"{name}" is not a macro this document can reach. {near(name, have)}>))
+          case none
+            save nothing, 0
+    fuses-in(node, have, file, out)
+
+# every `fuse` names a macro something declares
+task view-fused
+  take tree, like root-node
+  take file, like text
+  take known, like list, like text
+  like list, like diagnostic
+
+  save have, make list
+  walk known
+    take one
+    add-text(have, one)
+  walk group-children(tree)
+    take node
+    fork test, is-head(node, <tree>)
+      hold
+        sift key-of(node)
+          case some
+            link name
+            fork test, is-unequal(name, <>)
+              hold
+                add-text(have, name)
+          case none
+            save nothing, 0
+  save out, make list
+  walk group-children(tree)
+    take node
+    fork test, is-group(node)
+      hold
+        fuses-in(node, have, file, out)
+  back out
+
+form bomb-state
+  mark shared
+  link sizes, like hash, like text, like number
+  link seen, like list, like text
+  link bodies, like hash, like text, like node
+  link cap, like number
+
+# the nodes a group holds, plus the expanded size of every `fuse` beneath it
+task weigh
+  take state, like bomb-state
+  take group, like node
+  like number
+  mark private
+
+  save total, 0
+  walk kids-in(group)
+    take node
+    fork test, not(is-group(node))
+      hold
+        turn next
+    save total, add(total, 1)
+    fork test, is-head(node, <fuse>)
+      hold
+        sift key-of(node)
+          case some
+            link name
+            fork test, is-unequal(name, <>)
+              hold
+                save total, add(total, size-of-macro(state, name))
+                turn next
+          case none
+            save nothing, 0
+    save total, add(total, weigh(state, node))
+    fork test, is-above(total, multiply(state/cap, 64))
+      hold
+        back total
+  back total
+
+task size-of-macro
+  take state, like bomb-state
+  take name, like text
+  like number
+  mark private
+
+  fork test, state/sizes/has(name)
+    hold
+      back state/sizes/get(name)
+  fork test, or(not(state/bodies/has(name)), has-text(state/seen, name))
+    hold
+      back 0
+  push(state/seen, name)
+  save weight, weigh(state, state/bodies/get(name))
+  pop(state/seen)
+  save state/sizes/{name}, weight
+  back weight
+
+task size-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# what the document will expand to, computed without expanding it
+task view-bomb
+  take tree, like root-node
+  take file, like text
+  take known, like hash, like text, like node
+  take cap, like number
+  like list, like diagnostic
+
+  save none-seen, make list
+  save state
+    make bomb-state
+      bind sizes, size-table()
+      bind seen, none-seen
+      bind bodies, known
+      bind cap, cap
+  save total, 0
+  save first-view, make none
+  walk group-children(tree)
+    take node
+    fork test, is-head(node, <view>)
+      hold
+        sift first-view
+          case none
+            save first-view, make(some, node)
+          case some
+            link had
+            save nothing, 0
+        save fresh-seen, make list
+        save state/seen, fresh-seen
+        save total, add(total, weigh(state, node))
+  save out, make list
+  fork test, is-maximum(total, cap)
+    hold
+      back out
+  save at, zero-span()
+  sift first-view
+    case some
+      link node
+      save at, span-of(node)
+    case none
+      save nothing, 0
+  push(out, refusal-at(file, at, <this document would expand to about {total} nodes and the cap is {cap}. Counted from the macros before expanding, because expanding it first is the denial of service>))
+  back out
+
+form cycle-state
+  mark shared
+  link said, like list, like text
+  link clean, like list, like text
+  link edges, like hash, like text, like list, like text
+  link bodies, like hash, like text, like node
+  link diagnostics, like list, like diagnostic
+  link file, like text
+
+task fused-names
+  take group, like node
+  take into, like list, like text
+  mark private
+
+  walk kids-in(group)
+    take node
+    fork test, not(is-group(node))
+      hold
+        turn next
+    fork test, is-head(node, <fuse>)
+      hold
+        sift key-of(node)
+          case some
+            link name
+            fork test, is-unequal(name, <>)
+              hold
+                add-text(into, name)
+          case none
+            save nothing, 0
+    fused-names(node, into)
+
+task cycle-walk
+  take state, like cycle-state
+  take name, like text
+  take path, like list, like text
+  take seen, like list, like text
+  mark private
+
+  fork test, has-text(state/clean, name)
+    hold
+      back
+  fork test, has-text(seen, name)
+    hold
+      save at, index-in(path, name)
+      fork test, is-equal(at, -1)
+        hold
+          save at, 0
+      save ring, make list
+      save k, at
+      walk test
+        hook test, is-below(k, path/length)
+        hook hold
+          push(ring, get(path, k))
+          save k, add(k, 1)
+      push(ring, name)
+      save joined, join(ring, < fuses >)
+      fork test, not(has-text(state/said, joined))
+        hold
+          push(state/said, joined)
+          save first, name
+          fork test, is-above(path/length, 0)
+            hold
+              save first, get(path, 0)
+          save at-span, zero-span()
+          fork test, state/bodies/has(first)
+            hold
+              save at-span, span-of(state/bodies/get(first))
+          push(state/diagnostics, refusal-at(state/file, at-span, <a macro cannot fuse itself, and this one does: {joined}>))
+      back
+  fork test, not(state/edges/has(name))
+    hold
+      back
+  push(seen, name)
+  save next-path, make list
+  walk path
+    take one
+    push(next-path, one)
+  push(next-path, name)
+  walk state/edges/get(name)
+    take one
+    cycle-walk(state, one, next-path, seen)
+  pop(seen)
+  push(state/clean, name)
+
+task view-cycles
+  take tree, like root-node
+  take file, like text
+  like list, like diagnostic
+
+  save bodies, body-table()
+  walk group-children(tree)
+    take node
+    fork test, is-head(node, <tree>)
+      hold
+        sift key-of(node)
+          case some
+            link name
+            fork test, is-unequal(name, <>)
+              hold
+                save bodies/{name}, node
+          case none
+            save nothing, 0
+  save edges, edge-table()
+  walk bodies/keys()
+    take name
+    save into, make list
+    fused-names(bodies/get(name), into)
+    save edges/{name}, into
+  save out, make list
+  save none-said, make list
+  save none-clean, make list
+  save state
+    make cycle-state
+      bind said, none-said
+      bind clean, none-clean
+      bind edges, edges
+      bind bodies, bodies
+      bind diagnostics, out
+      bind file, file
+  walk bodies/keys()
+    take name
+    save none-path, make list
+    save none-seen, make list
+    cycle-walk(state, name, none-path, none-seen)
+  back out
+
+# ---- lowering ----
+
+# A document becomes one `view` statement per `view`, and a `find` becomes a PARAMETER, never a fetch
+task lower-view
+  take file, like view-file
+  like list, like statement
+
+  save fold, bond-table()
+  walk file/host
+    take host
+    sift host/bond
+      case some
+        link bond
+        save fold/{host/name}, bond
+      case none
+        save nothing, 0
+  save supplied, make list
+  walk file/host
+    take host
+    sift host/bond
+      case none
+        push(supplied, host/name)
+      case some
+        link bond
+        save nothing, 0
+  walk file/find
+    take find
+    push(supplied, find/name)
+  save program, make list
+  walk file/view
+    take def
+    save params, make list
+    push(params, param-named(<host>))
+    walk def/take
+      take one
+      push(params, param-named(one/name))
+    walk supplied
+      take one
+      push(params, param-named(one))
+    save body, make list
+    walk def/node
+      take node
+      push(body, lower-node(node, fold))
+    save made
+      make view
+        bind name, def/name
+        bind params, params
+        bind body, body
+        bind span, def/span
+    push(program, made)
+  back program
+
+task param-named
+  take name, like text
+  like closure-param
+  mark private
+
+  save none-type, make none
+  back
+    make closure-param
+      bind name, name
+      bind type, none-type
+
+task lower-node
+  take node, like view-body
+  take fold, like hash, like text, like view-seed
+  like view-node
+  mark private
+
+  sift node
+    case view
+      link use
+      link use-span
+      save none-attributes, make list
+      save props, make list
+      walk use/bind
+        take one
+        save prop
+          make field-value
+            bind name, one/term
+            bind value, lower-seed(one/bond, fold)
+        push(props, prop)
+      save children, make list
+      walk use/node
+        take child
+        push(children, lower-node(child, fold))
+      back
+        make element
+          bind name, use/name
+          bind attributes, none-attributes
+          bind props, props
+          bind children, children
+          bind span, use-span
+    case text
+      link value
+      link text-span
+      back
+        make text
+          bind value, value
+          bind span, text-span
+    case walk
+      link walked
+      link walk-span
+      save item, <site>
+      save body, make list
+      fork test, is-above(walked/next/length, 0)
+        hold
+          save first-next, get(walked/next, 0)
+          sift first-next/site
+            case some
+              link site
+              save item, site
+            case none
+              save nothing, 0
+          walk first-next/node
+            take child
+            push(body, lower-node(child, fold))
+      back
+        make walk
+          bind iterable, lower-seed(walked/road, fold)
+          bind item, item
+          bind body, body
+          bind span, walk-span
+    case fork
+      link forked
+      link fork-span
+      save branches, make list
+      save otherwise, make list
+      save has-otherwise, false
+      save cond, make none
+      walk forked/hook
+        take hook
+        sift hook
+          case test
+            link hook-seed
+            save lowered, lower-seed(hook-seed, fold)
+            save cond, make(some, lowered)
+          case hold
+            link hook-nodes
+            link hold-span
+            save branch-cond, true-at(hold-span)
+            sift cond
+              case some
+                link known
+                save branch-cond, known
+              case none
+                save nothing, 0
+            save body, make list
+            walk hook-nodes
+              take child
+              push(body, lower-node(child, fold))
+            save branch
+              make view-branch
+                bind cond, branch-cond
+                bind body, body
+            push(branches, branch)
+            save cond, make none
+          case miss
+            link hook-nodes
+            save otherwise, make list
+            walk hook-nodes
+              take child
+              push(otherwise, lower-node(child, fold))
+            save has-otherwise, true
+      fork test, has-otherwise
+        hold
+          back
+            make fork
+              bind branches, branches
+              bind otherwise, otherwise
+              bind span, fork-span
+      back
+        make fork
+          bind branches, branches
+          bind span, fork-span
+
+task true-at
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make boolean
+      bind value, true
+      bind span, at
+
+task lower-seed
+  take seed, like view-seed
+  take fold, like hash, like text, like view-seed
+  like expression
+  mark private
+
+  sift seed
+    case text
+      link value
+      link seed-span
+      back
+        make string
+          bind value, value
+          bind span, seed-span
+    case code
+      link value
+      link seed-span
+      back
+        make string
+          bind value, value
+          bind span, seed-span
+    case mark
+      link value
+      link seed-span
+      back
+        make integer
+          bind value, as-number(value)
+          bind span, seed-span
+    case wave
+      link value
+      link seed-span
+      back
+        make boolean
+          bind value, value
+          bind span, seed-span
+    case read
+      link road
+      link seed-span
+      save steps, road/step
+      fork test, is-equal(steps/length, 1)
+        hold
+          save head, get(steps, 0)
+          fork test, fold/has(head)
+            hold
+              back lower-seed(fold/get(head), fold)
+      save head, <>
+      fork test, is-above(steps/length, 0)
+        hold
+          save head, get(steps, 0)
+      save expression
+        make variable
+          bind name, head
+          bind span, seed-span
+      save at, 1
+      walk test
+        hook test, is-below(at, steps/length)
+        hook hold
+          save expression
+            make member
+              bind target, expression
+              bind name, get(steps, at)
+              bind span, seed-span
+          save at, add(at, 1)
+      back expression
+    case call
+      link called
+      link seed-span
+      save args, make list
+      save names, make list
+      walk called/slot
+        take one
+        push(args, lower-seed(one, fold))
+        push(names, <>)
+      walk called/bind
+        take one
+        push(args, lower-seed(one/bond, fold))
+        push(names, one/term)
+      save callee
+        make variable
+          bind name, called/name
+          bind span, seed-span
+      back
+        make call
+          bind callee, callee
+          bind args, args
+          bind names, names
+          bind span, seed-span
+
+# ---- the query manifest ----
+
+task text-value
+  take value, like text
+  like host-value
+  mark private
+
+  back
+    make text
+      bind value, value
+
+task list-value
+  take items, like list, like host-value
+  like host-value
+  mark private
+
+  back
+    make list
+      bind list, items
+
+task entry
+  take name, like text
+  take base, like host-value
+  like host-entry
+  mark private
+
+  back
+    make host-entry
+      bind name, name
+      bind base, base
+
+task hash-value
+  take entries, like list, like host-entry
+  like host-value
+  mark private
+
+  back
+    make hash
+      bind list, entries
+
+# an entry only where the list holds something
+task put-list
+  take into, like list, like host-entry
+  take name, like text
+  take items, like list, like host-value
+  mark private
+
+  fork test, is-above(items/length, 0)
+    hold
+      push(into, entry(name, list-value(items)))
+
+task seed-data
+  take seed, like view-seed
+  like host-value
+  mark private
+
+  save entries, make list
+  sift seed
+    case read
+      link road
+      push(entries, entry(<form>, text-value(<read>)))
+      push(entries, entry(<road>, text-value(join(road/step, </>))))
+    case text
+      link value
+      push(entries, entry(<form>, text-value(<text>)))
+      push(entries, entry(<text>, text-value(value)))
+    case code
+      link value
+      push(entries, entry(<form>, text-value(<code>)))
+      push(entries, entry(<text>, text-value(value)))
+    case mark
+      link value
+      save number
+        make number
+          bind value, as-number(value)
+      push(entries, entry(<form>, text-value(<mark>)))
+      push(entries, entry(<code>, number))
+    case wave
+      link value
+      save flag
+        make flag
+          bind value, value
+      push(entries, entry(<form>, text-value(<wave>)))
+      push(entries, entry(<code>, flag))
+    case call
+      link called
+      push(entries, entry(<form>, text-value(<call>)))
+      push(entries, entry(<call>, text-value(called/name)))
+  back hash-value(entries)
+
+task hold-data
+  take hold, like view-hold
+  like host-value
+  mark private
+
+  save entries, make list
+  push(entries, entry(<name>, text-value(hold/name)))
+  save sides, make list
+  walk hold-args(hold)
+    take one
+    push(sides, seed-data(one))
+  put-list(entries, <side>, sides)
+  back hash-value(entries)
+
+task meet-data
+  take meet, like view-meet
+  like host-value
+  mark private
+
+  save entries, make list
+  push(entries, entry(<mode>, text-value(meet/mode)))
+  save holds, make list
+  walk meet/hold
+    take hold
+    push(holds, hold-data(hold))
+  put-list(entries, <hold>, holds)
+  save meets, make list
+  walk meet/meet
+    take inner
+    push(meets, meet-data(inner))
+  put-list(entries, <meet>, meets)
+  back hash-value(entries)
+
+task gather-seeds
+  take seeds, like list, like view-seed
+  take calls, like list, like text
+  take marks, like list, like text
+  mark private
+
+  walk seeds
+    take seed
+    sift seed
+      case code
+        link value
+        add-text(marks, value)
+      case call
+        link called
+        save made, false
+        sift called/made
+          case some
+            link known
+            save made, known
+          case none
+            save nothing, 0
+        fork test, not(made)
+          hold
+            add-text(calls, called/name)
+        gather-seeds(seed-args(called), calls, marks)
+      miss
+        save nothing, 0
+
+task gather
+  take nodes, like list, like view-body
+  take uses, like list, like text
+  take calls, like list, like text
+  take marks, like list, like text
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case view
+        link use
+        add-text(uses, use/name)
+        save bonds, make list
+        walk use/bind
+          take one
+          push(bonds, one/bond)
+        gather-seeds(bonds, calls, marks)
+        gather(use/node, uses, calls, marks)
+      case walk
+        link walked
+        save roads, make list
+        push(roads, walked/road)
+        gather-seeds(roads, calls, marks)
+        walk walked/next
+          take next-one
+          gather(next-one/node, uses, calls, marks)
+      case fork
+        link forked
+        walk forked/hook
+          take hook
+          sift hook
+            case test
+              link hook-seed
+              save seeds, make list
+              push(seeds, hook-seed)
+              gather-seeds(seeds, calls, marks)
+            case hold
+              link hook-nodes
+              gather(hook-nodes, uses, calls, marks)
+            case miss
+              link hook-nodes
+              gather(hook-nodes, uses, calls, marks)
+      miss
+        save nothing, 0
+
+task gather-meet
+  take meet, like view-meet
+  take calls, like list, like text
+  take marks, like list, like text
+  mark private
+
+  walk meet/hold
+    take hold
+    gather-seeds(hold-args(hold), calls, marks)
+  walk meet/meet
+    take inner
+    gather-meet(inner, calls, marks)
+
+task text-values
+  take names, like list, like text
+  like list, like host-value
+  mark private
+
+  save out, make list
+  walk sort(names, utf16-order)
+    take one
+    push(out, text-value(one))
+  back out
+
+task view-manifest
+  take file, like view-file
+  take module, like text
+  like text
+
+  save entries, make list
+  push(entries, entry(<module>, text-value(module)))
+
+  # the names the host must supply: a `host` with a type and no value
+  save holes, make list
+  walk file/host
+    take host
+    sift host/bond
+      case none
+        save hole-entries, make list
+        push(hole-entries, entry(<name>, text-value(host/name)))
+        sift host/like
+          case some
+            link like-type
+            push(hole-entries, entry(<like>, text-value(like-type/name)))
+          case none
+            save nothing, 0
+        push(holes, hash-value(hole-entries))
+      case some
+        link bond
+        save nothing, 0
+  put-list(entries, <hole>, holes)
+
+  save finds, make list
+  walk file/find
+    take find
+    save find-entries, make list
+    push(find-entries, entry(<name>, text-value(find/name)))
+    push(find-entries, entry(<task>, text-value(find/task)))
+    sift find/size
+      case some
+        link size
+        save number
+          make number
+            bind value, as-number(size)
+        push(find-entries, entry(<size>, number))
+      case none
+        save nothing, 0
+    sift find/slot
+      case some
+        link slot
+        save number
+          make number
+            bind value, as-number(slot)
+        push(find-entries, entry(<slot>, number))
+      case none
+        save nothing, 0
+    sift find/meet
+      case some
+        link meet
+        push(find-entries, entry(<meet>, meet-data(meet)))
+      case none
+        save nothing, 0
+    save holds, make list
+    walk find/hold
+      take hold
+      push(holds, hold-data(hold))
+    put-list(find-entries, <hold>, holds)
+    save sorts, make list
+    walk find/sort
+      take sort
+      save sort-entries, make list
+      push(sort-entries, entry(<way>, text-value(sort/way)))
+      push(sort-entries, entry(<road>, text-value(join(sort/road/step, </>))))
+      push(sorts, hash-value(sort-entries))
+    put-list(find-entries, <sort>, sorts)
+    push(finds, hash-value(find-entries))
+  put-list(entries, <find>, finds)
+
+  save uses, make list
+  save calls, make list
+  save marks, make list
+  walk file/view
+    take def
+    gather(def/node, uses, calls, marks)
+  walk file/find
+    take find
+    walk find/hold
+      take hold
+      gather-seeds(hold-args(hold), calls, marks)
+    sift find/meet
+      case some
+        link meet
+        gather-meet(meet, calls, marks)
+      case none
+        save nothing, 0
+
+  put-list(entries, <view>, text-values(uses))
+  put-list(entries, <call>, text-values(calls))
+  put-list(entries, <mark>, text-values(marks))
+  save paths, make list
+  walk file/load
+    take load
+    push(paths, load/path)
+  save sorted-paths, make list
+  walk sort(paths, utf16-order)
+    take one
+    push(sorted-paths, text-value(one))
+  put-list(entries, <load>, sorted-paths)
+
+  save none-trees, make none
+  back write-long(hash-value(entries), none-trees)

@@ -23,6 +23,7 @@ form file-reader-sync, name <FileReaderSync>
 
   task read-as-text, name <readAsText>
     take blob, like blob
-    take encoding, like maybe
-      like native-string
+    take encoding
+      like maybe
+        like native-string
     like native-string

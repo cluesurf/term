@@ -19,6 +19,12 @@ load ./json
   find to-json
   find from-json
 
+load ./code
+  find to-code
+  find to-code-all
+  find from-code
+  find code-defect
+
 load ./fuse
   find expand
 

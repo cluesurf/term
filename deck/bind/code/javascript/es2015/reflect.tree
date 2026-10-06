@@ -48,8 +48,9 @@ task construct, name <construct>
   take arguments-list
     like array-like
       like native-any
-  take new-target, like maybe
-    like function
+  take new-target
+    like maybe
+      like function
   like native-any
 
 task define-property, name <defineProperty>
@@ -66,8 +67,9 @@ task delete-property, name <deleteProperty>
 task get, name <get>
   take target, like native-object
   take property-key, like property-key
-  take receiver, like maybe
-    like native-any
+  take receiver
+    like maybe
+      like native-any
   like native-any
 
 task get-own-property-descriptor, name <getOwnPropertyDescriptor>
@@ -107,8 +109,9 @@ task set, name <set>
   take target, like native-object
   take property-key, like property-key
   take value, like native-any
-  take receiver, like maybe
-    like native-any
+  take receiver
+    like maybe
+      like native-any
   like native-boolean
 
 task set-prototype-of, name <setPrototypeOf>

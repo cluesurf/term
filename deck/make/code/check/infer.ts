@@ -151,10 +151,29 @@ export function setInferProfile(next: InferProfile | undefined): void {
 const TEXT: Type = { kind: 'string' }
 const TEXT_MEMBER_RESULTS = new Map<string, Type>([
   ...['charAt', 'concat', 'padEnd', 'padStart', 'repeat', 'replace', 'replaceAll', 'slice', 'substring', 'toLowerCase', 'toString', 'toUpperCase', 'trim', 'trimEnd', 'trimStart'].map(op => [op, TEXT] as [string, Type]),
-  ...['charCodeAt', 'indexOf', 'lastIndexOf'].map(op => [op, { kind: 'number' }] as [string, Type]),
+  ...['charCodeAt', 'compare', 'indexOf', 'lastIndexOf'].map(op => [op, { kind: 'number' }] as [string, Type]),
   ...['endsWith', 'includes', 'startsWith'].map(op => [op, { kind: 'boolean' }] as [string, Type]),
   ['split', { kind: 'array', element: TEXT }],
 ])
+
+// does a body assign the plain variable `name` anywhere in it (`save name, ...` once it is bound)
+function assignsName(body: unknown, name: string): boolean {
+  if (body === null || typeof body !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(body)) {
+    return body.some(one => assignsName(one, name))
+  }
+
+  const node = body as { form?: string; target?: { form?: string; name?: string } }
+
+  if (node.form === 'assign' && node.target?.form === 'variable' && node.target.name === name) {
+    return true
+  }
+
+  return Object.entries(body).some(([key, child]) => key !== 'span' && key !== 'type' && assignsName(child, name))
+}
 
 export function check(
   program: Program,
@@ -1367,7 +1386,8 @@ function checkProgram(
               type = unknownType()
             }
           }
-        } else if (target.kind === 'array' && node.name === 'length') {
+        } else if ((target.kind === 'array' || target.kind === 'string') && node.name === 'length') {
+          // a list's length, or a text's (counted in code points on every backend, note/term/stdlib/semantics.md)
           type = numberType()
         } else if (target.kind === 'map' && (node.name === 'size' || node.name === 'length')) {
           // A COLLECTION'S LENGTH IS `length`, A MAP'S TOO (decisions-2026-10.md, D2): `m/length` is the map's entry
@@ -1761,6 +1781,15 @@ function checkProgram(
                 nativeResult = { kind: 'number' }
               } else if (op === 'some' || op === 'every') {
                 nativeResult = { kind: 'boolean' }
+              } else if (op === 'filter') {
+                nativeResult = receiver
+              } else if (op === 'map') {
+                // a list of what the callback returns
+                const callback = args[0] ? resolve(args[0]) : undefined
+
+                if (callback?.kind === 'function') {
+                  nativeResult = { kind: 'array', element: callback.result }
+                }
               } else if (op === 'includes') {
                 nativeResult = { kind: 'boolean' }
               } else if (op === 'join') {
@@ -1772,6 +1801,9 @@ function checkProgram(
               // `by-name/get(name)/mean-ns`, 2026-10-04)
               if (op === 'get') {
                 nativeResult = receiver.value
+              } else if (op === 'set') {
+                // the map itself, as the host's `set` answers
+                nativeResult = receiver
               } else if (op === 'keys') {
                 nativeResult = { kind: 'array', element: receiver.key }
               } else if (op === 'values') {
@@ -1784,6 +1816,11 @@ function checkProgram(
               // their results are what @term/base/text declares them, where they were the gradual unknown, and each
               // task there sending one back was a value the gradual seam had to refuse (D1)
               nativeResult = TEXT_MEMBER_RESULTS.get(op)
+            }
+
+            // `to-string` with nothing to read answers a text, whatever it is called on
+            if (op === 'toString' && node.args.length === 0) {
+              nativeResult = { kind: 'string' }
             }
           }
 
@@ -2106,15 +2143,23 @@ function checkProgram(
 
       case 'for-each': {
         const element = fresh()
+        const iterable = inferExpression(node.iterable, env)
         expect(
-          inferExpression(node.iterable, env),
+          iterable,
           { kind: 'array', element },
           node.iterable.span,
           'iterable',
         )
 
+        // an item of a list of `dynamic` (or `unknown`) is that: unifying the fresh element with a gradual type binds
+        // nothing, since it is consistent with every type, so the item was left a free variable, and a field read off
+        // one the gradual unknown where it should have been the host's value (D1, 2026-10-06)
+        const held = resolve(iterable)
+        const given = held.kind === 'array' ? resolve(held.element) : undefined
+        const itemType = given && (given.kind === 'dynamic' || given.kind === 'unknown') ? given : element
+
         const inner = new Map(env)
-        inner.set(node.item, { vars: [], type: element })
+        inner.set(node.item, { vars: [], type: itemType })
 
         // a second `take` binds the turn's index, which is a number on every backend. lean-0017
         if (node.index) {
@@ -2425,7 +2470,19 @@ function checkProgram(
               // number` binding a field `value` is the idiom, the value read as its case
               const outer = env.get(local)
 
-              if (outer !== undefined && outer !== moduleEnv.get(local) && local !== subjectVar) {
+              // and an arm that WRITES that name writes the field, not the variable it hides: the write is lost when the
+              // arm ends, and a backend declares the field a constant, so TypeScript refused the assignment far from
+              // here (deck/host/test/base.tree, 2026-10-06). The reader meant the outer variable, so it is an error
+              if (outer !== undefined && outer !== moduleEnv.get(local) && local !== subjectVar && assignsName(branch.body, local)) {
+                diagnostics.push(
+                  diagnose('type-mismatch', {
+                    file: currentFile,
+                    span: node.span,
+                    message: `"case ${branch.label}" binds its field "${field}" as "${local}", so a \`save ${local}\` in the arm writes the field, not the "${local}" outside it, and is lost when the arm ends`,
+                    hint: `rename the outer "${local}", or rename the field under \`case ${branch.label}\` with a \`link\` line`,
+                  }),
+                )
+              } else if (outer !== undefined && outer !== moduleEnv.get(local) && local !== subjectVar) {
                 diagnostics.push(
                   diagnose('arm-shadow', {
                     file: currentFile,

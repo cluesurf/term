@@ -19,9 +19,10 @@ form binding
   link chord, like text
   link action, like text
 
-# create a shortcut map (a signal holding the binding list)
+# create a shortcut map (a signal holding the binding list). Typed in full, `like signal list binding`: a bare
+# `like signal` held the gradual unknown, so each entry read back out was one (D1)
 task make-shortcuts
-  like signal
+  like signal list binding
   send back
     call make-signal
       bind value
@@ -29,7 +30,7 @@ task make-shortcuts
 
 # register a key chord -> action binding
 task bind-key
-  take self, like signal
+  take self, like signal list binding
   take chord, like text
   take action, like text
   save items
@@ -45,7 +46,7 @@ task bind-key
 
 # resolve a pressed chord: find its binding and run the bound action through the registry
 task resolve-key
-  take self, like signal
+  take self, like signal list binding
   take registry, like signal
   take chord, like text
   save items

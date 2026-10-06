@@ -1,0 +1,2520 @@
+# Term data: the `host` dialect. Tree syntax with five heads (`host`, `list`, `mesh`, `tree`, `fuse`) and six literals,
+# no code. The compiler's reader and writer for it: it recognizes a data file, walks the parser's tree into a value
+# with every rule of the grammar reported as a diagnostic, expands anchors, writes the long and the compact spelling,
+# and reads a stream. See note/term/host/.
+#
+# Ported from compile/host.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - a value is `host-value`, tagged on `kind` as the original's `Data` was. Two of its cases cannot be named as the
+#     original named them: `make void` is the void value and `case fuse` reads as a form's `fuse`, so the cases are
+#     `blank` and `graft`, the names @term/host gives them, and the face renames the two tags at its boundary
+#   - an anchor is `host-anchor`, tagged on `hold`, so whether it holds entries or items is its case. The face writes
+#     it back as the original's `{ name, hold, list }`
+#   - the original kept the line that wrote each entry in a map keyed by the entry object, and checked keys given twice
+#     over the finished value. A Term value has no identity, so each read gives its value together with the "given
+#     twice" findings inside it, already in the order that check walked them (`spot-entry`, `spot-item`), and the
+#     root's are added after every reading error, which is where the check put them
+#   - JSON, to and from `unknown`, stays in the face
+#   - a line compared with the width counts UTF-16 units, as `length` did, and so does a compact head's one character
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find char-code-at
+  find split
+  find starts-with
+  find trim
+
+load @term/base/text/string
+  find repeat
+
+load ../parser/tree
+  find node
+  find root-node
+  find comment
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ./surface
+  find unescape-text
+
+# ---- the value ----
+
+form host-value
+  mark tag, name kind
+  case hash
+    link list, like list, like host-entry
+  case list
+    link list, like list, like host-value
+  case text
+    link value, like text
+  case number
+    link value, like number
+  case decimal
+    link value, like float
+  case flag
+    link value, like boolean
+  # the original's `void`
+  case blank
+  # the original's `fuse`: an unexpanded `fuse <name>`, present only before `expand-data`
+  case graft
+    link name, like text
+
+form host-entry
+  link name, like text
+  link base, like host-value
+
+# an anchor: the entries or the items of a `tree <name>`, decided by its first child
+form host-anchor
+  mark tag, name hold
+  case hash
+    link name, like text
+    link list, like list, like host-entry
+  case list
+    link name, like text
+    link list, like list, like host-value
+
+form host-file
+  # a hash of the top-level entries, or a list of the top-level `mesh` items
+  link root, like host-value
+  link trees, like hash, like text, like host-anchor
+
+# what a read gives: `file` is the empty file when it failed
+form host-read
+  link ok, like boolean
+  link file, like host-file
+  link diagnostics, like list, like diagnostic
+
+form host-expanded
+  link ok, like boolean
+  link value, like host-value
+  link diagnostics, like list, like diagnostic
+
+form host-stream
+  link ok, like boolean
+  link value, like host-value
+  link lines, like number
+  link diagnostics, like list, like diagnostic
+
+# one row of `data-keys`
+form host-key
+  link path, like text
+  link kind, like text
+  link value, like text
+
+# an entry as read, the span of the line that wrote it, and the "given twice" findings inside its value
+form spot-entry
+  link entry, like host-entry
+  link span, like span
+  link twice, like list, like diagnostic
+
+# an item as read, and the "given twice" findings inside it
+form spot-item
+  link value, like host-value
+  link twice, like list, like diagnostic
+
+form read-state
+  link file, like text
+  link lean, like boolean
+  link diagnostics, like list, like diagnostic
+
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+# `String(n)` for a whole number
+bind number-text
+  take value, like number
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+# a decimal keeps its point: `1.0` is not `1`
+bind decimal-text
+  take value, like float
+  like text
+  case node
+    text <(Number.isInteger($value) ? String($value) + '.0' : String($value))>
+  case browser
+    text <(Number.isInteger($value) ? String($value) + '.0' : String($value))>
+  case rust
+    text <(if $value.is_finite() && $value.fract() == 0.0 \{ format!("\{:.1\}", $value) \} else \{ $value.to_string() \})>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+# ---- the heads ----
+
+# what a head word stands for, `<>` for a word that is no data head: `host` or `h` is `host`, and so on
+task head-kind
+  take head, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(head, <host>), is-equal(head, <h>))
+    hold
+      back <host>
+  fork test, or(is-equal(head, <list>), is-equal(head, <l>))
+    hold
+      back <list>
+  fork test, or(is-equal(head, <mesh>), is-equal(head, <m>))
+    hold
+      back <mesh>
+  fork test, or(is-equal(head, <tree>), is-equal(head, <t>))
+    hold
+      back <tree>
+  fork test, or(is-equal(head, <fuse>), is-equal(head, <f>))
+    hold
+      back <fuse>
+  back <>
+
+task is-lower-letter
+  take one, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(one, 0)
+  back and(is-maximum(97, code), is-maximum(code, 122))
+
+task is-digit-char
+  take one, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(one, 0)
+  back and(is-maximum(48, code), is-maximum(code, 57))
+
+# a key is a name: lowercase letters and digits in words joined by one `dash`, starting with a letter. The original's
+# `/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/`, and with `dash` an underscore its `kebab` test
+task word-key
+  take name, like text
+  take dash, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  fork test, not(is-lower-letter(char-at(name, 0)))
+    hold
+      back false
+  save at, 1
+  save after-dash, false
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      fork test, is-equal(one, dash)
+        hold
+          fork test, after-dash
+            hold
+              back false
+          save after-dash, true
+        miss
+          fork test, not(or(is-lower-letter(one), is-digit-char(one)))
+            hold
+              back false
+          save after-dash, false
+      save at, add(at, 1)
+  back not(after-dash)
+
+task is-key
+  take name, like text
+  like boolean
+
+  back word-key(name, <->)
+
+# ---- tree helpers ----
+
+task root-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+task kids-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task node-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, kids/length)
+    hold
+      save found, get(kids, at)
+      back make(some, found)
+  back make none
+
+task groups-in
+  take kids, like list, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  walk kids
+    take kid
+    fork test, is-group-node(kid)
+      hold
+        push(out, kid)
+  back out
+
+# the source text of a name or a text, unescaped. `{` is a literal brace in data, so an interpolation part is put
+# back as the characters it was written with
+task literal-text
+  take one, like node
+  like text
+
+  save out, <>
+  save held, make list
+  save is-text, false
+  sift one
+    case name
+      save held, parts
+    case text
+      save held, parts
+      save is-text, true
+    miss
+      save nothing, 0
+  walk held
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      case interpolation
+        link part-depth
+        link inner-group
+        save inner, <>
+        sift inner-group
+          case some
+            link hole
+            sift hole
+              case group
+                walk nodes
+                  take inside
+                  sift inside
+                    case name
+                      save inner, <{inner}{literal-text(inside)}>
+                    miss
+                      save nothing, 0
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        save out, <{out}\{{inner}\}>
+      miss
+        save nothing, 0
+  fork test, is-text
+    hold
+      back unescape-text(out)
+  back out
+
+task is-name-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case name
+      back true
+    miss
+      back false
+
+task is-text-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      back true
+    miss
+      back false
+
+# the head of a group: its first node when that is a name
+task head-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  save first, node-at(kids-of(group), 0)
+  sift first
+    case some
+      link known
+      fork test, is-name-node(known)
+        hold
+          save word, literal-text(known)
+          back make(some, word)
+    case none
+      save nothing, 0
+  back make none
+
+# a head that is there and not empty, as the original's `head &&` read it
+task has-head
+  take head, like maybe, like text
+  like boolean
+  mark private
+
+  sift head
+    case some
+      link known
+      back is-unequal(known, <>)
+    case none
+      back false
+
+task head-or
+  take head, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift head
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# what a group's head stands for, `<>` for none
+task kind-of
+  take group, like node
+  like text
+  mark private
+
+  back head-kind(head-or(head-of(group), <>))
+
+# a group of exactly one name, which a bare word on its own line parses as: that name
+task lone-name
+  take one, like node
+  like maybe, like node
+  mark private
+
+  sift one
+    case group
+      fork test, is-equal(nodes/length, 1)
+        hold
+          save only, get(nodes, 0)
+          fork test, is-name-node(only)
+            hold
+              back make(some, only)
+    miss
+      save nothing, 0
+  back make none
+
+# the key of `host <key>` / `list <key>` / `tree <name>` / `fuse <name>`: the second node, a name or a text
+task key-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  save second, node-at(kids-of(group), 1)
+  sift second
+    case some
+      link known
+      fork test, or(is-name-node(known), is-text-node(known))
+        hold
+          save word, literal-text(known)
+          back make(some, word)
+      save lone, lone-name(known)
+      sift lone
+        case some
+          link only
+          save word, literal-text(only)
+          back make(some, word)
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# the key of a group when it is written as a bare word, never when it is a `<text>`
+task bare-key
+  take group, like node
+  like maybe, like node
+  mark private
+
+  save second, node-at(kids-of(group), 1)
+  sift second
+    case some
+      link known
+      fork test, is-name-node(known)
+        hold
+          back make(some, known)
+      back lone-name(known)
+    case none
+      back make none
+
+task is-scalar-word
+  take one, like node
+  like boolean
+  mark private
+
+  fork test, not(is-name-node(one))
+    hold
+      back false
+  save word, literal-text(one)
+  back or(or(is-equal(word, <true>), is-equal(word, <false>)), is-equal(word, <void>))
+
+task is-scalar
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case integer
+      back true
+    case decimal
+      back true
+    case radix
+      back true
+    case text
+      back true
+    case name
+      back is-scalar-word(one)
+    case group
+      # a bare word on its own line parses as a group of one name
+      fork test, is-equal(nodes/length, 1)
+        hold
+          save only, get(nodes, 0)
+          back and(not(is-group-node(only)), is-scalar(only))
+      back false
+    miss
+      back false
+
+# a scalar: a literal node, or a bare `true` / `false` / `void` word
+task read-scalar
+  take one, like node
+  like host-value
+  mark private
+
+  sift one
+    case integer
+      save whole, value
+      back
+        make number
+          bind value, whole
+    case radix
+      save whole, value
+      back
+        make number
+          bind value, whole
+    case decimal
+      save fraction, value
+      back
+        make decimal
+          bind value, fraction
+    case text
+      save written, literal-text(one)
+      back
+        make text
+          bind value, written
+    case name
+      save word, literal-text(one)
+      fork test, or(is-equal(word, <true>), is-equal(word, <false>))
+        hold
+          save set, is-equal(word, <true>)
+          back
+            make flag
+              bind value, set
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          back read-scalar(get(nodes, 0))
+    miss
+      save nothing, 0
+  back make blank
+
+task zero-span
+  like span
+  mark private
+
+  save at
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, at
+      bind end, at
+
+task first-chunk-span
+  take held, like list, like node
+  like span
+  mark private
+
+  walk held
+    take part
+    sift part
+      case chunk
+        back span
+      miss
+        save nothing, 0
+  back zero-span()
+
+task span-of
+  take one, like node
+  like span
+  mark private
+
+  sift one
+    case integer
+      back span
+    case decimal
+      back span
+    case radix
+      back span
+    case name
+      back first-chunk-span(parts)
+    case text
+      back first-chunk-span(parts)
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          back span-of(get(nodes, 0))
+    miss
+      save nothing, 0
+  back zero-span()
+
+# the comments written above a node: a group, a text or a number carries them
+task comments-of
+  take one, like node
+  like list, like comment
+  mark private
+
+  save found, make none
+  sift one
+    case group
+      save found, comments
+    case text
+      save found, comments
+    case integer
+      save found, comments
+    case decimal
+      save found, comments
+    case radix
+      save found, comments
+    miss
+      save nothing, 0
+  sift found
+    case some
+      link written
+      back written
+    case none
+      back make list
+
+# ---- recognizing a data file ----
+
+# a `.tree` whose top-level heads are all data heads, and in which no `host` carries a `code` or `text` head (a code
+# file of constants writes `host x, code 10`, data writes `host x, 10`)
+task is-data-file
+  take source, like token-source
+  like boolean
+
+  save parsed, parse(source)
+  back and(parsed/ok, is-data-tree(parsed/tree))
+
+# the same question of a tree already parsed
+task is-data-tree
+  take tree, like root-node
+  like boolean
+
+  save top, root-nodes(tree)
+  fork test, is-equal(top/length, 0)
+    hold
+      back false
+  walk groups-in(root-nodes(tree))
+    take group
+    fork test, is-equal(kind-of(group), <>)
+      hold
+        back false
+    fork test, carries-code(group)
+      hold
+        back false
+  back true
+
+# anything under a data head that is not itself a data head, a literal word or a literal is code: `host x` with a
+# `take` beneath it is a mixin, `host x, code 10` a constant, `host x, call f` a computed value
+task carries-code
+  take group, like node
+  like boolean
+  mark private
+
+  save kids, kids-of(group)
+  save at, 1
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      save kid, get(kids, at)
+      save at, add(at, 1)
+      fork test, not(is-group-node(kid))
+        hold
+          turn next
+      save head, head-of(kid)
+      sift head
+        case some
+          link known
+          # a group of one bare name is a key or a literal word
+          save bare, false
+          save lone, lone-name(kid)
+          sift lone
+            case some
+              link only
+              save bare, true
+            case none
+              save nothing, 0
+          fork test, bare
+            hold
+              turn next
+          fork test, is-equal(head-kind(known), <>)
+            hold
+              back true
+          fork test, carries-code(kid)
+            hold
+              back true
+        case none
+          save nothing, 0
+  back false
+
+# ---- the tree, read ----
+
+task read-data-text
+  take source, like token-source
+  take lean, like boolean, fall false
+  like host-read
+
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back
+        make host-read
+          bind ok, false
+          bind file, empty-file()
+          bind diagnostics, parsed/diagnostics
+  back read-data(parsed/tree, source/file, lean)
+
+task empty-file
+  like host-file
+  mark private
+
+  save none-kept, make list
+  save root
+    make hash
+      bind list, none-kept
+  save trees, make hash
+  back
+    make host-file
+      bind root, root
+      bind trees, trees
+
+task read-error
+  take state, like read-state
+  take at, like span
+  take message, like text
+  mark private
+
+  push(state/diagnostics, syntax-error(state/file, at, message))
+
+task syntax-error
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  back diagnose(make(syntax-error), input)
+
+task syntax-error-hint
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  back diagnose(make(syntax-error), input)
+
+# `lean`: the file's role carries `mark lean`, and a head the dialect does not know, carrying a value, is a `host`
+# entry keyed by that head. `a 10` is `host a, 10`, and a head over a block is a map entry. `list` stays `list`, so a
+# one-element list is still written `list x / 5`. The lean form is only ever read under the mark. note/term/lean.md
+task read-data
+  take tree, like root-node
+  take file, like text
+  take lean, like boolean, fall false
+  like host-read
+
+  save found, make list
+  save state
+    make read-state
+      bind file, file
+      bind lean, lean
+      bind diagnostics, found
+  save trees, make hash
+  save entries, make list
+  save items, make list
+  save seen-data, false
+
+  walk groups-in(root-nodes(tree))
+    take group
+    save head, head-of(group)
+    save kind, kind-of(group)
+    fork test, is-equal(kind, <>)
+      hold
+        # the lean surface: the head IS the key, and what follows is the value or the block
+        fork test, and(and(lean, has-head(head)), is-above(kids-of(group)/length, 1))
+          hold
+            save seen-data, true
+            save read, read-entry(state, group, <host>, true)
+            sift read
+              case some
+                link spot
+                push(entries, spot)
+              case none
+                save nothing, 0
+            turn next
+        save head-text, head-or(head, <?>)
+        read-error(state, span-of(group), <"{head-text}" is not data. A data file has host, list, mesh, tree and fuse, and nothing else>)
+        turn next
+    fork test, is-equal(kind, <tree>)
+      hold
+        fork test, seen-data
+          hold
+            save key-text, head-or(key-of(group), <?>)
+            read-error(state, span-of(group), <"{key-text}" is declared after data. Anchors come first>)
+        save anchor, read-tree(state, group)
+        sift anchor
+          case some
+            link made
+            save anchor-name, anchor-name-of(made)
+            fork test, trees/has(anchor-name)
+              hold
+                read-error(state, span-of(group), <"{anchor-name}" is declared twice>)
+            save trees/{anchor-name}, made
+          case none
+            save nothing, 0
+        turn next
+    save seen-data, true
+    fork test, is-equal(kind, <mesh>)
+      hold
+        push(items, read-mesh(state, group))
+        turn next
+    fork test, is-equal(kind, <fuse>)
+      hold
+        push(entries, graft-spot(head-or(key-of(group), <>)))
+        turn next
+    save read, read-entry(state, group, kind, false)
+    sift read
+      case some
+        link spot
+        push(entries, spot)
+      case none
+        save nothing, 0
+
+  fork test, and(is-above(entries/length, 0), is-above(items/length, 0))
+    hold
+      read-error(state, span-of(get(root-nodes(tree), 0)), <a file is a map of "host" entries or a list of "mesh" items, never both>)
+
+  save root, make blank
+  save twice, make list
+  fork test, is-above(items/length, 0)
+    hold
+      save root
+        make list
+          bind list, item-values(items)
+      save twice, item-twice(items)
+    miss
+      save root
+        make hash
+          bind list, entry-values(entries)
+      save twice, hash-twice(file, entries)
+  walk twice
+    take one
+    push(found, one)
+
+  fork test, is-above(found/length, 0)
+    hold
+      back
+        make host-read
+          bind ok, false
+          bind file, empty-file()
+          bind diagnostics, found
+  save read-file
+    make host-file
+      bind root, root
+      bind trees, trees
+  save none-found, make list
+  back
+    make host-read
+      bind ok, true
+      bind file, read-file
+      bind diagnostics, none-found
+
+task anchor-name-of
+  take anchor, like host-anchor
+  like text
+  mark private
+
+  sift anchor
+    case hash
+      back name
+    case list
+      back name
+
+task graft-spot
+  take name, like text
+  like spot-entry
+  mark private
+
+  save base
+    make graft
+      bind name, name
+  save entry
+    make host-entry
+      bind name, <>
+      bind base, base
+  save none-twice, make list
+  back
+    make spot-entry
+      bind entry, entry
+      bind span, zero-span()
+      bind twice, none-twice
+
+task entry-values
+  take spots, like list, like spot-entry
+  like list, like host-entry
+  mark private
+
+  save out, make list
+  walk spots
+    take spot
+    push(out, spot/entry)
+  back out
+
+task item-values
+  take spots, like list, like spot-item
+  like list, like host-value
+  mark private
+
+  save out, make list
+  walk spots
+    take spot
+    push(out, spot/value)
+  back out
+
+task item-twice
+  take spots, like list, like spot-item
+  like list, like diagnostic
+  mark private
+
+  save out, make list
+  walk spots
+    take spot
+    walk spot/twice
+      take one
+      push(out, one)
+  back out
+
+task is-graft
+  take given, like host-value
+  like boolean
+  mark private
+
+  sift given
+    case graft
+      back true
+    miss
+      back false
+
+# a key given twice in one map, with no `fuse` between, is an error. Each entry's own finding, then the findings inside
+# its value, the order the original's walk over the finished value gave
+task hash-twice
+  take file, like text
+  take spots, like list, like spot-entry
+  like list, like diagnostic
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk spots
+    take spot
+    save entry, spot/entry
+    fork test, is-graft(entry/base)
+      hold
+        save seen, make hash
+        turn next
+    save key, entry/name
+    fork test, seen/has(key)
+      hold
+        push(out, syntax-error-hint(file, spot/span, <"{key}" is given twice>, <keep one of the two. A key may be given again only after a `fuse`, to replace what the anchor gave>))
+    save seen/{key}, true
+    walk spot/twice
+      take one
+      push(out, one)
+  back out
+
+# `host <key>, <scalar>` / `host <key>` + entries / `list <key>` + items. Under `as-head` the group's own head is the
+# key and everything after it is the value, which is the lean spelling: `a 10` for `host a, 10`
+task read-entry
+  take state, like read-state
+  take group, like node
+  take kind, like text
+  take as-head, like boolean
+  like maybe, like spot-entry
+  mark private
+
+  save kids, kids-of(group)
+  save name-read, key-of(group)
+  save key-node, node-at(kids, 1)
+  save skip, 2
+  fork test, as-head
+    hold
+      save name-read, head-of(group)
+      save key-node, node-at(kids, 0)
+      save skip, 1
+  save name, <>
+  sift name-read
+    case some
+      link known
+      save name, known
+    case none
+      fork test, is-equal(kind, <list>)
+        hold
+          read-error(state, span-of(group), <a "list" at this level needs a key. A nested list without one sits inside a list>)
+        miss
+          read-error(state, span-of(group), <"host" needs a key>)
+      back make none
+  save keyed-by-text, false
+  sift key-node
+    case some
+      link known
+      save keyed-by-text, is-text-node(known)
+    case none
+      save nothing, 0
+  fork test, and(not(is-key(name)), not(keyed-by-text))
+    hold
+      read-error(state, span-of(group), <"{name}" is not a key. A key is a name: letters, digits and dashes, starting with a letter>)
+      back make none
+
+  save after, make list
+  save at, skip
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(after, get(kids, at))
+      save at, add(at, 1)
+  save at-span, span-of(group)
+
+  fork test, is-equal(kind, <host>)
+    hold
+      # a bare `true` / `false` / `void` after the comma parses as a group of one name, so it is a scalar, not a block
+      save scalars, make list
+      save blocks, make list
+      walk after
+        take kid
+        fork test, is-scalar(kid)
+          hold
+            push(scalars, kid)
+          miss
+            fork test, is-group-node(kid)
+              hold
+                push(blocks, kid)
+      fork test, and(is-above(scalars/length, 0), is-above(blocks/length, 0))
+        hold
+          read-error(state, at-span, <"{name}" has a value and children. A scalar entry has one, a map entry has the other>)
+          back make none
+      fork test, is-above(scalars/length, 1)
+        hold
+          save count, scalars/length
+          read-error(state, at-span, <"{name}" has {count} values. A list is written "list {name}">)
+          back make none
+      fork test, is-equal(scalars/length, 1)
+        hold
+          save none-twice, make list
+          save made, spot-of(name, read-scalar(get(scalars, 0)), at-span, none-twice)
+          back make(some, made)
+      save inner, read-entries(state, blocks, name)
+      save base
+        make hash
+          bind list, entry-values(inner)
+      save made, spot-of(name, base, at-span, hash-twice(state/file, inner))
+      back make(some, made)
+
+  save inner-items, read-items(state, after, name)
+  save base
+    make list
+      bind list, item-values(inner-items)
+  save made, spot-of(name, base, at-span, item-twice(inner-items))
+  back make(some, made)
+
+task spot-of
+  take name, like text
+  take base, like host-value
+  take at, like span
+  take twice, like list, like diagnostic
+  like spot-entry
+  mark private
+
+  save entry
+    make host-entry
+      bind name, name
+      bind base, base
+  back
+    make spot-entry
+      bind entry, entry
+      bind span, at
+      bind twice, twice
+
+# the entries of a map block
+task read-entries
+  take state, like read-state
+  take groups, like list, like node
+  take owner, like text
+  like list, like spot-entry
+  mark private
+
+  save out, make list
+  walk groups
+    take child
+    save head, head-of(child)
+    save kind, <>
+    fork test, has-head(head)
+      hold
+        save kind, kind-of(child)
+    fork test, or(is-equal(kind, <host>), is-equal(kind, <list>))
+      hold
+        save read, read-entry(state, child, kind, false)
+        sift read
+          case some
+            link spot
+            push(out, spot)
+          case none
+            save nothing, 0
+        turn next
+    fork test, is-equal(kind, <fuse>)
+      hold
+        push(out, graft-spot(head-or(key-of(child), <>)))
+        turn next
+    fork test, is-equal(kind, <mesh>)
+      hold
+        read-error(state, span-of(child), <"mesh" is a list item and "{owner}" is a map. Give it a key with "host">)
+        turn next
+    fork test, is-equal(kind, <tree>)
+      hold
+        save key-text, head-or(key-of(child), <?>)
+        read-error(state, span-of(child), <"{key-text}" is declared inside "{owner}". Anchors come first, at the top>)
+        turn next
+    fork test, and(is-equal(kids-of(child)/length, 1), has-head(head))
+      hold
+        # a bare word where a value belongs: `host env, prod`
+        save word, head-or(head, <>)
+        read-error(state, span-of(child), <"{word}" is not a value. Text is written \<{word}\>>)
+        turn next
+    fork test, and(state/lean, has-head(head))
+      hold
+        # the lean surface, inside a map: the head is the key
+        save read, read-entry(state, child, <host>, true)
+        sift read
+          case some
+            link spot
+            push(out, spot)
+          case none
+            save nothing, 0
+        turn next
+    save head-text, head-or(head, <?>)
+    read-error(state, span-of(child), <"{head-text}" is not data. A data file has host, list, mesh, tree and fuse, and nothing else>)
+  back out
+
+task item-spot
+  take given, like host-value
+  take twice, like list, like diagnostic
+  like spot-item
+  mark private
+
+  back
+    make spot-item
+      bind value, given
+      bind twice, twice
+
+# the items of a list: scalars, `mesh` maps, nested `list`s, `fuse`s
+task read-items
+  take state, like read-state
+  take kids, like list, like node
+  take owner, like text
+  like list, like spot-item
+  mark private
+
+  save out, make list
+  walk kids
+    take kid
+    fork test, is-scalar(kid)
+      hold
+        save none-twice, make list
+        push(out, item-spot(read-scalar(kid), none-twice))
+        turn next
+    fork test, not(is-group-node(kid))
+      hold
+        turn next
+    save head, head-of(kid)
+    save kind, <>
+    fork test, has-head(head)
+      hold
+        save kind, kind-of(kid)
+    fork test, is-equal(kind, <mesh>)
+      hold
+        push(out, read-mesh(state, kid))
+        turn next
+    fork test, is-equal(kind, <list>)
+      hold
+        save keyed, false
+        save bare, bare-key(kid)
+        sift bare
+          case some
+            link bare-node
+            sift key-of(kid)
+              case some
+                link known
+                save keyed, not(is-scalar-word(bare-node))
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+        fork test, keyed
+          hold
+            save key-text, head-or(key-of(kid), <>)
+            read-error(state, span-of(kid), <"{key-text}" is a keyed list inside the list "{owner}". A nested list has no key>)
+          miss
+            save rest-kids, make list
+            save at, 1
+            save all-kids, kids-of(kid)
+            walk test
+              hook test, is-below(at, all-kids/length)
+              hook hold
+                push(rest-kids, get(all-kids, at))
+                save at, add(at, 1)
+            save inner, read-items(state, rest-kids, owner)
+            save nested
+              make list
+                bind list, item-values(inner)
+            push(out, item-spot(nested, item-twice(inner)))
+        turn next
+    fork test, is-equal(kind, <fuse>)
+      hold
+        save graft-name, head-or(key-of(kid), <>)
+        save grafted
+          make graft
+            bind name, graft-name
+        save none-twice, make list
+        push(out, item-spot(grafted, none-twice))
+        turn next
+    fork test, is-equal(kind, <host>)
+      hold
+        read-error(state, span-of(kid), <"{owner}" is a list, so its items are scalars, "mesh" maps or "list" lists, never "host" entries>)
+        turn next
+    save all-kids, kids-of(kid)
+    save first, node-at(all-kids, 0)
+    save word-only, false
+    sift first
+      case some
+        link known
+        save word-only, and(is-scalar-word(known), is-equal(all-kids/length, 1))
+      case none
+        save nothing, 0
+    fork test, word-only
+      hold
+        save none-twice, make list
+        push(out, item-spot(read-scalar(get(all-kids, 0)), none-twice))
+        turn next
+    save head-text, head-or(head, <?>)
+    save head-word, head-or(head, <>)
+    read-error(state, span-of(kid), <"{head-text}" is not a value. Text is written \<{head-word}\>>)
+  back out
+
+task read-mesh
+  take state, like read-state
+  take group, like node
+  like spot-item
+  mark private
+
+  save kids, kids-of(group)
+  save first, node-at(kids, 1)
+  sift first
+    case some
+      link known
+      fork test, not(is-group-node(known))
+        hold
+          read-error(state, span-of(group), <"mesh" takes no key. Its items are the "host" lines beneath it>)
+    case none
+      save nothing, 0
+  save blocks, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      save kid, get(kids, at)
+      fork test, and(is-group-node(kid), not(is-scalar(kid)))
+        hold
+          push(blocks, kid)
+      save at, add(at, 1)
+  save inner, read-entries(state, blocks, <mesh>)
+  save made
+    make hash
+      bind list, entry-values(inner)
+  back item-spot(made, hash-twice(state/file, inner))
+
+task read-tree
+  take state, like read-state
+  take group, like node
+  like maybe, like host-anchor
+  mark private
+
+  save name-read, key-of(group)
+  save name, <>
+  save named, false
+  sift name-read
+    case some
+      link known
+      save name, known
+      save named, is-key(known)
+    case none
+      save nothing, 0
+  fork test, not(named)
+    hold
+      read-error(state, span-of(group), <"tree" needs a name>)
+      back make none
+
+  save kids, kids-of(group)
+  save after, make list
+  save at, 2
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(after, get(kids, at))
+      save at, add(at, 1)
+
+  save first-kind, <>
+  save has-first, false
+  walk after
+    take kid
+    fork test, is-group-node(kid)
+      hold
+        save first-kind, kind-of(kid)
+        save has-first, true
+        halt
+    fork test, is-scalar(kid)
+      hold
+        save first-kind, <scalar>
+        save has-first, true
+        halt
+  fork test, not(has-first)
+    hold
+      save none-held, make list
+      save made
+        make hash
+          bind name, name
+          bind list, none-held
+      back make(some, made)
+  fork test, or(or(is-equal(first-kind, <host>), is-equal(first-kind, <list>)), is-equal(first-kind, <fuse>))
+    hold
+      save blocks, make list
+      walk after
+        take kid
+        fork test, and(is-group-node(kid), not(is-scalar(kid)))
+          hold
+            push(blocks, kid)
+      save inner, read-entries(state, blocks, name)
+      save made
+        make hash
+          bind name, name
+          bind list, entry-values(inner)
+      back make(some, made)
+  save inner-items, read-items(state, after, name)
+  save made
+    make list
+      bind name, name
+      bind list, item-values(inner-items)
+  back make(some, made)
+
+# ---- anchors ----
+
+form expand-state
+  link file, like text
+  link trees, like hash, like text, like host-anchor
+  link diagnostics, like list, like diagnostic
+  link expanding, like list, like text
+
+task expand-error
+  take state, like expand-state
+  take message, like text
+  mark private
+
+  push(state/diagnostics, syntax-error(state/file, zero-span(), message))
+
+task has-text-in
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task fuse-chain
+  take expanding, like list, like text
+  take name, like text
+  like text
+  mark private
+
+  save all, make list
+  walk expanding
+    take one
+    push(all, one)
+  push(all, name)
+  back join(all, <, >)
+
+task expand-data
+  take given, like host-file
+  take file, like text, fall <data.tree>
+  like host-expanded
+
+  save found, make list
+  save none-expanding, make list
+  save state
+    make expand-state
+      bind file, file
+      bind trees, given/trees
+      bind diagnostics, found
+      bind expanding, none-expanding
+  save root, expand-value(state, given/root)
+  back
+    make host-expanded
+      bind ok, is-equal(found/length, 0)
+      bind value, root
+      bind diagnostics, found
+
+# later wins: an entry with a key already present replaces it in place
+task replace-entry
+  take out, like list, like host-entry
+  take entry, like host-entry
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, out/length)
+    hook hold
+      fork test, is-equal(get(out, at)/name, entry/name)
+        hold
+          save out/{at}, entry
+          back
+      save at, add(at, 1)
+  push(out, entry)
+
+task expand-entries
+  take state, like expand-state
+  take given, like list, like host-entry
+  like list, like host-entry
+  mark private
+
+  save out, make list
+  walk given
+    take entry
+    sift entry/base
+      case graft
+        save anchor-name, name
+        fork test, not(state/trees/has(anchor-name))
+          hold
+            expand-error(state, <"{anchor-name}" is fused but no tree declares it>)
+            turn next
+        save anchor, state/trees/get(anchor-name)
+        sift anchor
+          case hash
+            link held-name
+            link held
+            fork test, has-text-in(state/expanding, held-name)
+              hold
+                expand-error(state, <"{held-name}" fuses itself through {fuse-chain(state/expanding, held-name)}>)
+                turn next
+            push(state/expanding, held-name)
+            save fused, expand-entries(state, held)
+            pop(state/expanding)
+            walk fused
+              take one
+              replace-entry(out, one)
+          case list
+            link list-name
+            expand-error(state, <"{anchor-name}" holds list items and is fused into a map>)
+        turn next
+      miss
+        save nothing, 0
+    save expanded
+      make host-entry
+        bind name, entry/name
+        bind base, expand-value(state, entry/base)
+    replace-entry(out, expanded)
+  back out
+
+task expand-items
+  take state, like expand-state
+  take given, like list, like host-value
+  like list, like host-value
+  mark private
+
+  save out, make list
+  walk given
+    take item
+    sift item
+      case graft
+        save anchor-name, name
+        fork test, not(state/trees/has(anchor-name))
+          hold
+            expand-error(state, <"{anchor-name}" is fused but no tree declares it>)
+            turn next
+        save anchor, state/trees/get(anchor-name)
+        sift anchor
+          case list
+            link held-name
+            link held
+            fork test, has-text-in(state/expanding, held-name)
+              hold
+                expand-error(state, <"{held-name}" fuses itself through {fuse-chain(state/expanding, held-name)}>)
+                turn next
+            push(state/expanding, held-name)
+            save fused, expand-items(state, held)
+            pop(state/expanding)
+            walk fused
+              take one
+              push(out, one)
+          case hash
+            link hash-name
+            expand-error(state, <"{anchor-name}" holds map entries and is fused into a list>)
+        turn next
+      miss
+        save nothing, 0
+    push(out, expand-value(state, item))
+  back out
+
+task expand-value
+  take state, like expand-state
+  take given, like host-value
+  like host-value
+  mark private
+
+  sift given
+    case hash
+      link held-list
+      save entries, expand-entries(state, held-list)
+      back
+        make hash
+          bind list, entries
+    case list
+      link held-list
+      save items, expand-items(state, held-list)
+      back
+        make list
+          bind list, items
+    case graft
+      expand-error(state, <"{name}" is fused where a value belongs>)
+      back make blank
+    miss
+      back given
+
+# ---- writing ----
+
+task host-width
+  like number
+  mark private
+
+  back 78
+
+task key-text
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-key(name)
+    hold
+      back name
+  back <\<{escape-text(name)}\>>
+
+task pad-of
+  take depth, like number
+  like text
+  mark private
+
+  back repeat(<  >, depth)
+
+task is-scalar-value
+  take given, like host-value
+  like boolean
+  mark private
+
+  sift given
+    case hash
+      back false
+    case list
+      back false
+    case graft
+      back false
+    miss
+      back true
+
+task scalar-text
+  take given, like host-value
+  like text
+
+  sift given
+    case text
+      back <\<{escape-text(value)}\>>
+    case number
+      back number-text(value)
+    case decimal
+      back decimal-text(value)
+    case flag
+      fork test, value
+        hold
+          back <true>
+      back <false>
+    miss
+      back <void>
+
+# a value written as the inside of a text literal, every character it holds read back as itself by `unescape-text`
+task escape-text
+  take given, like text
+  like text
+
+  save out, <>
+  save at, 0
+  save size, char-count(given)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(given, at)
+      save at, add(at, 1)
+      fork test, is-equal(one, <\\>)
+        hold
+          save out, <{out}\\\\>
+          turn next
+      fork test, is-equal(one, <\<>)
+        hold
+          save out, <{out}\\\<>
+          turn next
+      fork test, is-equal(one, <\>>)
+        hold
+          save out, <{out}\\\>>
+          turn next
+      fork test, is-equal(one, <\{>)
+        hold
+          save out, <{out}\\\{>
+          turn next
+      fork test, is-equal(one, <\}>)
+        hold
+          save out, <{out}\\\}>
+          turn next
+      fork test, is-equal(one, <\n>)
+        hold
+          save out, <{out}\\n>
+          turn next
+      fork test, is-equal(one, <\r>)
+        hold
+          save out, <{out}\\r>
+          turn next
+      fork test, is-equal(one, <\t>)
+        hold
+          save out, <{out}\\t>
+          turn next
+      save out, <{out}{one}>
+  back out
+
+# the original's `lines.join('\n').replace(/\n+$/, '') + '\n'`, worked from the last line back so a long file is not
+# read twice: an empty last line is only the newline before it, and a line can end in newlines of its own (a `fuse`
+# name written as a text holding one), which go too, and with them the line when nothing else is left of it
+task close-lines
+  take lines, like list, like text
+  like text
+  mark private
+
+  save last, lines/length
+  save tail, <>
+  save has-tail, false
+  walk test
+    hook test, and(is-above(last, 0), not(has-tail))
+    hook hold
+      save trimmed, trim-newlines(get(lines, subtract(last, 1)))
+      save last, subtract(last, 1)
+      fork test, is-unequal(trimmed, <>)
+        hold
+          save tail, trimmed
+          save has-tail, true
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, last)
+    hook hold
+      push(kept, get(lines, at))
+      save at, add(at, 1)
+  fork test, has-tail
+    hold
+      push(kept, tail)
+  back <{join(kept, <\n>)}\n>
+
+# one line without the newlines it ends in
+task trim-newlines
+  take given, like text
+  like text
+  mark private
+
+  save out, <>
+  save run, <>
+  save at, 0
+  save size, char-count(given)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(given, at)
+      fork test, is-equal(one, <\n>)
+        hold
+          save run, <{run}\n>
+        miss
+          save out, <{out}{run}{one}>
+          save run, <>
+      save at, add(at, 1)
+  back out
+
+task write-long
+  take given, like host-value
+  take trees, like maybe, like hash, like text, like host-anchor
+  like text
+
+  save lines, make list
+  sift trees
+    case some
+      link known
+      walk known/values()
+        take anchor
+        sift anchor
+          case hash
+            link anchor-name
+            link held
+            push(lines, <tree {anchor-name}>)
+            long-entries(held, 1, lines)
+          case list
+            link anchor-name
+            link held
+            push(lines, <tree {anchor-name}>)
+            long-items(held, 1, lines)
+        push(lines, <>)
+    case none
+      save nothing, 0
+  sift given
+    case hash
+      link held-list
+      long-entries(held-list, 0, lines)
+    case list
+      link held-list
+      long-items(held-list, 0, lines)
+    miss
+      push(lines, scalar-text(given))
+  back close-lines(lines)
+
+task long-entries
+  take given, like list, like host-entry
+  take depth, like number
+  take out, like list, like text
+  mark private
+
+  save pad, pad-of(depth)
+  walk given
+    take entry
+    save key, key-text(entry/name)
+    save base, entry/base
+    sift base
+      case graft
+        push(out, <{pad}fuse {name}>)
+      case hash
+        link held-list
+        push(out, <{pad}host {key}>)
+        long-entries(held-list, add(depth, 1), out)
+      case list
+        link held-list
+        push(out, <{pad}list {key}>)
+        long-items(held-list, add(depth, 1), out)
+      miss
+        push(out, <{pad}host {key}, {scalar-text(base)}>)
+
+task all-scalar
+  take given, like list, like host-value
+  like boolean
+  mark private
+
+  walk given
+    take item
+    fork test, not(is-scalar-value(item))
+      hold
+        back false
+  back true
+
+# a run of words on lines at a pad, comma separated, wrapped at the width
+task wrap-words
+  take words, like list, like text
+  take pad, like text
+  take out, like list, like text
+  mark private
+
+  save line, pad
+  walk words
+    take word
+    fork test, and(is-unequal(line, pad), is-above(add(add(utf16-length(line), 2), utf16-length(word)), host-width()))
+      hold
+        push(out, line)
+        save line, pad
+    fork test, is-equal(line, pad)
+      hold
+        save line, <{line}{word}>
+      miss
+        save line, <{line}, {word}>
+  push(out, line)
+
+task long-items
+  take given, like list, like host-value
+  take depth, like number
+  take out, like list, like text
+  mark private
+
+  save pad, pad-of(depth)
+  # a run of scalars goes on one line, comma separated, wrapped at the width
+  fork test, and(is-above(given/length, 0), all-scalar(given))
+    hold
+      save words, make list
+      walk given
+        take item
+        push(words, scalar-text(item))
+      wrap-words(words, pad, out)
+      back
+  walk given
+    take item
+    sift item
+      case graft
+        push(out, <{pad}fuse {name}>)
+      case hash
+        link held-list
+        push(out, <{pad}mesh>)
+        long-entries(held-list, add(depth, 1), out)
+      case list
+        link held-list
+        push(out, <{pad}list>)
+        long-items(held-list, add(depth, 1), out)
+      miss
+        push(out, <{pad}{scalar-text(item)}>)
+
+task write-compact
+  take given, like host-value
+  take trees, like maybe, like hash, like text, like host-anchor
+  like text
+
+  back <{compact-body(given, trees)}\n>
+
+# the compact lines, joined, before the closing newline
+task compact-body
+  take given, like host-value
+  take trees, like maybe, like hash, like text, like host-anchor
+  like text
+  mark private
+
+  save lines, make list
+  sift trees
+    case some
+      link known
+      walk known/values()
+        take anchor
+        save body, make list
+        save anchor-name, <>
+        sift anchor
+          case hash
+            link held-name
+            link held
+            save anchor-name, held-name
+            walk held
+              take one
+              push(body, compact-entry(one))
+          case list
+            link held-name
+            link held
+            save anchor-name, held-name
+            walk held
+              take one
+              push(body, compact-item(one))
+        fork test, is-above(body/length, 0)
+          hold
+            push(lines, <t({anchor-name},{join(body, <,>)})>)
+          miss
+            push(lines, <t({anchor-name})>)
+    case none
+      save nothing, 0
+  sift given
+    case hash
+      link held-list
+      walk held-list
+        take one
+        push(lines, compact-entry(one))
+    case list
+      link held-list
+      walk held-list
+        take one
+        push(lines, compact-item(one))
+    miss
+      push(lines, scalar-text(given))
+  back join(lines, <\n>)
+
+# one compact line per top-level form, the way a stream is written
+task write-lines
+  take given, like host-value
+  take trees, like maybe, like hash, like text, like host-anchor
+  like text
+
+  back write-compact(given, trees)
+
+task compact-entry
+  take entry, like host-entry
+  like text
+  mark private
+
+  save key, key-text(entry/name)
+  save base, entry/base
+  sift base
+    case graft
+      back <f({name})>
+    case hash
+      link held-list
+      save parts-out, make list
+      push(parts-out, key)
+      walk held-list
+        take one
+        push(parts-out, compact-entry(one))
+      back <h({join(parts-out, <,>)})>
+    case list
+      link held-list
+      save parts-out, make list
+      push(parts-out, key)
+      walk held-list
+        take one
+        push(parts-out, compact-item(one))
+      back <l({join(parts-out, <,>)})>
+    miss
+      back <h({key},{scalar-text(base)})>
+
+task compact-item
+  take item, like host-value
+  like text
+  mark private
+
+  sift item
+    case graft
+      back <f({name})>
+    case hash
+      link held-list
+      save parts-out, make list
+      walk held-list
+        take one
+        push(parts-out, compact-entry(one))
+      back <m({join(parts-out, <,>)})>
+    case list
+      link held-list
+      save parts-out, make list
+      walk held-list
+        take one
+        push(parts-out, compact-item(one))
+      back <l({join(parts-out, <,>)})>
+    miss
+      back scalar-text(item)
+
+# kebab in the file, snake at the JSON boundary. A key that is not a name is left alone, both ways
+task host-snake
+  take key, like text
+  like text
+
+  fork test, is-key(key)
+    hold
+      back swap-char(key, <->, <_>)
+  back key
+
+task host-kebab
+  take key, like text
+  like text
+
+  fork test, word-key(key, <_>)
+    hold
+      back swap-char(key, <_>, <->)
+  back key
+
+task swap-char
+  take given, like text
+  take from, like text
+  take to, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  save size, char-count(given)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(given, at)
+      fork test, is-equal(one, from)
+        hold
+          save out, <{out}{to}>
+        miss
+          save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# ---- the keys of a value ----
+
+# every key of a value as a flat list, a path per row: `x/y/z number 123`. A map or a list row says how many it
+# holds. What `term look` prints for a data file
+task data-keys
+  take given, like host-value
+  like list, like host-key
+
+  save out, make list
+  key-rows(given, <>, out)
+  back out
+
+task key-row
+  take path, like text
+  take kind, like text
+  take shown, like text
+  like host-key
+  mark private
+
+  back
+    make host-key
+      bind path, path
+      bind kind, kind
+      bind value, shown
+
+task kind-name
+  take given, like host-value
+  like text
+  mark private
+
+  sift given
+    case hash
+      back <hash>
+    case list
+      back <list>
+    case text
+      back <text>
+    case number
+      back <number>
+    case decimal
+      back <decimal>
+    case flag
+      back <flag>
+    case blank
+      back <void>
+    case graft
+      back <fuse>
+
+task key-rows
+  take given, like host-value
+  take path, like text
+  take out, like list, like host-key
+  mark private
+
+  sift given
+    case hash
+      link held-list
+      fork test, is-unequal(path, <>)
+        hold
+          save count, held-list/length
+          save noun, <entries>
+          fork test, is-equal(count, 1)
+            hold
+              save noun, <entry>
+          push(out, key-row(path, <map>, <{count} {noun}>))
+      walk held-list
+        take entry
+        save entry-name, entry/name
+        save inner-path, entry-name
+        fork test, is-unequal(path, <>)
+          hold
+            save inner-path, <{path}/{entry-name}>
+        key-rows(entry/base, inner-path, out)
+    case list
+      link held-list
+      fork test, is-unequal(path, <>)
+        hold
+          save count, held-list/length
+          save noun, <items>
+          fork test, is-equal(count, 1)
+            hold
+              save noun, <item>
+          push(out, key-row(path, <list>, <{count} {noun}>))
+      save at, 0
+      walk held-list
+        take item
+        save inner-path, <{at}>
+        fork test, is-unequal(path, <>)
+          hold
+            save inner-path, <{path}/{at}>
+        key-rows(item, inner-path, out)
+        save at, add(at, 1)
+    case graft
+      push(out, key-row(path, <fuse>, name))
+    miss
+      save shown-path, path
+      fork test, is-equal(path, <>)
+        hold
+          save shown-path, <.>
+      push(out, key-row(shown-path, kind-name(given), scalar-text(given)))
+
+# ---- formatting a data file, comments kept ----
+
+# is every top-level form written in the compact spelling (`h(`, `l(`, `m(`, `t(`, `f(`)? Such a file is formatted one
+# form per line, the way a stream is written
+task is-compact-tree
+  take tree, like root-node
+  like boolean
+
+  save top, root-nodes(tree)
+  fork test, is-equal(top/length, 0)
+    hold
+      back false
+  walk groups-in(root-nodes(tree))
+    take group
+    fork test, is-unequal(utf16-length(head-or(head-of(group), <>)), 1)
+      hold
+        back false
+  back true
+
+# the canonical form straight from the tree, so a comment survives `term form`. Byte for byte what `write-long` (or
+# `write-compact` for a compact file) gives for the same value when the file carries no comments. Call it only on a
+# tree `read-data` accepted: it lays out, it does not check
+task format-data
+  take tree, like root-node
+  take file, like text
+  like text
+
+  fork test, is-compact-tree(tree)
+    hold
+      back format-compact(tree, file)
+
+  save out, make list
+  save rest-groups, make list
+  walk groups-in(root-nodes(tree))
+    take group
+    fork test, is-equal(kind-of(group), <tree>)
+      hold
+        note-lines(group, 0, out)
+        push(out, <tree {key-text(head-or(key-of(group), <>))}>)
+        format-body(after-key(group), 1, out)
+        push(out, <>)
+      miss
+        push(rest-groups, group)
+  format-body(rest-groups, 0, out)
+  back close-lines(out)
+
+# a group's nodes after its head and key
+task after-key
+  take group, like node
+  like list, like node
+  mark private
+
+  save kids, kids-of(group)
+  save out, make list
+  save at, 2
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+task after-head
+  take group, like node
+  like list, like node
+  mark private
+
+  save kids, kids-of(group)
+  save out, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+# the comments written above a group (or above a line that opens with a literal), at the indent
+task note-lines
+  take kid, like node
+  take depth, like number
+  take into, like list, like text
+  mark private
+
+  save pad, pad-of(depth)
+  walk comments-of(kid)
+    take one
+    push(into, <{pad}{trim(one/text)}>)
+
+# entries or items, decided by the first child that is one or the other
+task format-body
+  take kids, like list, like node
+  take depth, like number
+  take into, like list, like text
+  mark private
+
+  walk kids
+    take kid
+    fork test, and(is-group-node(kid), not(is-scalar(kid)))
+      hold
+        save kind, kind-of(kid)
+        fork test, or(or(is-equal(kind, <host>), is-equal(kind, <list>)), is-equal(kind, <fuse>))
+          hold
+            format-entries(kids, depth, into)
+            back
+        format-items(kids, depth, into)
+        back
+    fork test, or(is-group-node(kid), is-scalar(kid))
+      hold
+        format-items(kids, depth, into)
+        back
+
+task format-entries
+  take kids, like list, like node
+  take depth, like number
+  take into, like list, like text
+  mark private
+
+  save pad, pad-of(depth)
+  walk kids
+    take kid
+    fork test, not(is-group-node(kid))
+      hold
+        turn next
+    note-lines(kid, depth, into)
+    save kind, kind-of(kid)
+    save key-word, head-or(key-of(kid), <>)
+    save key, key-text(key-word)
+    fork test, is-equal(kind, <fuse>)
+      hold
+        push(into, <{pad}fuse {key-word}>)
+        turn next
+    fork test, is-equal(kind, <host>)
+      hold
+        save after, after-key(kid)
+        save scalar-node, make none
+        walk after
+          take one
+          fork test, is-scalar(one)
+            hold
+              save scalar-node, make(some, one)
+              halt
+        sift scalar-node
+          case some
+            link known
+            push(into, <{pad}host {key}, {scalar-text(read-scalar(known))}>)
+          case none
+            push(into, <{pad}host {key}>)
+            format-entries(after, add(depth, 1), into)
+        turn next
+    fork test, is-equal(kind, <list>)
+      hold
+        push(into, <{pad}list {key}>)
+        format-items(after-key(kid), add(depth, 1), into)
+
+task format-items
+  take kids, like list, like node
+  take depth, like number
+  take into, like list, like text
+  mark private
+
+  save pad, pad-of(depth)
+  save present, make list
+  save every-scalar, true
+  walk kids
+    take kid
+    fork test, or(is-group-node(kid), is-scalar(kid))
+      hold
+        push(present, kid)
+        fork test, not(is-scalar(kid))
+          hold
+            save every-scalar, false
+
+  # a run of scalars goes on one line, comma separated, wrapped at the width. A comment above one of them (a bare
+  # `true` on its own line is a group) goes above the run
+  fork test, and(is-above(present/length, 0), every-scalar)
+    hold
+      walk present
+        take kid
+        note-lines(kid, depth, into)
+      save words, make list
+      walk present
+        take kid
+        push(words, scalar-text(read-scalar(kid)))
+      wrap-words(words, pad, into)
+      back
+
+  walk present
+    take kid
+    note-lines(kid, depth, into)
+    fork test, is-scalar(kid)
+      hold
+        push(into, <{pad}{scalar-text(read-scalar(kid))}>)
+        turn next
+    save kind, kind-of(kid)
+    fork test, is-equal(kind, <fuse>)
+      hold
+        save key-word, head-or(key-of(kid), <>)
+        push(into, <{pad}fuse {key-word}>)
+        turn next
+    fork test, is-equal(kind, <mesh>)
+      hold
+        push(into, <{pad}mesh>)
+        format-entries(after-head(kid), add(depth, 1), into)
+        turn next
+    fork test, is-equal(kind, <list>)
+      hold
+        push(into, <{pad}list>)
+        format-items(after-head(kid), add(depth, 1), into)
+
+# a compact file: every top-level form on its own line, comments above it kept
+task format-compact
+  take tree, like root-node
+  take file, like text
+  like text
+  mark private
+
+  save out, make list
+  walk groups-in(root-nodes(tree))
+    take group
+    walk comments-of(group)
+      take one
+      push(out, trim(one/text))
+    save alone, make list
+    push(alone, group)
+    save one-tree
+      make root
+        bind nodes, alone
+    save read, read-data(one-tree, file, false)
+    fork test, read/ok
+      hold
+        # what `write-compact` gives without its closing newline, which the original cut off
+        save read-trees, read/file/trees
+        push(out, compact-body(read/file/root, make(some, read-trees)))
+  back <{join(out, <\n>)}\n>
+
+# ---- a stream ----
+
+# a compact stream: one form per line, a `t(` line declaring (or re-declaring) an anchor for every line after it,
+# `h(` / `l(` lines the entries of a map or `m(` lines the items of a list, never both. Blank lines and `#` lines are
+# skipped. Each line is expanded against the anchors declared so far. See note/term/host/07-streaming.md
+task anchor-table
+  like hash, like text, like host-anchor
+  mark private
+
+  back make hash
+
+task read-stream
+  take source, like token-source
+  like host-stream
+
+  save found, make list
+  save trees, anchor-table()
+  save entries, make list
+  save items, make list
+  # each top-level key and the 0-based line that gave it
+  save keys, make hash
+  save count, 0
+  save index, -1
+
+  walk split(source/text, <\n>)
+    take line
+    save index, add(index, 1)
+    save trimmed, trim(line)
+    fork test, or(is-equal(trimmed, <>), starts-with(trimmed, <#>))
+      hold
+        turn next
+
+    # the line at its own line number, so a diagnostic points into the stream
+    save line-source
+      make token-source
+        bind file, source/file
+        bind text, <{repeat(<\n>, index)}{line}>
+    save parsed, parse(line-source)
+    fork test, not(parsed/ok)
+      hold
+        walk parsed/diagnostics
+          take one
+          push(found, one)
+        turn next
+    save read, read-data(parsed/tree, source/file, false)
+    fork test, not(read/ok)
+      hold
+        walk read/diagnostics
+          take one
+          push(found, one)
+        turn next
+    walk read/file/trees/values()
+      take anchor
+      save anchor-key, anchor-name-of(anchor)
+      save trees/{anchor-key}, anchor
+    save root, read/file/root
+    save root-size, -1
+    save root-is-hash, false
+    sift root
+      case hash
+        link held-list
+        save root-size, held-list/length
+        save root-is-hash, true
+      case list
+        link held-list
+        save root-size, held-list/length
+      miss
+        save nothing, 0
+    fork test, and(root-is-hash, is-equal(root-size, 0))
+      hold
+        turn next
+    save count, add(count, 1)
+    save parsed-top, root-nodes(parsed/tree)
+    save at-span, span-of(get(parsed-top, 0))
+    fork test, or(and(root-is-hash, is-above(items/length, 0)), and(and(not(root-is-hash), is-above(root-size, -1)), is-above(entries/length, 0)))
+      hold
+        push(found, syntax-error(source/file, at-span, <a stream is a map of "h(" entries or a list of "m(" items, never both>))
+        turn next
+    save snapshot, make hash
+    walk trees/keys()
+      take key
+      save snapshot/{key}, trees/get(key)
+    save line-file
+      make host-file
+        bind root, root
+        bind trees, snapshot
+    save expanded, expand-data(line-file, source/file)
+    fork test, not(expanded/ok)
+      hold
+        walk expanded/diagnostics
+          take one
+          push(found, one)
+        turn next
+    save made, expanded/value
+    sift made
+      case hash
+        link held-list
+        # a stream of `h(` lines is ONE map, so a key a later line gives again is a key given twice, refused at that
+        # line as a file refuses it
+        save refused, false
+        walk held-list
+          take entry
+          save key, entry/name
+          fork test, keys/has(key)
+            hold
+              save first-line, add(keys/get(key), 1)
+              push(found, syntax-error-hint(source/file, at-span, <"{key}" is given twice: line {first-line} gave it first>, <a stream of "h(" lines is one map. Write each record as an "m(" item instead to keep them all>))
+              save refused, true
+              halt
+          save keys/{key}, index
+        fork test, refused
+          hold
+            turn next
+        walk held-list
+          take entry
+          push(entries, entry)
+      case list
+        link held-list
+        walk held-list
+          take item
+          push(items, item)
+      miss
+        save nothing, 0
+
+  save value, make blank
+  fork test, is-above(items/length, 0)
+    hold
+      save value
+        make list
+          bind list, items
+    miss
+      save value
+        make hash
+          bind list, entries
+  back
+    make host-stream
+      bind ok, is-equal(found/length, 0)
+      bind value, value
+      bind lines, count
+      bind diagnostics, found

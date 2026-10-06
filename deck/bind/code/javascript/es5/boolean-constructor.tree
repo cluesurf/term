@@ -10,6 +10,7 @@ form boolean-constructor, name <BooleanConstructor>
     like boolean
 
   hook make
-    take value, like maybe
-      like native-any
+    take value
+      like maybe
+        like native-any
     like boolean

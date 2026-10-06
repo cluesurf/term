@@ -1,0 +1,1734 @@
+# The mill executor (mill-self-hosting-0004): read a `mine` grammar into rules, run it against a parse tree to fill
+# sites, and run its `mint` to build the target values, the machinery that makes a dialect cost a grammar file instead
+# of a hand-written reader. The mine and mint dialects are described in compile/mill-run.ts.
+#
+# Ported from compile/mill-run.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - a rule's `maybe` is `optional` here: a case named `maybe` takes the name of the stdlib's `maybe` in this module,
+#     and every optional field of every form in it would then be boxed. Nothing outside reads a rule's kind
+#   - a capture is the original's record field for field, and a match is a `hash` of them, a `Map` on TypeScript as
+#     it was, so what `run-mine` hands back needs no conversion
+#   - an integer literal past 2^53 is a bigint read from its own text, as the original's was (`exact-integer`). A
+#     Term `number` cannot hold one, so the capture's value is typed `float` and holds whatever the bind gave: the
+#     port only stores it, and the mint bridge reads it. Natively it is the parsed number
+#   - a minted form's fields are a `hash`, which the face writes as the `Record` the bridge reads
+#   - the mint memo was keyed by the match object. It is keyed here by its identity on TypeScript
+#     (`match-identity`), and natively, where a value has none, there is no memo: minting is a pure function of the
+#     rule and the match, so the answers are the same either way and only the time differs
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/diagnostic
+  find span
+
+load ./surface
+  find unescape-text
+
+load ./templates
+  find span-of-whole
+
+# ---- the values ----
+
+# one capture: a word or a literal, or a nested rule's match to be minted. Each keeps the span of the node it came from
+# and the node itself
+form mill-capture
+  mark tag, name kind
+  case word
+    link value, like text
+    link span
+      like maybe, like span
+      need false
+    link node, like node
+  case text
+    link value, like text
+    link span
+      like maybe, like span
+      need false
+    link node, like node
+  case number
+    # a bigint for an integer past 2^53 (see the header)
+    link value, like float
+    link decimal, like boolean
+    link span
+      like maybe, like span
+      need false
+    link node, like node
+  case match
+    link rule, like text
+    link match, like hash, like text, like list, like mill-capture
+    link span
+      like maybe, like span
+      need false
+    link node, like node
+
+form mine-rule
+  mark tag, name kind
+  case term
+    link word
+      like maybe, like text
+      need false
+    link children, like list, like mine-rule
+    link site
+      like maybe, like text
+      need false
+  case text
+    link site
+      like maybe, like text
+      need false
+  case code
+    link site
+      like maybe, like text
+      need false
+  case path
+    link site
+      like maybe, like text
+      need false
+  case node
+  case word
+    link site
+      like maybe, like text
+      need false
+  case open
+    link children, like list, like mine-rule
+    link site
+      like maybe, like text
+      need false
+  # the original's `maybe`
+  case optional
+    link children, like list, like mine-rule
+  case list
+    link children, like list, like mine-rule
+  case any
+    link children, like list, like mine-rule
+  case form
+    link like, like text
+    link site
+      like maybe, like text
+      need false
+
+form mine-run
+  link ok, like boolean
+  link match, like hash, like text, like list, like mill-capture
+  # whether the start rule was there: a run without one names no node
+  link started, like boolean
+  link at
+    like maybe, like node
+    need false
+
+form mint-case
+  link name, like text
+  link mint
+    like maybe, like text
+    need false
+  link site
+    like maybe, like text
+    need false
+
+form mint-make
+  link form, like text
+  link binds, like list, like mint-bind
+
+form mint-bind
+  link name, like text
+  link read, like text
+  link nested
+    like maybe, like mint-make
+    need false
+
+form mint-rule
+  link name, like text
+  link like
+    like maybe, like text
+    need false
+  link cases, like list, like mint-case
+  link make
+    like maybe, like mint-make
+    need false
+
+form minted
+  mark tag, name kind
+  case word
+    link value, like text
+    link span
+      like maybe, like span
+      need false
+    link node
+      like maybe, like node
+      need false
+  case text
+    link value, like text
+    link span
+      like maybe, like span
+      need false
+    link node
+      like maybe, like node
+      need false
+  case number
+    link value, like float
+    link decimal, like boolean
+    link span
+      like maybe, like span
+      need false
+    link node
+      like maybe, like node
+      need false
+  case form
+    link form, like text
+    link fields, like hash, like text, like list, like minted
+    link span
+      like maybe, like span
+      need false
+    link node
+      like maybe, like node
+      need false
+
+# an integer literal as a number while that is exact, and past 2^53 as a bigint read from its own text, where the
+# parsed number has already rounded to a different integer
+bind exact-integer
+  take value, like number
+  take written, like text
+  like float
+  case node
+    text <(((v: number, t: string) =\> \{ if (Number.isSafeInteger(v)) return v; try \{ return BigInt(t.replace(/_/g, '')) \} catch \{ return v \} \})($value, $written) as unknown as number)>
+  case browser
+    text <(((v: number, t: string) =\> \{ if (Number.isSafeInteger(v)) return v; try \{ return BigInt(t.replace(/_/g, '')) \} catch \{ return v \} \})($value, $written) as unknown as number)>
+  case rust
+    text <($value as f64)>
+  case swift
+    text <Double($value)>
+  case kotlin
+    text <($value.toDouble())>
+
+# a match's identity, for the mint memo; -1 natively, where there is none and so no memo
+bind match-identity
+  take value, like hash, like text, like list, like mill-capture
+  like number
+  case node
+    text <__termIdentity($value)>
+  case browser
+    text <__termIdentity($value)>
+  case rust
+    text <-1>
+  case swift
+    text <-1>
+  case kotlin
+    text <(-1L)>
+
+# ---- reading the tree ----
+
+task kids-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task node-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, kids/length))
+    hold
+      save found, get(kids, at)
+      back make(some, found)
+  back make none
+
+task slice-from
+  take kids, like list, like node
+  take from, like number
+  like list, like node
+  mark private
+
+  save out, make list
+  save at, from
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+task root-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+# the text of a name's chunks, an interpolation written back as `{...}` around the first name it holds
+task name-word
+  take held, like list, like node
+  like text
+  mark private
+
+  save out, <>
+  walk held
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      case interpolation
+        link part-depth
+        link inner-group
+        save inner, <>
+        sift inner-group
+          case some
+            link hole
+            sift hole
+              case group
+                fork test, is-above(nodes/length, 0)
+                  hold
+                    save first, get(nodes, 0)
+                    sift first
+                      case name
+                        walk parts
+                          take inner-part
+                          sift inner-part
+                            case chunk
+                              link inner-text
+                              save inner, <{inner}{inner-text}>
+                            miss
+                              save nothing, 0
+                      miss
+                        save nothing, 0
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        save out, <{out}\{{inner}\}>
+      miss
+        save nothing, 0
+  back out
+
+# the word a node denotes: a name, or a group whose head is a name
+task word-of
+  take one, like node
+  like maybe, like text
+
+  sift one
+    case name
+      save word, name-word(parts)
+      back make(some, word)
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          save first, get(nodes, 0)
+          sift first
+            case name
+              back word-of(first)
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+task word-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like text
+  mark private
+
+  sift node-at(kids, at)
+    case some
+      link found
+      back word-of(found)
+    case none
+      back make none
+
+# the full word chain a node denotes: a multi-word value parses as nested heads (`vitest run` is vitest > run)
+task phrase-of
+  take one, like node
+  like maybe, like text
+
+  save head, word-of(one)
+  sift head
+    case some
+      link known
+      fork test, not(is-group-node(one))
+        hold
+          back head
+      save words, make list
+      push(words, known)
+      save cursor, node-at(kids-of(one), 1)
+      save going, true
+      walk test
+        hook test, going
+        hook hold
+          save going, false
+          sift cursor
+            case some
+              link at-node
+              fork test, is-group-node(at-node)
+                hold
+                  sift word-of(at-node)
+                    case some
+                      link next-word
+                      push(words, next-word)
+                      save cursor, node-at(kids-of(at-node), 1)
+                      save going, true
+                    case none
+                      save nothing, 0
+            case none
+              save nothing, 0
+      save joined, join(words, < >)
+      back make(some, joined)
+    case none
+      back make none
+
+task head-word
+  take group, like node
+  like maybe, like text
+
+  save first, node-at(kids-of(group), 0)
+  sift first
+    case some
+      link known
+      sift known
+        case name
+          back word-of(known)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task head-is
+  take one, like node
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(is-group-node(one))
+    hold
+      back false
+  sift head-word(one)
+    case some
+      link known
+      back is-equal(known, word)
+    case none
+      back false
+
+# the value of a text literal: its chunks, with the escape sequences resolved
+task text-of
+  take one, like node
+  like text
+
+  sift one
+    case text
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save out, <{out}{chunk-text}>
+          miss
+            save nothing, 0
+      back unescape-text(out)
+    miss
+      back <>
+
+# where to point a caret: a node's first token's span
+task span-of-node
+  take one, like node
+  like maybe, like span
+
+  sift one
+    case name
+      fork test, is-above(parts/length, 0)
+        hold
+          save first, get(parts, 0)
+          sift first
+            case chunk
+              link chunk-text
+              link chunk-span
+              back make(some, chunk-span)
+            miss
+              save nothing, 0
+    case text
+      fork test, is-above(parts/length, 0)
+        hold
+          save first, get(parts, 0)
+          sift first
+            case chunk
+              link chunk-text
+              link chunk-span
+              back make(some, chunk-span)
+            miss
+              save nothing, 0
+    case integer
+      back make(some, span)
+    case decimal
+      back make(some, span)
+    case radix
+      back make(some, span)
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          back span-of-node(get(nodes, 0))
+    miss
+      save nothing, 0
+  back make none
+
+task is-present
+  take word, like maybe, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-unequal(known, <>)
+    case none
+      back false
+
+# ---- the mine grammar ----
+
+# the site a rule group carries (`site <name>` child)
+task site-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  walk kids-of(group)
+    take child
+    fork test, head-is(child, <site>)
+      hold
+        back word-at(kids-of(child), 1)
+  back make none
+
+# the first group after the head and key headed by a word, from the third node on
+task headed-after
+  take group, like node
+  take word, like text
+  take from, like number
+  like maybe, like node
+  mark private
+
+  save kids, kids-of(group)
+  save at, from
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      save kid, get(kids, at)
+      fork test, head-is(kid, word)
+        hold
+          back make(some, kid)
+      save at, add(at, 1)
+  back make none
+
+task child-rules
+  take group, like node
+  like list, like mine-rule
+  mark private
+
+  save rules, make list
+  walk slice-from(kids-of(group), 2)
+    take child
+    fork test, is-group-node(child)
+      hold
+        sift read-mine-rule(child)
+          case some
+            link rule
+            push(rules, rule)
+          case none
+            save nothing, 0
+  back rules
+
+task read-mine-rule
+  take group, like node
+  like maybe, like mine-rule
+  mark private
+
+  fork test, not(head-is(group, <mine>))
+    hold
+      back make none
+  save kids, kids-of(group)
+  save kind-node, node-at(kids, 1)
+  save kind, word-at(kids, 1)
+  save site, site-of(group)
+  save kind-text, <>
+  sift kind
+    case some
+      link known
+      save kind-text, known
+    case none
+      back make none
+
+  fork test, is-equal(kind-text, <term>)
+    hold
+      # `mine term, term <w>` carries the word under the second `term`; a bare `mine term` captures a word
+      save word, make none
+      sift headed-after(group, <term>, 2)
+        case some
+          link word-group
+          save word, word-at(kids-of(word-group), 1)
+        case none
+          save nothing, 0
+      save children, make list
+      walk slice-from(kids, 2)
+        take child
+        fork test, head-is(child, <mine>)
+          hold
+            sift read-mine-rule(child)
+              case some
+                link rule
+                push(children, rule)
+              case none
+                save nothing, 0
+      # the word can also ride inside the term group's own children
+      save final-word, word
+      sift word
+        case some
+          link known
+          save nothing, 0
+        case none
+          sift kind-node
+            case some
+              link known-kind
+              fork test, and(is-group-node(known-kind), is-above(kids-of(known-kind)/length, 1))
+                hold
+                  save final-word, word-at(kids-of(known-kind), 1)
+            case none
+              save nothing, 0
+      save made
+        make term
+          bind word, final-word
+          bind children, children
+          bind site, site
+      back make(some, made)
+  fork test, is-equal(kind-text, <text>)
+    hold
+      save made
+        make text
+          bind site, site
+      back make(some, made)
+  fork test, is-equal(kind-text, <code>)
+    hold
+      save made
+        make code
+          bind site, site
+      back make(some, made)
+  fork test, is-equal(kind-text, <path>)
+    hold
+      save made
+        make path
+          bind site, site
+      back make(some, made)
+  fork test, is-equal(kind-text, <node>)
+    hold
+      save made, make node
+      back make(some, made)
+  fork test, is-equal(kind-text, <word>)
+    hold
+      save made
+        make word
+          bind site, site
+      back make(some, made)
+  fork test, is-equal(kind-text, <open>)
+    hold
+      # a group with ANY head word: the word is captured at the site, and the child rules run over the rest
+      save made
+        make open
+          bind children, child-rules(group)
+          bind site, site
+      back make(some, made)
+  # `mine case` marks an optional part the mint later cases on: match-wise it is a maybe
+  fork test, or(is-equal(kind-text, <maybe>), is-equal(kind-text, <case>))
+    hold
+      save made
+        make optional
+          bind children, child-rules(group)
+      back make(some, made)
+  fork test, is-equal(kind-text, <list>)
+    hold
+      save made
+        make list
+          bind children, child-rules(group)
+      back make(some, made)
+  fork test, is-equal(kind-text, <any>)
+    hold
+      save made
+        make any
+          bind children, child-rules(group)
+      back make(some, made)
+  fork test, is-equal(kind-text, <form>)
+    hold
+      # `mine form, like <name>`
+      save like-name, make none
+      sift headed-after(group, <like>, 0)
+        case some
+          link like-group
+          save like-name, word-at(kids-of(like-group), 1)
+        case none
+          save nothing, 0
+      sift like-name
+        case some
+          link known
+          fork test, is-unequal(known, <>)
+            hold
+              save made
+                make form
+                  bind like, known
+                  bind site, site
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+  back make none
+
+task rules-under
+  take group, like node
+  like list, like mine-rule
+  mark private
+
+  save rules, make list
+  walk slice-from(kids-of(group), 2)
+    take child
+    fork test, is-group-node(child)
+      hold
+        sift read-mine-rule(child)
+          case some
+            link rule
+            push(rules, rule)
+          case none
+            save nothing, 0
+  back rules
+
+task read-mine-grammar
+  take tree, like root-node
+  like hash, like text, like list, like mine-rule
+
+  save grammar, empty-mine-grammar()
+  walk root-nodes(tree)
+    take group
+    fork test, not(head-is(group, <mine>))
+      hold
+        turn next
+    save name-read, word-at(kids-of(group), 1)
+    fork test, not(is-present(name-read))
+      hold
+        turn next
+    save name, <>
+    sift name-read
+      case some
+        link known
+        save name, known
+      case none
+        save nothing, 0
+    save grammar/{name}, rules-under(group)
+  back grammar
+
+task empty-mine-grammar
+  like hash, like text, like list, like mine-rule
+  mark private
+
+  back make hash
+
+# the `mine` rules that carry a `mark lean` child: the constructs that take the lean surface. note/term/lean.md
+task read-lean-rules
+  take tree, like root-node
+  like list, like text
+
+  save lean, make list
+  walk root-nodes(tree)
+    take group
+    fork test, not(head-is(group, <mine>))
+      hold
+        turn next
+    save name-read, word-at(kids-of(group), 1)
+    fork test, not(is-present(name-read))
+      hold
+        turn next
+    save name, <>
+    sift name-read
+      case some
+        link known
+        save name, known
+      case none
+        save nothing, 0
+    walk slice-from(kids-of(group), 2)
+      take child
+      fork test, head-is(child, <mark>)
+        hold
+          sift word-at(kids-of(child), 1)
+            case some
+              link marked
+              fork test, is-equal(marked, <lean>)
+                hold
+                  add-once(lean, name)
+            case none
+              save nothing, 0
+  back lean
+
+task add-once
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  walk into
+    take held
+    fork test, is-equal(held, one)
+      hold
+        back
+  push(into, one)
+
+# ---- matching ----
+
+task empty-match
+  like hash, like text, like list, like mill-capture
+  mark private
+
+  back make hash
+
+task capture
+  take into, like hash, like text, like list, like mill-capture
+  take site, like maybe, like text
+  take value, like mill-capture
+  mark private
+
+  sift site
+    case some
+      link known
+      fork test, is-equal(known, <>)
+        hold
+          back
+      save held, make list
+      fork test, into/has(known)
+        hold
+          save held, into/get(known)
+      push(held, value)
+      save into/{known}, held
+    case none
+      save nothing, 0
+
+task capture-all
+  take into, like hash, like text, like list, like mill-capture
+  take trial, like hash, like text, like list, like mill-capture
+  mark private
+
+  walk trial/keys()
+    take site
+    save some-site, make(some, site)
+    walk trial/get(site)
+      take value
+      capture(into, some-site, value)
+
+task word-capture
+  take word, like text
+  take one, like node
+  like mill-capture
+  mark private
+
+  back
+    make word
+      bind value, word
+      bind span, span-of-node(one)
+      bind node, one
+
+task rule-word
+  take rule, like mine-rule
+  like maybe, like text
+  mark private
+
+  sift rule
+    case term
+      back word
+    miss
+      back make none
+
+# run one rule sequence against a node cursor: the new cursor position, or -1 on no match
+task match-sequence
+  take grammar, like hash, like text, like list, like mine-rule
+  take rules, like list, like mine-rule
+  take kids, like list, like node
+  take at, like number
+  take into, like hash, like text, like list, like mill-capture
+  like number
+  mark private
+
+  save cursor, at
+  save i, 0
+  walk test
+    hook test, is-below(i, rules/length)
+    hook hold
+      save rule, get(rules, i)
+      save next, match-rule(grammar, rule, kids, cursor, into)
+      fork test, is-equal(next, -1)
+        hold
+          # paren splice: `send back(false)` and `send back, false` are one tree, but the paren nests the value under
+          # `back`. A worded term rule facing a group headed by its own word matches its child rules as a PREFIX of
+          # the group, then hands the group's leftover nodes to the REST of the sequence
+          save spliced-end, splice(grammar, rules, i, kids, cursor, into)
+          back spliced-end
+      save cursor, next
+      save i, add(i, 1)
+  back cursor
+
+task splice
+  take grammar, like hash, like text, like list, like mine-rule
+  take rules, like list, like mine-rule
+  take i, like number
+  take kids, like list, like node
+  take cursor, like number
+  take into, like hash, like text, like list, like mill-capture
+  like number
+  mark private
+
+  save rule, get(rules, i)
+  save worded, rule-word(rule)
+  save word, <>
+  sift worded
+    case some
+      link known
+      save word, known
+    case none
+      back -1
+  save rule-kids, make list
+  save rule-site, make none
+  sift rule
+    case term
+      link term-word
+      link term-children
+      link term-site
+      save rule-kids, term-children
+      save rule-site, term-site
+    miss
+      back -1
+  sift node-at(kids, cursor)
+    case some
+      link one
+      fork test, not(and(head-is(one, word), is-above(kids-of(one)/length, 1)))
+        hold
+          back -1
+      save inner, empty-match()
+      save inner-end, match-sequence(grammar, rule-kids, kids-of(one), 1, inner)
+      fork test, is-equal(inner-end, -1)
+        hold
+          back -1
+      save extras, slice-from(kids-of(one), inner-end)
+      save spliced, make list
+      walk extras
+        take extra
+        push(spliced, extra)
+      walk slice-from(kids, add(cursor, 1))
+        take rest-node
+        push(spliced, rest-node)
+      save after, empty-match()
+      save rest-rules, make list
+      save r, add(i, 1)
+      walk test
+        hook test, is-below(r, rules/length)
+        hook hold
+          push(rest-rules, get(rules, r))
+          save r, add(r, 1)
+      save end, match-sequence(grammar, rest-rules, spliced, 0, after)
+      fork test, and(is-unequal(end, -1), is-minimum(end, extras/length))
+        hold
+          capture(into, rule-site, word-capture(word, one))
+          capture-all(into, inner)
+          capture-all(into, after)
+          back add(add(cursor, 1), subtract(end, extras/length))
+      back -1
+    case none
+      back -1
+
+task match-rule
+  take grammar, like hash, like text, like list, like mine-rule
+  take rule, like mine-rule
+  take kids, like list, like node
+  take at, like number
+  take into, like hash, like text, like list, like mill-capture
+  like number
+  mark private
+
+  save here, node-at(kids, at)
+  save next-at, add(at, 1)
+  sift rule
+    case term
+      link term-word
+      link term-children
+      link term-site
+      sift term-word
+        case some
+          link wanted
+          # a headed group: `mine term, term host` matches group[name(host), ...] and the children rules run over its
+          # remaining nodes; a bare word (`true`) also matches a name or a group wrapping one
+          sift here
+            case some
+              link one
+              fork test, head-is(one, wanted)
+                hold
+                  save inner, match-sequence(grammar, term-children, kids-of(one), 1, into)
+                  fork test, or(is-equal(inner, -1), is-below(inner, kids-of(one)/length))
+                    hold
+                      back -1
+                  capture(into, term-site, word-capture(wanted, one))
+                  back next-at
+              save one-word, word-of(one)
+              sift one-word
+                case some
+                  link known
+                  fork test, and(is-equal(known, wanted), is-equal(term-children/length, 0))
+                    hold
+                      capture(into, term-site, word-capture(wanted, one))
+                      back next-at
+                case none
+                  save nothing, 0
+              back -1
+            case none
+              back -1
+        case none
+          # a bare `mine term`: one word
+          sift here
+            case some
+              link one
+              sift word-of(one)
+                case some
+                  link known
+                  capture(into, term-site, word-capture(known, one))
+                  back next-at
+                case none
+                  back -1
+            case none
+              back -1
+    case text
+      link text-site
+      sift here
+        case some
+          link one
+          fork test, is-text-node(one)
+            hold
+              save written, text-of(one)
+              save made
+                make text
+                  bind value, written
+                  bind span, span-of-node(one)
+                  bind node, one
+              capture(into, text-site, made)
+              back next-at
+          back -1
+        case none
+          back -1
+    case path
+      link path-site
+      # a path or glob rides as a word, and a multi-word value is a nested chain: capture the whole phrase
+      sift here
+        case some
+          link one
+          sift phrase-of(one)
+            case some
+              link phrase
+              capture(into, path-site, word-capture(phrase, one))
+              back next-at
+            case none
+              back -1
+        case none
+          back -1
+    case code
+      link code-site
+      sift here
+        case some
+          link one
+          sift one
+            case integer
+              link whole
+              link written
+              save exact, exact-integer(whole, written)
+              capture(into, code-site, number-capture(exact, false, one))
+              back next-at
+            case radix
+              link whole
+              link written
+              save exact, exact-integer(whole, written)
+              capture(into, code-site, number-capture(exact, false, one))
+              back next-at
+            case decimal
+              link fraction
+              capture(into, code-site, number-capture(fraction, true, one))
+              back next-at
+            miss
+              back -1
+        case none
+          back -1
+    case node
+      # any ONE node, captured nowhere: the skip a mixed file needs
+      sift here
+        case some
+          link one
+          back next-at
+        case none
+          back -1
+    case word
+      link word-site
+      # a word with NOTHING under it: a name, or a group of one word
+      sift here
+        case some
+          link one
+          sift one
+            case name
+              save written, <>
+              sift word-of(one)
+                case some
+                  link known
+                  save written, known
+                case none
+                  save nothing, 0
+              capture(into, word-site, word-capture(written, one))
+              back next-at
+            case group
+              fork test, is-unequal(nodes/length, 1)
+                hold
+                  back -1
+              sift word-of(one)
+                case some
+                  link known
+                  capture(into, word-site, word-capture(known, one))
+                  back next-at
+                case none
+                  back -1
+            miss
+              back -1
+        case none
+          back -1
+    case open
+      link open-children
+      link open-site
+      # a group with any head word: the head is the capture, the children rules must consume the rest
+      sift here
+        case some
+          link one
+          fork test, not(is-group-node(one))
+            hold
+              back -1
+          sift head-word(one)
+            case some
+              link head
+              save inner, match-sequence(grammar, open-children, kids-of(one), 1, into)
+              fork test, or(is-equal(inner, -1), is-below(inner, kids-of(one)/length))
+                hold
+                  back -1
+              capture(into, open-site, word-capture(head, one))
+              back next-at
+            case none
+              back -1
+        case none
+          back -1
+    case optional
+      link optional-children
+      save trial, empty-match()
+      save next, match-sequence(grammar, optional-children, kids, at, trial)
+      fork test, is-equal(next, -1)
+        hold
+          back at
+      capture-all(into, trial)
+      back next
+    case list
+      link list-children
+      save cursor, at
+      walk test
+        hook test, true
+        hook hold
+          save trial, empty-match()
+          save next, match-sequence(grammar, list-children, kids, cursor, trial)
+          fork test, or(is-equal(next, -1), is-equal(next, cursor))
+            hold
+              back cursor
+          capture-all(into, trial)
+          save cursor, next
+      back cursor
+    case any
+      link any-children
+      walk any-children
+        take alternative
+        save trial, empty-match()
+        save next, match-rule(grammar, alternative, kids, at, trial)
+        fork test, is-unequal(next, -1)
+          hold
+            capture-all(into, trial)
+            back next
+      back -1
+    case form
+      link form-like
+      link form-site
+      fork test, not(grammar/has(form-like))
+        hold
+          back -1
+      sift here
+        case some
+          link one
+          save inner, empty-match()
+          # a named rule runs against the node STREAM from here, so it may consume more than one node. Consuming none
+          # is no match
+          save next, match-sequence(grammar, grammar/get(form-like), kids, at, inner)
+          fork test, or(is-equal(next, -1), is-equal(next, at))
+            hold
+              back -1
+          save made
+            make match
+              bind rule, form-like
+              bind match, inner
+              bind span, span-of-node(one)
+              bind node, one
+          capture(into, form-site, made)
+          back next
+        case none
+          back -1
+
+task is-text-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      back true
+    miss
+      back false
+
+task number-capture
+  take value, like float
+  take decimal, like boolean
+  take one, like node
+  like mill-capture
+  mark private
+
+  back
+    make number
+      bind value, value
+      bind decimal, decimal
+      bind span, span-of-node(one)
+      bind node, one
+
+# run a grammar's start rule over a whole parse tree (the root's groups)
+task run-mine
+  take grammar, like hash, like text, like list, like mine-rule
+  take start, like text
+  take tree, like root-node
+  like mine-run
+
+  save match, empty-match()
+  fork test, not(grammar/has(start))
+    hold
+      back
+        make mine-run
+          bind ok, false
+          bind match, match
+          bind started, false
+          bind at, make none
+  save kids, root-nodes(tree)
+  save next, match-sequence(grammar, grammar/get(start), kids, 0, match)
+  fork test, or(is-equal(next, -1), is-below(next, kids/length))
+    hold
+      save at, 0
+      fork test, is-unequal(next, -1)
+        hold
+          save at, next
+      back
+        make mine-run
+          bind ok, false
+          bind match, match
+          bind started, true
+          bind at, node-at(kids, at)
+  back
+    make mine-run
+      bind ok, true
+      bind match, match
+      bind started, true
+      bind at, make none
+
+# ---- the mint grammar ----
+
+task read-mint-grammar
+  take tree, like root-node
+  like hash, like text, like mint-rule
+
+  save grammar, empty-mint-grammar()
+  walk root-nodes(tree)
+    take group
+    fork test, not(head-is(group, <mint>))
+      hold
+        turn next
+    save name-read, word-at(kids-of(group), 1)
+    fork test, not(is-present(name-read))
+      hold
+        turn next
+    save name, <>
+    sift name-read
+      case some
+        link known
+        save name, known
+      case none
+        save nothing, 0
+    save like-name, make none
+    sift headed-after(group, <like>, 2)
+      case some
+        link like-group
+        save like-name, word-at(kids-of(like-group), 1)
+      case none
+        save nothing, 0
+    save cases, make list
+    save made-make, make none
+    walk slice-from(kids-of(group), 2)
+      take child
+      fork test, not(is-group-node(child))
+        hold
+          turn next
+      fork test, head-is(child, <case>)
+        hold
+          save case-name, word-at(kids-of(child), 1)
+          save mint-name, make none
+          sift headed-after(child, <mint>, 2)
+            case some
+              link mint-group
+              save mint-name, word-at(kids-of(mint-group), 1)
+            case none
+              save nothing, 0
+          save site-name, make none
+          sift headed-after(child, <site>, 0)
+            case some
+              link site-group
+              save site-name, word-at(kids-of(site-group), 1)
+            case none
+              save nothing, 0
+          sift case-name
+            case some
+              link known-case
+              fork test, is-unequal(known-case, <>)
+                hold
+                  save one-case
+                    make mint-case
+                      bind name, known-case
+                      bind mint, mint-name
+                      bind site, site-name
+                  push(cases, one-case)
+            case none
+              save nothing, 0
+          turn next
+      fork test, head-is(child, <hook>)
+        hold
+          sift word-at(kids-of(child), 1)
+            case some
+              link hooked
+              fork test, is-equal(hooked, <make>)
+                hold
+                  # the hook's own `make` word rides as a bare marker group; the construction is the make group WITH
+                  # content
+                  sift make-with-content(kids-of(child))
+                    case some
+                      link make-group
+                      save read, read-make(make-group)
+                      save made-make, make(some, read)
+                    case none
+                      save nothing, 0
+            case none
+              save nothing, 0
+    save rule
+      make mint-rule
+        bind name, name
+        bind like, like-name
+        bind cases, cases
+        bind make, made-make
+    save grammar/{name}, rule
+  back grammar
+
+task empty-mint-grammar
+  like hash, like text, like mint-rule
+  mark private
+
+  back make hash
+
+# the first group headed `make` that holds more than its head
+task make-with-content
+  take kids, like list, like node
+  like maybe, like node
+  mark private
+
+  walk kids
+    take kid
+    fork test, and(head-is(kid, <make>), is-above(kids-of(kid)/length, 1))
+      hold
+        back make(some, kid)
+  back make none
+
+task first-headed
+  take kids, like list, like node
+  take word, like text
+  like maybe, like node
+  mark private
+
+  walk kids
+    take kid
+    fork test, head-is(kid, word)
+      hold
+        back make(some, kid)
+  back make none
+
+task text-or-empty
+  take word, like maybe, like text
+  like text
+  mark private
+
+  sift word
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+task read-make
+  take group, like node
+  like mint-make
+  mark private
+
+  # `make data-entry` with indented binds parses as make > data-entry{binds...} (children nest under the last word),
+  # and a comma form puts them beside it: look in both places
+  save kids, kids-of(group)
+  save form-name, text-or-empty(word-at(kids, 1))
+  save candidates, make list
+  sift node-at(kids, 1)
+    case some
+      link second
+      fork test, is-group-node(second)
+        hold
+          walk slice-from(kids-of(second), 1)
+            take one
+            push(candidates, one)
+    case none
+      save nothing, 0
+  walk slice-from(kids, 2)
+    take one
+    push(candidates, one)
+  save binds, make list
+  walk candidates
+    take child
+    fork test, not(head-is(child, <bind>))
+      hold
+        turn next
+    save child-kids, kids-of(child)
+    save bind-name, text-or-empty(word-at(child-kids, 1))
+    save value-nodes, make list
+    sift node-at(child-kids, 1)
+      case some
+        link key-node
+        fork test, is-group-node(key-node)
+          hold
+            walk slice-from(kids-of(key-node), 1)
+              take one
+              push(value-nodes, one)
+      case none
+        save nothing, 0
+    walk slice-from(child-kids, 2)
+      take one
+      push(value-nodes, one)
+    # `bind f, read x` reads a case; `bind f / make ...` nests a construction
+    sift first-headed(value-nodes, <read>)
+      case some
+        link read-group
+        save read-name, text-or-empty(word-at(kids-of(read-group), 1))
+        save one-bind
+          make mint-bind
+            bind name, bind-name
+            bind read, read-name
+            bind nested, make none
+        push(binds, one-bind)
+      case none
+        sift make-with-content(value-nodes)
+          case some
+            link nested-group
+            save nested-make, read-make(nested-group)
+            save one-bind
+              make mint-bind
+                bind name, bind-name
+                bind read, <>
+                bind nested, make(some, nested-make)
+            push(binds, one-bind)
+          case none
+            save nothing, 0
+  back
+    make mint-make
+      bind form, form-name
+      bind binds, binds
+
+# ---- minting ----
+
+form mint-memo
+  mark shared
+  link known, like hash, like number, like hash, like text, like list, like minted
+
+task empty-memo
+  like mint-memo
+  mark private
+
+  save known, make hash
+  back
+    make mint-memo
+      bind known, known
+
+task run-mint
+  take mints, like hash, like text, like mint-rule
+  take name, like text
+  take match, like hash, like text, like list, like mill-capture
+  take from, like maybe, like node
+  like list, like minted
+
+  back mint-in(mints, name, match, from, empty-memo())
+
+task minted-of
+  take value, like mill-capture
+  like minted
+  mark private
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      back
+        make word
+          bind value, word-value
+          bind span, word-span
+          bind node, make(some, word-node)
+    case text
+      link text-value
+      link text-span
+      link text-node
+      back
+        make text
+          bind value, text-value
+          bind span, text-span
+          bind node, make(some, text-node)
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      back
+        make number
+          bind value, number-value
+          bind decimal, number-decimal
+          bind span, number-span
+          bind node, make(some, number-node)
+    case match
+      # never reached: a match is minted, never passed through
+      link match-rule-name
+      save no-span, empty-span()
+      save no-node, empty-node()
+      back
+        make word
+          bind value, match-rule-name
+          bind span, no-span
+          bind node, no-node
+
+task empty-span
+  like maybe, like span
+  mark private
+
+  back make none
+
+task empty-node
+  like maybe, like node
+  mark private
+
+  back make none
+
+task mint-in
+  take mints, like hash, like text, like mint-rule
+  take name, like text
+  take match, like hash, like text, like list, like mill-capture
+  take from, like maybe, like node
+  take memo, like mint-memo
+  like list, like minted
+  mark private
+
+  save id, match-identity(match)
+  fork test, and(is-unequal(id, -1), memo/known/has(id))
+    hold
+      save for-match, memo/known/get(id)
+      fork test, for-match/has(name)
+        hold
+          back for-match/get(name)
+  fork test, not(mints/has(name))
+    hold
+      save none-minted, make list
+      back none-minted
+  save mint, mints/get(name)
+
+  # each case pulls its site's captures, minting sub-matches through the named sub-mint
+  save by-case, minted-table()
+  walk mint/cases
+    take one-case
+    save site, one-case/name
+    sift one-case/site
+      case some
+        link given-site
+        save site, given-site
+      case none
+        save nothing, 0
+    save values, make list
+    fork test, match/has(site)
+      hold
+        walk match/get(site)
+          take cap
+          sift cap
+            case match
+              link cap-rule
+              link cap-match
+              link cap-span
+              link cap-node
+              save sub, cap-rule
+              sift one-case/mint
+                case some
+                  link named-sub
+                  save sub, named-sub
+                case none
+                  save nothing, 0
+              walk mint-in(mints, sub, cap-match, make(some, cap-node), memo)
+                take one
+                push(values, one)
+            miss
+              push(values, minted-of(cap))
+    fork test, is-above(values/length, 0)
+      hold
+        save by-case/{one-case/name}, values
+  sift mint/make
+    case some
+      link make-rule
+      save out, make list
+      push(out, build-make(make-rule, by-case, from))
+      back remember(memo, id, name, out)
+    case none
+      save nothing, 0
+
+  # pass-through: the matched cases' values in case order (an alternation yields its one branch). The branch's value
+  # takes THIS rule's extent, not its own
+  save out, make list
+  walk mint/cases
+    take one-case
+    save case-name, one-case/name
+    fork test, not(by-case/has(case-name))
+      hold
+        turn next
+    walk by-case/get(case-name)
+      take value
+      push(out, widened(value, from))
+  back remember(memo, id, name, out)
+
+task minted-table
+  like hash, like text, like list, like minted
+  mark private
+
+  back make hash
+
+task remember
+  take memo, like mint-memo
+  take id, like number
+  take name, like text
+  take value, like list, like minted
+  like list, like minted
+  mark private
+
+  fork test, is-equal(id, -1)
+    hold
+      back value
+  save for-match, minted-table()
+  fork test, memo/known/has(id)
+    hold
+      save for-match, memo/known/get(id)
+  save for-match/{name}, value
+  save memo/known/{id}, for-match
+  back value
+
+# a form value takes the extent of the node it was passed through, and that node
+task widened
+  take value, like minted
+  take from, like maybe, like node
+  like minted
+  mark private
+
+  sift from
+    case some
+      link known
+      sift value
+        case form
+          link form-name
+          link form-fields
+          save whole, span-of-whole(known)
+          back
+            make form
+              bind form, form-name
+              bind fields, form-fields
+              bind span, make(some, whole)
+              bind node, from
+        miss
+          back value
+    case none
+      back value
+
+task build-make
+  take rule, like mint-make
+  take by-case, like hash, like text, like list, like minted
+  take from, like maybe, like node
+  like minted
+  mark private
+
+  save fields, minted-table()
+  walk rule/binds
+    take one-bind
+    save bind-name, one-bind/name
+    sift one-bind/nested
+      case some
+        link nested
+        save built, make list
+        push(built, build-make(nested, by-case, from))
+        save fields/{bind-name}, built
+      case none
+        save read-name, one-bind/read
+        save read-values, make list
+        fork test, by-case/has(read-name)
+          hold
+            save read-values, by-case/get(read-name)
+        save fields/{bind-name}, read-values
+  save at-span, make none
+  sift from
+    case some
+      link known
+      save whole, span-of-whole(known)
+      save at-span, make(some, whole)
+    case none
+      save nothing, 0
+  back
+    make form
+      bind form, rule/form
+      bind fields, fields
+      bind span, at-span
+      bind node, from

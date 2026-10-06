@@ -35,11 +35,12 @@ form html-options-collection, name <HTMLOptionsCollection>
       like or
         like html-option-element
         like html-opt-group-element
-    take before, like maybe
-      like or
-        like html-element
-        like native-number
-        like native-null
+    take before
+      like maybe
+        like or
+          like html-element
+          like native-number
+          like native-null
     like native-void
 
   task remove, name <remove>

@@ -3355,8 +3355,9 @@ host analyser-node, name <AnalyserNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like analyser-options
+      take options
+        like maybe
+          like analyser-options
       like analyser-node
 
 host animation, name <Animation>
@@ -3365,14 +3366,16 @@ host animation, name <Animation>
       like animation
       lock false
     hook make
-      take effect, like maybe
-        like or
-          like animation-effect
-          like native-null
-      take timeline, like maybe
-        like or
-          like animation-timeline
-          like native-null
+      take effect
+        like maybe
+          like or
+            like animation-effect
+            like native-null
+      take timeline
+        like maybe
+          like or
+            like animation-timeline
+            like native-null
       like animation
 
 host animation-effect, name <AnimationEffect>
@@ -3390,8 +3393,9 @@ host animation-event, name <AnimationEvent>
       lock false
     hook make
       take type, like native-string
-      take animation-event-init-dict, like maybe
-        like animation-event-init
+      take animation-event-init-dict
+        like maybe
+          like animation-event-init
       like animation-event
 
 host animation-playback-event, name <AnimationPlaybackEvent>
@@ -3401,8 +3405,9 @@ host animation-playback-event, name <AnimationPlaybackEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like animation-playback-event-init
+      take event-init-dict
+        like maybe
+          like animation-playback-event-init
       like animation-playback-event
 
 host animation-timeline, name <AnimationTimeline>
@@ -3437,8 +3442,9 @@ host audio-buffer-source-node, name <AudioBufferSourceNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like audio-buffer-source-options
+      take options
+        like maybe
+          like audio-buffer-source-options
       like audio-buffer-source-node
 
 host audio-context, name <AudioContext>
@@ -3447,8 +3453,9 @@ host audio-context, name <AudioContext>
       like audio-context
       lock false
     hook make
-      take context-options, like maybe
-        like audio-context-options
+      take context-options
+        like maybe
+          like audio-context-options
       like audio-context
 
 host audio-destination-node, name <AudioDestinationNode>
@@ -3525,8 +3532,9 @@ host audio-worklet-node, name <AudioWorkletNode>
     hook make
       take context, like base-audio-context
       take name, like native-string
-      take options, like maybe
-        like audio-worklet-node-options
+      take options
+        like maybe
+          like audio-worklet-node-options
       like audio-worklet-node
 
 host authenticator-assertion-response, name <AuthenticatorAssertionResponse>
@@ -3584,8 +3592,9 @@ host biquad-filter-node, name <BiquadFilterNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like biquad-filter-options
+      take options
+        like maybe
+          like biquad-filter-options
       like biquad-filter-node
 
 host blob, name <Blob>
@@ -3594,11 +3603,13 @@ host blob, name <Blob>
       like blob
       lock false
     hook make
-      take blob-parts, like maybe
-        like native-array
-          like blob-part
-      take options, like maybe
-        like blob-property-bag
+      take blob-parts
+        like maybe
+          like native-array
+            like blob-part
+      take options
+        like maybe
+          like blob-property-bag
       like blob
 
 host blob-event, name <BlobEvent>
@@ -3849,8 +3860,9 @@ host channel-merger-node, name <ChannelMergerNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like channel-merger-options
+      take options
+        like maybe
+          like channel-merger-options
       like channel-merger-node
 
 host channel-splitter-node, name <ChannelSplitterNode>
@@ -3860,8 +3872,9 @@ host channel-splitter-node, name <ChannelSplitterNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like channel-splitter-options
+      take options
+        like maybe
+          like channel-splitter-options
       like channel-splitter-node
 
 host character-data, name <CharacterData>
@@ -3895,8 +3908,9 @@ host clipboard-event, name <ClipboardEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like clipboard-event-init
+      take event-init-dict
+        like maybe
+          like clipboard-event-init
       like clipboard-event
 
 host clipboard-item, name <ClipboardItem>
@@ -3909,8 +3923,9 @@ host clipboard-item, name <ClipboardItem>
         like record
           like native-string
           like clipboard-item-data
-      take options, like maybe
-        like clipboard-item-options
+      take options
+        like maybe
+          like clipboard-item-options
       like clipboard-item
 
 host close-event, name <CloseEvent>
@@ -3920,8 +3935,9 @@ host close-event, name <CloseEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like close-event-init
+      take event-init-dict
+        like maybe
+          like close-event-init
       like close-event
 
 host comment, name <Comment>
@@ -3930,8 +3946,9 @@ host comment, name <Comment>
       like comment
       lock false
     hook make
-      take data, like maybe
-        like native-string
+      take data
+        like maybe
+          like native-string
       like comment
 
 host composition-event, name <CompositionEvent>
@@ -3941,8 +3958,9 @@ host composition-event, name <CompositionEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like composition-event-init
+      take event-init-dict
+        like maybe
+          like composition-event-init
       like composition-event
 
 host constant-source-node, name <ConstantSourceNode>
@@ -3952,8 +3970,9 @@ host constant-source-node, name <ConstantSourceNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like constant-source-options
+      take options
+        like maybe
+          like constant-source-options
       like constant-source-node
 
 host convolver-node, name <ConvolverNode>
@@ -3963,8 +3982,9 @@ host convolver-node, name <ConvolverNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like convolver-options
+      take options
+        like maybe
+          like convolver-options
       like convolver-node
 
 host count-queuing-strategy, name <CountQueuingStrategy>
@@ -4024,9 +4044,10 @@ host custom-event, name <CustomEvent>
     hook make
       head t
       take type, like native-string
-      take event-init-dict, like maybe
-        like custom-event-init
-          like t
+      take event-init-dict
+        like maybe
+          like custom-event-init
+            like t
       like custom-event
         like t
 
@@ -4036,10 +4057,12 @@ host dom-exception, name <DOMException>
       like dom-exception
       lock false
     hook make
-      take message, like maybe
-        like native-string
-      take name, like maybe
-        like native-string
+      take message
+        like maybe
+          like native-string
+      take name
+        like maybe
+          like native-string
       like dom-exception
 
     link abort-err, name <ABORT_ERR>
@@ -4107,11 +4130,12 @@ host dom-matrix, name <DOMMatrix>
       like dom-matrix
       lock false
     hook make
-      take init, like maybe
-        like or
-          like native-string
-          like native-array
-            like native-number
+      take init
+        like maybe
+          like or
+            like native-string
+            like native-array
+              like native-number
       like dom-matrix
 
     task from-float32-array, name <fromFloat32Array>
@@ -4123,8 +4147,9 @@ host dom-matrix, name <DOMMatrix>
       like dom-matrix
 
     task from-matrix, name <fromMatrix>
-      take other, like maybe
-        like dom-matrix-init
+      take other
+        like maybe
+          like dom-matrix-init
       like dom-matrix
 
 host svg-matrix, name <SVGMatrix>
@@ -4139,11 +4164,12 @@ host dom-matrix-read-only, name <DOMMatrixReadOnly>
       like dom-matrix-read-only
       lock false
     hook make
-      take init, like maybe
-        like or
-          like native-string
-          like native-array
-            like native-number
+      take init
+        like maybe
+          like or
+            like native-string
+            like native-array
+              like native-number
       like dom-matrix-read-only
 
     task from-float32-array, name <fromFloat32Array>
@@ -4155,8 +4181,9 @@ host dom-matrix-read-only, name <DOMMatrixReadOnly>
       like dom-matrix-read-only
 
     task from-matrix, name <fromMatrix>
-      take other, like maybe
-        like dom-matrix-init
+      take other
+        like maybe
+          like dom-matrix-init
       like dom-matrix-read-only
 
     task to-string, name <toString>
@@ -4176,19 +4203,24 @@ host dom-point, name <DOMPoint>
       like dom-point
       lock false
     hook make
-      take x, like maybe
-        like native-number
-      take y, like maybe
-        like native-number
-      take z, like maybe
-        like native-number
-      take w, like maybe
-        like native-number
+      take x
+        like maybe
+          like native-number
+      take y
+        like maybe
+          like native-number
+      take z
+        like maybe
+          like native-number
+      take w
+        like maybe
+          like native-number
       like dom-point
 
     task from-point, name <fromPoint>
-      take other, like maybe
-        like dom-point-init
+      take other
+        like maybe
+          like dom-point-init
       like dom-point
 
 host svg-point, name <SVGPoint>
@@ -4200,19 +4232,24 @@ host dom-point-read-only, name <DOMPointReadOnly>
       like dom-point-read-only
       lock false
     hook make
-      take x, like maybe
-        like native-number
-      take y, like maybe
-        like native-number
-      take z, like maybe
-        like native-number
-      take w, like maybe
-        like native-number
+      take x
+        like maybe
+          like native-number
+      take y
+        like maybe
+          like native-number
+      take z
+        like maybe
+          like native-number
+      take w
+        like maybe
+          like native-number
       like dom-point-read-only
 
     task from-point, name <fromPoint>
-      take other, like maybe
-        like dom-point-init
+      take other
+        like maybe
+          like dom-point-init
       like dom-point-read-only
 
 host dom-quad, name <DOMQuad>
@@ -4221,24 +4258,30 @@ host dom-quad, name <DOMQuad>
       like dom-quad
       lock false
     hook make
-      take p1, like maybe
-        like dom-point-init
-      take p2, like maybe
-        like dom-point-init
-      take p3, like maybe
-        like dom-point-init
-      take p4, like maybe
-        like dom-point-init
+      take p1
+        like maybe
+          like dom-point-init
+      take p2
+        like maybe
+          like dom-point-init
+      take p3
+        like maybe
+          like dom-point-init
+      take p4
+        like maybe
+          like dom-point-init
       like dom-quad
 
     task from-quad, name <fromQuad>
-      take other, like maybe
-        like dom-quad-init
+      take other
+        like maybe
+          like dom-quad-init
       like dom-quad
 
     task from-rect, name <fromRect>
-      take other, like maybe
-        like dom-rect-init
+      take other
+        like maybe
+          like dom-rect-init
       like dom-quad
 
 host dom-rect, name <DOMRect>
@@ -4247,19 +4290,24 @@ host dom-rect, name <DOMRect>
       like dom-rect
       lock false
     hook make
-      take x, like maybe
-        like native-number
-      take y, like maybe
-        like native-number
-      take width, like maybe
-        like native-number
-      take height, like maybe
-        like native-number
+      take x
+        like maybe
+          like native-number
+      take y
+        like maybe
+          like native-number
+      take width
+        like maybe
+          like native-number
+      take height
+        like maybe
+          like native-number
       like dom-rect
 
     task from-rect, name <fromRect>
-      take other, like maybe
-        like dom-rect-init
+      take other
+        like maybe
+          like dom-rect-init
       like dom-rect
 
 host svg-rect, name <SVGRect>
@@ -4279,19 +4327,24 @@ host dom-rect-read-only, name <DOMRectReadOnly>
       like dom-rect-read-only
       lock false
     hook make
-      take x, like maybe
-        like native-number
-      take y, like maybe
-        like native-number
-      take width, like maybe
-        like native-number
-      take height, like maybe
-        like native-number
+      take x
+        like maybe
+          like native-number
+      take y
+        like maybe
+          like native-number
+      take width
+        like maybe
+          like native-number
+      take height
+        like maybe
+          like native-number
       like dom-rect-read-only
 
     task from-rect, name <fromRect>
-      take other, like maybe
-        like dom-rect-init
+      take other
+        like maybe
+          like dom-rect-init
       like dom-rect-read-only
 
 host dom-string-list, name <DOMStringList>
@@ -4349,8 +4402,9 @@ host delay-node, name <DelayNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like delay-options
+      take options
+        like maybe
+          like delay-options
       like delay-node
 
 host device-motion-event, name <DeviceMotionEvent>
@@ -4360,8 +4414,9 @@ host device-motion-event, name <DeviceMotionEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like device-motion-event-init
+      take event-init-dict
+        like maybe
+          like device-motion-event-init
       like device-motion-event
 
 host device-orientation-event, name <DeviceOrientationEvent>
@@ -4371,8 +4426,9 @@ host device-orientation-event, name <DeviceOrientationEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like device-orientation-event-init
+      take event-init-dict
+        like maybe
+          like device-orientation-event-init
       like device-orientation-event
 
 host document, name <Document>
@@ -4397,8 +4453,9 @@ host document-timeline, name <DocumentTimeline>
       like document-timeline
       lock false
     hook make
-      take options, like maybe
-        like document-timeline-options
+      take options
+        like maybe
+          like document-timeline-options
       like document-timeline
 
 host document-type, name <DocumentType>
@@ -4416,8 +4473,9 @@ host drag-event, name <DragEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like drag-event-init
+      take event-init-dict
+        like maybe
+          like drag-event-init
       like drag-event
 
 host dynamics-compressor-node, name <DynamicsCompressorNode>
@@ -4427,8 +4485,9 @@ host dynamics-compressor-node, name <DynamicsCompressorNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like dynamics-compressor-options
+      take options
+        like maybe
+          like dynamics-compressor-options
       like dynamics-compressor-node
 
 host element, name <Element>
@@ -4446,8 +4505,9 @@ host error-event, name <ErrorEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like error-event-init
+      take event-init-dict
+        like maybe
+          like error-event-init
       like error-event
 
 host event, name <Event>
@@ -4457,8 +4517,9 @@ host event, name <Event>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like event-init
+      take event-init-dict
+        like maybe
+          like event-init
       like event
 
     link at-target, name <AT_TARGET>
@@ -4480,8 +4541,9 @@ host event-source, name <EventSource>
         like or
           like native-string
           like url
-      take event-source-init-dict, like maybe
-        like event-source-init
+      take event-source-init-dict
+        like maybe
+          like event-source-init
       like event-source
 
     link closed, name <CLOSED>
@@ -4517,8 +4579,9 @@ host file, name <File>
         like native-array
           like blob-part
       take file-name, like native-string
-      take options, like maybe
-        like file-property-bag
+      take options
+        like maybe
+          like file-property-bag
       like file
 
 host file-list, name <FileList>
@@ -4591,8 +4654,9 @@ host focus-event, name <FocusEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like focus-event-init
+      take event-init-dict
+        like maybe
+          like focus-event-init
       like focus-event
 
 host font-face, name <FontFace>
@@ -4606,8 +4670,9 @@ host font-face, name <FontFace>
         like or
           like native-string
           like binary-data
-      take descriptors, like maybe
-        like font-face-descriptors
+      take descriptors
+        like maybe
+          like font-face-descriptors
       like font-face
 
 host font-face-set, name <FontFaceSet>
@@ -4628,8 +4693,9 @@ host font-face-set-load-event, name <FontFaceSetLoadEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like font-face-set-load-event-init
+      take event-init-dict
+        like maybe
+          like font-face-set-load-event-init
       like font-face-set-load-event
 
 host form-data, name <FormData>
@@ -4638,8 +4704,9 @@ host form-data, name <FormData>
       like form-data
       lock false
     hook make
-      take form, like maybe
-        like html-form-element
+      take form
+        like maybe
+          like html-form-element
       like form-data
 
 host form-data-event, name <FormDataEvent>
@@ -4659,8 +4726,9 @@ host gain-node, name <GainNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like gain-options
+      take options
+        like maybe
+          like gain-options
       like gain-node
 
 host gamepad, name <Gamepad>
@@ -5363,8 +5431,9 @@ host hash-change-event, name <HashChangeEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like hash-change-event-init
+      take event-init-dict
+        like maybe
+          like hash-change-event-init
       like hash-change-event
 
 host headers, name <Headers>
@@ -5373,8 +5442,9 @@ host headers, name <Headers>
       like headers
       lock false
     hook make
-      take init, like maybe
-        like headers-init
+      take init
+        like maybe
+          like headers-init
       like headers
 
 host history, name <History>
@@ -5436,16 +5506,19 @@ host idb-key-range, name <IDBKeyRange>
     task bound, name <bound>
       take lower, like native-any
       take upper, like native-any
-      take lower-open, like maybe
-        like native-boolean
-      take upper-open, like maybe
-        like native-boolean
+      take lower-open
+        like maybe
+          like native-boolean
+      take upper-open
+        like maybe
+          like native-boolean
       like idb-key-range
 
     task lower-bound, name <lowerBound>
       take lower, like native-any
-      take open, like maybe
-        like native-boolean
+      take open
+        like maybe
+          like native-boolean
       like idb-key-range
 
     task only, name <only>
@@ -5454,8 +5527,9 @@ host idb-key-range, name <IDBKeyRange>
 
     task upper-bound, name <upperBound>
       take upper, like native-any
-      take open, like maybe
-        like native-boolean
+      take open
+        like maybe
+          like native-boolean
       like idb-key-range
 
 host idb-object-store, name <IDBObjectStore>
@@ -5497,8 +5571,9 @@ host idb-version-change-event, name <IDBVersionChangeEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like idb-version-change-event-init
+      take event-init-dict
+        like maybe
+          like idb-version-change-event-init
       like idb-version-change-event
 
 host iir-filter-node, name <IIRFilterNode>
@@ -5543,17 +5618,20 @@ host image-data, name <ImageData>
     hook make
       take sw, like native-number
       take sh, like native-number
-      take settings, like maybe
-        like image-data-settings
+      take settings
+        like maybe
+          like image-data-settings
       like image-data
 
     hook make
       take data, like uint8-clamped-array
       take sw, like native-number
-      take sh, like maybe
-        like native-number
-      take settings, like maybe
-        like image-data-settings
+      take sh
+        like maybe
+          like native-number
+      take settings
+        like maybe
+          like image-data-settings
       like image-data
 
 host input-event, name <InputEvent>
@@ -5563,8 +5641,9 @@ host input-event, name <InputEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like input-event-init
+      take event-init-dict
+        like maybe
+          like input-event-init
       like input-event
 
 host intersection-observer, name <IntersectionObserver>
@@ -5574,8 +5653,9 @@ host intersection-observer, name <IntersectionObserver>
       lock false
     hook make
       take callback, like intersection-observer-callback
-      take options, like maybe
-        like intersection-observer-init
+      take options
+        like maybe
+          like intersection-observer-init
       like intersection-observer
 
 host intersection-observer-entry, name <IntersectionObserverEntry>
@@ -5594,8 +5674,9 @@ host keyboard-event, name <KeyboardEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like keyboard-event-init
+      take event-init-dict
+        like maybe
+          like keyboard-event-init
       like keyboard-event
 
     link dom-key-location-left, name <DOM_KEY_LOCATION_LEFT>
@@ -5623,10 +5704,11 @@ host keyframe-effect, name <KeyframeEffect>
             like keyframe
           like property-indexed-keyframes
           like native-null
-      take options, like maybe
-        like or
-          like native-number
-          like keyframe-effect-options
+      take options
+        like maybe
+          like or
+            like native-number
+            like keyframe-effect-options
       like keyframe-effect
 
     hook make
@@ -5690,8 +5772,9 @@ host media-encrypted-event, name <MediaEncryptedEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like media-encrypted-event-init
+      take event-init-dict
+        like maybe
+          like media-encrypted-event-init
       like media-encrypted-event
 
 host media-error, name <MediaError>
@@ -5767,8 +5850,9 @@ host media-metadata, name <MediaMetadata>
       like media-metadata
       lock false
     hook make
-      take init, like maybe
-        like media-metadata-init
+      take init
+        like maybe
+          like media-metadata-init
       like media-metadata
 
 host media-query-list, name <MediaQueryList>
@@ -5786,8 +5870,9 @@ host media-query-list-event, name <MediaQueryListEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like media-query-list-event-init
+      take event-init-dict
+        like maybe
+          like media-query-list-event-init
       like media-query-list-event
 
 host media-recorder, name <MediaRecorder>
@@ -5797,8 +5882,9 @@ host media-recorder, name <MediaRecorder>
       lock false
     hook make
       take stream, like media-stream
-      take options, like maybe
-        like media-recorder-options
+      take options
+        like maybe
+          like media-recorder-options
       like media-recorder
 
     task is-type-supported, name <isTypeSupported>
@@ -5860,8 +5946,9 @@ host media-stream-audio-destination-node, name <MediaStreamAudioDestinationNode>
       lock false
     hook make
       take context, like audio-context
-      take options, like maybe
-        like audio-node-options
+      take options
+        like maybe
+          like audio-node-options
       like media-stream-audio-destination-node
 
 host media-stream-audio-source-node, name <MediaStreamAudioSourceNode>
@@ -5908,9 +5995,10 @@ host message-event, name <MessageEvent>
     hook make
       head t
       take type, like native-string
-      take event-init-dict, like maybe
-        like message-event-init
-          like t
+      take event-init-dict
+        like maybe
+          like message-event-init
+            like t
       like message-event
         like t
 
@@ -5945,8 +6033,9 @@ host mouse-event, name <MouseEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like mouse-event-init
+      take event-init-dict
+        like maybe
+          like mouse-event-init
       like mouse-event
 
 host mutation-event, name <MutationEvent>
@@ -6074,15 +6163,17 @@ host notification, name <Notification>
       lock false
     hook make
       take title, like native-string
-      take options, like maybe
-        like notification-options
+      take options
+        like maybe
+          like notification-options
       like notification
 
     link permission, name <permission>
       like notification-permission
     task request-permission, name <requestPermission>
-      take deprecated-callback, like maybe
-        like notification-permission-callback
+      take deprecated-callback
+        like maybe
+          like notification-permission-callback
       like promise
         like notification-permission
 
@@ -6118,8 +6209,9 @@ host oscillator-node, name <OscillatorNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like oscillator-options
+      take options
+        like maybe
+          like oscillator-options
       like oscillator-node
 
 host overconstrained-error, name <OverconstrainedError>
@@ -6129,8 +6221,9 @@ host overconstrained-error, name <OverconstrainedError>
       lock false
     hook make
       take constraint, like native-string
-      take message, like maybe
-        like native-string
+      take message
+        like maybe
+          like native-string
       like overconstrained-error
 
 host page-transition-event, name <PageTransitionEvent>
@@ -6140,8 +6233,9 @@ host page-transition-event, name <PageTransitionEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like page-transition-event-init
+      take event-init-dict
+        like maybe
+          like page-transition-event-init
       like page-transition-event
 
 host panner-node, name <PannerNode>
@@ -6151,8 +6245,9 @@ host panner-node, name <PannerNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like panner-options
+      take options
+        like maybe
+          like panner-options
       like panner-node
 
 host path2-d, name <Path2D>
@@ -6161,10 +6256,11 @@ host path2-d, name <Path2D>
       like path2-d
       lock false
     hook make
-      take path, like maybe
-        like or
-          like path2-d
-          like native-string
+      take path
+        like maybe
+          like or
+            like path2-d
+            like native-string
       like path2-d
 
 host payment-address, name <PaymentAddress>
@@ -6182,8 +6278,9 @@ host payment-method-change-event, name <PaymentMethodChangeEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like payment-method-change-event-init
+      take event-init-dict
+        like maybe
+          like payment-method-change-event-init
       like payment-method-change-event
 
 host payment-request, name <PaymentRequest>
@@ -6205,8 +6302,9 @@ host payment-request-update-event, name <PaymentRequestUpdateEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like payment-request-update-event-init
+      take event-init-dict
+        like maybe
+          like payment-request-update-event-init
       like payment-request-update-event
 
 host payment-response, name <PaymentResponse>
@@ -6248,8 +6346,9 @@ host performance-mark, name <PerformanceMark>
       lock false
     hook make
       take mark-name, like native-string
-      take mark-options, like maybe
-        like performance-mark-options
+      take mark-options
+        like maybe
+          like performance-mark-options
       like performance-mark
 
 host performance-measure, name <PerformanceMeasure>
@@ -6345,8 +6444,9 @@ host periodic-wave, name <PeriodicWave>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like periodic-wave-options
+      take options
+        like maybe
+          like periodic-wave-options
       like periodic-wave
 
 host permission-status, name <PermissionStatus>
@@ -6396,8 +6496,9 @@ host pointer-event, name <PointerEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like pointer-event-init
+      take event-init-dict
+        like maybe
+          like pointer-event-init
       like pointer-event
 
 host pop-state-event, name <PopStateEvent>
@@ -6407,8 +6508,9 @@ host pop-state-event, name <PopStateEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like pop-state-event-init
+      take event-init-dict
+        like maybe
+          like pop-state-event-init
       like pop-state-event
 
 host processing-instruction, name <ProcessingInstruction>
@@ -6426,8 +6528,9 @@ host progress-event, name <ProgressEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like progress-event-init
+      take event-init-dict
+        like maybe
+          like progress-event-init
       like progress-event
 
 host promise-rejection-event, name <PromiseRejectionEvent>
@@ -6504,8 +6607,9 @@ host rtcdtmf-tone-change-event, name <RTCDTMFToneChangeEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like rtcdtmf-tone-change-event-init
+      take event-init-dict
+        like maybe
+          like rtcdtmf-tone-change-event-init
       like rtcdtmf-tone-change-event
 
 host rtc-data-channel, name <RTCDataChannel>
@@ -6540,8 +6644,9 @@ host rtc-ice-candidate, name <RTCIceCandidate>
       like rtc-ice-candidate
       lock false
     hook make
-      take candidate-init-dict, like maybe
-        like rtc-ice-candidate-init
+      take candidate-init-dict
+        like maybe
+          like rtc-ice-candidate-init
       like rtc-ice-candidate
 
 host rtc-ice-transport, name <RTCIceTransport>
@@ -6558,8 +6663,9 @@ host rtc-peer-connection, name <RTCPeerConnection>
       like rtc-peer-connection
       lock false
     hook make
-      take configuration, like maybe
-        like rtc-configuration
+      take configuration
+        like maybe
+          like rtc-configuration
       like rtc-peer-connection
 
     task generate-certificate, name <generateCertificate>
@@ -6584,8 +6690,9 @@ host rtc-peer-connection-ice-event, name <RTCPeerConnectionIceEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like rtc-peer-connection-ice-event-init
+      take event-init-dict
+        like maybe
+          like rtc-peer-connection-ice-event-init
       like rtc-peer-connection-ice-event
 
 host rtc-rtp-receiver, name <RTCRtpReceiver>
@@ -6686,12 +6793,14 @@ host readable-stream, name <ReadableStream>
     hook make
       head r
         back native-any
-      take underlying-source, like maybe
-        like underlying-source
-          like r
-      take strategy, like maybe
-        like queuing-strategy
-          like r
+      take underlying-source
+        like maybe
+          like underlying-source
+            like r
+      take strategy
+        like maybe
+          like queuing-strategy
+            like r
       like readable-stream
         like r
 
@@ -6732,8 +6841,9 @@ host request, name <Request>
       lock false
     hook make
       take input, like request-info
-      take init, like maybe
-        like request-init
+      take init
+        like maybe
+          like request-init
       like request
 
 host resize-observer, name <ResizeObserver>
@@ -6767,12 +6877,14 @@ host response, name <Response>
       like response
       lock false
     hook make
-      take body, like maybe
-        like or
-          like body-init
-          like native-null
-      take init, like maybe
-        like response-init
+      take body
+        like maybe
+          like or
+            like body-init
+            like native-null
+      take init
+        like maybe
+          like response-init
       like response
 
     task error, name <error>
@@ -6783,8 +6895,9 @@ host response, name <Response>
         like or
           like native-string
           like url
-      take status, like maybe
-        like native-number
+      take status
+        like maybe
+          like native-number
       like response
 
 host svga-element, name <SVGAElement>
@@ -7819,8 +7932,9 @@ host security-policy-violation-event, name <SecurityPolicyViolationEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like security-policy-violation-event-init
+      take event-init-dict
+        like maybe
+          like security-policy-violation-event-init
       like security-policy-violation-event
 
 host selection, name <Selection>
@@ -7876,10 +7990,11 @@ host shared-worker, name <SharedWorker>
         like or
           like native-string
           like url
-      take options, like maybe
-        like or
-          like native-string
-          like worker-options
+      take options
+        like maybe
+          like or
+            like native-string
+            like worker-options
       like shared-worker
 
 host source-buffer, name <SourceBuffer>
@@ -7966,8 +8081,9 @@ host speech-synthesis-utterance, name <SpeechSynthesisUtterance>
       like speech-synthesis-utterance
       lock false
     hook make
-      take text, like maybe
-        like native-string
+      take text
+        like maybe
+          like native-string
       like speech-synthesis-utterance
 
 host speech-synthesis-voice, name <SpeechSynthesisVoice>
@@ -7994,8 +8110,9 @@ host stereo-panner-node, name <StereoPannerNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like stereo-panner-options
+      take options
+        like maybe
+          like stereo-panner-options
       like stereo-panner-node
 
 host storage, name <Storage>
@@ -8013,8 +8130,9 @@ host storage-event, name <StorageEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like storage-event-init
+      take event-init-dict
+        like maybe
+          like storage-event-init
       like storage-event
 
 host storage-manager, name <StorageManager>
@@ -8056,8 +8174,9 @@ host submit-event, name <SubmitEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like submit-event-init
+      take event-init-dict
+        like maybe
+          like submit-event-init
       like submit-event
 
 host subtle-crypto, name <SubtleCrypto>
@@ -8074,8 +8193,9 @@ host text, name <Text>
       like text
       lock false
     hook make
-      take data, like maybe
-        like native-string
+      take data
+        like maybe
+          like native-string
       like text
 
 host text-decoder, name <TextDecoder>
@@ -8084,10 +8204,12 @@ host text-decoder, name <TextDecoder>
       like text-decoder
       lock false
     hook make
-      take label, like maybe
-        like native-string
-      take options, like maybe
-        like text-decoder-options
+      take label
+        like maybe
+          like native-string
+      take options
+        like maybe
+          like text-decoder-options
       like text-decoder
 
 host text-decoder-stream, name <TextDecoderStream>
@@ -8096,10 +8218,12 @@ host text-decoder-stream, name <TextDecoderStream>
       like text-decoder-stream
       lock false
     hook make
-      take label, like maybe
-        like native-string
-      take options, like maybe
-        like text-decoder-options
+      take label
+        like maybe
+          like native-string
+      take options
+        like maybe
+          like text-decoder-options
       like text-decoder-stream
 
 host text-encoder, name <TextEncoder>
@@ -8182,8 +8306,9 @@ host touch-event, name <TouchEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like touch-event-init
+      take event-init-dict
+        like maybe
+          like touch-event-init
       like touch-event
 
 host touch-list, name <TouchList>
@@ -8201,8 +8326,9 @@ host track-event, name <TrackEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like track-event-init
+      take event-init-dict
+        like maybe
+          like track-event-init
       like track-event
 
 host transform-stream, name <TransformStream>
@@ -8215,16 +8341,19 @@ host transform-stream, name <TransformStream>
         back native-any
       head o
         back native-any
-      take transformer, like maybe
-        like transformer
-          like i
-          like o
-      take writable-strategy, like maybe
-        like queuing-strategy
-          like i
-      take readable-strategy, like maybe
-        like queuing-strategy
-          like o
+      take transformer
+        like maybe
+          like transformer
+            like i
+            like o
+      take writable-strategy
+        like maybe
+          like queuing-strategy
+            like i
+      take readable-strategy
+        like maybe
+          like queuing-strategy
+            like o
       like transform-stream
         like i
         like o
@@ -8244,8 +8373,9 @@ host transition-event, name <TransitionEvent>
       lock false
     hook make
       take type, like native-string
-      take transition-event-init-dict, like maybe
-        like transition-event-init
+      take transition-event-init-dict
+        like maybe
+          like transition-event-init
       like transition-event
 
 host tree-walker, name <TreeWalker>
@@ -8263,8 +8393,9 @@ host ui-event, name <UIEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like ui-event-init
+      take event-init-dict
+        like maybe
+          like ui-event-init
       like ui-event
 
 host url, name <URL>
@@ -8277,10 +8408,11 @@ host url, name <URL>
         like or
           like native-string
           like url
-      take base, like maybe
-        like or
-          like native-string
-          like url
+      take base
+        like maybe
+          like or
+            like native-string
+            like url
       like url
 
     task create-object-url, name <createObjectURL>
@@ -8300,16 +8432,17 @@ host url-search-params, name <URLSearchParams>
       like url-search-params
       lock false
     hook make
-      take init, like maybe
-        like or
-          like native-array
+      take init
+        like maybe
+          like or
             like native-array
+              like native-array
+                like native-string
+            like record
               like native-string
-          like record
+              like native-string
             like native-string
-            like native-string
-          like native-string
-          like url-search-params
+            like url-search-params
       like url-search-params
 
     task to-string, name <toString>
@@ -8365,8 +8498,9 @@ host wave-shaper-node, name <WaveShaperNode>
       lock false
     hook make
       take context, like base-audio-context
-      take options, like maybe
-        like wave-shaper-options
+      take options
+        like maybe
+          like wave-shaper-options
       like wave-shaper-node
 
 host web-gl2-rendering-context, name <WebGL2RenderingContext>
@@ -9525,8 +9659,9 @@ host web-gl-context-event, name <WebGLContextEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init, like maybe
-        like web-gl-context-event-init
+      take event-init
+        like maybe
+          like web-gl-context-event-init
       like web-gl-context-event
 
 host web-gl-framebuffer, name <WebGLFramebuffer>
@@ -10238,11 +10373,12 @@ host web-socket, name <WebSocket>
         like or
           like native-string
           like url
-      take protocols, like maybe
-        like or
-          like native-string
-          like native-array
+      take protocols
+        like maybe
+          like or
             like native-string
+            like native-array
+              like native-string
       like web-socket
 
     link closed, name <CLOSED>
@@ -10261,8 +10397,9 @@ host wheel-event, name <WheelEvent>
       lock false
     hook make
       take type, like native-string
-      take event-init-dict, like maybe
-        like wheel-event-init
+      take event-init-dict
+        like maybe
+          like wheel-event-init
       like wheel-event
 
     link dom-delta-line, name <DOM_DELTA_LINE>
@@ -10290,8 +10427,9 @@ host worker, name <Worker>
         like or
           like native-string
           like url
-      take options, like maybe
-        like worker-options
+      take options
+        like maybe
+          like worker-options
       like worker
 
 host worklet, name <Worklet>
@@ -10310,12 +10448,14 @@ host writable-stream, name <WritableStream>
     hook make
       head w
         back native-any
-      take underlying-sink, like maybe
-        like underlying-sink
-          like w
-      take strategy, like maybe
-        like queuing-strategy
-          like w
+      take underlying-sink
+        like maybe
+          like underlying-sink
+            like w
+      take strategy
+        like maybe
+          like queuing-strategy
+            like w
       like writable-stream
         like w
 
@@ -10451,30 +10591,37 @@ host console, name <console>
 host audio, name <Audio>
   like form
     hook make
-      take src, like maybe
-        like native-string
+      take src
+        like maybe
+          like native-string
       like html-audio-element
 
 host image, name <Image>
   like form
     hook make
-      take width, like maybe
-        like native-number
-      take height, like maybe
-        like native-number
+      take width
+        like maybe
+          like native-number
+      take height
+        like maybe
+          like native-number
       like html-image-element
 
 host option, name <Option>
   like form
     hook make
-      take text, like maybe
-        like native-string
-      take value, like maybe
-        like native-string
-      take default-selected, like maybe
-        like native-boolean
-      take selected, like maybe
-        like native-boolean
+      take text
+        like maybe
+          like native-string
+      take value
+        like maybe
+          like native-string
+      take default-selected
+        like maybe
+          like native-boolean
+      take selected
+        like maybe
+          like native-boolean
       like html-option-element
 
 host html-document, name <HTMLDocument>
@@ -11506,8 +11653,9 @@ host session-storage, name <sessionStorage>
   like storage
 
 task alert, name <alert>
-  take message, like maybe
-    like native-any
+  take message
+    like maybe
+      like native-any
   like native-void
 
 task blur, name <blur>
@@ -11524,8 +11672,9 @@ task close, name <close>
   like native-void
 
 task confirm, name <confirm>
-  take message, like maybe
-    like native-string
+  take message
+    like maybe
+      like native-string
   like native-boolean
 
 task focus, name <focus>
@@ -11533,10 +11682,11 @@ task focus, name <focus>
 
 task get-computed-style, name <getComputedStyle>
   take elt, like element
-  take pseudo-elt, like maybe
-    like or
-      like native-string
-      like native-null
+  take pseudo-elt
+    like maybe
+      like or
+        like native-string
+        like native-null
   like css-style-declaration
 
 task get-selection, name <getSelection>
@@ -11559,14 +11709,17 @@ task move-to, name <moveTo>
   like native-void
 
 task open, name <open>
-  take url, like maybe
-    like or
+  take url
+    like maybe
+      like or
+        like native-string
+        like url
+  take target
+    like maybe
       like native-string
-      like url
-  take target, like maybe
-    like native-string
-  take features, like maybe
-    like native-string
+  take features
+    like maybe
+      like native-string
   like or
     like window-proxy
     like native-null
@@ -11574,25 +11727,29 @@ task open, name <open>
 task post-message, name <postMessage>
   take message, like native-any
   take target-origin, like native-string
-  take transfer, like maybe
-    like native-array
-      like transferable
+  take transfer
+    like maybe
+      like native-array
+        like transferable
   like native-void
 
 task post-message, name <postMessage>
   take message, like native-any
-  take options, like maybe
-    like window-post-message-options
+  take options
+    like maybe
+      like window-post-message-options
   like native-void
 
 task print, name <print>
   like native-void
 
 task prompt, name <prompt>
-  take message, like maybe
-    like native-string
-  take default, like maybe
-    like native-string
+  take message
+    like maybe
+      like native-string
+  take default
+    like maybe
+      like native-string
   like or
     like native-string
     like native-null
@@ -11602,8 +11759,9 @@ task release-events, name <releaseEvents>
 
 task request-idle-callback, name <requestIdleCallback>
   take callback, like idle-request-callback
-  take options, like maybe
-    like idle-request-options
+  take options
+    like maybe
+      like idle-request-options
   like native-number
 
 task resize-by, name <resizeBy>
@@ -11617,8 +11775,9 @@ task resize-to, name <resizeTo>
   like native-void
 
 task scroll, name <scroll>
-  take options, like maybe
-    like scroll-to-options
+  take options
+    like maybe
+      like scroll-to-options
   like native-void
 
 task scroll, name <scroll>
@@ -11627,8 +11786,9 @@ task scroll, name <scroll>
   like native-void
 
 task scroll-by, name <scrollBy>
-  take options, like maybe
-    like scroll-to-options
+  take options
+    like maybe
+      like scroll-to-options
   like native-void
 
 task scroll-by, name <scrollBy>
@@ -11637,8 +11797,9 @@ task scroll-by, name <scrollBy>
   like native-void
 
 task scroll-to, name <scrollTo>
-  take options, like maybe
-    like scroll-to-options
+  take options
+    like maybe
+      like scroll-to-options
   like native-void
 
 task scroll-to, name <scrollTo>
@@ -11673,19 +11834,22 @@ task btoa, name <btoa>
   like native-string
 
 task clear-interval, name <clearInterval>
-  take handle, like maybe
-    like native-number
+  take handle
+    like maybe
+      like native-number
   like native-void
 
 task clear-timeout, name <clearTimeout>
-  take handle, like maybe
-    like native-number
+  take handle
+    like maybe
+      like native-number
   like native-void
 
 task create-image-bitmap, name <createImageBitmap>
   take image, like image-bitmap-source
-  take options, like maybe
-    like image-bitmap-options
+  take options
+    like maybe
+      like image-bitmap-options
   like promise
     like image-bitmap
 
@@ -11695,15 +11859,17 @@ task create-image-bitmap, name <createImageBitmap>
   take sy, like native-number
   take sw, like native-number
   take sh, like native-number
-  take options, like maybe
-    like image-bitmap-options
+  take options
+    like maybe
+      like image-bitmap-options
   like promise
     like image-bitmap
 
 task fetch, name <fetch>
   take input, like request-info
-  take init, like maybe
-    like request-init
+  take init
+    like maybe
+      like request-init
   like promise
     like response
 
@@ -11713,8 +11879,9 @@ task queue-microtask, name <queueMicrotask>
 
 task set-interval, name <setInterval>
   take handler, like timer-handler
-  take timeout, like maybe
-    like native-number
+  take timeout
+    like maybe
+      like native-number
   take arguments
     like native-array
       like native-any
@@ -11723,8 +11890,9 @@ task set-interval, name <setInterval>
 
 task set-timeout, name <setTimeout>
   take handler, like timer-handler
-  take timeout, like maybe
-    like native-number
+  take timeout
+    like maybe
+      like native-number
   take arguments
     like native-array
       like native-any
@@ -11744,19 +11912,21 @@ task add-event-listener, name <addEventListener>
           like window-event-map
           like k
       like native-any
-  take options, like maybe
-    like or
-      like native-boolean
-      like add-event-listener-options
+  take options
+    like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
   like native-void
 
 task add-event-listener, name <addEventListener>
   take type, like native-string
   take listener, like event-listener-or-event-listener-object
-  take options, like maybe
-    like or
-      like native-boolean
-      like add-event-listener-options
+  take options
+    like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
   like native-void
 
 task remove-event-listener, name <removeEventListener>
@@ -11772,17 +11942,19 @@ task remove-event-listener, name <removeEventListener>
           like window-event-map
           like k
       like native-any
-  take options, like maybe
-    like or
-      like native-boolean
-      like event-listener-options
+  take options
+    like maybe
+      like or
+        like native-boolean
+        like event-listener-options
   like native-void
 
 task remove-event-listener, name <removeEventListener>
   take type, like native-string
   take listener, like event-listener-or-event-listener-object
-  take options, like maybe
-    like or
-      like native-boolean
-      like event-listener-options
+  take options
+    like maybe
+      like or
+        like native-boolean
+        like event-listener-options
   like native-void

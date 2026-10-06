@@ -16,8 +16,10 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
 import { closeRun, count, field, location, openRun, outputOptions, printData, report, reportProblems } from '@term/call/code/output'
 import { addReach, diffRolls, ownHost, reachGains, rollBefore } from '@term/call/code/roll-diff'
+// what `term roll` decides beside the roll's own shape: the kinds, each exception's tell and routes, and what it says
+import * as words from '@term/call/code/roll-words'
 
-export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
+export const ROLL_KINDS = words.rollKinds()
 
 // THE ROLL OF THE BUILD: every definition of every module the project's entries load, each typed once in its own
 // unit's build (compile/roll.ts `own`) and kept with the unit, so a module's part changes only when the module does.
@@ -199,9 +201,8 @@ export async function callRoll(input: {
   }
 
   // a kind is built in, or declared by a deck of this build (`roll <name>`)
-  if (input.kind && !ROLL_KINDS.includes(input.kind) && !roll.kind.some(k => k.name === input.kind)) {
-    const declared = roll.kind.map(k => k.name)
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no roll kind named ${input.kind}`, fields: [field('kinds', [...ROLL_KINDS, ...declared].join(', '))] })
+  if (input.kind && !words.isRollKind(input.kind, roll.kind.map(k => k.name))) {
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no roll kind named ${input.kind}`, fields: [field('kinds', words.kindsField(roll.kind.map(k => k.name)))] })
     closeRun({ verdict: 'Nothing rolled' })
 
     return
@@ -214,20 +215,18 @@ export async function callRoll(input: {
   }
 
   if (input.private) {
-    const told = new Set(roll.tell.map(t => t.name))
-    roll.exception = roll.exception.filter(
-      e => !told.has(`${e.host}/${e.name}`),
-    )
+    const told = roll.tell.map(t => t.name)
+    roll.exception = roll.exception.filter(e => words.isPrivate(e.host, e.name, told))
   }
 
   // which tell covers each exception, and which routes can answer with it
+  const tells = roll.tell.map(t => ({ name: t.name, note: t.note as string }))
+  const routes = roll.dock.map(d => ({ name: d.name, halt: d.halt as string[] }))
+
   for (const exception of roll.exception) {
-    const full = `${exception.host}/${exception.name}`
-    const tell = roll.tell.find(t => t.name === full)
-    exception.tell = tell ? tell.note : 'private'
-    exception.dock = roll.dock
-      .filter(d => (d.halt as string[]).includes(exception.name))
-      .map(d => d.name)
+    const cover = words.coverOf(exception.host, exception.name, tells, routes)
+    exception.tell = cover.tell
+    exception.dock = cover.dock
   }
 
   // what was asked for: one kind's entries after `--host` and `--private`, or the whole roll
@@ -250,7 +249,7 @@ export async function callRoll(input: {
     report({
       glyph: 'warning',
       verb: 'roll',
-      subject: `${failed.length} file${failed.length === 1 ? ' did' : 's did'} not compile and ${failed.length === 1 ? 'is' : 'are'} not on the roll`,
+      subject: words.failedSubject(failed.length),
       message: [failed.join(', ')],
     })
   }
@@ -309,7 +308,7 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
     return
   }
 
-  const list = (items: string[]): string => items.join(', ')
+  const list = (items: string[]): string => words.listedOr(items, '')
 
   for (const task of diff.tasks.added) {
     report({
@@ -318,8 +317,8 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
       subject: `New task ${task.name}`,
       fields: [
         location(task.site),
-        field('reach', task.reach.length ? list(task.reach) : 'no native module'),
-        field('raise', task.halt.length ? list(task.halt) : 'nothing'),
+        field('reach', words.listedOr(task.reach, 'no native module')),
+        field('raise', words.listedOr(task.halt, 'nothing')),
       ],
     })
   }
@@ -374,15 +373,11 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
 
   // a deck the project loads, counted rather than listed: its tasks are reached through the project's own, above
   for (const deck of diff.decks) {
-    const parts = [
-      deck.tasks.added ? `${deck.tasks.added} tasks entered the build` : '',
-      deck.tasks.removed ? `${deck.tasks.removed} tasks left it` : '',
-      deck.tasks.changed ? `${deck.tasks.changed} tasks changed what they raise` : '',
-      deck.exceptions.added ? `${deck.exceptions.added} exceptions entered` : '',
-      deck.exceptions.removed ? `${deck.exceptions.removed} exceptions left` : '',
-    ].filter(Boolean)
-
-    report({ glyph: 'changed', kind: 'change', subject: `${deck.host}: ${parts.join(', ')}` })
+    report({
+      glyph: 'changed',
+      kind: 'change',
+      subject: words.deckChange(deck.host, deck.tasks.added, deck.tasks.removed, deck.tasks.changed, deck.exceptions.added, deck.exceptions.removed),
+    })
   }
 
   if (!diff.reach) {
@@ -406,7 +401,7 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
     diff.routes.added.length + diff.routes.removed.length + diff.routes.changed.length + diff.decks.length
 
   closeRun({
-    verdict: changes ? `Compared with ${input.before}` : `Nothing changed since ${input.before}`,
+    verdict: words.diffVerdict(changes, input.before),
     counts: [
       count(diff.tasks.added.length, 'tasks added', 'task added'),
       count(diff.tasks.changed.length, 'tasks changed', 'task changed'),
@@ -418,15 +413,7 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
 
 // the noun a kind is counted in, plural then singular. A declared kind's entries are `entries`
 function rollNoun(kind: string): [string, string] {
-  const nouns: Record<string, [string, string]> = {
-    deck: ['decks', 'deck'],
-    exception: ['exceptions', 'exception'],
-    task: ['tasks', 'task'],
-    dock: ['routes', 'route'],
-    tell: ['tells', 'tell'],
-    kind: ['kinds', 'kind'],
-    supervision: ['supervisors', 'supervisor'],
-  }
+  const noun = words.rollNounOf(kind)
 
-  return nouns[kind] ?? ['entries', 'entry']
+  return [noun.many, noun.one]
 }

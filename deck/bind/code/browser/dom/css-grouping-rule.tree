@@ -26,6 +26,7 @@ form css-grouping-rule, name <CSSGroupingRule>
 
   task insert-rule, name <insertRule>
     take rule, like native-string
-    take index, like maybe
-      like native-number
+    take index
+      like maybe
+        like native-number
     like native-number

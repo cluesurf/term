@@ -25,13 +25,15 @@ form push-manager, name <PushManager>
         like native-null
 
   task permission-state, name <permissionState>
-    take options, like maybe
-      like push-subscription-options-init
+    take options
+      like maybe
+        like push-subscription-options-init
     like promise
       like push-permission-state
 
   task subscribe, name <subscribe>
-    take options, like maybe
-      like push-subscription-options-init
+    take options
+      like maybe
+        like push-subscription-options-init
     like promise
       like push-subscription

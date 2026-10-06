@@ -19,23 +19,12 @@ import {
 import path from 'node:path'
 import { closeRun, count, field, location, openRun, printData, report } from '@term/call/code/output'
 import { keptAt, projectHome, legacyProjectHome } from '@term/call/code/home'
-
-const KINDS = [
-  'decision',
-  'convention',
-  'constraint',
-  'reference',
-  'note',
-]
+// what `term mind` decides beside its files: a fact's name and kind, how its file reads and is written, the index,
+// which facts a query recalls
+import * as words from '@term/call/code/mind-words'
 
 function slug(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48) || 'fact'
-  )
+  return words.factSlug(text)
 }
 
 // the project's memory, which is the one thing here a person WROTE. If a project still has its facts at the
@@ -56,20 +45,7 @@ type Fact = {
 }
 
 function readFact(file: string): Fact {
-  const text = readFileSync(file, 'utf8')
-  const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text)
-  const meta = (key: string): string =>
-    new RegExp(`^${key}:\\s*(.*)$`, 'm')
-      .exec(match?.[1] ?? '')?.[1]
-      ?.trim() ?? ''
-
-  return {
-    name: meta('name') || path.basename(file, '.md'),
-    kind: meta('kind') || 'note',
-    description: meta('description'),
-    body: (match?.[2] ?? text).trim(),
-    file,
-  }
+  return { ...words.factOf(readFileSync(file, 'utf8'), path.basename(file, '.md')), file }
 }
 
 function allFacts(root: string): Fact[] {
@@ -93,38 +69,20 @@ function remember(
   const dir = memoryDir(root)
   mkdirSync(dir, { recursive: true })
 
-  const kind = kindArg && KINDS.includes(kindArg) ? kindArg : 'note'
+  const kind = words.factKind(kindArg ?? '')
   const name = slug(nameArg ?? fact)
   const description = fact.split('\n')[0]!.slice(0, 100)
   const file = path.join(dir, `${name}.md`)
   // the fact this one replaces, so the run says it changed one rather than added one
   const replaced = existsSync(file) ? readFact(file).description : undefined
 
-  writeFileSync(
-    file,
-    `---\nname: ${name}\nkind: ${kind}\ndescription: ${description}\n---\n\n${fact}\n`,
-  )
+  writeFileSync(file, words.factText(name, kind, description, fact))
 
   // keep a one-line index, deduped by name (the index is the thing a session loads up front)
   const indexPath = path.join(dir, 'index.md')
-  const head = '# Memory\n\n'
-  const existing = existsSync(indexPath)
-    ? readFileSync(indexPath, 'utf8')
-    : head
+  const existing = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : ''
 
-  const kept = existing
-    .split('\n')
-    .filter(
-      l => l.trim() && !l.startsWith(`- [${name}]`) && l !== '# Memory',
-    )
-
-  writeFileSync(
-    indexPath,
-    `${head}${[
-      ...kept,
-      `- [${name}](${name}.md) — ${description}`,
-    ].join('\n')}\n`,
-  )
+  writeFileSync(indexPath, words.indexWith(existing, name, description))
 
   return { name, kind, file: path.relative(root, file), ...(replaced !== undefined ? { replaced } : {}) }
 }
@@ -144,9 +102,7 @@ function forget(root: string, name: string): Fact | undefined {
   const indexPath = path.join(dir, 'index.md')
 
   if (existsSync(indexPath)) {
-    const lines = readFileSync(indexPath, 'utf8').split('\n').filter(line => !line.startsWith(`- [${fact.name}]`))
-
-    writeFileSync(indexPath, lines.join('\n'))
+    writeFileSync(indexPath, words.indexWithout(readFileSync(indexPath, 'utf8'), fact.name))
   }
 
   return fact
@@ -216,13 +172,7 @@ export async function callMind(input: {
 
   // recall / list
   const query = (input.find ?? '').toLowerCase()
-  const facts = allFacts(input.root).filter(
-    f =>
-      !query ||
-      `${f.name} ${f.description} ${f.body}`
-        .toLowerCase()
-        .includes(query),
-  )
+  const facts = allFacts(input.root).filter(f => words.recalls(query, f))
 
   if (json) {
     printData(
@@ -249,7 +199,7 @@ export async function callMind(input: {
   }
 
   closeRun({
-    verdict: facts.length ? 'Remembered facts' : query ? 'No memory matches' : 'No memories yet',
+    verdict: words.recallVerdict(facts.length, query),
     counts: [count(facts.length, 'facts', 'fact')],
   })
 }

@@ -2,6 +2,9 @@
 // through the terminal output library (code/output.ts) as the standard's Test run card does: a `test` item per file
 // with its counts, a `case` Problem item per test that did not hold, the compile problems of a file that did not
 // build, and a closing item with the run's totals.
+//
+// What it decides without its file system, a build or the terminal is Term, in test-plan.tree: which files a run
+// collects, a control's verdict, the counts a round closes with and what each refusal says.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -17,6 +20,7 @@ import { declaresDraft } from '@term/call/code/draft'
 import { isSnapshotFile, readSnapshots, writeSnapshots } from '@term/call/code/test-snapshot'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { closeRun, count, failRun, field, location, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
+import * as plan from '@term/call/code/test-plan'
 
 export async function callTest(input: {
   root: string
@@ -124,26 +128,7 @@ async function hasDeckTree(input: { root: string }): Promise<boolean> {
 
 // ---- controls ----
 
-// a control is a file under the package's `test/case/` folder (`term test`, guides: proofs/hold)
-function isControl(rel: string): boolean {
-  return rel.split(/[\\/]/).slice(0, 2).join('/') === 'test/case'
-}
-
-// the refusals a control is FOR: a goal not proven, out of reach, or proven wrong, and a proof the kernel refused. Any
-// other error means the control no longer states what it was written to state
-const REFUSALS = new Set([
-  'unproven',
-  'unchecked-hold',
-  'invalid-proof',
-  'unverified-proof',
-  'looping-proof',
-  'impure-proof',
-])
-
-// the count a control's header states: `Expected: 3`, or `Expected refusals: 17 (...)`
-const EXPECTED = /Expected(?: refusals)?:\s*(\d+)/
-
-// build one control and say whether it was refused as its header expects
+// build one control and say whether it was refused as its header expects (test-plan.tree `control-verdict-of`)
 async function runControl(input: {
   file: string
   source: string
@@ -158,18 +143,13 @@ async function runControl(input: {
   fact: string
   others: NonNullable<Awaited<ReturnType<typeof runTestFile>>['diagnostics']>
 }> {
-  const stated = EXPECTED.exec(input.source)
+  const digits = plan.controlCount(input.source)
 
-  if (!stated) {
-    return {
-      held: false,
-      broken: true,
-      fact: 'a control states no count: write `Expected: N` in its header, N the goals it must refuse',
-      others: [],
-    }
+  if (digits === '') {
+    return { ...plan.controlVerdictOf(digits, 0, false, [], []), others: [] }
   }
 
-  const expected = Number(stated[1])
+  const expected = Number(digits)
   // ALWAYS MERGED. A control is judged by how many refusals it gets, and the unit-at-a-time build reports fewer of a
   // file's diagnostics than it refuses: on 2026-10-05 it reported 2 for `vibe/group-control.tree`, whose 7 rules it
   // refuses one by one. Merged reports all 7 (tmp/control-debug-each.ts)
@@ -183,40 +163,18 @@ async function runControl(input: {
     leanOf: input.leanOf,
   })
 
-  if (!run.failure) {
-    return {
-      held: false,
-      broken: false,
-      fact: `0 of ${expected} refused: the build accepted every law this control states false`,
-      others: [],
-    }
-  }
-
-  const diagnostics = run.diagnostics ?? []
-  const refused = diagnostics.filter(d => REFUSALS.has(d.name ?? ''))
-  const others = diagnostics.filter(d => !REFUSALS.has(d.name ?? ''))
-
-  if (others.length > 0) {
-    return {
-      held: false,
-      broken: true,
-      fact: `refused for another reason (${[...new Set(others.map(d => d.name))].join(', ')}), so it tests nothing`,
-      others,
-    }
-  }
-
   // a GOAL refused, counted once however many diagnostics say so: a false law citing a rule it is not an instance of is
   // refused at the `cite` and again as unproven, two diagnostics at one rule
-  const goals = new Set(refused.map(d => `${d.span?.file ?? ''}:${d.span?.start.line ?? ''}`)).size
+  const diagnostics = run.failure ? (run.diagnostics ?? []) : []
+  const verdict = plan.controlVerdictOf(
+    digits,
+    expected,
+    Boolean(run.failure),
+    diagnostics.map(d => d.name ?? ''),
+    diagnostics.map(d => `${d.span?.file ?? ''}:${d.span?.start.line ?? ''}`),
+  )
 
-  return goals === expected
-    ? { held: true, broken: false, fact: `${expected} of ${expected} refused`, others: [] }
-    : {
-        held: false,
-        broken: false,
-        fact: `${goals} refused where its header expects ${expected}`,
-        others: [],
-      }
+  return { ...verdict, others: verdict.broken ? diagnostics.filter(d => !plan.isRefusal(d.name ?? '')) : [] }
 }
 
 async function findTestFiles(input: {
@@ -260,17 +218,8 @@ async function findTestFiles(input: {
         // indentation -- a `hold` inside a `task` states a UNIVERSAL law over the task's parameters (proved by the
         // linear prover for all values), not just a top-level closed witness. Both are verified by `term test`:
         // tests by running, proofs by the kernel and linear prover during compilation.
-        if (/^\s*(test|hold|rule) /m.test(text)) {
-          if (input.filter) {
-            if (
-              full.includes(input.filter) ||
-              text.includes(input.filter)
-            ) {
-              results.push(full)
-            }
-          } else {
-            results.push(full)
-          }
+        if (plan.isCollected(text, full, input.filter ?? '')) {
+          results.push(full)
         }
       }
     }
@@ -359,27 +308,13 @@ async function runSeedTests(input: {
   })
 
   // a backend this command does not run on, and one whose toolchain this machine does not have, are said before
-  // anything is built
-  if (input.env && input.env !== 'node' && !NATIVE_TEST_ENVS.includes(input.env as NativeTestEnv)) {
-    report({ glyph: 'failed', kind: 'problem', subject: `term test runs on node, rust, swift and kotlin, and not on ${input.env}` })
-    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'usage', next: 'term test --env rust' })
+  // anything is built. The toolchain is asked after the backend is known to be one this command runs on
+  const asked = plan.envRefusal(input.env ?? '', NATIVE_TEST_ENVS, input.update === true, [])
+  const refusal = asked.subject === '' && native ? plan.envRefusal(input.env ?? '', NATIVE_TEST_ENVS, input.update === true, missingTools(native)) : asked
 
-    return
-  }
-
-  // a snapshot is recorded on node, the one run that reads the values back: the native report answers a letter a test
-  if (native && input.update) {
-    report({ glyph: 'failed', kind: 'problem', subject: `Snapshots are written on node: --update runs without --env, and --env ${native} then holds the tests to them` })
-    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'usage', next: 'term test --update' })
-
-    return
-  }
-
-  const missing = native ? missingTools(native) : []
-
-  if (missing.length > 0) {
-    report({ glyph: 'failed', kind: 'problem', subject: `Testing on ${native} needs ${missing.join(' and ')}, which this machine does not have` })
-    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'environment' })
+  if (refusal.subject !== '') {
+    report({ glyph: 'failed', kind: 'problem', subject: refusal.subject })
+    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: refusal.failure, ...(refusal.next ? { next: refusal.next } : {}) })
 
     return
   }
@@ -444,7 +379,7 @@ async function runSeedTests(input: {
         // and only for proof reasons, exactly as many times as its header says (`Expected: N`). A control that builds
         // means the provers accepted a false law. A control refused for any other reason (a typo, an unknown name) has
         // stopped testing anything, so it is broken rather than passed
-        if (isControl(rel)) {
+        if (plan.isControl(rel)) {
           if (input.case || native) {
             skipped++
             continue
@@ -524,7 +459,7 @@ async function runSeedTests(input: {
             verb: 'test',
             subject: rel,
             duration: Date.now() - started,
-            facts: [run.failure.split('\n').pop() ?? 'did not compile'],
+            facts: [plan.failureFact(run.failure)],
           })
           continue
         }
@@ -564,7 +499,7 @@ async function runSeedTests(input: {
             glyph: 'failed',
             kind: 'problem',
             verb: 'case',
-            subject: one.label.charAt(0).toUpperCase() + one.label.slice(1),
+            subject: plan.caseSubject(one.label),
             duration: one.ms,
             // where the test is, `file:line` of its `test` line as written (section 12), and what it threw
             fields: [one.line ? location(`${rel}:${one.line}`) : field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
@@ -582,15 +517,7 @@ async function runSeedTests(input: {
     return { pass, fail, proved, broken, skipped, controls }
   }
 
-  const countsOf = (totals: { pass: number; fail: number; proved: number; broken: number; skipped: number; controls: number }) => [
-    count(totals.pass + totals.fail, 'tests', 'test'),
-    count(totals.pass, 'passed'),
-    ...(totals.fail > 0 ? [count(totals.fail, 'failed')] : []),
-    ...(totals.proved > 0 ? [count(totals.proved, 'proof files checked', 'proof file checked')] : []),
-    ...(totals.controls > 0 ? [count(totals.controls, 'controls refused as expected', 'control refused as expected')] : []),
-    ...(totals.broken > 0 ? [count(totals.broken, 'files did not build', 'file did not build')] : []),
-    ...(totals.skipped > 0 ? [count(totals.skipped, 'files with no such case', 'file with no such case')] : []),
-  ]
+  const countsOf = (totals: plan.RoundTotals) => plan.totalsCounts(totals)
 
   // the session's first round: everything it was handed
   session.turn(files)
@@ -608,7 +535,7 @@ async function runSeedTests(input: {
       return
     }
 
-    closeRun({ verdict: first.fail > 0 || first.broken > 0 ? 'Test run failed' : 'Tests passed', counts: countsOf(first) })
+    closeRun({ verdict: plan.roundFailed(first) ? 'Test run failed' : 'Tests passed', counts: countsOf(first) })
 
     return
   }
@@ -618,7 +545,7 @@ async function runSeedTests(input: {
   // touching several files reruns everything any of them reaches. A test file added or removed, or a test file whose
   // closure the session cannot see (a round compiled whole, `--merged`), runs every file again. The run never closes
   // until ctrl-c: it is a stream, as `term make --ride` is
-  report({ glyph: first.fail > 0 || first.broken > 0 ? 'failed' : 'done', verb: 'test', subject: 'every file', counts: countsOf(first) })
+  report({ glyph: plan.roundFailed(first) ? 'failed' : 'done', verb: 'test', subject: 'every file', counts: countsOf(first) })
 
   process.once('SIGINT', () => {
     process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
@@ -638,9 +565,9 @@ async function runSeedTests(input: {
 
     const totals = await round(reached)
     report({
-      glyph: totals.fail > 0 || totals.broken > 0 ? 'failed' : 'done',
+      glyph: plan.roundFailed(totals) ? 'failed' : 'done',
       verb: 'test',
-      subject: reached.length === files.length ? 'every file' : `${reached.length} of ${files.length} files`,
+      subject: plan.roundSubject(reached.length, files.length),
       counts: countsOf(totals),
     })
   })

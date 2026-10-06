@@ -12,6 +12,11 @@
 load @term/base/network/server/request
   find request
 
+# the `hash` form, whose `get-or-default` the header reads call. Without it in the build the call was the host's own
+# `headers.getOrDefault(...)`, which a JavaScript Map does not have, so each of these raised a TypeError on node
+load @term/base/hash
+  find hash
+
 load @term/base/native/node/network/http2/shared
   find head-scheme
   find head-authority

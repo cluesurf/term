@@ -27,7 +27,8 @@ form manifest-ask
 
 # `@scope/name` when the manifest names a host, the bare name when it does not
 task full-name
-  take manifest, like unknown
+  # the manifest the docked `@cluesurf/deck.tree` read: a host value (D1)
+  take manifest, like dynamic
 
   like text
 

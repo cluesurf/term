@@ -1,0 +1,278 @@
+# `term mind`'s decisions that are not the files it keeps or the terminal: a fact's name, how a fact file reads and
+# is written, how the index keeps one line per name, and which facts a query recalls.
+#
+# Ported from deck/call/code/mind.ts (self-hosting, 2026-10-06), which stays as the face: it finds the memory folder,
+# reads, writes and removes the files, and prints through code/output.ts. A description is cut to 100 UTF-16 units
+# there, the unit the original cut by.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-lower-case
+  find starts-with
+  find contains, name text-contains
+
+load ./output-plan
+  find trimmed
+
+# the kinds a fact can be, and `note` for any other
+task fact-kind
+  take kind, like text
+  like text
+
+  save kinds, split(<decision convention constraint reference note>, < >)
+  fork test, contains(kinds, kind)
+    hold
+      back kind
+  back <note>
+
+# a fact's name: lower-cased, each run of anything but an ASCII letter or digit one dash, no dash at either end, at
+# most 48 characters, `fact` when nothing is left
+task fact-slug
+  take text, like text
+  like text
+
+  save kept, make list
+  save dashed, false
+  walk split(to-lower-case(text), <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 48), is-maximum(code, 57)))
+      hold
+        push(kept, point)
+        save dashed, false
+      miss
+        fork test, not(dashed)
+          hold
+            push(kept, <->)
+            save dashed, true
+  save start, 0
+  walk test
+    hook test, and(is-below(start, kept/length), is-equal(get(kept, start), <->))
+    hook hold
+      save start, add(start, 1)
+  save end, kept/length
+  walk test
+    hook test, and(is-above(end, start), is-equal(get(kept, subtract(end, 1)), <->))
+    hook hold
+      save end, subtract(end, 1)
+  fork test, is-above(subtract(end, start), 48)
+    hold
+      save end, add(start, 48)
+  fork test, is-equal(end, start)
+    hold
+      back <fact>
+  save out, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(out, get(kept, at))
+      save at, add(at, 1)
+  back join(out, <>)
+
+# ---- a fact file ----
+
+form fact
+  link name, like text
+  link kind, like text
+  link description, like text
+  link body, like text
+
+task is-line-end
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+task is-space-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 9), is-maximum(code, 13))
+    hold
+      back true
+  fork test, and(is-minimum(code, 8192), is-maximum(code, 8202))
+    hold
+      back true
+  save others, make list
+  push(others, 32)
+  push(others, 160)
+  push(others, 5760)
+  push(others, 8232)
+  push(others, 8233)
+  push(others, 8239)
+  push(others, 8287)
+  push(others, 12288)
+  push(others, 65279)
+  back contains(others, code)
+
+task piece
+  take points, like list, like text
+  take start, like number
+  take end, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# `^key:\s*(.*)$` with `m`: the first line of the head that starts with `key:`, past the white space after it (line
+# breaks too), up to the end of the line it reaches, trimmed. The empty text when no line has it
+task meta-of
+  take head, like text
+  take key, like text
+  like text
+  mark private
+
+  save points, split(head, <>)
+  save wanted, split(<{key}:>, <>)
+  save at, 0
+  walk test
+    hook test, not(is-above(at, points/length))
+    hook hold
+      save starts, or(is-equal(at, 0), is-line-end(char-code-at(get(points, subtract(at, 1)), 0)))
+      fork test, and(starts, not(is-above(add(at, wanted/length), points/length)))
+        hold
+          fork test, is-equal(piece(points, at, add(at, wanted/length)), join(wanted, <>))
+            hold
+              save step, add(at, wanted/length)
+              walk test
+                hook test, and(is-below(step, points/length), is-space-code(char-code-at(get(points, step), 0)))
+                hook hold
+                  save step, add(step, 1)
+              save end, step
+              walk test
+                hook test, and(is-below(end, points/length), not(is-line-end(char-code-at(get(points, end), 0))))
+                hook hold
+                  save end, add(end, 1)
+              back trimmed(piece(points, step, end))
+      save at, add(at, 1)
+  back <>
+
+# A fact file read: `---`, its head, `---`, then its body, the head's `name`, `kind` and `description` lines read off
+# it. A file without that shape is all body. A missing name is the file's own, a missing kind `note`
+task fact-of
+  take text, like text
+  take file-name, like text
+  like fact
+
+  save points, split(text, <>)
+  save head, <>
+  save body, text
+  save shaped, false
+  fork test, starts-with(text, <---\n>)
+    hold
+      save at, 4
+      save fence, split(<\n---\n>, <>)
+      walk test
+        hook test, and(not(shaped), not(is-above(add(at, fence/length), points/length)))
+        hook hold
+          fork test, is-equal(piece(points, at, add(at, fence/length)), <\n---\n>)
+            hold
+              save head, piece(points, 4, at)
+              save body, piece(points, add(at, fence/length), points/length)
+              save shaped, true
+          save at, add(at, 1)
+  save name, meta-of(head, <name>)
+  fork test, is-equal(name, <>)
+    hold
+      save name, file-name
+  save kind, meta-of(head, <kind>)
+  fork test, is-equal(kind, <>)
+    hold
+      save kind, <note>
+  back
+    make fact
+      bind name, name
+      bind kind, kind
+      bind description, meta-of(head, <description>)
+      bind body, trimmed(body)
+
+# the file a fact is written as
+task fact-text
+  take name, like text
+  take kind, like text
+  take description, like text
+  take fact, like text
+  like text
+
+  back <---\nname: {name}\nkind: {kind}\ndescription: {description}\n---\n\n{fact}\n>
+
+# ---- the index ----
+
+# The index after a fact is written: its heading, every line it held but the blank ones, the heading and the line of
+# this name, then this fact's line, so one name keeps one line
+task index-with
+  take existing, like text
+  take name, like text
+  take description, like text
+  like text
+
+  save lines, make list
+  walk split(existing, <\n>)
+    take line
+    fork test, and(and(is-unequal(trimmed(line), <>), not(starts-with(line, <- [{name}]>))), is-unequal(line, <# Memory>))
+      hold
+        push(lines, line)
+  push(lines, <- [{name}]({name}.md) — {description}>)
+  save listed, join(lines, <\n>)
+  back <# Memory\n\n{listed}\n>
+
+# the index after a fact is forgotten: every line but its own
+task index-without
+  take existing, like text
+  take name, like text
+  like text
+
+  save lines, make list
+  walk split(existing, <\n>)
+    take line
+    fork test, not(starts-with(line, <- [{name}]>))
+      hold
+        push(lines, line)
+  back join(lines, <\n>)
+
+# ---- recall ----
+
+# is a fact one a query recalls: no query, or its name, description and body hold it, in any case
+task recalls
+  take query, like text
+  take one, like fact
+  like boolean
+
+  fork test, is-equal(query, <>)
+    hold
+      back true
+  save name, one/name
+  save description, one/description
+  save body, one/body
+  back text-contains(to-lower-case(<{name} {description} {body}>), query)
+
+# what a recall closes with
+task recall-verdict
+  take found, like number
+  take query, like text
+  like text
+
+  fork test, is-above(found, 0)
+    hold
+      back <Remembered facts>
+  fork test, is-unequal(query, <>)
+    hold
+      back <No memory matches>
+  back <No memories yet>

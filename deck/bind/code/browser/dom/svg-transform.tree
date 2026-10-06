@@ -34,8 +34,9 @@ form svg-transform, name <SVGTransform>
     like native-number
 
   task set-matrix, name <setMatrix>
-    take matrix, like maybe
-      like dom-matrix2-d-init
+    take matrix
+      like maybe
+        like dom-matrix2-d-init
     like native-void
 
   task set-rotate, name <setRotate>

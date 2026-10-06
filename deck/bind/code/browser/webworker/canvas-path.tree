@@ -18,8 +18,9 @@ form canvas-path, name <CanvasPath>
     take radius, like native-number
     take start-angle, like native-number
     take end-angle, like native-number
-    take anticlockwise, like maybe
-      like native-boolean
+    take anticlockwise
+      like maybe
+        like native-boolean
     like native-void
 
   task arc-to, name <arcTo>
@@ -50,8 +51,9 @@ form canvas-path, name <CanvasPath>
     take rotation, like native-number
     take start-angle, like native-number
     take end-angle, like native-number
-    take anticlockwise, like maybe
-      like native-boolean
+    take anticlockwise
+      like maybe
+        like native-boolean
     like native-void
 
   task line-to, name <lineTo>

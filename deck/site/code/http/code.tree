@@ -1,0 +1,130 @@
+# tree/code bodies for a Term app: a handler answers with Term data as `application/tree+code`, and reads a request
+# sent the same way, without ever touching bytes (note/term/host/10-code.md).
+#
+# A body is text in `request` and `response`, so tree/code crosses the program's edge the way a binary asset already
+# does: as base64 inside, bytes on the wire. The transport (native/node and native/cloudflare runtime/transport.ts)
+# turns the one into the other, reads a request body as bytes rather than UTF-8, unpacks `Content-Encoding: zstd`, and
+# packs a response with Zstandard when the client accepts it. The bytes under the compression are canonical, so a cache
+# or a signature works on them.
+
+load @term/host/code/base
+  find data
+  find to-code
+  find from-code
+
+load @term/base/bytes
+  find to-base64
+  find from-base64
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find split
+  find trim
+  find to-lower-case
+  find contains
+
+load ./http
+  find request
+  find response
+
+# the media type, as it goes on the wire
+host code-type, text <application/tree+code>
+
+# a response carrying `value` as tree/code, status 200
+task code-response
+  take value, like data
+  like response
+  send back
+    call code-response-status
+      read value
+      code 200
+
+# a response carrying `value` as tree/code, with the status given
+task code-response-status
+  take value, like data
+  take status, like u16
+  like response
+  save headers
+    make hash
+  call headers/set
+    text <content-type>
+    read code-type
+  send back
+    make response
+      bind status, read status
+      bind body
+        call to-base64
+          call to-code
+            read value
+      bind headers, read headers
+
+# whether a header names the tree/code media type, its parameters (`; charset`) aside
+task names-code-type
+  take value, like text
+  like boolean
+  save parts
+    call split
+      read value
+      text <;>
+  send back
+    call is-equal
+      call to-lower-case
+        call trim
+          read parts/0
+      read code-type
+
+# whether the request's body is tree/code: its `content-type` says so
+task is-code-request
+  take request, like request
+  like boolean
+  fork test
+    hook test
+      call request/headers/has
+        text <content-type>
+    hook hold
+      send back
+        call names-code-type
+          call request/headers/get
+            text <content-type>
+  send back, false
+
+# whether the client takes tree/code back: its `accept` header names the type
+task accepts-code
+  take request, like request
+  like boolean
+  fork test
+    hook test
+      call request/headers/has
+        text <accept>
+    hook hold
+      send back
+        call contains
+          call to-lower-case
+            call request/headers/get
+              text <accept>
+          read code-type
+  send back, false
+
+# the Term data a tree/code request carries: its first value. A body that is not canonical tree/code raises
+# `code-defect` (from @term/host), with the byte it went wrong at
+task code-of-request
+  take request, like request
+  like data
+  save values
+    call from-code
+      call from-base64
+        read request/body
+  fork test
+    hook test
+      call is-equal
+        read values/length
+        code 0
+    hook hold
+      send back
+        make blank
+  send back, read values/0

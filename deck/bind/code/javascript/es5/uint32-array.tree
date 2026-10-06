@@ -44,8 +44,9 @@ form uint32-array, name <Uint32Array>
   task copy-within, name <copyWithin>
     take target, like native-number
     take start, like native-number
-    take end, like maybe
-      like native-number
+    take end
+      like maybe
+        like native-number
     like native-this
 
   task every, name <every>
@@ -55,16 +56,19 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take array, like uint32-array
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task fill, name <fill>
     take value, like native-number
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like native-this
 
   task filter, name <filter>
@@ -74,8 +78,9 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take array, like uint32-array
         like native-any
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like uint32-array
 
   task find, name <find>
@@ -85,8 +90,9 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take obj, like uint32-array
         like native-boolean
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like or
       like native-number
       like native-undefined
@@ -98,8 +104,9 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take obj, like uint32-array
         like native-boolean
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-number
 
   task for-each, name <forEach>
@@ -109,25 +116,29 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take array, like uint32-array
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task index-of, name <indexOf>
     take search-element, like native-number
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task join, name <join>
-    take separator, like maybe
-      like native-string
+    take separator
+      like maybe
+        like native-string
     like native-string
 
   task last-index-of, name <lastIndexOf>
     take search-element, like native-number
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task map, name <map>
@@ -137,8 +148,9 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take array, like uint32-array
         like native-number
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like uint32-array
 
   task reduce, name <reduce>
@@ -214,15 +226,18 @@ form uint32-array, name <Uint32Array>
     take array
       like array-like
         like native-number
-    take offset, like maybe
-      like native-number
+    take offset
+      like maybe
+        like native-number
     like native-void
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like uint32-array
 
   task some, name <some>
@@ -232,23 +247,27 @@ form uint32-array, name <Uint32Array>
         take index, like native-number
         take array, like uint32-array
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task sort, name <sort>
-    take compare-fn, like maybe
-      like task
-        take a, like native-number
-        take b, like native-number
-        like native-number
+    take compare-fn
+      like maybe
+        like task
+          take a, like native-number
+          take b, like native-number
+          like native-number
     like native-this
 
   task subarray, name <subarray>
-    take begin, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take begin
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like uint32-array
 
   task to-locale-string, name <toLocaleString>

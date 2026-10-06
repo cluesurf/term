@@ -116,8 +116,9 @@ form media-recorder, name <MediaRecorder>
     like native-void
 
   task start, name <start>
-    take timeslice, like maybe
-      like native-number
+    take timeslice
+      like maybe
+        like native-number
     like native-void
 
   task stop, name <stop>
@@ -136,19 +137,21 @@ form media-recorder, name <MediaRecorder>
             like media-recorder-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -164,17 +167,19 @@ form media-recorder, name <MediaRecorder>
             like media-recorder-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

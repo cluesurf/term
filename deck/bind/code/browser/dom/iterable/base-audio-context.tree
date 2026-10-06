@@ -34,6 +34,7 @@ form base-audio-context, name <BaseAudioContext>
     take imag
       like iterable
         like native-number
-    take constraints, like maybe
-      like periodic-wave-constraints
+    take constraints
+      like maybe
+        like periodic-wave-constraints
     like periodic-wave

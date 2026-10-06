@@ -10,6 +10,7 @@ form error-constructor, name <ErrorConstructor>
     like error
 
   hook make
-    take message, like maybe
-      like native-string
+    take message
+      like maybe
+        like native-string
     like error

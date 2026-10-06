@@ -1,0 +1,321 @@
+# `term make --target compose` and `--target compose-android` (compose-target-0004): what a Compose build decides
+# without a tool. The app's name and Android package from its folder, the class kotlinc names after the program's file,
+# the Android manifest (with the permissions its device capabilities need), jpackage's arguments, the order Android
+# loads dex files in, the names the desktop libraries are copied under, whether the prelude holds the Compose runtime
+# alone, and what a failed compile or tool is reported as.
+#
+# Ported from deck/call/code/compose.ts (self-hosting, 2026-10-06), which stays as the face: it compiles, runs kotlinc,
+# d8, aapt2, zip, jpackage and the rest, and keeps the stages between builds.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find contains
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+  find char-code-at
+  find to-upper-case
+  find to-lower-case
+  find pad-left
+
+load ./device-grant
+  find permission-lines
+
+# the same floor and target as the cask's APKs
+task minimum-sdk
+  like number
+
+  back 26
+
+task target-sdk
+  like number
+
+  back 36
+
+task is-ascii-alphanumeric
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), and(is-minimum(code, 48), is-maximum(code, 57)))
+
+# a text's UTF-16 units outside a set made `_`, one each, as a `/g` replacement over them does: a character past
+# U+FFFF is two
+task replaced-units
+  take value, like text
+  take keep-also, like list, like number
+  like text
+  mark private
+
+  save out, make list
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(is-ascii-alphanumeric(code), contains(keep-also, code))
+      hold
+        push(out, point)
+      miss
+        push(out, <_>)
+        fork test, is-above(code, 65535)
+          hold
+            push(out, <_>)
+  back join(out, <>)
+
+form compose-identity
+  link name, like text
+  link identifier, like text
+
+# an app folder's name as an app is named after it, and its Android package: every character but an ASCII letter or
+# digit taken out, `App` when nothing is left
+task identity-of
+  take folder, like text
+  like compose-identity
+
+  save kept, make list
+  walk split(folder, <>)
+    take point
+    fork test, is-ascii-alphanumeric(char-code-at(point, 0))
+      hold
+        push(kept, point)
+  save name, join(kept, <>)
+  fork test, is-equal(name, <>)
+    hold
+      save name, <App>
+  save lower, to-lower-case(name)
+  back
+    make compose-identity
+      bind name, name
+      bind identifier, <surf.term.{lower}>
+
+# kotlinc names a file's top-level class after the file, capitalized, a character no name may hold written `_`: `app.kt`
+# holds `AppKt` and `compose-linux.kt` holds `Compose_linuxKt`
+task main-class-of
+  take name, like text
+  like text
+
+  save points, split(name, <>)
+  fork test, is-equal(points/length, 0)
+    hold
+      back <Kt>
+  save first, get(points, 0)
+  save code, char-code-at(first, 0)
+  # the first UTF-16 unit upper-cased: half a pair is left as it is, and is two units outside the set below
+  save head, first
+  fork test, not(is-above(code, 65535))
+    hold
+      save head, to-upper-case(first)
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      push(rest, get(points, at))
+      save at, add(at, 1)
+  save also, make list
+  push(also, 95)
+  push(also, 36)
+  save joined, join(rest, <>)
+  save whole, replaced-units(<{head}{joined}>, also)
+  back <{whole}Kt>
+
+# the Android manifest of a Compose app: its package, the SDK floor and target, the permissions its device
+# capabilities need, its label, and the one activity
+task android-manifest
+  take identifier, like text
+  take name, like text
+  take native, like text
+  like text
+
+  save minimum, minimum-sdk()
+  save target, target-sdk()
+  save lines, make list
+  push(lines, <\<?xml version="1.0" encoding="utf-8"?\>>)
+  push(lines, <\<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{identifier}" android:versionCode="1" android:versionName="0.0.2"\>>)
+  push(lines, <  \<uses-sdk android:minSdkVersion="{minimum}" android:targetSdkVersion="{target}" /\>>)
+  walk permission-lines(native)
+    take line
+    push(lines, line)
+  push(lines, <  \<application android:label="{name}" android:theme="@android:style/Theme.Material.Light.NoActionBar"\>>)
+  push(lines, <    \<activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density"\>>)
+  push(lines, <      \<intent-filter\>>)
+  push(lines, <        \<action android:name="android.intent.action.MAIN" /\>>)
+  push(lines, <        \<category android:name="android.intent.category.LAUNCHER" /\>>)
+  push(lines, <      \</intent-filter\>>)
+  push(lines, <    \</activity\>>)
+  push(lines, <  \</application\>>)
+  push(lines, <\</manifest\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# jpackage's arguments for a desktop app image. `main-jar` is the jar's own name. `console` keeps a Windows launcher's
+# standard output, which a Windows app image's launcher, a GUI program, otherwise has none of
+task jpackage-arguments
+  take input, like text
+  take main-jar, like text
+  take main, like text
+  take name, like text
+  take dest, like text
+  take console, like boolean
+  like list, like text
+
+  save out, make list
+  push(out, <--type>)
+  push(out, <app-image>)
+  push(out, <--input>)
+  push(out, input)
+  push(out, <--main-jar>)
+  push(out, main-jar)
+  push(out, <--main-class>)
+  push(out, main)
+  push(out, <--name>)
+  push(out, name)
+  push(out, <--dest>)
+  push(out, dest)
+  push(out, <--java-options>)
+  push(out, <--enable-native-access=ALL-UNNAMED>)
+  fork test, console
+    hold
+      push(out, <--win-console>)
+  back out
+
+# a library's name in jpackage's input folder: its place, three digits, before its own name, so two jars sharing a file
+# name both arrive
+task library-name
+  take at, like number
+  take base, like text
+  like text
+
+  save place, pad-left(<{at}>, 3, <0>)
+  back <{place}-{base}>
+
+# the number Android loads a dex file by, from its name: `classes.dex` is 1, `classes2.dex` 2, `classes12.dex` 12
+task dex-number
+  take file, like text
+  like number
+
+  save suffix, <.dex>
+  fork test, not(ends-with(file, suffix))
+    hold
+      back 1
+  save points, split(file, <>)
+  save end, subtract(points/length, 4)
+  save start, end
+  walk test
+    hook test, and(is-above(start, 0), and(is-minimum(char-code-at(get(points, subtract(start, 1)), 0), 48), is-maximum(char-code-at(get(points, subtract(start, 1)), 0), 57)))
+    hook hold
+      save start, subtract(start, 1)
+  # `classes` before the digits
+  save word, split(<classes>, <>)
+  fork test, is-below(start, word/length)
+    hold
+      back 1
+  save index, 0
+  walk word
+    take want
+    fork test, is-unequal(get(points, add(subtract(start, word/length), index)), want)
+      hold
+        back 1
+    save index, add(index, 1)
+  fork test, is-equal(start, end)
+    hold
+      back 1
+  save value, 0
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      # no dex is numbered near a trillion, so a longer run is held there rather than grown past what a number holds
+      fork test, is-below(value, 1000000000000)
+        hold
+          save value, add(multiply(value, 10), subtract(char-code-at(get(points, at), 0), 48))
+      save at, add(at, 1)
+  back value
+
+task dex-order
+  take a, like text
+  take b, like text
+  like ordering
+  mark private
+
+  save x, dex-number(a)
+  save y, dex-number(b)
+  fork test, is-below(x, y)
+    hold
+      back make less
+  fork test, is-above(x, y)
+    hold
+      back make greater
+  back make equal
+
+# dex files in the order Android loads them, two of one number kept in the order given
+task dex-sorted
+  take files, like list, like text
+  like list, like text
+
+  back sort(files, dex-order)
+
+# the Compose runtime and not the Android one: no Android class may reach a desktop build
+task holds-compose-alone
+  take prelude, like text
+  like boolean
+
+  back and(text-contains(prelude, <fun CxTree(>), not(text-contains(prelude, <android.widget>)))
+
+# the toolchain answered a Compose classpath and a compiler plugin
+task holds-compose-flags
+  take classpath, like text
+  take plugin, like text
+  like boolean
+
+  back and(text-contains(classpath, <ui-desktop>), ends-with(plugin, <.jar>))
+
+# what a compile that failed is reported as: its distinct messages, the first six, joined
+task failure-reason
+  take messages, like list, like text
+  like text
+
+  save seen, make list
+  walk messages
+    take message
+    fork test, and(not(contains(seen, message)), is-below(seen/length, 6))
+      hold
+        push(seen, message)
+  back join(seen, < | >)
+
+# what a tool said, cut to the lines that report an error: those holding `error`, `e: ` or `Exception`, the first
+# twelve. The empty text when there are none, and the face keeps the tail of what it said instead
+task error-lines
+  take text, like text
+  like text
+
+  save out, make list
+  walk split(text, <\n>)
+    take line
+    fork test, and(is-below(out/length, 12), or(or(text-contains(line, <error>), text-contains(line, <e: >)), text-contains(line, <Exception>)))
+      hold
+        push(out, line)
+  back join(out, <\n>)
+
+# the lines of kotlinc's output that hold `error:`, the first eight
+task build-errors
+  take output, like text
+  like text
+
+  save out, make list
+  walk split(output, <\n>)
+    take line
+    fork test, and(is-below(out/length, 8), text-contains(line, <error:>))
+      hold
+        push(out, line)
+  back join(out, <\n>)

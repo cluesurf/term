@@ -26,15 +26,13 @@ import { FRONT, HOME_POSIX, frontDir, userHome } from '@term/call/code/home'
 import { linkFront, loadVersion } from '@term/call/code/need-load'
 import { closeRun, field, location, openRun, printData, report, setOutput, showPath } from '@term/call/code/output'
 import { releases, reportLoaded } from '@term/call/code/self'
+// what the installer decides beside the registry, the files and the shell: a version's shape, PATH, the profiles, the
+// Windows Path, another term's removal and the closing words
+import * as words from '@term/call/code/load-words'
 
-const VERSION = /^\d+\.\d+\.\d+$/
-
-// The marker over every line this writes to a profile. Declared ABOVE `await main()`: main runs at this line, and a
-// constant below it is read before it is set (the minified bundle makes it a `var`, so it reads `undefined`)
-const MARK = '# term (https://term.surf/load)'
-
-// the front's folder as a profile line names it, under `$HOME` or spelled out. Above `await main()` for MARK's reason:
-// below it, both read `undefined` in the bundle, and the profile edit failed on `PREVIOUS_FRONTS.filter` (2026-10-05)
+// the front's folder as a profile line names it, under `$HOME` or spelled out. Declared ABOVE `await main()`: main
+// runs at this line, and a constant below it is read before it is set (the minified bundle makes it a `var`, so it
+// reads `undefined`, and the profile edit failed on `PREVIOUS_FRONTS.filter`, 2026-10-05)
 const FRONT_POSIX = `${HOME_POSIX}/${FRONT}`
 
 // its old names: `bin/` under the folder before it moved, and `bin/` under the moved folder before the front was
@@ -59,7 +57,7 @@ async function main(): Promise<void> {
 
   const asked = process.env['TERM_LOAD_VERSION']?.trim()
 
-  if (asked && !VERSION.test(asked)) {
+  if (asked && !words.isVersion(asked)) {
     report({ glyph: 'failed', kind: 'problem', verb: 'load', subject: `TERM_LOAD_VERSION=${asked} is not a version: write 2.6.8` })
     closeRun({ verdict: 'Nothing was installed', failure: 'usage' })
 
@@ -96,9 +94,7 @@ async function main(): Promise<void> {
   })
 
   const windows = process.platform === 'win32'
-  const onPath = (process.env['PATH'] ?? '')
-    .split(nodePath.delimiter)
-    .some(entry => (windows ? entry.replace(/\\+$/, '').toLowerCase() === bin.toLowerCase() : entry === bin))
+  const onPath = words.onPath(process.env['PATH'] ?? '', nodePath.delimiter, bin, windows)
   const automatic = process.env['TERM_LOAD_PATH']?.trim() !== '0'
   const profiles = automatic ? putOnPath(bin) : []
 
@@ -138,28 +134,14 @@ async function main(): Promise<void> {
     ...(onPath
       ? { next: 'term --help' }
       : {
-          message: [
-            !automatic
-              ? windows
-                ? 'TERM_LOAD_PATH=0, so the user Path was not changed: add bin to it.'
-                : "TERM_LOAD_PATH=0, so no profile was edited: add the line above to your shell's profile."
-              : windows
-                ? 'This terminal and new ones find term.'
-                : captured
-                  ? 'New terminals find term, and so does this one once it runs the line on standard output.'
-                  : 'New terminals find term. For this one, run the line above, or install with eval "$(curl -fsSL https://term.surf/load | sh)", which does both.',
-          ],
+          message: [words.closingMessage(automatic, windows, captured)],
         }),
   })
 }
 
 // The line that puts bin first on THIS shell's PATH, in its own syntax
 function refreshLine(bin: string): string {
-  if (nodePath.basename(process.env['SHELL'] ?? '') === 'fish') {
-    return `set -gx PATH ${bin} $PATH\n`
-  }
-
-  return `export PATH="${bin}:$PATH"; hash -r 2>/dev/null || true\n`
+  return words.refreshLine(nodePath.basename(process.env['SHELL'] ?? ''), bin)
 }
 
 type OtherTerm = { file: string; version: string; remove?: string }
@@ -192,7 +174,7 @@ function otherTerms(bin: string): OtherTerm[] {
       // a `term` that is not this one at all: named by its path alone
     }
 
-    const remove = /[\\/]pnpm[\\/]/.test(file) ? 'pnpm remove -g @cluesurf/term' : /[\\/](npm|node_modules)[\\/]|[\\/]lib[\\/]node/.test(file) ? 'npm uninstall -g @cluesurf/term' : undefined
+    const remove = words.removeHint(file) || undefined
 
     found.push({ file, version, ...(remove ? { remove } : {}) })
   }
@@ -232,30 +214,17 @@ function putOnPath(bin: string): Profile[] {
   }
 
   // `$HOME/...` rather than the expanded path, so a synced profile works on another machine
-  const portable = bin.startsWith(`${home}/`) ? `$HOME/${bin.slice(home.length + 1)}` : bin
+  const portable = words.portable(bin, home)
   const shell = nodePath.basename(process.env['SHELL'] ?? '')
   const zdot = process.env['ZDOTDIR']?.trim() || home
+  const line = words.profileLine(shell, portable)
 
-  if (shell === 'fish') {
-    const line = `contains ${portable} $PATH; or set -gx PATH ${portable} $PATH`
-
-    return [writeProfile({ file: nodePath.join(home, '.config', 'fish', 'conf.d', 'term.fish'), line, bin, home })]
-  }
-
-  const line = `export PATH="${portable}:$PATH"`
-  const files =
-    shell === 'zsh'
-      ? [nodePath.join(zdot, '.zshrc')]
-      : shell === 'bash'
-        ? [nodePath.join(home, '.bashrc'), ...(process.platform === 'darwin' ? [nodePath.join(home, '.bash_profile')] : [])]
-        : [nodePath.join(home, '.profile')]
-
-  return files.map(file => writeProfile({ file, line, bin, home }))
+  return words.profileFiles(shell, home, zdot, process.platform === 'darwin').map(file => writeProfile({ file: nodePath.normalize(file), line, bin, home }))
 }
 
 // one profile: the marked line appended, unless the file names bin already
 function writeProfile(input: { file: string; line: string; bin: string; home: string }): Profile {
-  const shown = input.file.startsWith(`${input.home}/`) ? `~/${input.file.slice(input.home.length + 1)}` : input.file
+  const shown = words.shownFile(input.file, input.home)
   let text = ''
 
   try {
@@ -264,25 +233,20 @@ function writeProfile(input: { file: string; line: string; bin: string; home: st
     // a profile that does not exist yet is made
   }
 
-  // the line this writes says `$HOME/...`, and a person may have spelled the path out: either is there already
-  if (text.includes(input.bin) || text.includes(FRONT_POSIX)) {
-    return { form: 'there', shown, line: input.line }
-  }
-
-  // the line an earlier install wrote, for an old name: renamed where it stands, nothing else in the file touched, so
+  // the line this writes says `$HOME/...`, and a person may have spelled the path out: either is there already. The
+  // line an earlier install wrote, for an old name, is renamed where it stands, nothing else in the file touched, so
   // the profile keeps one line and it names the folder that exists
-  const previous = PREVIOUS_FRONTS.filter(name => text.includes(name))
+  const edit = words.profileEditOf(text, input.bin, FRONT_POSIX, PREVIOUS_FRONTS, input.line)
 
-  if (previous.length > 0) {
-    writeFileSync(input.file, previous.reduce((written, name) => written.split(name).join(FRONT_POSIX), text))
-
-    return { form: 'moved', shown, line: input.line }
+  if (edit.form === 'moved') {
+    writeFileSync(input.file, edit.text)
+  } else if (edit.form === 'added') {
+    mkdirSync(nodePath.dirname(input.file), { recursive: true })
+    // appended rather than written whole, as it always was: the text it was read as is not written back
+    appendFileSync(input.file, edit.appended)
   }
 
-  mkdirSync(nodePath.dirname(input.file), { recursive: true })
-  appendFileSync(input.file, `${text === '' || text.endsWith('\n') ? '' : '\n'}\n${MARK}\n${input.line}\n`)
-
-  return { form: 'added', shown, line: input.line }
+  return { form: edit.form as Profile['form'], shown, line: input.line }
 }
 
 // the user's Path on Windows, read and written through PowerShell so nothing else in it is touched
@@ -290,18 +254,16 @@ function windowsPath(bin: string): Profile {
   const shown = 'the user Path'
   const read = '[Environment]::GetEnvironmentVariable("Path", "User")'
   const current = execFileSync('powershell.exe', ['-NoProfile', '-Command', read], { encoding: 'utf8' }).trim()
-  const entries = current.split(';')
-  const named = (entry: string, folder: string) => entry.replace(/\\+$/, '').toLowerCase() === folder.toLowerCase()
+  // the entry an earlier install made for an old name, renamed where it stands (home.ts)
+  const previous = [nodePath.join(homedir(), '.base', '@cluesurf', 'term', 'bin'), nodePath.join(homedir(), '.base', '@term', 'code', 'bin')]
+  const edit = words.windowsPathOf(current, bin, previous)
 
-  if (entries.some(entry => named(entry, bin))) {
+  if (edit.form === 'there') {
     return { form: 'there', shown, line: bin }
   }
 
-  // the entry an earlier install made for an old name, renamed where it stands (home.ts)
-  const previous = [nodePath.join(homedir(), '.base', '@cluesurf', 'term', 'bin'), nodePath.join(homedir(), '.base', '@term', 'code', 'bin')]
-  const isPrevious = (entry: string) => previous.some(folder => named(entry, folder))
-  const moved = entries.some(isPrevious)
-  const next = moved ? entries.map(entry => (isPrevious(entry) ? bin : entry)).join(';') : current ? `${bin};${current}` : bin
+  const moved = edit.form === 'moved'
+  const next = edit.text
 
   execFileSync('powershell.exe', ['-NoProfile', '-Command', `[Environment]::SetEnvironmentVariable("Path", $env:TERM_NEXT_PATH, "User")`], {
     env: { ...process.env, TERM_NEXT_PATH: next },

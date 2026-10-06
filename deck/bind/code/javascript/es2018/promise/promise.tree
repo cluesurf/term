@@ -15,11 +15,12 @@ form promise, name <Promise>
   head t
 
   task finally, name <finally>
-    take onfinally, like maybe
-      like or
-        like task
-          like native-void
-        like native-undefined
-        like native-null
+    take onfinally
+      like maybe
+        like or
+          like task
+            like native-void
+          like native-undefined
+          like native-null
     like promise
       like t

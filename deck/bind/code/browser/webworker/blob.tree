@@ -28,12 +28,15 @@ form blob, name <Blob>
       like array-buffer
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
-    take content-type, like maybe
-      like native-string
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
+    take content-type
+      like maybe
+        like native-string
     like blob
 
   task stream, name <stream>

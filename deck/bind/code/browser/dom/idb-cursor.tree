@@ -45,8 +45,9 @@ form idb-cursor, name <IDBCursor>
     like native-void
 
   task continue, name <continue>
-    take key, like maybe
-      like idb-valid-key
+    take key
+      like maybe
+        like idb-valid-key
     like native-void
 
   task continue-primary-key, name <continuePrimaryKey>

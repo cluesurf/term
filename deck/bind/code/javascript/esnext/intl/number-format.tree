@@ -16,9 +16,10 @@ load @term/bind/javascript/native
 
 form number-format, name <NumberFormat>
   task format-to-parts, name <formatToParts>
-    take number, like maybe
-      like or
-        like native-number
-        like native-bigint
+    take number
+      like maybe
+        like or
+          like native-number
+          like native-bigint
     like native-array
       like number-format-part

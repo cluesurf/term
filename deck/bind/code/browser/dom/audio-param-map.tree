@@ -19,6 +19,7 @@ form audio-param-map, name <AudioParamMap>
         take key, like native-string
         take parent, like audio-param-map
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

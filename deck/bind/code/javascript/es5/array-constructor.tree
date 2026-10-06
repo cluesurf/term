@@ -24,8 +24,9 @@ form array-constructor, name <ArrayConstructor>
         like native-any
 
   hook make
-    take array-length, like maybe
-      like native-number
+    take array-length
+      like maybe
+        like native-number
     like native-array
       like native-any
 

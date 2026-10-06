@@ -79,14 +79,16 @@ form font-face-set, name <FontFaceSet>
 
   task check, name <check>
     take font, like native-string
-    take text, like maybe
-      like native-string
+    take text
+      like maybe
+        like native-string
     like native-boolean
 
   task load, name <load>
     take font, like native-string
-    take text, like maybe
-      like native-string
+    take text
+      like maybe
+        like native-string
     like promise
       like native-array
         like font-face
@@ -98,8 +100,9 @@ form font-face-set, name <FontFaceSet>
         take key, like font-face
         take parent, like font-face-set
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task add-event-listener, name <addEventListener>
@@ -115,19 +118,21 @@ form font-face-set, name <FontFaceSet>
             like font-face-set-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -143,17 +148,19 @@ form font-face-set, name <FontFaceSet>
             like font-face-set-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

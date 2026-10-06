@@ -11,12 +11,14 @@ load @term/bind/javascript/native
 form string, name <String>
   task pad-start, name <padStart>
     take max-length, like native-number
-    take fill-string, like maybe
-      like native-string
+    take fill-string
+      like maybe
+        like native-string
     like native-string
 
   task pad-end, name <padEnd>
     take max-length, like native-number
-    take fill-string, like maybe
-      like native-string
+    take fill-string
+      like maybe
+        like native-string
     like native-string

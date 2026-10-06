@@ -35,10 +35,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform1iv, name <uniform1iv>
@@ -49,10 +51,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform2fv, name <uniform2fv>
@@ -63,10 +67,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform2iv, name <uniform2iv>
@@ -77,10 +83,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform3fv, name <uniform3fv>
@@ -91,10 +99,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform3iv, name <uniform3iv>
@@ -105,10 +115,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform4fv, name <uniform4fv>
@@ -119,10 +131,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform4iv, name <uniform4iv>
@@ -133,10 +147,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix2fv, name <uniformMatrix2fv>
@@ -148,10 +164,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix3fv, name <uniformMatrix3fv>
@@ -163,10 +181,12 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix4fv, name <uniformMatrix4fv>
@@ -178,8 +198,10 @@ form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void

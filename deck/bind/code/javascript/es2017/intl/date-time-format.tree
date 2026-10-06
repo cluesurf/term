@@ -16,9 +16,10 @@ load @term/bind/javascript/native
 
 form date-time-format, name <DateTimeFormat>
   task format-to-parts, name <formatToParts>
-    take date, like maybe
-      like or
-        like date
-        like native-number
+    take date
+      like maybe
+        like or
+          like date
+          like native-number
     like native-array
       like date-time-format-part

@@ -1,0 +1,147 @@
+# Installing a version of `term`, verified, beside the others (note/term/plan/term-versions.md, "Installing a
+# version"): the texts an install writes and the decisions it makes about a payload's files. The install.tree that
+# says what an install is, the payload's file list (every file with its sha256 and mode, written inside the signed
+# layer), the Windows front's one-line shim, which files of a new payload are hard-linked to a version already
+# installed, and which entries of the archive tar still has to extract.
+#
+# Ported from deck/call/code/need-load.ts (self-hosting, 2026-10-06), which stays as the face: it reads the registry,
+# verifies, downloads, hashes, runs tar, links, and takes the install lock.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find contains
+
+load @term/base/text
+  find split
+  find ends-with
+  find char-code-at
+
+load @term/make/check/eliminate
+  find utf16-order
+
+# what this install of term is
+task install-text
+  take version, like text
+  take platform, like text
+  take hash, like text
+  like text
+
+  save lines, make list
+  push(lines, <# What this install of term is. Written by https://term.surf/load and `term self`; read by `term self`.>)
+  push(lines, <install>)
+  push(lines, <  code \<{version}\>>)
+  push(lines, <  form \<{platform}\>>)
+  push(lines, <  hash \<{hash}\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# One file of a payload, by its path under `term/`
+form listed-file
+  link path, like text
+  link hash, like text
+  link mode, like text
+
+# a payload's paths in the order the list is written: JavaScript's order of texts
+task sorted-paths
+  take paths, like list, like text
+  like list, like text
+
+  back sort(paths, utf16-order)
+
+# the list of every file in a release payload, `term/hash.tree`
+task file-list-text
+  take listed, like list, like listed-file
+  like text
+
+  save lines, make list
+  push(lines, <# Every file in this release, with its sha256 and mode. Written by `pnpm term:release`, inside the signed layer.>)
+  push(lines, <# An install reads it to hard-link each file a version already installed holds alike (term self load).>)
+  walk listed
+    take one
+    save path, one/path
+    save hash, one/hash
+    save mode, one/mode
+    push(lines, <file \<{path}\>>)
+    push(lines, <  hash \<{hash}\>>)
+    push(lines, <  mode \<{mode}\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# On Windows the front is a one-line shim, because a symlink there needs a privilege an ordinary user lacks. The
+# `& exit /b` on the SAME line is what makes replacing it safe while it runs: cmd.exe reads a batch file a line at a
+# time from where it left off, so a second line would be read out of the new file's bytes at the old offset
+task front-shim-text
+  take version, like text
+  like text
+
+  back <@"%~dp0..\\code\\{version}\\term\\bin\\term.cmd" %* & exit /b\r\n>
+
+# tar reads a name as a pattern, so a name holding `*`, `?`, `[` or a backslash could match another file: such a file is
+# extracted rather than linked
+task is-pattern-name
+  take path, like text
+  like boolean
+
+  walk split(path, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(or(is-equal(code, 42), is-equal(code, 63)), or(is-equal(code, 91), is-equal(code, 92)))
+      hold
+        back true
+  back false
+
+# an installed version's file list, by its payload's place among the others
+form installed-list
+  link at, like number
+  link listed, like hash, like text, like listed-file
+
+# a file of the new payload, and the place of the installed version that holds it alike
+form shared-file
+  link path, like text
+  link at, like number
+
+# THE LISTS DECIDE, not the disk: a file whose path, sha256 and mode match an installed version's own list is linked
+# from the first such version, in the order the new list holds them
+task shared-files
+  take mine, like list, like listed-file
+  take theirs, like list, like installed-list
+  like list, like shared-file
+
+  save out, make list
+  walk mine
+    take file
+    fork test, is-pattern-name(file/path)
+      hold
+        turn next
+    walk theirs
+      take one
+      fork test, one/listed/has(file/path)
+        hold
+          save other, one/listed/get(file/path)
+          fork test, and(is-equal(other/hash, file/hash), is-equal(other/mode, file/mode))
+            hold
+              save found
+                make shared-file
+                  bind path, file/path
+                  bind at, one/at
+              push(out, found)
+              halt
+  back out
+
+# EVERY OTHER ENTRY, from tar's own listing rather than the file list, so a symlink or anything else the list does not
+# name still arrives: a line of the listing that is not empty, not a folder, and not linked already
+task rest-entries
+  take listing, like text
+  take linked, like hash, like text, like boolean
+  like list, like text
+
+  save out, make list
+  walk split(listing, <\n>)
+    take entry
+    fork test, and(and(is-unequal(entry, <>), not(ends-with(entry, </>))), not(linked/has(entry)))
+      hold
+        push(out, entry)
+  back out

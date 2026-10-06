@@ -61,12 +61,15 @@ form audio-buffer-source-node, name <AudioBufferSourceNode>
     like audio-param
 
   task start, name <start>
-    take when, like maybe
-      like native-number
-    take offset, like maybe
-      like native-number
-    take duration, like maybe
-      like native-number
+    take when
+      like maybe
+        like native-number
+    take offset
+      like maybe
+        like native-number
+    take duration
+      like maybe
+        like native-number
     like native-void
 
   task add-event-listener, name <addEventListener>
@@ -82,19 +85,21 @@ form audio-buffer-source-node, name <AudioBufferSourceNode>
             like audio-scheduled-source-node-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -110,17 +115,19 @@ form audio-buffer-source-node, name <AudioBufferSourceNode>
             like audio-scheduled-source-node-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

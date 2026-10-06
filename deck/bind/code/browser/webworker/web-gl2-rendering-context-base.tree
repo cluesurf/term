@@ -703,24 +703,27 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take buffer, like g-lenum
     take drawbuffer, like g-lint
     take values, like float32-list
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task clear-bufferiv, name <clearBufferiv>
     take buffer, like g-lenum
     take drawbuffer, like g-lint
     take values, like int32-list
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task clear-bufferuiv, name <clearBufferuiv>
     take buffer, like g-lenum
     take drawbuffer, like g-lint
     take values, like uint32-list
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task client-wait-sync, name <clientWaitSync>
@@ -750,10 +753,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take depth, like g-lsizei
     take border, like g-lint
     take src-data, like array-buffer-view
-    take src-offset, like maybe
-      like g-luint
-    take src-length-override, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length-override
+      like maybe
+        like g-luint
     like native-void
 
   task compressed-tex-sub-image3-d, name <compressedTexSubImage3D>
@@ -781,10 +786,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take depth, like g-lsizei
     take format, like g-lenum
     take src-data, like array-buffer-view
-    take src-offset, like maybe
-      like g-luint
-    take src-length-override, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length-override
+      like maybe
+        like g-luint
     like native-void
 
   task copy-buffer-sub-data, name <copyBufferSubData>
@@ -942,10 +949,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take target, like g-lenum
     take src-byte-offset, like g-lintptr
     take dst-buffer, like array-buffer-view
-    take dst-offset, like maybe
-      like g-luint
-    take length, like maybe
-      like g-luint
+    take dst-offset
+      like maybe
+        like g-luint
+    take length
+      like maybe
+        like g-luint
     like native-void
 
   task get-frag-data-location, name <getFragDataLocation>
@@ -1207,8 +1216,9 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
       like or
         like array-buffer-view
         like native-null
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task transform-feedback-varyings, name <transformFeedbackVaryings>
@@ -1233,10 +1243,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like web-gl-uniform-location
         like native-null
     take data, like uint32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform2ui, name <uniform2ui>
@@ -1254,10 +1266,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like web-gl-uniform-location
         like native-null
     take data, like uint32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform3ui, name <uniform3ui>
@@ -1276,10 +1290,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like web-gl-uniform-location
         like native-null
     take data, like uint32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform4ui, name <uniform4ui>
@@ -1299,10 +1315,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like web-gl-uniform-location
         like native-null
     take data, like uint32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-block-binding, name <uniformBlockBinding>
@@ -1318,10 +1336,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix2x4fv, name <uniformMatrix2x4fv>
@@ -1331,10 +1351,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix3x2fv, name <uniformMatrix3x2fv>
@@ -1344,10 +1366,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix3x4fv, name <uniformMatrix3x4fv>
@@ -1357,10 +1381,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix4x2fv, name <uniformMatrix4x2fv>
@@ -1370,10 +1396,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix4x3fv, name <uniformMatrix4x3fv>
@@ -1383,10 +1411,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
         like native-null
     take transpose, like g-lboolean
     take data, like float32-list
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task vertex-attrib-divisor, name <vertexAttribDivisor>

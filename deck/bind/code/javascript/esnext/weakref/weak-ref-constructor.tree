@@ -19,7 +19,8 @@ form weak-ref-constructor, name <WeakRefConstructor>
   hook make
     head t
       base native-object
-    take target, like maybe
-      like t
+    take target
+      like maybe
+        like t
     like weak-ref
       like t

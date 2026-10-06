@@ -1,0 +1,29 @@
+# What `term wake` writes, as text: the manifest, the entry point, the readme and the ignore rules of a new project.
+#
+# Ported from deck/call/code/wake-text.ts (self-hosting, 2026-10-06), which stays as the face wake.ts and
+# deck/deck/test/scaffold.test.ts read, the four texts as the constants they were.
+
+# no `test ./test`: nothing reads it, `term test` finds `test/` on its own, and `term lint` warns on it (L055)
+task deck-tree
+  take project, like text
+  like text
+
+  back <deck {project}\n  mark \<0.0.1\>\n  boot ./code/boot\n>
+
+task boot-tree
+  like text
+
+  back <# The application entry point. `term boot` compiles and runs\n# this module's `boot` task.\nload @term/base/console\n  find log\n\ntask boot\n  mark async\n  log \<hello from term\>\n>
+
+task readme
+  take project, like text
+  like text
+
+  back <# {project}\n\nA Term project.\n\n## Develop\n\n```\nterm boot     # compile and run\nterm feed     # dev server with hot reload\nterm test     # run tests\nterm make     # build\n```\n>
+
+# Everything under `.base/` can be rebuilt but the memory, which a person wrote, so the memory is the one part kept: git
+# cannot re-include a file whose folder is ignored, hence one rule per level
+task gitignore
+  like text
+
+  back <host\nlink\n.base/*\n!.base/@term/\n.base/@term/*\n!.base/@term/code/\n.base/@term/code/*\n!.base/@term/code/memory/\nnode_modules\n>

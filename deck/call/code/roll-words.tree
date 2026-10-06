@@ -1,0 +1,205 @@
+# `term roll`'s decisions that are not the build or the roll's own shape (note/term/hive/08-cli.md): whether a kind
+# can be asked for, which tell covers each exception and which routes can answer with it, which exceptions `--private`
+# keeps, the noun a kind is counted in, and what the roll and its `--diff` say.
+#
+# Ported from deck/call/code/roll.ts (self-hosting, 2026-10-06), which stays as the face: it builds the roll from the
+# project's units (the Roll is @term/make's, walked by its kinds), reads the roll it is compared with and prints
+# through code/output.ts.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+# the kinds every roll has
+task roll-kinds
+  like list, like text
+
+  save kinds, make list
+  push(kinds, <deck>)
+  push(kinds, <exception>)
+  push(kinds, <task>)
+  push(kinds, <dock>)
+  push(kinds, <tell>)
+  push(kinds, <kind>)
+  push(kinds, <supervision>)
+  back kinds
+
+# can a roll answer for a kind: one every roll has, or one a deck of the build declares
+task is-roll-kind
+  take kind, like text
+  take declared, like list, like text
+  like boolean
+
+  back or(contains(roll-kinds(), kind), contains(declared, kind))
+
+# what a kind nobody declared is refused with, and the kinds there are
+task kinds-field
+  take declared, like list, like text
+  like text
+
+  save all, roll-kinds()
+  walk declared
+    take one
+    push(all, one)
+  back join(all, <, >)
+
+form roll-noun
+  link many, like text
+  link one, like text
+
+# the noun a kind is counted in, plural then singular. A declared kind's entries are `entries`
+task roll-noun-of
+  take kind, like text
+  like roll-noun
+
+  save many, <entries>
+  save one, <entry>
+  fork test, is-equal(kind, <deck>)
+    hold
+      save many, <decks>
+      save one, <deck>
+  fork test, is-equal(kind, <exception>)
+    hold
+      save many, <exceptions>
+      save one, <exception>
+  fork test, is-equal(kind, <task>)
+    hold
+      save many, <tasks>
+      save one, <task>
+  fork test, is-equal(kind, <dock>)
+    hold
+      save many, <routes>
+      save one, <route>
+  fork test, is-equal(kind, <tell>)
+    hold
+      save many, <tells>
+      save one, <tell>
+  fork test, is-equal(kind, <kind>)
+    hold
+      save many, <kinds>
+      save one, <kind>
+  fork test, is-equal(kind, <supervision>)
+    hold
+      save many, <supervisors>
+      save one, <supervisor>
+  back
+    make roll-noun
+      bind many, many
+      bind one, one
+
+# ---- exceptions, tells and routes ----
+
+form roll-tell
+  link name, like text
+  link note, like text
+
+form roll-route
+  link name, like text
+  link halt, like list, like text
+
+form exception-cover
+  link tell, like text
+  link dock, like list, like text
+
+# Which tell covers an exception (`<host>/<name>`), its note, or `private` when none does; and the routes that can
+# answer with it, each route whose raises name it
+task cover-of
+  take host, like text
+  take name, like text
+  take tells, like list, like roll-tell
+  take routes, like list, like roll-route
+  like exception-cover
+
+  save full, <{host}/{name}>
+  save note, <private>
+  save found, false
+  walk tells
+    take one
+    fork test, and(not(found), is-equal(one/name, full))
+      hold
+        save note, one/note
+        save found, true
+  save docks, make list
+  walk routes
+    take route
+    fork test, contains(route/halt, name)
+      hold
+        push(docks, route/name)
+  back
+    make exception-cover
+      bind tell, note
+      bind dock, docks
+
+# under `--private`, is an exception kept: no tell covers it
+task is-private
+  take host, like text
+  take name, like text
+  take told, like list, like text
+  like boolean
+
+  back not(contains(told, <{host}/{name}>))
+
+# `2 files did not compile and are not on the roll`
+task failed-subject
+  take failed, like number
+  like text
+
+  fork test, is-equal(failed, 1)
+    hold
+      back <1 file did not compile and is not on the roll>
+  back <{failed} files did not compile and are not on the roll>
+
+# ---- the diff ----
+
+# what a deck the project loads changed, counted rather than listed: its tasks are reached through the project's own
+task deck-change
+  take host, like text
+  take tasks-added, like number
+  take tasks-removed, like number
+  take tasks-changed, like number
+  take exceptions-added, like number
+  take exceptions-removed, like number
+  like text
+
+  save parts, make list
+  fork test, is-unequal(tasks-added, 0)
+    hold
+      push(parts, <{tasks-added} tasks entered the build>)
+  fork test, is-unequal(tasks-removed, 0)
+    hold
+      push(parts, <{tasks-removed} tasks left it>)
+  fork test, is-unequal(tasks-changed, 0)
+    hold
+      push(parts, <{tasks-changed} tasks changed what they raise>)
+  fork test, is-unequal(exceptions-added, 0)
+    hold
+      push(parts, <{exceptions-added} exceptions entered>)
+  fork test, is-unequal(exceptions-removed, 0)
+    hold
+      push(parts, <{exceptions-removed} exceptions left>)
+  save listed, join(parts, <, >)
+  back <{host}: {listed}>
+
+# what a run that compared two rolls closes with: what it compared with, or that nothing changed since
+task diff-verdict
+  take changes, like number
+  take before, like text
+  like text
+
+  fork test, is-equal(changes, 0)
+    hold
+      back <Nothing changed since {before}>
+  back <Compared with {before}>
+
+# a list of names as a field shows it, or what an empty one means
+task listed-or
+  take names, like list, like text
+  take empty, like text
+  like text
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back empty
+  back join(names, <, >)

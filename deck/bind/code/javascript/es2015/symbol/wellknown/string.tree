@@ -84,12 +84,14 @@ form string, name <String>
       like form
         task {symbol/split}
           take string, like native-string
-          take limit, like maybe
-            like native-number
+          take limit
+            like maybe
+              like native-number
           like native-array
             like native-string
 
-    take limit, like maybe
-      like native-number
+    take limit
+      like maybe
+        like native-number
     like native-array
       like native-string

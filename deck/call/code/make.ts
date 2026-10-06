@@ -56,6 +56,7 @@ import type { ContractFinding } from '@term/call/code/face-contract'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { addOwed, describeOwed } from '@term/make/code/check/holds'
 import type { Owed } from '@term/make/code/check/holds'
+import * as plan from '@term/call/code/make-plan'
 import { closeRun, count, failRun, field, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
 
 // one problem of a build, whole: the diagnostic, and the text it was compiled from when that is not the file on disk
@@ -67,16 +68,8 @@ export type BuildProblem = { diagnostic: Diagnostic; text?: string }
 // `.../native/<name>` import to the concrete `.../native/<platform>/<name>`, so the other platforms' sources are
 // never reachable from it. Compiling them anyway means reporting errors for code the target will never run, and for
 // platforms that cannot be tested from here.
-const NATIVE_PLATFORMS = [
-  'node',
-  'browser',
-  'cloudflare',
-  'webview',
-  'rust',
-  'swift',
-  'javascript',
-  'kotlin',
-]
+// (the list, and every rule below for which entries the walk passes over, are Term since 2026-10-06:
+// call/code/make-plan.tree `walk-skips`)
 
 // does this file declare itself unfinished? A top-level `mark draft` line anywhere in it (call/code/draft.ts)
 function isDraftTree(file: string): boolean {
@@ -208,40 +201,10 @@ export function findTreeFiles(
   const parent = path.basename(dir)
 
   for (const entry of entries) {
-    if (
-      entry === 'node_modules' ||
-      entry === 'host' ||
-      entry === '.git'
-    ) {
-      continue
-    }
-
-    // NOTHING HERE IS THIS PACKAGE'S SOURCE, and the walk used to descend into all of it and throw it away after.
-    // Measured on the Term root, 2026-10-05: 29.6 s in `tmp/` (44,848 scratch `.tree` files tests and benchmarks
-    // write) and 7.8 s in `link/` (5,206 files of installed dependencies), against 0.4 s for the 157 files that are
-    // the package. The language server lists a package for every workspace symbol search, so one search held the
-    // editor's queue for 46 s and a save waited behind it ("Getting code actions from 'Term'").
-    //
-    //   a hidden folder   `.base` (Term's caches), `.build` and `.swiftpm` (Swift's), never source
-    //   tmp               scratch, gitignored by house rule
-    //   link at the root  the installed dependencies, reached through the resolver like any other package, and not
-    //                     compiled as this one's files (the same reason a nested package is skipped below). ONLY at
-    //                     the root: `deck/mill/code/code/form/link` is the grammar of the `link` head, real source
-    if (
-      entry.startsWith('.') ||
-      entry === 'tmp' ||
-      (entry === 'link' && dir === root)
-    ) {
-      continue
-    }
-
-    if (
-      platform &&
-      parent === 'native' &&
-      entry !== platform &&
-      entry !== 'shared' &&
-      NATIVE_PLATFORMS.includes(entry)
-    ) {
+    // NOTHING HERE IS THIS PACKAGE'S SOURCE: generated output and dependencies, a hidden folder, scratch, `link` at the
+    // root, and another platform's native tree. The language server lists a package for every workspace symbol search,
+    // so walking `tmp/` held the editor's queue for 46 s (2026-10-05). The rules are make-plan.tree `walk-skips`
+    if (plan.walkSkips(entry, dir === root, parent, platform ?? '')) {
       continue
     }
 
@@ -1137,7 +1100,7 @@ export function unitSlug(root: string, file: string, deckOf: DeckOf = projectDec
   const deck = deckOf(file)
   const named = deck ? `${deck.name}/${path.relative(deck.root, file)}` : path.relative(root, file)
 
-  return named.replace(/\.tree$/, '').replace(/[^A-Za-z0-9._-]/g, '_')
+  return plan.unitSlugOf(named)
 }
 
 // THE ENTRY SHIM: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every public
@@ -1163,24 +1126,8 @@ export function entryShim(
     return relative.startsWith('./') || relative.startsWith('../') ? relative : `./${relative}`
   }
 
-  const values = new Map<string, string[]>()
-  const types = new Map<string, string[]>()
-
-  for (const one of exports) {
-    const spell = one.type ? toPascal : toCamel
-    const local = spell(one.name)
-    const remote = spell(one.exported)
-    const into = one.type ? types : values
-
-    into.set(one.file, [...(into.get(one.file) ?? []), remote === local ? local : `${remote} as ${local}`])
-  }
-
-  const lines = [
-    ...[...values].map(([module, names]) => `export { ${names.join(', ')} } from '${unitOf(module)}'`),
-    ...[...types].map(([module, names]) => `export type { ${names.join(', ')} } from '${unitOf(module)}'`),
-  ]
-
-  return `${lines.join('\n')}\n`
+  // the grouping and the lines are Term, make-plan.tree `entry-shim-text`; the spellings and the paths stay here
+  return plan.entryShimText(exports, toCamel, toPascal, unitOf)
 }
 
 // a file that is not a program, and so is compiled whole rather than cut into units: a mill definition, a data file,

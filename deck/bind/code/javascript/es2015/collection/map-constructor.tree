@@ -25,13 +25,14 @@ form map-constructor, name <MapConstructor>
   hook make
     head k
     head v
-    take entries, like maybe
-      like or
-        like native-array
-          like band
-            like k
-            like v
-        like native-null
+    take entries
+      like maybe
+        like or
+          like native-array
+            like band
+              like k
+              like v
+          like native-null
     like map
       like k
       like v

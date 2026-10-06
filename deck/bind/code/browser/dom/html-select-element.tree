@@ -115,11 +115,12 @@ form html-select-element, name <HTMLSelectElement>
       like or
         like html-option-element
         like html-opt-group-element
-    take before, like maybe
-      like or
-        like html-element
-        like native-number
-        like native-null
+    take before
+      like maybe
+        like or
+          like html-element
+          like native-number
+          like native-null
     like native-void
 
   task check-validity, name <checkValidity>
@@ -164,19 +165,21 @@ form html-select-element, name <HTMLSelectElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -192,19 +195,21 @@ form html-select-element, name <HTMLSelectElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   mesh name, like native-number

@@ -106,8 +106,9 @@ form idb-database, name <IDBDatabase>
 
   task create-object-store, name <createObjectStore>
     take name, like native-string
-    take options, like maybe
-      like idb-object-store-parameters
+    take options
+      like maybe
+        like idb-object-store-parameters
     like idb-object-store
 
   task delete-object-store, name <deleteObjectStore>
@@ -120,8 +121,9 @@ form idb-database, name <IDBDatabase>
         like native-string
         like native-array
           like native-string
-    take mode, like maybe
-      like idb-transaction-mode
+    take mode
+      like maybe
+        like idb-transaction-mode
     like idb-transaction
 
   task add-event-listener, name <addEventListener>
@@ -137,19 +139,21 @@ form idb-database, name <IDBDatabase>
             like idb-database-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -165,17 +169,19 @@ form idb-database, name <IDBDatabase>
             like idb-database-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

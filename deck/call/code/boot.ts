@@ -44,38 +44,16 @@ import {
   pushRemoteCache,
 } from '@term/call/code/remote-cache'
 import { toConstant } from '@term/make/code/compile/typescript'
-import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode } from '@term/make/code/parser/narrow'
-import { groupsOf } from '@term/make/code/parser/narrow'
 import { manifestValueOf } from '@term/call/code/manifest-name'
 import { closeRun, count, failRun, field, followChild, isRunOpen, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 import { HOME_POSIX, projectHome } from '@term/call/code/home'
+// named `booting`: `plan` is a local of the build below
+import * as booting from '@term/call/code/boot-plan'
 
-// the head name of a tree group (its first `name` node), and the group's first argument as text. The structured way to
-// read a `.tree` file (mirrors the helpers in code/deck/install.ts).
-function nodeHead(group: GroupNode): string | undefined {
-  const first = group.nodes[0]
-
-  return first?.kind === 'name'
-    ? first.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
-    : undefined
-}
-
-function nodeValue(group: GroupNode): string {
-  const arg = group.nodes[1]
-
-  if (!arg) {
-    return ''
-  }
-
-  if (arg.kind === 'text' || arg.kind === 'name') {
-    return arg.parts
-      .map(p => (p.kind === 'chunk' ? p.text : ''))
-      .join('')
-  }
-
-  return ''
-}
+// WHAT BOOTING DECIDES WITHOUT A TOOL is Term since 2026-10-06, call/code/boot-plan.tree: the mode a word names, the
+// entry a manifest's `boot` line names, the program's name, the app's host settings, whether a browser bundle calls
+// `boot` itself, the tasks a command table calls, the run entries and the hashed asset names. This face compiles,
+// bundles, writes, spawns and watches.
 
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
@@ -88,11 +66,7 @@ const BOOT_CACHE_EPOCH = '11'
 
 // every task a command table calls: each route's own calls, its methods', and its subcommands'
 function routeCalls(routes: DockRoute[]): string[] {
-  return routes.flatMap(route => [
-    ...route.calls.map(call => call.name),
-    ...route.methods.flatMap(method => method.calls.map(call => call.name)),
-    ...routeCalls(route.children),
-  ])
+  return booting.routeCalls(routes)
 }
 
 // how one build makes its bundle: the routes a command-line program dispatches on, the key its bundle is cached by,
@@ -215,11 +189,10 @@ export function findEntry(
     const manifest = path.join(dir, 'deck.tree')
 
     if (existsSync(manifest)) {
-      const text = readFileSync(manifest, 'utf8')
-      const match = /(?:^|\n)\s*boot\s+(\S+)/.exec(text)
+      const named = booting.bootPathOf(readFileSync(manifest, 'utf8'))
 
-      if (match) {
-        return resolveEntry(path.resolve(dir, match[1]!))
+      if (named !== '') {
+        return resolveEntry(path.resolve(dir, named))
       }
 
       return undefined
@@ -264,38 +237,16 @@ function loadHostEnv(appDir: string): string[] {
     return []
   }
 
-  const result = parse({ file, text: readFileSync(file, 'utf8') })
-
-  if (!result.ok) {
-    return []
-  }
-
-  const host = groupsOf(result.tree.nodes).find(g => nodeHead(g) === 'host')
-
-  if (!host) {
-    return []
-  }
-
   const loaded: string[] = []
 
-  for (const node of host.nodes.slice(1)) {
-    if (node.kind !== 'group') {
-      continue
-    }
-
-    const key = nodeHead(node)
-
-    if (!key) {
-      continue
-    }
-
-    const name = toConstant(key)
+  for (const setting of booting.hostSettings(readFileSync(file, 'utf8'), file)) {
+    const name = toConstant(setting.key)
 
     if (process.env[name] !== undefined) {
       continue
     }
 
-    process.env[name] = nodeValue(node)
+    process.env[name] = setting.value
     loaded.push(name)
   }
 
@@ -365,17 +316,8 @@ export async function buildClientBundle(opts: {
     // a hook table's lowering ends the program with `boot("", 0)`, so it runs itself on load. A `route` and a `boot`
     // written by hand have no such line, and until 2026-10-04 their bundle defined `boot` and never called it: the
     // browser took nothing over, and no link was followed (guides: applications/web). The entry calls it for them
-    const definesBoot = result.program.some(node => node.form === 'function' && node.name === 'boot')
-    // the lowering's `boot("", 0)`, or the `host(route, 0)` the simplifier makes of it
-    const runsBoot =
-      !definesBoot ||
-      result.program.some(
-        node =>
-          node.form === 'expression' &&
-          node.expr.form === 'call' &&
-          node.expr.callee.form === 'variable' &&
-          (node.expr.callee.name === 'boot' || node.expr.callee.name === 'host'),
-      )
+    // the lowering's `boot("", 0)`, or the `host(route, 0)` the simplifier makes of it (boot-plan.tree `runs-boot`)
+    const runsBoot = booting.runsBoot(result.program)
 
     // browser bundle: everything inlined (no `packages: external`), minified in prod for the smallest payload
     const bundleConfig = {
@@ -431,7 +373,7 @@ export async function buildClientBundle(opts: {
       // whether it drew a popover or not (guides: applications/web, 2026-10-04). Imported, the program keeps its own
       // top-level run (`boot("", 0)`) and esbuild drops every task nothing reaches
       const entryFile = path.join(cacheOut, 'entry.ts')
-      writeFileSync(entryFile, runsBoot ? "import './boot'\n" : "import { boot } from './boot'\n\nboot('', 0)\n")
+      writeFileSync(entryFile, booting.clientEntryText(runsBoot))
 
       // externalize every bare (npm) specifier and load it from a CDN via an import map, so the app needs no local
       // install of its browser deps (floating-ui, etc.). The app's own code is all relative / inlined, so the only bare
@@ -494,20 +436,8 @@ export async function buildClientBundle(opts: {
 // the tone alphabet (the TS twin of base/code/tone.tree, alphabet from belt/code/tool/tone.ts). Each input char maps to
 // one of 16 consonants by its char code, and the result is grouped 4-by-4 with dashes -- turning a content hash into a
 // short pronounceable cache-bust suffix (`mndb-tksh`).
-const TONE = 'mndbtkhsfvzxcwlr'
-
 function toneEncode(text: string): string {
-  const letters = [...text]
-    .map(ch => TONE[ch.charCodeAt(0) % 16])
-    .join('')
-
-  const groups: string[] = []
-
-  for (let i = 0; i < letters.length; i += 4) {
-    groups.push(letters.slice(i, i + 4))
-  }
-
-  return groups.join('-')
+  return booting.toneEncode(text)
 }
 
 // PRODUCTION asset hashing + manifest. Content-hash each cache-bust-critical build output (the stylesheet + the client
@@ -556,7 +486,7 @@ export function hashAssets(buildDir: string, prod: boolean): void {
     return
   }
 
-  const sources = ['style/look.css', 'boot.js']
+  const sources = booting.assetSources()
   const map: Record<string, string> = {}
 
   for (const logical of sources) {
@@ -570,11 +500,7 @@ export function hashAssets(buildDir: string, prod: boolean): void {
       hashText(readFileSync(file, 'utf8')).slice(0, 8),
     )
 
-    const dot = logical.lastIndexOf('.')
-    const hashed =
-      dot >= 0
-        ? `${logical.slice(0, dot)}-${tone}${logical.slice(dot)}`
-        : `${logical}-${tone}`
+    const hashed = booting.hashedName(logical, tone)
 
     copyFileSync(file, path.join(buildDir, hashed))
     map[logical] = hashed
@@ -670,26 +596,19 @@ function watchStyles(appDir: string): () => void {
   }
 }
 
-// the words `term boot` takes for its mode: `moon` is development and `star` production, each with its two plain
-// spellings
-const DEVELOPMENT_WORDS = new Set(['moon', 'dev', 'development'])
-const PRODUCTION_WORDS = new Set(['star', 'prod', 'production'])
-
+// the words `term boot` takes for its mode (boot-plan.tree `boot-mode`): `moon` is development and `star` production,
+// each with its two plain spellings
 export type BootMode = 'development' | 'production'
 
 // `term boot [mode] [entry]`: the first word is a mode when it is one of the six, and otherwise it is the entry, so
 // `term boot app.tree` still boots that file. A mode the command line does not name is left undefined, and the boot
 // falls back to `NODE_ENV`, which is development unless it says `production`
 export function bootMode(first?: string, second?: string): { mode?: BootMode; entry?: string } {
-  if (first !== undefined && DEVELOPMENT_WORDS.has(first)) {
-    return { mode: 'development', entry: second }
-  }
+  const some = (word: string | undefined): booting.Maybe<string> => (word === undefined ? { form: 'none' } : { form: 'some', value: word })
+  const read = booting.bootMode(some(first), some(second))
+  const entry = read.entry.form === 'some' ? read.entry.value : undefined
 
-  if (first !== undefined && PRODUCTION_WORDS.has(first)) {
-    return { mode: 'production', entry: second }
-  }
-
-  return { entry: first ?? second }
+  return read.mode === '' ? { entry } : { mode: read.mode as BootMode, entry }
 }
 
 export async function callBoot(input: {
@@ -814,10 +733,11 @@ export async function callBoot(input: {
       const deckFile = path.join(appDir ?? projectRoot, 'deck.tree')
 
       if (existsSync(deckFile)) {
-        const tail = manifestValueOf(deckFile, 'deck')?.split('/').pop()
+        const deck = manifestValueOf(deckFile, 'deck')
+        const tail = deck === undefined ? '' : deck.split('/').pop()!
 
         if (tail) {
-          return tail.replace(/\.tree$/, '')
+          return booting.binNameOf(deck!)
         }
       }
 
@@ -1035,7 +955,7 @@ export async function callBoot(input: {
           ? {}
           : {
               banner: {
-                // ANCHORED AT THE PROJECT, NOT THE BUNDLE.
+                // ANCHORED AT THE PROJECT, NOT THE BUNDLE (boot-plan.tree `node-banner`).
                 //
                 // The bundle lives in `.base/@term/code/boot/<hash>/`, so a
                 // `require` made from `import.meta.url` resolves relative
@@ -1048,9 +968,7 @@ export async function callBoot(input: {
                 // Anchoring at the project root makes both work: a relative
                 // path is relative to the project, and a package name
                 // resolves through the project's dependencies.
-                js:
-                  `import { createRequire as __createRequire } from 'node:module'\n` +
-                  `const require = __createRequire(${anchor})`,
+                js: booting.nodeBanner(anchor),
               },
             }),
       }
@@ -1142,40 +1060,12 @@ export async function callBoot(input: {
           key === 'span' ? undefined : (value as unknown),
         )
 
-        writeFileSync(
-          path.join(out, 'run.mjs'),
-          [
-            `import * as app from './app.mjs'`,
-            `import { runCommandLine, toCamel } from './dock.mjs'`,
-            `app.wakeHive?.()`,
-            `const routes = ${routes}`,
-            `const code = await runCommandLine({`,
-            `  name: ${JSON.stringify(binName)},`,
-            `  routes,`,
-            `  argv: process.argv.slice(2),`,
-            `  resolve: task => app[toCamel(task)],`,
-            `})`,
-            `process.exit(code)`,
-            '',
-          ].join('\n'),
-        )
+        writeFileSync(path.join(out, 'run.mjs'), booting.cliRunText(routes, JSON.stringify(binName)))
 
         return { run: path.join(out, 'run.mjs'), cli: true }
       }
 
-      writeFileSync(
-        path.join(out, 'run.mjs'),
-        [
-          `import * as app from './app.mjs'`,
-          `app.wakeHive?.()`,
-          `const boot = app.boot ?? app.start ?? app.main`,
-          `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`, // output: generated, run.mjs's own line
-          `const url = process.env.DATABASE_URL ?? ''`,
-          `const port = Number(process.env.PORT ?? ${port})`,
-          `await boot(url, port)`,
-          '',
-        ].join('\n'),
-      )
+      writeFileSync(path.join(out, 'run.mjs'), booting.serverRunText(port))
 
       return { run: path.join(out, 'run.mjs'), cli: false }
     }

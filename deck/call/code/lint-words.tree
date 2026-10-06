@@ -1,0 +1,226 @@
+# `term lint`'s decisions that are not the parser, the rules or the terminal: which of a file's fixes apply and in
+# what order, the manifest fields no tool reads, what an ambiguous load is told to write, and the run's verdict.
+#
+# Ported from deck/call/code/lint.ts (self-hosting, 2026-10-06), which stays as the face: it parses with the one
+# parser, runs the rules, resolves the loads, slices the text by the offsets given here and prints through
+# code/output.ts. An offset is a UTF-16 unit, as the text the face slices counts it.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+
+load ./output-plan
+  find units-of
+
+# ---- fixes ----
+
+form text-edit
+  link start-line, like number
+  link start-column, like number
+  link end-line, like number
+  link end-column, like number
+  link text, like text
+
+form edit-range
+  link start, like number
+  link end, like number
+  link text, like text
+
+# the UTF-16 offset where each line starts: 0, then one past each line break
+task line-starts
+  take text, like text
+  like list, like number
+  mark private
+
+  save starts, make list
+  push(starts, 0)
+  save at, 0
+  walk split(text, <>)
+    take point
+    save at, add(at, units-of(point))
+    fork test, is-equal(point, <\n>)
+      hold
+        push(starts, at)
+  back starts
+
+task offset-of
+  take starts, like list, like number
+  take whole, like number
+  take line, like number
+  take column, like number
+  like number
+  mark private
+
+  save base, whole
+  fork test, and(is-minimum(line, 0), is-below(line, starts/length))
+    hold
+      save base, get(starts, line)
+  back add(base, column)
+
+# The fixes that apply, in the order to apply them: last in the text first, so an earlier one's offsets stay valid
+# (a tie in the order given), and one that overlaps an edit already kept is dropped, the first in the text winning
+task applied-edits
+  take text, like text
+  take edits, like list, like text-edit
+  like list, like edit-range
+
+  save starts, line-starts(text)
+  save whole, units-of(text)
+  # typed where it is made: its element is read (`/start`) before the first push, where inference has not met it
+  save ranges, like list, like edit-range
+    make list
+  walk edits
+    take one
+    save range
+      make edit-range
+        bind start, offset-of(starts, whole, one/start-line, one/start-column)
+        bind end, offset-of(starts, whole, one/end-line, one/end-column)
+        bind text, one/text
+    # an insertion sort by start, latest first, which keeps a tie in the order given
+    save place, ranges/length
+    walk test
+      hook test, and(is-above(place, 0), is-below(get(ranges, subtract(place, 1))/start, range/start))
+      hook hold
+        save place, subtract(place, 1)
+    save after, make list
+    save step, 0
+    walk ranges
+      take kept
+      fork test, is-equal(step, place)
+        hold
+          push(after, range)
+      push(after, kept)
+      save step, add(step, 1)
+    fork test, is-equal(place, ranges/length)
+      hold
+        push(after, range)
+    save ranges, after
+  save out, make list
+  save last, -1
+  save first, true
+  walk ranges
+    take range
+    fork test, or(first, not(is-above(range/end, last)))
+      hold
+        push(out, range)
+        save last, range/start
+        save first, false
+  back out
+
+# ---- the manifest ----
+
+# a manifest field the grammar accepts and the writer keeps, which no tool reads: `test ./test` looked like it chose
+# where `term test` looks, and it chooses nothing
+task is-inert
+  take word, like text
+  like boolean
+
+  save inert, split(<test book tool call task hook hide view sort term text cite deck>, < >)
+  back contains(inert, word)
+
+task inert-message
+  take word, like text
+  like text
+
+  back <`{word}` in a manifest is read by nothing. It parses and is kept, and no tool acts on it>
+
+# the stable code of a manifest spelling's rule
+task manifest-code
+  take rule, like text
+  like text
+
+  fork test, is-equal(rule, <manifest-code-version>)
+    hold
+      back <L050>
+  fork test, is-equal(rule, <manifest-bear>)
+    hold
+      back <L051>
+  back <>
+
+# ---- loads ----
+
+# is a load one an ambiguity can be found in: no `base` under it, and a package path rather than a relative one
+task is-package-load
+  take path, like text
+  take has-base, like boolean
+  like boolean
+
+  fork test, has-base
+    hold
+      back false
+  save points, split(path, <>)
+  fork test, is-above(points/length, 0)
+    hold
+      back is-unequal(get(points, 0), <.>)
+  back true
+
+# the first segment of a package path after its scope and package (`@scope/name/` or `@/`), which is what a `base`
+# line under the load names to mean the package root
+task base-word
+  take path, like text
+  like text
+
+  save points, split(path, <>)
+  save from, 0
+  fork test, and(is-above(points/length, 0), is-equal(get(points, 0), <@>))
+    hold
+      save first, run-to-slash(points, 1)
+      fork test, and(and(is-above(first, 1), is-below(first, points/length)), is-equal(get(points, first), </>))
+        hold
+          save second, run-to-slash(points, add(first, 1))
+          fork test, and(and(is-above(second, add(first, 1)), is-below(second, points/length)), is-equal(get(points, second), </>))
+            hold
+              save from, add(second, 1)
+      fork test, and(is-equal(from, 0), and(is-above(points/length, 1), is-equal(get(points, 1), </>)))
+        hold
+          save from, 2
+  save kept, make list
+  save at, from
+  walk test
+    hook test, and(is-below(at, points/length), is-unequal(get(points, at), </>))
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+task run-to-slash
+  take points, like list, like text
+  take start, like number
+  like number
+  mark private
+
+  save at, start
+  walk test
+    hook test, and(is-below(at, points/length), is-unequal(get(points, at), </>))
+    hook hold
+      save at, add(at, 1)
+  back at
+
+task ambiguous-message
+  take path, like text
+  take resolved, like text
+  take shadowed, like text
+  like text
+
+  save word, base-word(path)
+  back <`{path}` names two files: {resolved} in the code root, which it resolves to, and {shadowed} in the package root, which it shadows. Write `base {word}` under the load to mean the second>
+
+# ---- the run ----
+
+# `No lint findings`, `1 finding`, `3 findings`
+task lint-verdict
+  take findings, like number
+  like text
+
+  fork test, is-equal(findings, 0)
+    hold
+      back <No lint findings>
+  fork test, is-equal(findings, 1)
+    hold
+      back <1 finding>
+  back <{findings} findings>

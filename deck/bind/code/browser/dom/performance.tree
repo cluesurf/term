@@ -78,13 +78,15 @@ form performance, name <Performance>
     like performance-timing
 
   task clear-marks, name <clearMarks>
-    take mark-name, like maybe
-      like native-string
+    take mark-name
+      like maybe
+        like native-string
     like native-void
 
   task clear-measures, name <clearMeasures>
-    take measure-name, like maybe
-      like native-string
+    take measure-name
+      like maybe
+        like native-string
     like native-void
 
   task clear-resource-timings, name <clearResourceTimings>
@@ -95,8 +97,9 @@ form performance, name <Performance>
 
   task get-entries-by-name, name <getEntriesByName>
     take name, like native-string
-    take type, like maybe
-      like native-string
+    take type
+      like maybe
+        like native-string
     like performance-entry-list
 
   task get-entries-by-type, name <getEntriesByType>
@@ -105,18 +108,21 @@ form performance, name <Performance>
 
   task mark, name <mark>
     take mark-name, like native-string
-    take mark-options, like maybe
-      like performance-mark-options
+    take mark-options
+      like maybe
+        like performance-mark-options
     like performance-mark
 
   task measure, name <measure>
     take measure-name, like native-string
-    take start-or-measure-options, like maybe
-      like or
+    take start-or-measure-options
+      like maybe
+        like or
+          like native-string
+          like performance-measure-options
+    take end-mark
+      like maybe
         like native-string
-        like performance-measure-options
-    take end-mark, like maybe
-      like native-string
     like performance-measure
 
   task now, name <now>
@@ -142,19 +148,21 @@ form performance, name <Performance>
             like performance-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -170,17 +178,19 @@ form performance, name <Performance>
             like performance-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

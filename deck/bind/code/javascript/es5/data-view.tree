@@ -21,14 +21,16 @@ form data-view, name <DataView>
 
   task get-float32, name <getFloat32>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task get-float64, name <getFloat64>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task get-int8, name <getInt8>
@@ -37,14 +39,16 @@ form data-view, name <DataView>
 
   task get-int16, name <getInt16>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task get-int32, name <getInt32>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task get-uint8, name <getUint8>
@@ -53,28 +57,32 @@ form data-view, name <DataView>
 
   task get-uint16, name <getUint16>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task get-uint32, name <getUint32>
     take byte-offset, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-number
 
   task set-float32, name <setFloat32>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void
 
   task set-float64, name <setFloat64>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void
 
   task set-int8, name <setInt8>
@@ -85,15 +93,17 @@ form data-view, name <DataView>
   task set-int16, name <setInt16>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void
 
   task set-int32, name <setInt32>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void
 
   task set-uint8, name <setUint8>
@@ -104,13 +114,15 @@ form data-view, name <DataView>
   task set-uint16, name <setUint16>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void
 
   task set-uint32, name <setUint32>
     take byte-offset, like native-number
     take value, like native-number
-    take little-endian, like maybe
-      like native-boolean
+    take little-endian
+      like maybe
+        like native-boolean
     like native-void

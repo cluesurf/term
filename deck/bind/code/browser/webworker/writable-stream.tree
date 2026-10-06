@@ -25,8 +25,9 @@ form writable-stream, name <WritableStream>
     like native-boolean
 
   task abort, name <abort>
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like promise
       like native-void
 

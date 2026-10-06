@@ -1,0 +1,306 @@
+# `term host`'s decisions that are not the registry, the signing key or the terminal: the package's name, the https
+# address of the repository a git remote names, the annotations a publish carries, a library's message as a sentence,
+# what the index ping says, and what an unpublishable package is refused with.
+#
+# Ported from deck/call/code/host.ts (self-hosting, 2026-10-06), which stays as the face: it loads the manifest, builds
+# and pushes through @cluesurf/deck.tree, reads git and the keys, and prints through code/output.ts.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-upper-case
+  find starts-with
+
+load ./output-plan
+  find trimmed
+
+# a package's name: `@<scope>/<name>` when the manifest names a scope, its bare name when it does not
+task package-name
+  take scope, like text
+  take name, like text
+  like text
+
+  fork test, is-equal(scope, <>)
+    hold
+      back name
+  back <@{scope}/{name}>
+
+# a package published as a RELEASE (deck/deck/code/oci/release.ts), which `term host` refuses
+task is-released
+  take name, like text
+  like boolean
+
+  back is-equal(name, <@term/code>)
+
+# ---- a git remote as an https address ----
+
+task is-line-end
+  take point, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(point, 0)
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+task piece
+  take points, like list, like text
+  take start, like number
+  take end, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# `(.+?)(?:\.git)?\/?$` from `start`: the shortest path of one point or more, none a line end, after which only `.git`,
+# `/`, `.git/` or nothing is left. The empty text when there is none
+task remote-path
+  take points, like list, like text
+  take start, like number
+  like text
+  mark private
+
+  save endings, make list
+  push(endings, <>)
+  push(endings, </>)
+  push(endings, <.git>)
+  push(endings, <.git/>)
+  save end, add(start, 1)
+  walk test
+    hook test, not(is-above(end, points/length))
+    hook hold
+      fork test, is-line-end(get(points, subtract(end, 1)))
+        hold
+          back <>
+      fork test, contains(endings, piece(points, end, points/length))
+        hold
+          back piece(points, start, end)
+      save end, add(end, 1)
+  back <>
+
+# the end of the longest run from `start` of points not among `stops`, which is `start` when there is none
+task run-end
+  take points, like list, like text
+  take start, like number
+  take stops, like text
+  like number
+  mark private
+
+  save stop, split(stops, <>)
+  save at, start
+  walk test
+    hook test, and(is-below(at, points/length), not(contains(stop, get(points, at))))
+    hook hold
+      save at, add(at, 1)
+  back at
+
+# `^[^@/]+@([^:/]+):(.+?)(?:\.git)?\/?$`: `git@github.com:owner/repo.git`
+task scp-source
+  take points, like list, like text
+  like text
+  mark private
+
+  save user, run-end(points, 0, <@/>)
+  fork test, or(or(is-equal(user, 0), not(is-below(user, points/length))), is-unequal(get(points, user), <@>))
+    hold
+      back <>
+  save host-start, add(user, 1)
+  fork test, not(is-below(host-start, points/length))
+    hold
+      back <>
+  save host-end, run-end(points, host-start, <:/>)
+  fork test, or(or(is-equal(host-end, host-start), not(is-below(host-end, points/length))), is-unequal(get(points, host-end), <:>))
+    hold
+      back <>
+  save path, remote-path(points, add(host-end, 1))
+  fork test, is-equal(path, <>)
+    hold
+      back <>
+  save host, piece(points, host-start, host-end)
+  back <https://{host}/{path}>
+
+# the host and the path after it, from `start`: `([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$`
+task url-rest
+  take points, like list, like text
+  take start, like number
+  like text
+  mark private
+
+  save host-end, run-end(points, start, </:>)
+  fork test, or(is-equal(host-end, start), not(is-below(host-end, points/length)))
+    hold
+      back <>
+  save slash, host-end
+  fork test, is-equal(get(points, host-end), <:>)
+    hold
+      save step, add(host-end, 1)
+      walk test
+        hook test, and(is-below(step, points/length), and(is-minimum(char-code-at(get(points, step), 0), 48), is-maximum(char-code-at(get(points, step), 0), 57)))
+        hook hold
+          save step, add(step, 1)
+      fork test, is-equal(step, add(host-end, 1))
+        hold
+          back <>
+      save slash, step
+  fork test, or(not(is-below(slash, points/length)), is-unequal(get(points, slash), </>))
+    hold
+      back <>
+  save path, remote-path(points, add(slash, 1))
+  fork test, is-equal(path, <>)
+    hold
+      back <>
+  save host, piece(points, start, host-end)
+  back <https://{host}/{path}>
+
+# `^(?:ssh|https?|git):\/\/(?:[^@/]+@)?` and the rest: `ssh://git@github.com/owner/repo`, the https spellings. A
+# user part is tried first and then none, as the pattern tries them
+task url-source
+  take points, like list, like text
+  like text
+  mark private
+
+  save schemes, make list
+  push(schemes, <ssh://>)
+  push(schemes, <http://>)
+  push(schemes, <https://>)
+  push(schemes, <git://>)
+  save after, -1
+  walk schemes
+    take scheme
+    save length, split(scheme, <>)/length
+    fork test, and(is-below(after, 0), is-minimum(points/length, length))
+      hold
+        fork test, is-equal(piece(points, 0, length), scheme)
+          hold
+            save after, length
+  fork test, is-below(after, 0)
+    hold
+      back <>
+  save user, run-end(points, after, <@/>)
+  fork test, and(is-above(user, after), and(is-below(user, points/length), is-equal(get(points, user), <@>)))
+    hold
+      save with, url-rest(points, add(user, 1))
+      fork test, is-unequal(with, <>)
+        hold
+          back with
+  back url-rest(points, after)
+
+# The https address of the repository a git remote names, host and path kept, or the empty text when it names none.
+# Credentials in an https remote are dropped, because this is written into a public manifest
+task remote-source
+  take remote, like text
+  like text
+
+  save points, split(remote, <>)
+  save scp, scp-source(points)
+  fork test, is-unequal(scp, <>)
+    hold
+      back scp
+  back url-source(points)
+
+# ---- what a publish carries and says ----
+
+form annotation
+  link key, like text
+  link value, like text
+
+# The annotations a publish carries, each only when it has a value: the source repository, which GHCR reads to link
+# the package to it, the licence, and what a catalog reads without fetching a blob, the `head` and `make` lines
+task annotations-of
+  take source, like text
+  take licence, like text
+  take head, like text
+  take keywords, like list, like text
+  like list, like annotation
+
+  save out, make list
+  fork test, is-unequal(source, <>)
+    hold
+      push(out, make-annotation(<org.opencontainers.image.source>, source))
+  fork test, is-unequal(licence, <>)
+    hold
+      push(out, make-annotation(<org.opencontainers.image.licenses>, licence))
+  fork test, is-unequal(head, <>)
+    hold
+      push(out, make-annotation(<org.opencontainers.image.description>, head))
+  fork test, is-above(keywords/length, 0)
+    hold
+      push(out, make-annotation(<surf.clue.term.keywords>, join(keywords, <,>)))
+  back out
+
+task make-annotation
+  take key, like text
+  take value, like text
+  like annotation
+  mark private
+
+  back
+    make annotation
+      bind key, key
+      bind value, value
+
+# a message from a library as a sentence: trimmed, one trailing period dropped, its first UTF-16 unit upper-cased
+task sentence
+  take text, like text
+  like text
+
+  save points, split(trimmed(text), <>)
+  save end, points/length
+  fork test, and(is-above(end, 0), is-equal(get(points, subtract(end, 1)), <.>))
+    hold
+      save end, subtract(end, 1)
+  fork test, is-equal(end, 0)
+    hold
+      back <>
+  save first, get(points, 0)
+  save head, first
+  fork test, not(is-above(char-code-at(first, 0), 65535))
+    hold
+      save head, to-upper-case(first)
+  save tail, piece(points, 1, end)
+  back <{head}{tail}>
+
+# what a ping the index took says: its outcome, and the account it credited, or that it was anonymous when no token
+# went with it
+task ping-facts
+  take outcome, like text
+  take publisher, like text
+  take token, like boolean
+  like list, like text
+
+  save facts, make list
+  fork test, is-unequal(outcome, <>)
+    hold
+      push(facts, outcome)
+  fork test, is-unequal(publisher, <>)
+    hold
+      push(facts, <credited to account {publisher}>)
+    miss
+      fork test, not(token)
+        hold
+          push(facts, <anonymous, no term.surf token>)
+  back facts
+
+# why a package has no registry to publish to: an unscoped one given no `--registry` has no scope to pick one by, and
+# is told where to put one; any other is not on an OCI registry
+task unrouted
+  take name, like text
+  take flagged, like boolean
+  like text
+
+  fork test, and(not(flagged), not(starts-with(name, <@>)))
+    hold
+      back <{name} has no scope, so there is no registry to publish it to. Name it `deck @\<scope\>/{name}` in deck.tree (a scope publishes to ghcr.io/\<scope\> unless a `base` line says otherwise), or pass --registry oci://\<host\>/\<namespace\>>
+  back <{name} is not on an oci:// registry. Pass --registry oci://\<host\>/\<namespace\>>

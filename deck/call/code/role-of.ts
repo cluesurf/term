@@ -8,6 +8,7 @@ import path from 'path'
 import { parseRoleFile, matchRoleRule } from '@cluesurf/deck.tree'
 import type { RoleConfig, RoleRule } from '@cluesurf/deck.tree'
 import { manifestValueOf } from '@term/call/code/manifest-name'
+import * as port from '@term/call/code/role-check'
 
 export type RoleOf = (file: string) => string | null
 
@@ -138,27 +139,19 @@ function readRoles(root: string): RoleConfig | undefined {
   return undefined
 }
 
-// the roles the compiler reads (compile/compile.ts `compileData`, the mill check, the view path, the site and call
-// readers). Any other name was read as nothing, and its files compiled as code
-const ROLES = new Set(['code', 'host', 'view', 'site', 'call', 'mill', 'book'])
-
 // A role file that cannot be read, or that names a role the compiler does not have, STOPS THE BUILD, naming the file.
 // A misspelled `role hots` over data files built them as code with no warning, and a line the role grammar refused
-// dropped the whole file, every file then falling back to its content (guides: language/dsls/roles, 2026-10-03)
+// dropped the whole file, every file then falling back to its content (guides: language/dsls/roles, 2026-10-03). Both
+// checks, and the roles there are, are Term since 2026-10-06, call/code/role-check.tree
 function checkedRoles(file: string, root: string): RoleConfig {
   let config: RoleConfig
   const text = readFileSync(file, 'utf8')
 
-  // a rule's flag is `mark <word>`, and a `note` there is read by nothing: `note lean` over a lean package left every
-  // file in it read long-form, the failure arriving far away as an unknown name
-  for (const [index, line] of text.split('\n').entries()) {
-    const note = /^\s+note\s+([^\s,]+)/.exec(line)
+  // a rule's flag is `mark <word>`, and a `note` there is read by nothing
+  const note = port.noteProblem(text, file)
 
-    if (note) {
-      throw new Error(
-        `${file}:${index + 1}: \`note ${note[1]}\` in a role rule is read by nothing. A rule's flag is \`mark ${note[1]}\``,
-      )
-    }
+  if (note !== '') {
+    throw new Error(note)
   }
 
   try {
@@ -167,12 +160,10 @@ function checkedRoles(file: string, root: string): RoleConfig {
     throw new Error(`${file}: ${cause instanceof Error ? cause.message : String(cause)}`)
   }
 
-  for (const rule of config.rules) {
-    if (!ROLES.has(rule.name)) {
-      throw new Error(
-        `${file}: \`role ${rule.name}\` is not a role. The roles are ${[...ROLES].join(', ')}`,
-      )
-    }
+  const unknown = port.roleProblem(config.rules.map(rule => rule.name), file)
+
+  if (unknown !== '') {
+    throw new Error(unknown)
   }
 
   return config

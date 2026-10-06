@@ -24,11 +24,13 @@ form readable-stream-default-controller, name <ReadableStreamDefaultController>
     like native-void
 
   task enqueue, name <enqueue>
-    take chunk, like maybe
-      like r
+    take chunk
+      like maybe
+        like r
     like native-void
 
   task error, name <error>
-    take e, like maybe
-      like native-any
+    take e
+      like maybe
+        like native-any
     like native-void

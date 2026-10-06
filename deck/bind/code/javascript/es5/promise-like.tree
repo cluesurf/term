@@ -19,26 +19,28 @@ form promise-like, name <PromiseLike>
       back t
     head t-result2
       back native-never
-    take onfulfilled, like maybe
-      like or
-        like task
-          take value, like t
-          like or
-            like t-result1
-            like promise-like
+    take onfulfilled
+      like maybe
+        like or
+          like task
+            take value, like t
+            like or
               like t-result1
-        like native-undefined
-        like native-null
-    take onrejected, like maybe
-      like or
-        like task
-          take reason, like native-any
-          like or
-            like t-result2
-            like promise-like
+              like promise-like
+                like t-result1
+          like native-undefined
+          like native-null
+    take onrejected
+      like maybe
+        like or
+          like task
+            take reason, like native-any
+            like or
               like t-result2
-        like native-undefined
-        like native-null
+              like promise-like
+                like t-result2
+          like native-undefined
+          like native-null
     like promise-like
       like or
         like t-result1

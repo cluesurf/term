@@ -32,7 +32,8 @@ form client, name <Client>
 
   task post-message, name <postMessage>
     take message, like native-any
-    take transfer, like maybe
-      like native-array
-        like transferable
+    take transfer
+      like maybe
+        like native-array
+          like transferable
     like native-void

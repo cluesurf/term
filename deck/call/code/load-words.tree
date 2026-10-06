@@ -1,0 +1,323 @@
+# The installer's decisions that are not the registry, the files or the shell (note/term/plan/term-load-install.md):
+# whether a version was written as one, whether the front's folder is on PATH already, the line that puts it there in
+# a shell's own syntax, which profiles a shell reads, what one profile's text becomes, what the Windows user Path
+# becomes, how to remove another `term` on PATH, and what the run closes with.
+#
+# Ported from deck/call/code/load-term.ts (self-hosting, 2026-10-06), which stays as the face: it installs through
+# need-load.ts, reads and writes the profiles, runs PowerShell and prints through code/output.ts.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-lower-case
+  find starts-with
+  find ends-with
+  find replace-all
+  find contains, name text-contains
+
+# the marker over every line this writes to a profile
+task load-mark
+  like text
+
+  back <# term (https://term.surf/load)>
+
+task is-digit
+  take point, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(point, 0)
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+# `^\d+\.\d+\.\d+$`: three runs of digits joined by dots, and nothing else
+task is-version
+  take text, like text
+  like boolean
+
+  save parts, split(text, <.>)
+  fork test, is-unequal(parts/length, 3)
+    hold
+      back false
+  walk parts
+    take part
+    save points, split(part, <>)
+    fork test, is-equal(points/length, 0)
+      hold
+        back false
+    walk points
+      take point
+      fork test, not(is-digit(point))
+        hold
+          back false
+  back true
+
+# a Windows Path entry without the backslashes at its end, lower-cased, as one folder is compared with another
+task folded
+  take entry, like text
+  like text
+  mark private
+
+  save points, split(entry, <>)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, 0), is-equal(get(points, subtract(end, 1)), <\\>))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back to-lower-case(join(kept, <>))
+
+# is the front's folder an entry of PATH already: by name on Windows, its case and trailing backslashes aside, and as
+# written anywhere else
+task on-path
+  take path, like text
+  take delimiter, like text
+  take bin, like text
+  take windows, like boolean
+  like boolean
+
+  save wanted, to-lower-case(bin)
+  walk split(path, delimiter)
+    take entry
+    fork test, windows
+      hold
+        fork test, is-equal(folded(entry), wanted)
+          hold
+            back true
+      miss
+        fork test, is-equal(entry, bin)
+          hold
+            back true
+  back false
+
+# the line that puts the front's folder first on THIS shell's PATH, in its own syntax
+task refresh-line
+  take shell, like text
+  take bin, like text
+  like text
+
+  fork test, is-equal(shell, <fish>)
+    hold
+      back <set -gx PATH {bin} $PATH\n>
+  back <export PATH="{bin}:$PATH"; hash -r 2\>/dev/null || true\n>
+
+# `$HOME/...` for a folder under the home folder, so a synced profile works on another machine
+task portable
+  take bin, like text
+  take home, like text
+  like text
+
+  fork test, starts-with(bin, <{home}/>)
+    hold
+      save rest, get(split-once(bin, <{home}/>), 1)
+      back <$HOME/{rest}>
+  back bin
+
+# a text cut at the first `at`, the part before and the part after
+task split-once
+  take text, like text
+  take at, like text
+  like list, like text
+  mark private
+
+  save parts, split(text, at)
+  save out, make list
+  push(out, get(parts, 0))
+  save rest, make list
+  save index, 0
+  walk parts
+    take part
+    fork test, is-above(index, 0)
+      hold
+        push(rest, part)
+    save index, add(index, 1)
+  push(out, join(rest, at))
+  back out
+
+# a profile's place as the run shows it, `~/...` under the home folder
+task shown-file
+  take file, like text
+  take home, like text
+  like text
+
+  fork test, starts-with(file, <{home}/>)
+    hold
+      save rest, get(split-once(file, <{home}/>), 1)
+      back <~/{rest}>
+  back file
+
+# the line a profile gets: fish's own, or POSIX
+task profile-line
+  take shell, like text
+  take portable-bin, like text
+  like text
+
+  fork test, is-equal(shell, <fish>)
+    hold
+      back <contains {portable-bin} $PATH; or set -gx PATH {portable-bin} $PATH>
+  back <export PATH="{portable-bin}:$PATH">
+
+# The profiles a shell reads, each a folder and its name: zsh's `.zshrc` in its `ZDOTDIR` (the home folder when that
+# is unset), bash's `.bashrc` and on macOS its `.bash_profile`, which Terminal's login shells read alone, fish's own
+# file in `conf.d`, and `.profile`, which every POSIX login shell reads, for any other
+task profile-files
+  take shell, like text
+  take home, like text
+  take zdot, like text
+  take darwin, like boolean
+  like list, like text
+
+  save out, make list
+  fork test, is-equal(shell, <fish>)
+    hold
+      push(out, <{home}/.config/fish/conf.d/term.fish>)
+      back out
+  fork test, is-equal(shell, <zsh>)
+    hold
+      push(out, <{zdot}/.zshrc>)
+      back out
+  fork test, is-equal(shell, <bash>)
+    hold
+      push(out, <{home}/.bashrc>)
+      fork test, darwin
+        hold
+          push(out, <{home}/.bash_profile>)
+      back out
+  push(out, <{home}/.profile>)
+  back out
+
+form profile-edit
+  link form, like text
+  link text, like text
+  link appended, like text
+
+# What one profile becomes, whole, and what is appended to it. One that names the front's folder already, spelled out
+# or as this writes it, is `there` and left alone. One that names it by an old name is `moved`: renamed where it
+# stands, nothing else touched. Any other is `added`: the marked line appended, after a line break when the file does
+# not end in one
+task profile-edit-of
+  take text, like text
+  take bin, like text
+  take front, like text
+  take previous, like list, like text
+  take line, like text
+  like profile-edit
+
+  fork test, or(text-contains(text, bin), text-contains(text, front))
+    hold
+      back make-edit(<there>, text, <>)
+  save moved, false
+  save written, text
+  walk previous
+    take name
+    fork test, text-contains(text, name)
+      hold
+        save moved, true
+        save written, replace-all(written, name, front)
+  fork test, moved
+    hold
+      back make-edit(<moved>, written, <>)
+  save gap, <\n>
+  fork test, or(is-equal(text, <>), ends-with(text, <\n>))
+    hold
+      save gap, <>
+  save mark, load-mark()
+  save appended, <{gap}\n{mark}\n{line}\n>
+  back make-edit(<added>, <{text}{appended}>, appended)
+
+task make-edit
+  take form, like text
+  take text, like text
+  take appended, like text
+  like profile-edit
+  mark private
+
+  back
+    make profile-edit
+      bind form, form
+      bind text, text
+      bind appended, appended
+
+# What the Windows user Path becomes: `there` when it names the front's folder already, `moved` with an old name's
+# entry renamed where it stands, else `added` with the folder first
+task windows-path-of
+  take current, like text
+  take bin, like text
+  take previous, like list, like text
+  like profile-edit
+
+  save entries, split(current, <;>)
+  save wanted, to-lower-case(bin)
+  save old, make list
+  walk previous
+    take folder
+    push(old, to-lower-case(folder))
+  walk entries
+    take entry
+    fork test, is-equal(folded(entry), wanted)
+      hold
+        back make-edit(<there>, current, <>)
+  save moved, false
+  save next, make list
+  walk entries
+    take entry
+    fork test, contains(old, folded(entry))
+      hold
+        save moved, true
+        push(next, bin)
+      miss
+        push(next, entry)
+  fork test, moved
+    hold
+      back make-edit(<moved>, join(next, <;>), <>)
+  fork test, is-equal(current, <>)
+    hold
+      back make-edit(<added>, bin, <>)
+  back make-edit(<added>, <{bin};{current}>, <>)
+
+# how to remove another `term` on PATH, by the folder it is in: a pnpm global, an npm one, or neither
+task remove-hint
+  take file, like text
+  like text
+
+  save slashed, replace-all(file, <\\>, </>)
+  fork test, text-contains(slashed, </pnpm/>)
+    hold
+      back <pnpm remove -g @cluesurf/term>
+  fork test, or(or(text-contains(slashed, </npm/>), text-contains(slashed, </node_modules/>)), text-contains(slashed, </lib/node>))
+    hold
+      back <npm uninstall -g @cluesurf/term>
+  back <>
+
+# what the run says when the folder was not on PATH: whether profiles were edited, on Windows, and whether this run's
+# standard output is read by a shell that can run the line it wrote there
+task closing-message
+  take automatic, like boolean
+  take windows, like boolean
+  take captured, like boolean
+  like text
+
+  fork test, not(automatic)
+    hold
+      fork test, windows
+        hold
+          back <TERM_LOAD_PATH=0, so the user Path was not changed: add bin to it.>
+      back <TERM_LOAD_PATH=0, so no profile was edited: add the line above to your shell's profile.>
+  fork test, windows
+    hold
+      back <This terminal and new ones find term.>
+  fork test, captured
+    hold
+      back <New terminals find term, and so does this one once it runs the line on standard output.>
+  back <New terminals find term. For this one, run the line above, or install with eval "$(curl -fsSL https://term.surf/load | sh)", which does both.>

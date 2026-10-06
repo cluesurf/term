@@ -1,0 +1,220 @@
+# `term self`: the decisions and the words of the verbs that manage the versions of `term` on this machine
+# (note/term/plan/term-load-install.md, note/term/plan/term-versions.md). Which package manager owns a copy and how it
+# updates it, what `check` says of a copy this did not install, which version `back` moves to, which versions `wash`
+# keeps and why, how long ago a version was used, and the default `pick` writes.
+#
+# A COPY THIS DID NOT INSTALL is said to be so. Homebrew, apt, dnf and winget update their own, and a source checkout is
+# built, not installed, so `update` and `back` refuse them, naming the way that does work.
+#
+# Ported from deck/call/code/self.ts (self-hosting, 2026-10-06), which stays as the face: it reads the installs and the
+# registry, resolves, installs, links the front, writes and prints.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find contains, name text-contains
+  find replace-all
+  find char-code-at
+
+load @term/base/float
+  find round-down
+
+load @term/deck/version
+  find parse-code
+  find compare-code
+
+load ./need-choose
+  find toolchain
+
+# A-Z made a-z and nothing else, as a pattern with `i` and no `u` folds the letters it names
+task ascii-lower
+  take value, like text
+  like text
+  mark private
+
+  save lower, split(<abcdefghijklmnopqrstuvwxyz>, <>)
+  save out, make list
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+      hold
+        push(out, get(lower, subtract(code, 65)))
+      miss
+        push(out, point)
+  back join(out, <>)
+
+# The package manager that owns the payload at a path, by where it put it (task/distro.ts, the Homebrew formula): a
+# `Caskroom` or `Cellar` folder is Homebrew's, winget's package folder for ClueSurf.Term is winget's, and
+# `/usr/lib/term` is apt's when dpkg keeps a record of the package and dnf's when it does not. Either slash separates
+task manager-of
+  take payload, like text
+  take dpkg-knows, like boolean
+  like text
+
+  save slashed, replace-all(payload, <\\>, </>)
+  fork test, or(text-contains(slashed, </Caskroom/>), text-contains(slashed, </Cellar/>))
+    hold
+      back <homebrew>
+  fork test, text-contains(ascii-lower(slashed), </winget/packages/cluesurf.term_>)
+    hold
+      back <winget>
+  fork test, is-equal(payload, </usr/lib/term>)
+    hold
+      fork test, dpkg-knows
+        hold
+          back <apt>
+      back <dnf>
+  back <>
+
+# each manager as its own project writes its name
+task manager-name
+  take manager, like text
+  like text
+
+  fork test, is-equal(manager, <homebrew>)
+    hold
+      back <Homebrew>
+  back manager
+
+# how each manager updates its copy
+task update-command
+  take manager, like text
+  like text
+
+  fork test, is-equal(manager, <homebrew>)
+    hold
+      back <brew upgrade cluesurf/tool/term>
+  fork test, is-equal(manager, <apt>)
+    hold
+      back <sudo apt update, then sudo apt install --only-upgrade term>
+  fork test, is-equal(manager, <dnf>)
+    hold
+      back <sudo dnf upgrade term>
+  back <winget upgrade ClueSurf.Term>
+
+# what `update` and `back` say of a copy they may not move: the manager's way, or a source build's (manager empty)
+task unmanaged-subject
+  take manager, like text
+  like text
+
+  fork test, is-equal(manager, <>)
+    hold
+      back <This copy is a source build, which is rebuilt, not updated: pnpm run make:line>
+  save name, manager-name(manager)
+  save command, update-command(manager)
+  back <{name} installed this copy, so {name} updates it: {command}>
+
+# what `check` says of a released, signed version whose bytes this did not install
+task check-message
+  take manager, like text
+  like text
+
+  fork test, is-equal(manager, <homebrew>)
+    hold
+      back <Homebrew installed this copy and checked its download against the same layer digest.>
+  fork test, is-unequal(manager, <>)
+    hold
+      save name, manager-name(manager)
+      back <{name} installed this copy from a package of the same payload, checked by its own signature.>
+  back <This copy is a source build, so its bytes are not compared with the release.>
+
+# the version `back` moves the front to: the first installed (newest first) older than the front, or the empty text
+task previous-version
+  take installed, like list, like text
+  take front, like text
+  like text
+
+  save at, parse-code(front)
+  walk installed
+    take version
+    fork test, is-below(compare-code(parse-code(version), at), 0)
+      hold
+        back version
+  back <>
+
+# how the version that runs was chosen, as `show` says it
+task by-fact
+  take by, like text
+  take request, like text
+  take asked, like boolean
+  like text
+
+  fork test, is-equal(by, <pin>)
+    hold
+      back <pinned in lock.tree>
+  fork test, is-equal(by, <running>)
+    hold
+      back <the running copy>
+  fork test, asked
+    hold
+      back <the newest installed in {request}>
+  back <the newest installed>
+
+# `used today`, `used 12 days ago`, `never used`, from the milliseconds since a version was last used
+task used-fact
+  take ever, like boolean
+  take elapsed, like float
+  like text
+
+  fork test, not(ever)
+    hold
+      back <never used>
+  save days, round-down(divide(elapsed, 86400000.0))
+  fork test, not(is-above(days, 0.0))
+    hold
+      back <used today>
+  fork test, is-equal(days, 1.0)
+    hold
+      back <used yesterday>
+  save shown, days
+  back <used {shown} days ago>
+
+# one version `wash` keeps, and why
+form kept-version
+  link version, like text
+  link why, like text
+
+# the versions `wash` never removes, each with why, in the order asked (the front, the running copy, the default's
+# answer, this directory's pin and its answer): a version asked twice keeps the first reason, and an empty one is none
+task kept-versions
+  take asked, like list, like kept-version
+  like list, like kept-version
+
+  save seen, make list
+  save out, make list
+  walk asked
+    take one
+    fork test, and(is-unequal(one/version, <>), not(contains(seen, one/version)))
+      hold
+        push(seen, one/version)
+        push(out, one)
+  back out
+
+# the default `pick` writes
+task need-tree-text
+  take range, like text
+  like text
+
+  save name, toolchain()
+  back <# The term that runs outside any project. Written by `term self pick`.\nneed {name}, mark \<{range}\>\n>
+
+# what `wash` closes with
+task wash-verdict
+  take washed, like number
+  take days, like number
+  take commit, like boolean
+  like text
+
+  fork test, is-equal(washed, 0)
+    hold
+      back <Nothing unused for {days} days>
+  fork test, commit
+    hold
+      back <Removed {washed}>
+  back <{washed} to remove>

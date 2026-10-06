@@ -1,0 +1,44 @@
+# L040: a data file (the host dialect: `host` / `list` / `mesh` / `tree` / `fuse` and literals) that breaks a rule of
+# its grammar: a key given twice, a value beside children, an anchor declared after data, a fuse of an unknown anchor,
+# a bare word where text belongs. The rules and their messages live in the data reader (compile/host-data.tree,
+# note/term/host/01-grammar.md); this reports them so `term lint` and the editor show a data file's problems the way
+# they show a program's: the reader's diagnostics when it refuses the file, else the expander's.
+#
+# Ported from lint/rules/data-grammar.ts (self-hosting, 2026-10-06), which stays as the face: it is the rule object the
+# lint driver holds, and it writes each report as a finding under the rule's name, code and severity.
+
+load @term/base/list
+  find list
+
+load ../parser/tree
+  find root-node
+
+load ../compile/host-data
+  find read-data
+  find expand-data
+
+load ./rule-check
+  find rule-report
+
+task data-reports
+  take tree, like root-node
+  take file, like text
+  like list, like rule-report
+
+  save out, make list
+  save diagnostics, make list
+  save read, read-data(tree, file, false)
+  fork test, read/ok
+    hold
+      save expanded, expand-data(read/file, file)
+      save diagnostics, expanded/diagnostics
+    miss
+      save diagnostics, read/diagnostics
+  walk diagnostics
+    take one
+    save report
+      make rule-report
+        bind message, one/message
+        bind span, one/span
+    push(out, report)
+  back out

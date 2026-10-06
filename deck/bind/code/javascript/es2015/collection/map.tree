@@ -41,8 +41,9 @@ form map, name <Map>
             like k
             like v
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task get, name <get>

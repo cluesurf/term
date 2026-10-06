@@ -36,26 +36,29 @@ form history, name <History>
     like native-void
 
   task go, name <go>
-    take delta, like maybe
-      like native-number
+    take delta
+      like maybe
+        like native-number
     like native-void
 
   task push-state, name <pushState>
     take data, like native-any
     take unused, like native-string
-    take url, like maybe
-      like or
-        like native-string
-        like url
-        like native-null
+    take url
+      like maybe
+        like or
+          like native-string
+          like url
+          like native-null
     like native-void
 
   task replace-state, name <replaceState>
     take data, like native-any
     take unused, like native-string
-    take url, like maybe
-      like or
-        like native-string
-        like url
-        like native-null
+    take url
+      like maybe
+        like or
+          like native-string
+          like url
+          like native-null
     like native-void

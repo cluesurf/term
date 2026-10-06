@@ -1,0 +1,550 @@
+# L044: in a lean file, every line is written the way `term form` writes it, by the five rules in
+# note/term/format-rules.md, "Where each part of a line goes". The fix writes the formatter's lines.
+#
+# It does not restate the rules: it asks the formatter (format/layout.tree `format-group-lines`) how each group is laid
+# out and reports the outermost group written otherwise, with a fix that writes the formatter's lines. A group whose
+# head line already matches is not reported as a whole: the difference is further in, and the finding goes there.
+# Blank lines are not this rule's business, so they are ignored in the comparison, and the fix writes the formatter's
+# lines as `term form` would, blank lines included. LEAN FILES ONLY, and the fix is offered only when the fixed file
+# mills to the same program, so it cannot change what a program means.
+#
+# Ported from lint/rules/line-layout.ts (self-hosting, 2026-10-06), which stays as the face: it is the rule object the
+# lint driver holds, and it hands in the file's milled program (format/meaning.ts) as a task. A column is counted in
+# UTF-16 units, as the parser's spans count it and as the original's `search` and `length` did.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find split
+  find starts-with
+  find trim
+  find trim-end
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ../format/layout
+  find layout-options
+  find format-group-lines
+  find value-places
+
+load ./rule-check
+  find rule-report
+  find rule-fix
+
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+bind js-space
+  take value, like text
+  like boolean
+  case node
+    text </^\\s$/u.test($value)>
+  case browser
+    text </^\\s$/u.test($value)>
+  case rust
+    text <($value.chars().next().map(|c| c.is_whitespace() || c == '\\u\{feff\}').unwrap_or(false))>
+  case swift
+    text <($value.unicodeScalars.first.map \{ $0.properties.isWhitespace || $0 == "\\u\{feff\}" \} ?? false)>
+  case kotlin
+    text <($value.isNotEmpty() && ($value[0].isWhitespace() || $value[0] == '\\uFEFF' || $value[0] == '\\u00A0'))>
+
+# the first and last source position a node's own tokens cover
+form extent
+  link first, like maybe, like position
+  link last, like maybe, like position
+
+task earlier
+  take a, like position
+  take b, like position
+  like boolean
+  mark private
+
+  back or(is-below(a/line, b/line), and(is-equal(a/line, b/line), is-below(a/column, b/column)))
+
+task take-span
+  take found, like extent
+  take at, like span
+  like extent
+  mark private
+
+  save first, found/first
+  sift found/first
+    case some
+      link known
+      fork test, earlier(at/start, known)
+        hold
+          save first, make(some, at/start)
+    case none
+      save first, make(some, at/start)
+  save last, found/last
+  sift found/last
+    case some
+      link known
+      fork test, earlier(known, at/end)
+        hold
+          save last, make(some, at/end)
+    case none
+      save last, make(some, at/end)
+  back
+    make extent
+      bind first, first
+      bind last, last
+
+task extent-of
+  take value, like node
+  take found, like extent
+  like extent
+  mark private
+
+  save out, found
+  sift value
+    case group
+      walk nodes
+        take inner
+        save out, extent-of(inner, out)
+    case name
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            link chunk-span
+            save out, take-span(out, chunk-span)
+          case interpolation
+            link part-depth
+            link held
+            sift held
+              case some
+                link inner
+                sift inner
+                  case group
+                    save out, extent-of(inner, out)
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+    case text
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            link chunk-span
+            save out, take-span(out, chunk-span)
+          case interpolation
+            link part-depth
+            link held
+            sift held
+              case some
+                link inner
+                sift inner
+                  case group
+                    save out, extent-of(inner, out)
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+    case integer
+      save out, take-span(out, span)
+    case decimal
+      save out, take-span(out, span)
+    case radix
+      save out, take-span(out, span)
+    miss
+      save nothing, 0
+  back out
+
+# the UTF-16 index of a line's first character that is not a space, -1 for none (`line.search(/\S/)`)
+task first-solid
+  take line, like text
+  like number
+  mark private
+
+  save units, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(line))
+    hook hold
+      save one, char-at(line, at)
+      fork test, not(js-space(one))
+        hold
+          back units
+      save units, add(units, utf16-length(one))
+      save at, add(at, 1)
+  back -1
+
+# the lines between two indexes, each without its trailing space, blank ones left out
+task dense
+  take lines, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk lines
+    take line
+    fork test, is-unequal(trim(line), <>)
+      hold
+        push(out, trim-end(line))
+  back out
+
+task slice-lines
+  take lines, like list, like text
+  take from, like number
+  take to, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  save at, from
+  walk test
+    hook test, and(is-below(at, to), is-below(at, lines/length))
+    hook hold
+      push(out, get(lines, at))
+      save at, add(at, 1)
+  back out
+
+# `lines.join('\n').replace(/[(),]/g, ' ').replace(/\s+/g, ' ')`
+task bare
+  take lines, like list, like text
+  like text
+  mark private
+
+  save joined, join(lines, <\n>)
+  save out, <>
+  save spacing, false
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(joined))
+    hook hold
+      save one, char-at(joined, at)
+      fork test, or(or(is-equal(one, <(>), is-equal(one, <)>)), is-equal(one, <,>))
+        hold
+          save one, < >
+      fork test, js-space(one)
+        hold
+          fork test, not(spacing)
+            hold
+              save out, <{out} >
+          save spacing, true
+        miss
+          save out, <{out}{one}>
+          save spacing, false
+      save at, add(at, 1)
+  back out
+
+# which of the five rules a difference falls under, for the message
+task rule-of
+  take written, like list, like text
+  take laid, like list, like text
+  like text
+  mark private
+
+  fork test, and(is-equal(laid/length, 1), is-above(written/length, 1))
+    hold
+      back <a statement is one line (rules 1 and 2)>
+  fork test, and(is-above(laid/length, 1), is-equal(written/length, 1))
+    hold
+      back <a block, a line past 84 columns or a comment inside stacks (rules 4 and 5)>
+  fork test, and(is-equal(written/length, laid/length), is-equal(bare(written), bare(laid)))
+    hold
+      back <a call in a value position takes parentheses, and one in a statement or condition reads with commas (rule 3)>
+  back <a block stacks from the block on, and the parts before it stay on the head line (rule 4)>
+
+# `/\s#(\s|$)/`: a comment after code on the line
+task has-trailing-comment
+  take line, like text
+  like boolean
+  mark private
+
+  save at, 1
+  walk test
+    hook test, is-below(at, char-count(line))
+    hook hold
+      fork test, and(is-equal(char-at(line, at), <#>), js-space(char-at(line, subtract(at, 1))))
+        hold
+          fork test, is-equal(add(at, 1), char-count(line))
+            hold
+              back true
+          fork test, js-space(char-at(line, add(at, 1)))
+            hold
+              back true
+      save at, add(at, 1)
+  back false
+
+# the file's program, read once, for the fix's own meaning check
+form layout-state
+  mark shared
+  link read, like boolean
+  link before, like maybe, like text
+
+task same-meaning
+  take state, like layout-state
+  take file, like text
+  take source, like text
+  take fixed, like text
+  take program-of
+    like task
+      take tree, like root-node
+      take file, like text
+      take lean, like boolean
+      like maybe, like text
+  like boolean
+  mark private
+
+  fork test, not(state/read)
+    hold
+      save state/read, true
+      save written
+        make token-source
+          bind file, file
+          bind text, source
+      save parsed, parse(written)
+      fork test, parsed/ok
+        hold
+          save state/before, program-of(parsed/tree, file, true)
+  sift state/before
+    case none
+      back false
+    case some
+      link before
+      save again
+        make token-source
+          bind file, file
+          bind text, fixed
+      save reparsed, parse(again)
+      fork test, not(reparsed/ok)
+        hold
+          back false
+      sift program-of(reparsed/tree, file, true)
+        case some
+          link after
+          back is-equal(after, before)
+        case none
+          back false
+
+task lean-options
+  like layout-options
+  mark private
+
+  back
+    make layout-options
+      bind wrap, make(some, false)
+      bind stack, make list
+      bind calls, make none
+      bind lean, make(some, true)
+      bind role, make none
+      bind dialect, make none
+
+task position-of
+  take line, like number
+  take column, like number
+  like position
+  mark private
+
+  back
+    make position
+      bind line, line
+      bind column, column
+
+task visit
+  take group, like node
+  take in-value, like boolean
+  take parent, like maybe, like node
+  take lines, like list, like text
+  take file, like text
+  take source, like text
+  take state, like layout-state
+  take out, like list, like rule-report
+  take program-of
+    like task
+      take tree, like root-node
+      take file, like text
+      take lean, like boolean
+      like maybe, like text
+  like void
+  mark private
+
+  save empty
+    make extent
+      bind first, make none
+      bind last, make none
+  save own, extent-of(group, empty)
+  sift own/first
+    case none
+      back
+    case some
+      link first
+      sift own/last
+        case none
+          back
+        case some
+          link last
+          save line, first/line
+          save column, first/column
+          # only a group that opens its own line can be laid out on its own
+          save opening, <>
+          fork test, is-below(line, lines/length)
+            hold
+              save opening, get(lines, line)
+          fork test, is-unequal(first-solid(opening), column)
+            hold
+              back
+          save written, dense(slice-lines(lines, line, add(last/line, 1)))
+          save laid-all, format-group-lines(group, divide-down(column, 2), lean-options(), in-value, parent)
+          # the group's own leading comments sit above its first line, outside what was written
+          save laid, make list
+          save leading, true
+          walk laid-all
+            take one
+            fork test, and(leading, starts-with(trim(one), <#>))
+              hold
+                turn next
+            save leading, false
+            push(laid, one)
+          save target, dense(laid)
+          fork test, is-equal(join(target, <\n>), join(written, <\n>))
+            hold
+              back
+          # the head line is already right: the difference is in a part below it
+          fork test, and(and(is-above(target/length, 1), is-above(written/length, 1)), is-equal(get(target, 0), get(written, 0)))
+            hold
+              save places, value-places(group)
+              save above, make(some, group)
+              save at, 0
+              sift group
+                case group
+                  walk nodes
+                    take kid
+                    fork test, is-above(at, 0)
+                      hold
+                        sift kid
+                          case group
+                            save place, false
+                            fork test, is-below(subtract(at, 1), places/length)
+                              hold
+                                save place, get(places, subtract(at, 1))
+                            visit(kid, place, above, lines, file, source, state, out, program-of)
+                          miss
+                            save nothing, 0
+                    save at, add(at, 1)
+                miss
+                  save nothing, 0
+              back
+          # a line holding a comment after its code is left as written: there is nowhere for the formatter to put it
+          walk written
+            take one
+            fork test, has-trailing-comment(one)
+              hold
+                back
+          save last-text, <>
+          fork test, is-below(last/line, lines/length)
+            hold
+              save last-text, get(lines, last/line)
+          save start, position-of(line, 0)
+          save end, position-of(last/line, utf16-length(last-text))
+          save text, join(laid, <\n>)
+          save fixed-lines, slice-lines(lines, 0, line)
+          push(fixed-lines, text)
+          walk slice-lines(lines, add(last/line, 1), lines/length)
+            take one
+            push(fixed-lines, one)
+          save fixed, join(fixed-lines, <\n>)
+          fork test, not(same-meaning(state, file, source, fixed, program-of))
+            hold
+              back
+          save fix-span
+            make span
+              bind start, start
+              bind end, end
+          save report-span
+            make span
+              bind start, position-of(line, column)
+              bind end, end
+          save fix
+            make put
+              bind span, fix-span
+              bind text, text
+          save report
+            make rule-report
+              bind message, <{rule-of(written, target)}: `{trim(get(target, 0))}`>
+              bind span, report-span
+              bind fix, make(some, fix)
+          push(out, report)
+
+task divide-down
+  take value, like number
+  take by, like number
+  like number
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-maximum(multiply(add(at, 1), by), value)
+    hook hold
+      save at, add(at, 1)
+  back at
+
+# L044's findings in one lean file: each outermost group written otherwise than `term form` writes it, with the
+# formatter's lines as the fix
+task line-layout-reports
+  take tree, like root-node
+  take source, like text
+  take file, like text
+  take program-of
+    like task
+      take tree, like root-node
+      take file, like text
+      take lean, like boolean
+      like maybe, like text
+  like list, like rule-report
+
+  save out, make list
+  save lines, split(source, <\n>)
+  save state
+    make layout-state
+      bind read, false
+      bind before, make none
+  sift tree
+    case root
+      walk nodes
+        take one
+        sift one
+          case group
+            save no-parent, make none
+            visit(one, false, no-parent, lines, file, source, state, out, program-of)
+          miss
+            save nothing, 0
+  back out

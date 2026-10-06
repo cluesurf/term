@@ -15,15 +15,18 @@ form concat-array, name <ConcatArray>
     like native-number
 
   task join, name <join>
-    take separator, like maybe
-      like native-string
+    take separator
+      like maybe
+        like native-string
     like native-string
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like native-array
       like t
 

@@ -40,8 +40,9 @@ form set, name <Set>
           like set
             like t
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task has, name <has>

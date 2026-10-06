@@ -15,6 +15,7 @@ form type-error-constructor, name <TypeErrorConstructor>
     like type-error
 
   hook make
-    take message, like maybe
-      like native-string
+    take message
+      like maybe
+        like native-string
     like type-error

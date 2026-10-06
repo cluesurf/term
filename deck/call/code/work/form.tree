@@ -120,7 +120,7 @@ task form
 task only-errors
   take diagnostics
     like list
-    like unknown
+      like unknown
 
   like list, like unknown
 

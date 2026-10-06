@@ -47,8 +47,9 @@ form range, name <Range>
     like range
 
   task collapse, name <collapse>
-    take to-start, like maybe
-      like native-boolean
+    take to-start
+      like maybe
+        like native-boolean
     like native-void
 
   task compare-boundary-points, name <compareBoundaryPoints>

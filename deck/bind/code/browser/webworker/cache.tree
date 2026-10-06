@@ -47,34 +47,40 @@ form cache, name <Cache>
 
   task delete, name <delete>
     take request, like request-info
-    take options, like maybe
-      like cache-query-options
+    take options
+      like maybe
+        like cache-query-options
     like promise
       like native-boolean
 
   task keys, name <keys>
-    take request, like maybe
-      like request-info
-    take options, like maybe
-      like cache-query-options
+    take request
+      like maybe
+        like request-info
+    take options
+      like maybe
+        like cache-query-options
     like promise
       like readonly-array
         like request
 
   task match, name <match>
     take request, like request-info
-    take options, like maybe
-      like cache-query-options
+    take options
+      like maybe
+        like cache-query-options
     like promise
       like or
         like response
         like native-undefined
 
   task match-all, name <matchAll>
-    take request, like maybe
-      like request-info
-    take options, like maybe
-      like cache-query-options
+    take request
+      like maybe
+        like request-info
+    take options
+      like maybe
+        like cache-query-options
     like promise
       like readonly-array
         like response

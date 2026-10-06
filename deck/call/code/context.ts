@@ -6,49 +6,32 @@
 // Everything is read with the one parser and the mill (make/code/analyze.ts), the doc comment from the parse tree's
 // own comments, as hover reads it. Each file is milled alone, which is all a definition and a use need: no build, no
 // cache, and a file that does not compile still answers for the parts that mill.
+//
+// What a definition shows, which expressions use a name, what a task calls, the budget and the text are Term since
+// 2026-10-06, call/code/context-slice.tree. This face reads and mills the files, follows the loads, reads a doc
+// comment off the parse tree, and sorts the uses by the host's collation, `localeCompare`, which Term has no word for.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { analyze } from '@term/make/code/analyze'
-import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { isBinaryBuiltin, isUnaryBuiltin } from '@term/make/code/compile/surface'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import { parseTolerant } from '@term/make/code/parser/tree'
 import { findModulesExporting } from '@term/make/code/resolve'
-import { forEachCall, forEachExpression, writtenName } from '@term/flow/code/symbols'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { findTreeFiles, projectResolver } from '@term/call/code/make'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { closeRun, field, openRun, printData, report } from '@term/call/code/output'
+import * as port from '@term/call/code/context-slice'
 
-// what one token is taken to be, in characters: the usual measure for English and code
-const CHARACTERS_PER_TOKEN = 4
 const DEFAULT_BUDGET = 4000
-
-// a definition's kind as the source writes it
-const KINDS: Partial<Record<Statement['form'], string>> = {
-  function: 'task',
-  'record-type': 'form',
-  mask: 'mask',
-  bind: 'bind',
-  view: 'view',
-}
 
 type Milled = { file: string; text: string; lines: string[]; program: Program }
 
-type Definition = {
-  name: string
-  kind: string
-  // where it is: a path under the project, or the import path of the module that holds it
-  place: string
-  line: number
-  doc?: string
-  head: string
-  text: string
-}
+type Definition = port.Definition
 
 type Use = { in: string; place: string; line: number }
 
@@ -79,7 +62,7 @@ export async function showContext(input: { root: string; query?: string; json: b
     return
   }
 
-  printData(input.json ? `${JSON.stringify(slice)}\n` : renderContext(slice))
+  printData(input.json ? `${JSON.stringify(slice)}\n` : port.renderContext(slice))
 }
 
 export type ContextSlice = {
@@ -280,7 +263,8 @@ export function contextOf(root: string, query: string, budget: number): ContextS
 
     for (const statement of one?.program ?? []) {
       const owner = statementName(statement) ?? '(top level)'
-      const use = (line: number): void => {
+
+      for (const line of port.useLines(statement, query)) {
         const key = `${file}:${line}:${owner}`
 
         if (!seen.has(key)) {
@@ -288,24 +272,6 @@ export function contextOf(root: string, query: string, budget: number): ContextS
           uses.push({ in: owner, place: placeOf(file), line: line + 1 })
         }
       }
-
-      // a form named in a task's signature (`like post`) is a use of the form, at the task
-      if (statement.form === 'function' && statementName(statement) !== query) {
-        const named = new Set<string>()
-
-        statement.params.forEach(param => typeNames(param.type, named))
-        typeNames(statement.result, named)
-
-        if (named.has(query)) {
-          use(statement.span.start.line)
-        }
-      }
-
-      forEachExpression([statement], node => {
-        if (names(node, query)) {
-          use(node.span.start.line)
-        }
-      })
     }
   }
 
@@ -325,17 +291,7 @@ export function contextOf(root: string, query: string, budget: number): ContextS
   const unresolved: string[] = []
 
   if (mainStatement && mainMilled) {
-    const named = new Set<string>()
-
-    if (mainStatement.form === 'function') {
-      for (const param of mainStatement.params) {
-        typeNames(param.type, named)
-      }
-
-      typeNames(mainStatement.result, named)
-    }
-
-    for (const name of named) {
+    for (const name of port.signatureNames(mainStatement)) {
       const found = name === query ? undefined : lookup(name, mainMilled)
 
       if (found && found.kind === 'form') {
@@ -343,19 +299,7 @@ export function contextOf(root: string, query: string, budget: number): ContextS
       }
     }
 
-    const called = new Set<string>()
-
-    forEachCall([mainStatement], call => {
-      if (call.callee.form === 'variable') {
-        const name = writtenName(call.callee.name)
-
-        if (name !== query && !isBinaryBuiltin(name) && !isUnaryBuiltin(name)) {
-          called.add(name)
-        }
-      }
-    })
-
-    for (const name of called) {
+    for (const name of port.calledNames(mainStatement, query)) {
       const found = lookup(name, mainMilled)
 
       if (found) {
@@ -366,237 +310,32 @@ export function contextOf(root: string, query: string, budget: number): ContextS
     }
   }
 
-  return fit({ name: query, budget, definitions, forms, uses, calls, unresolved })
+  return port.fit(query, budget, definitions, forms, uses, calls, unresolved) as ContextSlice
 }
-
-// ---- the budget ----
 
 // a definition as the answer carries it: where it is, its doc comment, and the text shown
 type Shown = { name: string; kind: string; place: string; line: number; doc?: string; text: string }
-
-function shownOf(one: Definition, text: string): Shown {
-  return { name: one.name, kind: one.kind, place: one.place, line: one.line, ...(one.doc ? { doc: one.doc } : {}), text }
-}
-
-// take each part in order while it fits: every definition (whole when it takes no more than half the budget, else its
-// head, else its place alone), then the forms, the uses and the heads of the calls. A part that does not fit is counted,
-// never cut mid-way. A definition is always named, so a small budget never reads as a name that does not exist
-function fit(input: {
-  name: string
-  budget: number
-  definitions: Definition[]
-  forms: Definition[]
-  uses: Use[]
-  calls: Definition[]
-  unresolved: string[]
-}): ContextSlice {
-  const limit = input.budget * CHARACTERS_PER_TOKEN
-  let used = 0
-  const omitted = { forms: 0, uses: 0, calls: 0, bodies: 0 }
-  const take = (size: number): boolean => {
-    if (used + size > limit) {
-      return false
-    }
-
-    used += size
-
-    return true
-  }
-
-  const definitions: ContextSlice['definitions'] = []
-
-  for (const one of input.definitions) {
-    const around = (one.doc?.length ?? 0) + one.place.length + 32
-
-    if (one.text.length + around <= limit / 2 && take(one.text.length + around)) {
-      definitions.push({ ...shownOf(one, one.text), shown: 'whole' })
-    } else if (take(one.head.length + around)) {
-      omitted.bodies += 1
-      definitions.push({ ...shownOf(one, one.head), shown: 'head' })
-    } else {
-      omitted.bodies += 1
-      used += one.place.length + 32
-      definitions.push({ name: one.name, kind: one.kind, place: one.place, line: one.line, text: '', shown: 'place' })
-    }
-  }
-
-  const keep = <T>(items: T[], size: (item: T) => number, part: 'forms' | 'uses' | 'calls'): T[] => {
-    const kept: T[] = []
-
-    for (const item of items) {
-      if (take(size(item))) {
-        kept.push(item)
-      } else {
-        omitted[part] += 1
-      }
-    }
-
-    return kept
-  }
-
-  const forms = keep(input.forms, form => form.text.length + form.place.length + 32, 'forms').map(form => shownOf(form, form.text))
-  const uses = keep(input.uses, use => use.in.length + use.place.length + 12, 'uses')
-  const calls = keep(input.calls, call => call.head.length + call.place.length + 32, 'calls').map(call => shownOf(call, call.head))
-
-  used += input.unresolved.join(', ').length
-
-  return {
-    name: input.name,
-    budget: input.budget,
-    used: Math.ceil(used / CHARACTERS_PER_TOKEN),
-    definitions,
-    forms,
-    uses,
-    calls,
-    unresolved: input.unresolved,
-    omitted,
-  }
-}
 
 // ---- reading a definition ----
 
 function statementName(statement: Statement): string | undefined {
   const name = (statement as { name?: unknown }).name
 
-  return typeof name === 'string' ? writtenName(name) : undefined
+  return typeof name === 'string' ? port.writtenName(name) : undefined
 }
 
 // the definition a statement makes of `name`, with its doc comment, its head and its whole text, or undefined
 function definitionOf(one: Milled, statement: Statement, name: string, place: string): Definition | undefined {
-  const kind = KINDS[statement.form]
+  const found = port.definitionOf(one.lines, statement, name, place, line => docAt(one, line) ?? '')
 
-  if (!kind || statementName(statement) !== name) {
-    return undefined
-  }
-
-  const span = statement.span
-  const text = trimEnd(one.lines.slice(span.start.line, span.end.line + 1))
-  const body = statement.form === 'function' ? statement.body : []
-  const bodyLine = body.length ? Math.min(...body.map(each => each.span.start.line)) : undefined
-  const head = bodyLine !== undefined && bodyLine > span.start.line ? trimEnd(one.lines.slice(span.start.line, bodyLine)) : text
-
-  return { name, kind, place, line: span.start.line + 1, doc: docAt(one, span.start.line), head, text }
+  return found.form === 'some' ? found.value : undefined
 }
 
-// the doc comment of the top-level definition on a line: the `#` lines the parser keeps on its group, the `#` and one
-// space taken off each, as hover reads it (flow/code/server.ts `docCommentAt`)
+// the doc comment of the top-level definition on a line: the `#` lines the parser keeps on its group, read as hover
+// reads them (flow/code/server.ts `docCommentAt`)
 function docAt(one: Milled, line: number): string | undefined {
   const group = groupsOf(parseTolerant({ file: one.file, text: one.text }).tree.nodes).find(node => spanOfNode(node)?.start.line === line)
-  const note = (group?.comments ?? [])
-    .map(comment => comment.text.replace(/^#\s?/, '').trim())
-    .filter(Boolean)
-    .join(' ')
+  const note = port.docText((group?.comments ?? []).map(comment => comment.text))
 
   return note || undefined
-}
-
-function trimEnd(lines: string[]): string {
-  const kept = [...lines]
-
-  while (kept.length && kept[kept.length - 1]!.trim() === '') {
-    kept.pop()
-  }
-
-  return kept.join('\n')
-}
-
-// whether an expression names `name`: a call of it, a read of it as a value, a `make` of it
-function names(node: Expression, name: string): boolean {
-  if (node.form === 'call') {
-    return node.callee.form === 'variable' && writtenName(node.callee.name) === name
-  }
-
-  if (node.form === 'variable') {
-    return writtenName(node.name) === name
-  }
-
-  return node.form === 'record' && node.name === name
-}
-
-// every form name a type mentions, its arguments included
-function typeNames(type: Type | undefined, out: Set<string>): void {
-  if (!type) {
-    return
-  }
-
-  switch (type.kind) {
-    case 'named':
-      out.add(type.name)
-      type.args?.forEach(arg => typeNames(arg, out))
-      break
-    case 'array':
-      typeNames(type.element, out)
-      break
-    case 'map':
-      typeNames(type.key, out)
-      typeNames(type.value, out)
-      break
-    case 'function':
-      type.params.forEach(param => typeNames(param, out))
-      typeNames(type.result, out)
-      break
-    default:
-      break
-  }
-}
-
-// ---- the human view ----
-
-function renderContext(slice: ContextSlice): string {
-  const out: string[] = []
-
-  for (const one of slice.definitions) {
-    out.push(`${one.kind} ${one.name}, ${one.place}:${one.line}`)
-
-    if (one.doc) {
-      out.push(`# ${one.doc}`)
-    }
-
-    if (one.text) {
-      out.push(one.text)
-    }
-
-    if (one.shown !== 'whole') {
-      out.push(one.shown === 'head' ? '  (its body did not fit the budget)' : '  (its text did not fit the budget)')
-    }
-
-    out.push('')
-  }
-
-  if (slice.forms.length) {
-    out.push(`forms its signature names: ${slice.forms.length}`)
-
-    for (const form of slice.forms) {
-      out.push(`${form.place}:${form.line}`, form.text, '')
-    }
-  }
-
-  out.push(`used by: ${slice.uses.length}${slice.omitted.uses ? ` shown, ${slice.omitted.uses} more` : ''}`)
-
-  for (const use of slice.uses) {
-    out.push(`  ${use.in}  ${use.place}:${use.line}`)
-  }
-
-  out.push('')
-
-  if (slice.calls.length) {
-    out.push(`calls: ${slice.calls.length}`)
-
-    for (const call of slice.calls) {
-      out.push(`${call.place}:${call.line}`, call.text, '')
-    }
-  }
-
-  if (slice.unresolved.length) {
-    out.push(`calls that nothing it loads defines: ${slice.unresolved.join(', ')}`, '')
-  }
-
-  const left = Object.entries(slice.omitted).filter(([, count]) => count > 0)
-
-  out.push(
-    `${slice.used} of ${slice.budget} tokens` +
-      (left.length ? `, left out: ${left.map(([part, count]) => `${count} ${part === 'bodies' ? (count === 1 ? 'body' : 'bodies') : part}`).join(', ')}` : ''),
-  )
-
-  return `${out.join('\n')}\n`
 }

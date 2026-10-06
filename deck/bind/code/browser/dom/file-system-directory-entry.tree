@@ -30,27 +30,35 @@ form file-system-directory-entry, name <FileSystemDirectoryEntry>
     like file-system-directory-reader
 
   task get-directory, name <getDirectory>
-    take path, like maybe
-      like or
-        like native-string
-        like native-null
-    take options, like maybe
-      like file-system-flags
-    take success-callback, like maybe
-      like file-system-entry-callback
-    take error-callback, like maybe
-      like error-callback
+    take path
+      like maybe
+        like or
+          like native-string
+          like native-null
+    take options
+      like maybe
+        like file-system-flags
+    take success-callback
+      like maybe
+        like file-system-entry-callback
+    take error-callback
+      like maybe
+        like error-callback
     like native-void
 
   task get-file, name <getFile>
-    take path, like maybe
-      like or
-        like native-string
-        like native-null
-    take options, like maybe
-      like file-system-flags
-    take success-callback, like maybe
-      like file-system-entry-callback
-    take error-callback, like maybe
-      like error-callback
+    take path
+      like maybe
+        like or
+          like native-string
+          like native-null
+    take options
+      like maybe
+        like file-system-flags
+    take success-callback
+      like maybe
+        like file-system-entry-callback
+    take error-callback
+      like maybe
+        like error-callback
     like native-void

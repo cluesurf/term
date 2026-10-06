@@ -19,6 +19,7 @@ form aggregate-error-constructor, name <AggregateErrorConstructor>
     take errors
       like iterable
         like native-any
-    take message, like maybe
-      like native-string
+    take message
+      like maybe
+        like native-string
     like aggregate-error

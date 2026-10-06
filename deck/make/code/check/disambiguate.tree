@@ -283,6 +283,8 @@ form walk-state
   link told, like list, like text
   link overloads, like list, like overload-group
   link typed-choices, like list, like text
+  # how many lean labels the nesting passes have turned into calls, so they run again while one more is found
+  link nested, like number
 
 task new-walk-state
   take program, like list, like statement
@@ -320,6 +322,7 @@ task new-walk-state
       bind told, make list
       bind overloads, make list
       bind typed-choices, make list
+      bind nested, 0
 
 task reference-mode
   take state, like walk-state
@@ -1433,6 +1436,7 @@ task nested-labels
       hold
         push(chosen, one/at)
   save done, lean-calls-nested(node, chosen)
+  save state/nested, add(state/nested, done/rewritten)
   back done/node
 
 # A LEAN LABEL NAMING A TASK, READ AS THE NESTED CALL IT IS, before anything is renamed. Only under a call to a task the
@@ -1574,15 +1578,30 @@ task nest-lean-labels
           push(state/constructions, variant/name)
       miss
         save nothing, 0
+  # The two passes run again while a round nests anything: a label of a METHOD call becomes a call only in the second
+  # pass, and a label under that new call (`g/classes/set(id, with-key(keys-of(g, id), k))`, ir/egraph.tree) is reached
+  # by neither until the first runs again. Left as a label, it was nested by the resolver instead, by the name it was
+  # written with, which a task two files define no longer has once it is split by file, so the checker refused it as a
+  # property of `with-key` (any program reaching both ir/egraph.tree and compile/type-text.tree, 2026-10-06)
   walk state/program
     take top
     take at
     save state/local, bound-in-statement(top)
-    save state/mode, <nest-calls>
-    save called, walk-statement(state, top)
-    save state/mode, <nest-methods>
-    save methods, walk-statement(state, called)
-    set(state/program, at, methods)
+    save current, top
+    save rounds, 0
+    walk test
+      hook test, is-below(rounds, 64)
+      hook hold
+        save before, state/nested
+        save state/mode, <nest-calls>
+        save current, walk-statement(state, current)
+        save state/mode, <nest-methods>
+        save current, walk-statement(state, current)
+        save rounds, add(rounds, 1)
+        fork test, is-equal(state/nested, before)
+          hold
+            halt
+    set(state/program, at, current)
 
 task bind-sibling-methods
   take state, like walk-state

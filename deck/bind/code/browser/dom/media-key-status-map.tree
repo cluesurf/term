@@ -41,6 +41,7 @@ form media-key-status-map, name <MediaKeyStatusMap>
         take key, like buffer-source
         take parent, like media-key-status-map
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

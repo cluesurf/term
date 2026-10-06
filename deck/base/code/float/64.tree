@@ -19,6 +19,83 @@ bind f64-maximum-value
   case kotlin
     text <Double.MAX_VALUE>
 
+# the eight bytes of the double, IEEE 754, big-endian: the exact value, for an encoder that must carry it bit for bit
+# (`@term/host` tree/code, note/term/host/10-code.md)
+bind f64-to-bytes
+  take value, like float
+  like bytes
+  case node
+    text <(function (v) \{ const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, v); return b \})($value)>
+  case browser
+    text <(function (v) \{ const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, v); return b \})($value)>
+  case rust
+    text <(($value) as f64).to_be_bytes().to_vec()>
+  case swift
+    text <withUnsafeBytes(of: ($value).bitPattern.bigEndian) \{ Data($0) \}>
+  case kotlin
+    text <java.nio.ByteBuffer.allocate(8).putDouble($value).array()>
+
+# the double whose eight big-endian bytes begin `value`. Every template names `$value` ONCE: a bind inlines its
+# argument where `$value` stands, so a second mention would run the argument's expression twice
+bind f64-from-bytes
+  take value, like bytes
+  like float
+  case node
+    text <(function (b) \{ return new DataView(b.buffer, b.byteOffset, 8).getFloat64(0) \})($value)>
+  case browser
+    text <(function (b) \{ return new DataView(b.buffer, b.byteOffset, 8).getFloat64(0) \})($value)>
+  case rust
+    text <f64::from_be_bytes(\<[u8; 8]\>::try_from(&($value)[0..8]).unwrap())>
+  case swift
+    text <Double(bitPattern: ($value).prefix(8).reduce(UInt64(0)) \{ ($0 \<\< 8) | UInt64($1) \})>
+  case kotlin
+    text <java.nio.ByteBuffer.wrap($value, 0, 8).getDouble()>
+
+# the four bytes of the value as an IEEE 754 single, big-endian. Exact only where `f64-fits-f32` says so
+bind f32-to-bytes
+  take value, like float
+  like bytes
+  case node
+    text <(function (v) \{ const b = new Uint8Array(4); new DataView(b.buffer).setFloat32(0, v); return b \})($value)>
+  case browser
+    text <(function (v) \{ const b = new Uint8Array(4); new DataView(b.buffer).setFloat32(0, v); return b \})($value)>
+  case rust
+    text <((($value) as f64) as f32).to_be_bytes().to_vec()>
+  case swift
+    text <withUnsafeBytes(of: Float($value).bitPattern.bigEndian) \{ Data($0) \}>
+  case kotlin
+    text <java.nio.ByteBuffer.allocate(4).putFloat(($value).toFloat()).array()>
+
+# the single whose four big-endian bytes begin `value`, as a double
+bind f32-from-bytes
+  take value, like bytes
+  like float
+  case node
+    text <(function (b) \{ return new DataView(b.buffer, b.byteOffset, 4).getFloat32(0) \})($value)>
+  case browser
+    text <(function (b) \{ return new DataView(b.buffer, b.byteOffset, 4).getFloat32(0) \})($value)>
+  case rust
+    text <(f32::from_be_bytes(\<[u8; 4]\>::try_from(&($value)[0..4]).unwrap()) as f64)>
+  case swift
+    text <Double(Float(bitPattern: ($value).prefix(4).reduce(UInt32(0)) \{ ($0 \<\< 8) | UInt32($1) \}))>
+  case kotlin
+    text <java.nio.ByteBuffer.wrap($value, 0, 4).getFloat().toDouble()>
+
+# whether a single holds the double exactly, so it can travel in four bytes instead of eight
+bind f64-fits-f32
+  take value, like float
+  like boolean
+  case node
+    text <(function (v) \{ return Math.fround(v) === v \})($value)>
+  case browser
+    text <(function (v) \{ return Math.fround(v) === v \})($value)>
+  case rust
+    text <\{ let v = ($value) as f64; ((v as f32) as f64) == v \}>
+  case swift
+    text <\{ (v: Double) -\> Bool in Double(Float(v)) == v \}($value)>
+  case kotlin
+    text <(($value).let \{ it.toFloat().toDouble() == it \})>
+
 task f64-add
   take a, like float
   take b, like float

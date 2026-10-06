@@ -41,8 +41,9 @@ form clients, name <Clients>
   task match-all, name <matchAll>
     head t
       base client-query-options
-    take options, like maybe
-      like t
+    take options
+      like maybe
+        like t
     like promise
       like readonly-array
         like test

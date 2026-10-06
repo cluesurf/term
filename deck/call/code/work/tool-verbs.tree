@@ -45,8 +45,9 @@ form time-ask
 
 form hold-ask
   link root, like text
-  link paths, like list
-    like text
+  link paths
+    like list
+      like text
   link cross, like boolean
   link cache, like boolean
   link force, like boolean
@@ -54,13 +55,15 @@ form hold-ask
 
 form zone-ask
   link root, like text
-  link argv, like list
-    like text
+  link argv
+    like list
+      like text
 
 form mark-ask
   link root, like text
-  link argv, like list
-    like text
+  link argv
+    like list
+      like text
 
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
@@ -137,7 +140,7 @@ task zone
 
   take rest
     like list
-    like text
+      like text
 
   like void
 
@@ -159,7 +162,7 @@ task mark
 
   take rest
     like list
-    like text
+      like text
 
   like void
 

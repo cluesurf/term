@@ -26,9 +26,9 @@ import nodePath from 'path'
 import { callBoot } from '@term/call/code/boot'
 import { env, keptAt, userHome, legacyUserHome } from '@term/call/code/home'
 import { closeRun, count, failRun, field, location, openRun, printData, report } from '@term/call/code/output'
-
-// The packages published as RELEASES (deck/deck/code/oci/release.ts), which `term host` refuses
-const RELEASED = new Set(['@term/code'])
+// what `term host` decides without the registry, the key or the terminal: the package's name, the source address a
+// git remote names, the annotations, the sentences and the ping's facts
+import * as words from '@term/call/code/host-words'
 
 // `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's
 // key set instead. Registry credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN
@@ -64,16 +64,14 @@ export async function callHost(input: {
       return
     }
 
-    const name = manifest.host
-      ? `@${manifest.host}/${manifest.name}`
-      : manifest.name
+    const name = words.packageName(manifest.host ?? '', manifest.name)
     const version = showCode(manifest.mark)
 
     // A RELEASED name is not a source package. `@term/code` is the toolchain, published per platform by
     // `pnpm term:release` (task/release.ts) to the same repository a source publish would use, and the installer takes
     // the newest tag there. A source artifact under it took 2.6.0 for good on 2026-10-04 and pushed the first release
     // to 2.6.2; one at a higher version would make every install fail
-    if (RELEASED.has(name)) {
+    if (words.isReleased(name)) {
       report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `${name} is released with pnpm term:release, not published with term host` })
       closeRun({ verdict: 'Nothing was published', failure: 'usage' })
 
@@ -186,25 +184,13 @@ export async function callHost(input: {
 
     // the package's source repository. GHCR reads this annotation to LINK the package to that repository (its readme,
     // its contributors, and the repository's access), which otherwise is a click on every new package. `site` in
-    // deck.tree wins; without one, the git remote the package directory pushes to
+    // deck.tree wins; without one, the git remote the package directory pushes to. What a catalog or a search index
+    // reads without fetching any blob: the `head` and `make` lines of deck.tree. Not `term`, which the grammar defines
+    // as "a licence or keyword term" and so cannot be read as either
     const source = manifest.site?.startsWith('https://') ? manifest.site : gitSource(input.root)
 
-    if (source) {
-      annotations['org.opencontainers.image.source'] = source
-    }
-
-    if (manifest.lock) {
-      annotations['org.opencontainers.image.licenses'] = manifest.lock
-    }
-
-    // what a catalog or a search index reads without fetching any blob: the `head` and `make` lines of deck.tree.
-    // Not `term`, which the grammar defines as "a licence or keyword term" and so cannot be read as either
-    if (manifest.head) {
-      annotations['org.opencontainers.image.description'] = manifest.head
-    }
-
-    if (manifest.make && manifest.make.length > 0) {
-      annotations['surf.clue.term.keywords'] = manifest.make.join(',')
+    for (const one of words.annotationsOf(source ?? '', manifest.lock ?? '', manifest.head ?? '', manifest.make ?? [])) {
+      annotations[one.key] = one.value
     }
 
     const common = {
@@ -314,7 +300,7 @@ export async function announce(input: { route: OciRoute; digest: string; keypair
           glyph: 'done',
           verb: 'ping',
           subject: 'package index',
-          facts: [ping.outcome, ping.publisher ? `credited to account ${ping.publisher}` : token ? '' : 'anonymous, no term.surf token'].filter(Boolean),
+          facts: words.pingFacts(ping.outcome ?? '', ping.publisher ?? '', Boolean(token)),
         }
       : { glyph: 'warning', verb: 'ping', subject: 'package index', facts: [ping.form], message: [sentence(ping.reason)] },
   )
@@ -324,9 +310,7 @@ export async function announce(input: { route: OciRoute; digest: string; keypair
 
 // a message from a library as a sentence: capital first, no trailing period (section 7)
 function sentence(text: string): string {
-  const trimmed = text.trim().replace(/\.$/, '')
-
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+  return words.sentence(text)
 }
 
 // The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope,
@@ -355,22 +339,12 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
   // An UNSCOPED package (`deck hello`, which is what `term wake hello` writes) has no scope to pick a registry by.
   // It builds and runs as one, and it publishes once it is told where: a scope in deck.tree, or --registry. Said in
   // those words, because "not on an oci:// registry" read as a broken registry rather than a missing scope.
-  if (!route && !flag && !input.name.startsWith('@')) {
-    throw refusal(
-      `${input.name} has no scope, so there is no registry to publish it to. Name it \`deck @<scope>/${input.name}\` in deck.tree (a scope publishes to ghcr.io/<scope> unless a \`base\` line says otherwise), or pass --registry oci://<host>/<namespace>`,
-    )
-  }
-
   if (!route) {
-    throw refusal(`${input.name} is not on an oci:// registry. Pass --registry oci://<host>/<namespace>`)
+    throw refusal(words.unrouted(input.name, Boolean(flag)))
   }
 
   return route
 }
-
-// `git@github.com:owner/repo.git`, `ssh://git@github.com/owner/repo`, and the https spellings
-const SCP_REMOTE = /^[^@/]+@([^:/]+):(.+?)(?:\.git)?\/?$/
-const URL_REMOTE = /^(?:ssh|https?|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/
 
 // The https address of the repository this package directory pushes to (`remote.origin.url`), or undefined when it is
 // not in a git repository or has no origin. Credentials in an https remote (`https://x-access-token:...@github.com/`)
@@ -387,9 +361,8 @@ export function gitSource(dir: string): string | undefined {
     return undefined
   }
 
-  const found = SCP_REMOTE.exec(remote) ?? URL_REMOTE.exec(remote)
-
-  return found ? `https://${found[1]}/${found[2]}` : undefined
+  // `git@github.com:owner/repo.git`, `ssh://git@github.com/owner/repo`, and the https spellings
+  return words.remoteSource(remote) || undefined
 }
 
 // an error a person can act on, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70)

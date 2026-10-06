@@ -1,0 +1,473 @@
+# The parts of loading a role's mill that read a grammar file's own parse tree: its text without the import block and
+# the paths it imports, the rules it holds with the lines each occupies, and the rule names it defines. There is one
+# parser for `.tree` (note/term/one-parser.md), so all of it is read off the tree, never by pattern.
+#
+# Ported from compile/mill-load.ts (self-hosting, 2026-10-06), which stays as the face: it reads the files, resolves
+# each import against the mill and walks the load graph, and these are the questions it asks of each file's text.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+  find render-head
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find span
+
+load ./mill-running
+  find span-of-node
+
+load ./templates
+  find span-of-whole
+
+# a file's text with every `load` statement's lines removed, the paths those statements load, and why the file could
+# not be read, when it could not
+form grammar-part
+  link text, like text
+  link imports, like list, like text
+  link problem
+    like maybe, like text
+    need false
+
+form grammar-rule
+  link half, like text
+  link name, like text
+  link like
+    like maybe, like text
+    need false
+  link make-form
+    like maybe, like text
+    need false
+  # 0-based, inclusive of the head line, exclusive of the end
+  link from, like number
+  link to, like number
+
+form grammar-file
+  link file, like text
+  link text, like text
+  link rules, like list, like grammar-rule
+  # the lines a `load` of another grammar file occupies, so a regenerated block replaces them exactly
+  link load-lines, like list, like number
+
+task root-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+task kids-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task node-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, kids/length)
+    hold
+      save found, get(kids, at)
+      back make(some, found)
+  back make none
+
+# a name's rendering, or a group's whose head is a name
+task name-of-group
+  take given, like maybe, like node
+  like maybe, like text
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case name
+          save word, render-head(one)
+          back make(some, word)
+        case group
+          fork test, is-above(nodes/length, 0)
+            hold
+              save first, get(nodes, 0)
+              sift first
+                case name
+                  save word, render-head(first)
+                  back make(some, word)
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task named
+  take given, like maybe, like node
+  take word, like text
+  like boolean
+  mark private
+
+  sift name-of-group(given)
+    case some
+      link known
+      back is-equal(known, word)
+    case none
+      back false
+
+task is-named
+  take one, like node
+  take word, like text
+  like boolean
+  mark private
+
+  back named(make(some, one), word)
+
+# a DIRECT child group headed `word`, never a search at any depth: a `mint` whose cases mention `like` or `make` would
+# answer such a search with one of them
+task direct-child
+  take given, like maybe, like node
+  take word, like text
+  like maybe, like node
+  mark private
+
+  sift given
+    case some
+      link one
+      walk kids-of(one)
+        take kid
+        fork test, and(is-group-node(kid), named(node-at(kids-of(kid), 0), word))
+          hold
+            back make(some, kid)
+    case none
+      save nothing, 0
+  back make none
+
+# the text without its import block, and the paths it imports
+task strip-imports
+  take file, like text
+  take written, like text
+  like grammar-part
+
+  save source
+    make token-source
+      bind file, file
+      bind text, written
+  save parsed, parse(source)
+  save imports, make list
+  fork test, not(parsed/ok)
+    hold
+      save why, <did not parse>
+      fork test, is-above(parsed/diagnostics/length, 0)
+        hold
+          save first-diagnostic, get(parsed/diagnostics, 0)
+          save why, first-diagnostic/message
+      save problem, <{file}: {why}>
+      back
+        make grammar-part
+          bind text, written
+          bind imports, imports
+          bind problem, make(some, problem)
+
+  save drop, make hash
+  walk root-nodes(parsed/tree)
+    take group
+    fork test, not(is-group-node(group))
+      hold
+        turn next
+    save kids, kids-of(group)
+    save head-name, make none
+    sift node-at(kids, 0)
+      case some
+        link first
+        sift first
+          case name
+            save rendered, render-head(first)
+            save head-name, make(some, rendered)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+    save is-load, false
+    sift head-name
+      case some
+        link known
+        save is-load, is-equal(known, <load>)
+      case none
+        save nothing, 0
+    fork test, not(is-load)
+      hold
+        turn next
+    # every line this statement spans, so the import block is removed exactly rather than by pattern
+    save from, 0
+    sift span-of-node(group)
+      case some
+        link head-span
+        save from, head-span/start/line
+      case none
+        save nothing, 0
+    save to, from
+    sift span-of-node(get(kids, subtract(kids/length, 1)))
+      case some
+        link last-span
+        save to, last-span/end/line
+      case none
+        save nothing, 0
+    save line, from
+    walk test
+      hook test, is-maximum(line, to)
+      hook hold
+        save drop/{line}, true
+        save line, add(line, 1)
+    sift node-at(kids, 1)
+      case some
+        link target
+        sift target
+          case group
+            fork test, is-above(nodes/length, 0)
+              hold
+                save target-head, get(nodes, 0)
+                sift target-head
+                  case name
+                    push(imports, render-head(target-head))
+                  miss
+                    save nothing, 0
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+
+  save kept, make list
+  save at, 0
+  walk split(written, <\n>)
+    take one-line
+    fork test, not(drop/has(at))
+      hold
+        push(kept, one-line)
+    save at, add(at, 1)
+  back
+    make grammar-part
+      bind text, join(kept, <\n>)
+      bind imports, imports
+      bind problem, make none
+
+# every rule a grammar file holds, with its lines, and the lines its `load`s of other grammar files occupy. None when
+# the text does not parse
+task grammar-rules
+  take file, like text
+  take written, like text
+  like maybe, like grammar-file
+
+  save source
+    make token-source
+      bind file, file
+      bind text, written
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back make none
+  save rules, make list
+  save load-lines, make list
+  walk root-nodes(parsed/tree)
+    take group
+    fork test, not(is-group-node(group))
+      hold
+        turn next
+    save kids, kids-of(group)
+    save head, name-of-group(node-at(kids, 0))
+    save whole, span-of-whole(group)
+    save head-text, <>
+    sift head
+      case some
+        link known
+        save head-text, known
+      case none
+        save nothing, 0
+    fork test, is-equal(head-text, <load>)
+      hold
+        sift name-of-group(node-at(kids, 1))
+          case some
+            link target
+            fork test, starts-with(target, <@term/mill/>)
+              hold
+                save line, whole/start/line
+                walk test
+                  hook test, is-maximum(line, whole/end/line)
+                  hook hold
+                    add-number-once(load-lines, line)
+                    save line, add(line, 1)
+          case none
+            save nothing, 0
+        turn next
+    fork test, and(is-unequal(head-text, <mine>), is-unequal(head-text, <mint>))
+      hold
+        turn next
+    save name-read, name-of-group(node-at(kids, 1))
+    save rule-name, <>
+    sift name-read
+      case some
+        link known
+        save rule-name, known
+      case none
+        save nothing, 0
+    fork test, is-equal(rule-name, <>)
+      hold
+        turn next
+    # `mint task, like code-task`: the comma leaves the annotation beside the name, so it sits either directly under
+    # the rule or directly under the name group
+    save name-group, make none
+    sift node-at(kids, 1)
+      case some
+        link second
+        fork test, is-group-node(second)
+          hold
+            save name-group, make(some, second)
+      case none
+        save nothing, 0
+    save like-group, direct-child(make(some, group), <like>)
+    sift like-group
+      case some
+        link found
+        save nothing, 0
+      case none
+        save like-group, direct-child(name-group, <like>)
+    save like-name, make none
+    sift like-group
+      case some
+        link found
+        save like-name, name-of-group(node-at(kids-of(found), 1))
+      case none
+        save nothing, 0
+    # `hook make` / `make <form>`: the construction is under the hook
+    save make-form, make none
+    walk kids
+      take kid
+      fork test, and(is-group-node(kid), and(named(node-at(kids-of(kid), 0), <hook>), named(node-at(kids-of(kid), 1), <make>)))
+        hold
+          walk kids-of(kid)
+            take inner
+            fork test, and(is-group-node(inner), and(named(node-at(kids-of(inner), 0), <make>), is-above(kids-of(inner)/length, 1)))
+              hold
+                save make-form, name-of-group(node-at(kids-of(inner), 1))
+                halt
+          halt
+    save rule
+      make grammar-rule
+        bind half, head-text
+        bind name, rule-name
+        bind like, like-name
+        bind make-form, make-form
+        bind from, whole/start/line
+        bind to, add(whole/end/line, 1)
+    push(rules, rule)
+  save made
+    make grammar-file
+      bind file, file
+      bind text, written
+      bind rules, rules
+      bind load-lines, load-lines
+  back make(some, made)
+
+task add-number-once
+  take into, like list, like number
+  take one, like number
+  mark private
+
+  walk into
+    take held
+    fork test, is-equal(held, one)
+      hold
+        back
+  push(into, one)
+
+# the rule names a grammar file defines: a top-level group headed `mine` or `mint` whose second node is the name
+task rules-defined
+  take written, like text
+  take file, like text
+  take half, like text
+  like list, like text
+
+  save names, make list
+  save source
+    make token-source
+      bind file, file
+      bind text, written
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back names
+  walk root-nodes(parsed/tree)
+    take group
+    fork test, not(is-group-node(group))
+      hold
+        turn next
+    save kids, kids-of(group)
+    save heads-half, false
+    sift node-at(kids, 0)
+      case some
+        link first
+        sift first
+          case name
+            save heads-half, is-equal(render-head(first), half)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+    fork test, not(heads-half)
+      hold
+        turn next
+    sift node-at(kids, 1)
+      case some
+        link second
+        sift second
+          case name
+            push(names, render-head(second))
+          case group
+            # `mint task, like code-task` carries the name as the head of a group
+            fork test, is-above(nodes/length, 0)
+              hold
+                save inner, get(nodes, 0)
+                sift inner
+                  case name
+                    push(names, render-head(inner))
+                  miss
+                    save nothing, 0
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  back names

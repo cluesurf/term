@@ -65,7 +65,8 @@ task scan
     call split
       read input
       text <\n>
-  save stack
+  # typed where it is made: its element is read (`top/depth`) before the first push, where inference has not met it
+  save stack, like list, like scanned-line
     make list
   save roots
     make list

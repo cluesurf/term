@@ -46,6 +46,7 @@ form headers, name <Headers>
         take key, like native-string
         take parent, like headers
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

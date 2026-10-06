@@ -1,0 +1,204 @@
+# Read a `.tree` source a top-level group at a time, without holding the whole file. The unit is a completed top-level
+# group (note/term/feed/tree-stream-unit.md). There is one parser, and this is not a second one: a group's BOUNDARY is
+# found by line (a top-level group ends where the next column-0 line begins), and a slice that does not parse yet is not
+# a complete group, so the reader keeps reading. That is slower than counting angle brackets and cannot disagree with the
+# grammar.
+#
+# Ported from parser/stream.ts (self-hosting, 2026-10-06), which stays as the face: it turns a whole text or an
+# iterable of lines into the line-pulling task this takes, and closes an iterable the walk stopped early.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find trim
+  find trim-start
+
+load ./tree
+  find node
+  find root-node
+  find parse
+
+load ./token
+  find token-source
+
+load ./diagnostic
+  find diagnostic
+
+form stream-result
+  mark tag, name kind
+  # a completed top-level group
+  case group
+    link group, like node
+    link lines, like number
+  # the input ended
+  case end
+  # the input ended in the middle of a construct, or a group does not parse
+  case kink
+    link diagnostics, like list, like diagnostic
+    link lines, like number
+
+# Does a line begin a new top-level group? A group's head sits at column 0, so a line starting with a space or a tab
+# continues the one above it, and a blank line belongs to whatever came before. A comment never opens one, whatever
+# column it sits in
+task opens-group
+  take line, like text
+  like boolean
+  mark private
+
+  fork test, or(is-equal(line, <>), or(starts-with(line, < >), starts-with(line, <\t>)))
+    hold
+      back false
+  back not(starts-with(line, <#>))
+
+task is-note-line
+  take line, like text
+  like boolean
+  mark private
+
+  back or(is-equal(trim(line), <>), starts-with(trim-start(line), <#>))
+
+task all-notes
+  take held, like list, like text
+  like boolean
+  mark private
+
+  walk held
+    take line
+    fork test, not(is-note-line(line))
+      hold
+        back false
+  back true
+
+task parse-held
+  take file, like text
+  take held, like list, like text
+  like maybe, like node
+  mark private
+
+  save source
+    make token-source
+      bind file, file
+      bind text, join(held, <\n>)
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back make none
+  sift parsed/tree
+    case root
+      fork test, is-equal(nodes/length, 1)
+        hold
+          save only, get(nodes, 0)
+          sift only
+            case group
+              back make(some, only)
+            miss
+              save nothing, 0
+  back make none
+
+# the group `held` holds, parsed, or none when it is not complete yet
+task complete
+  take file, like text
+  take held, like list, like text
+  like maybe, like node
+  mark private
+
+  fork test, all-notes(held)
+    hold
+      back make none
+  back parse-held(file, held)
+
+task group-result
+  take group, like node
+  take lines, like number
+  like stream-result
+  mark private
+
+  back
+    make stream-result/group
+      bind group, group
+      bind lines, lines
+
+# The groups of a source, in order, each handed over as soon as it is complete. A consumer may stop after any one of
+# them, by `give` answering false, and pays only for what it read: the reader holds the current group's lines and
+# nothing else. `next-line` hands the source's lines one at a time, none at the end
+task walk-groups
+  take file, like text
+  take next-line
+    like task
+      like maybe, like text
+  take give
+    like task
+      take result, like stream-result
+      like boolean
+
+  save held, make list
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      sift next-line()
+        case some
+          link line
+          # a new group starts here only if what is held is already a complete one. Held lines that do not parse are an
+          # unclosed construct (a `text <...>` spanning lines), and this column-0 line is its content
+          fork test, and(is-above(held/length, 0), opens-group(line))
+            hold
+              sift complete(file, held)
+                case some
+                  link group
+                  fork test, not(give(group-result(group, held/length)))
+                    hold
+                      back
+                  save held, make list
+                case none
+                  save nothing, 0
+          push(held, line)
+        case none
+          save going, false
+
+  fork test, is-equal(held/length, 0)
+    hold
+      save ended, make stream-result/end
+      give(ended)
+      back
+
+  sift complete(file, held)
+    case some
+      link group
+      fork test, give(group-result(group, held/length))
+        hold
+          save ended, make stream-result/end
+          give(ended)
+      back
+    case none
+      save nothing, 0
+
+  # Trailing lines that are only comments or blanks are not a group and are not a failure: a file may end with a
+  # comment. Anything else that will not parse ended mid-construct, and saying so is the point
+  fork test, all-notes(held)
+    hold
+      save ended, make stream-result/end
+      give(ended)
+      back
+
+  save source
+    make token-source
+      bind file, file
+      bind text, join(held, <\n>)
+  save parsed, parse(source)
+  save found, make list
+  fork test, not(parsed/ok)
+    hold
+      save found, parsed/diagnostics
+  save kink
+    make stream-result/kink
+      bind diagnostics, found
+      bind lines, held/length
+  give(kink)

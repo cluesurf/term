@@ -107,50 +107,62 @@ form date, name <Date>
 
   task set-seconds, name <setSeconds>
     take sec, like native-number
-    take ms, like maybe
-      like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-utc-seconds, name <setUTCSeconds>
     take sec, like native-number
-    take ms, like maybe
-      like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-minutes, name <setMinutes>
     take min, like native-number
-    take sec, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take sec
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-utc-minutes, name <setUTCMinutes>
     take min, like native-number
-    take sec, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take sec
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-hours, name <setHours>
     take hours, like native-number
-    take min, like maybe
-      like native-number
-    take sec, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take min
+      like maybe
+        like native-number
+    take sec
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-utc-hours, name <setUTCHours>
     take hours, like native-number
-    take min, like maybe
-      like native-number
-    take sec, like maybe
-      like native-number
-    take ms, like maybe
-      like native-number
+    take min
+      like maybe
+        like native-number
+    take sec
+      like maybe
+        like native-number
+    take ms
+      like maybe
+        like native-number
     like native-number
 
   task set-date, name <setDate>
@@ -163,30 +175,36 @@ form date, name <Date>
 
   task set-month, name <setMonth>
     take month, like native-number
-    take date, like maybe
-      like native-number
+    take date
+      like maybe
+        like native-number
     like native-number
 
   task set-utc-month, name <setUTCMonth>
     take month, like native-number
-    take date, like maybe
-      like native-number
+    take date
+      like maybe
+        like native-number
     like native-number
 
   task set-full-year, name <setFullYear>
     take year, like native-number
-    take month, like maybe
-      like native-number
-    take date, like maybe
-      like native-number
+    take month
+      like maybe
+        like native-number
+    take date
+      like maybe
+        like native-number
     like native-number
 
   task set-utc-full-year, name <setUTCFullYear>
     take year, like native-number
-    take month, like maybe
-      like native-number
-    take date, like maybe
-      like native-number
+    take month
+      like maybe
+        like native-number
+    take date
+      like maybe
+        like native-number
     like native-number
 
   task to-utc-string, name <toUTCString>
@@ -196,37 +214,44 @@ form date, name <Date>
     like native-string
 
   task to-json, name <toJSON>
-    take key, like maybe
-      like native-any
+    take key
+      like maybe
+        like native-any
     like native-string
 
 form date, name <Date>
   task to-locale-string, name <toLocaleString>
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
-    take options, like maybe
-      like intl-date-time-format-options
+          like native-array
+            like native-string
+    take options
+      like maybe
+        like intl-date-time-format-options
     like native-string
 
   task to-locale-date-string, name <toLocaleDateString>
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
-    take options, like maybe
-      like intl-date-time-format-options
+          like native-array
+            like native-string
+    take options
+      like maybe
+        like intl-date-time-format-options
     like native-string
 
   task to-locale-time-string, name <toLocaleTimeString>
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
-    take options, like maybe
-      like intl-date-time-format-options
+          like native-array
+            like native-string
+    take options
+      like maybe
+        like intl-date-time-format-options
     like native-string

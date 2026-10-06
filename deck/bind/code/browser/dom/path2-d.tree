@@ -13,6 +13,7 @@ form path2-d, name <Path2D>
 
   task add-path, name <addPath>
     take path, like path2-d
-    take transform, like maybe
-      like dom-matrix2-d-init
+    take transform
+      like maybe
+        like dom-matrix2-d-init
     like native-void

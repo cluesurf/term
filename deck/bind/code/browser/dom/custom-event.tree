@@ -25,10 +25,13 @@ form custom-event, name <CustomEvent>
 
   task init-custom-event, name <initCustomEvent>
     take type, like native-string
-    take bubbles, like maybe
-      like native-boolean
-    take cancelable, like maybe
-      like native-boolean
-    take detail, like maybe
-      like t
+    take bubbles
+      like maybe
+        like native-boolean
+    take cancelable
+      like maybe
+        like native-boolean
+    take detail
+      like maybe
+        like t
     like native-void

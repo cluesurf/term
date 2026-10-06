@@ -75,6 +75,12 @@ import {
   type Loaded,
 } from '@term/call/code/need-load'
 import { closeRun, count, field, location, openRun, report, showPath } from '@term/call/code/output'
+import { isVersion } from '@term/call/code/need-choose'
+import * as words from '@term/call/code/self-words'
+
+// THE DECISIONS AND THE WORDS are Term since 2026-10-06, call/code/self-words.tree: which manager owns a copy and how
+// it updates it, what `check` says of a copy this did not install, the version `back` moves to, the versions `wash`
+// keeps, how long ago one was used, and the default `pick` writes. This face reads, resolves, installs and prints.
 
 // how long `wash` waits before it calls a version unused
 const WASH_DAYS = 90
@@ -86,17 +92,6 @@ const DAY_MS = 24 * 60 * 60 * 1000
 type Manager = 'homebrew' | 'apt' | 'dnf' | 'winget'
 
 type Held = { form: 'installed'; install: Install } | { form: 'managed'; by: Manager; version: string } | { form: 'source'; version: string }
-
-// each manager as its own project writes its name
-const SPELLED: Record<Manager, string> = { homebrew: 'Homebrew', apt: 'apt', dnf: 'dnf', winget: 'winget' }
-
-// how each manager updates its copy, said when `term self update` or `back` is refused
-const UPDATE: Record<Manager, string> = {
-  homebrew: 'brew upgrade cluesurf/tool/term',
-  apt: 'sudo apt update, then sudo apt install --only-upgrade term',
-  dnf: 'sudo dnf upgrade term',
-  winget: 'winget upgrade ClueSurf.Term',
-}
 
 // ---- check, update, back ----
 
@@ -129,13 +124,7 @@ export async function callSelfCheck(input: { root: string }): Promise<void> {
       glyph: 'info',
       verb: 'check',
       subject: `${PACKAGE}@${version} for ${platform} is released and signed by ${verified.keys}`,
-      message: [
-        held.form === 'managed'
-          ? held.by === 'homebrew'
-            ? 'Homebrew installed this copy and checked its download against the same layer digest.'
-            : `${SPELLED[held.by]} installed this copy from a package of the same payload, checked by its own signature.`
-          : 'This copy is a source build, so its bytes are not compared with the release.',
-      ],
+      message: [words.checkMessage(held.form === 'managed' ? held.by : '')],
     })
     closeRun({ verdict: 'The release verifies' })
 
@@ -223,9 +212,9 @@ export async function callSelfBack(input: { root: string }): Promise<void> {
   }
 
   const front = frontVersion() ?? held.install.version
-  const previous = installedVersions(userHome()).find(version => compare(version, front) < 0)
+  const previous = words.previousVersion(installedVersions(userHome()), front)
 
-  if (!previous) {
+  if (previous === '') {
     report({ glyph: 'failed', kind: 'problem', verb: 'back', subject: `No version older than ${front} is installed here` })
     closeRun({ verdict: 'Nothing to go back to', failure: 'usage', next: 'term self find, then term self load <version>' })
 
@@ -382,7 +371,7 @@ export async function callSelfPick(input: { root: string; range: string }): Prom
 
   const file = nodePath.join(home, 'need.tree')
 
-  writeFileSync(file, [`# The term that runs outside any project. Written by \`term self pick\`.`, `need ${TOOLCHAIN}, mark <${input.range}>`, ''].join('\n'))
+  writeFileSync(file, words.needTreeText(input.range))
   report({ glyph: 'changed', kind: 'change', verb: 'pick', subject: `the default is ${input.range}`, fields: [location(showPath(file))] })
   closeRun({ verdict: `term ${versionOf(chooseFor({ request, home, running: runningVersion(whatRuns()) }))} runs outside a project`, done: true })
 }
@@ -617,7 +606,7 @@ export async function callSelfWash(input: { root: string; days?: number; commit?
   }
 
   closeRun({
-    verdict: washed === 0 ? `Nothing unused for ${days} days` : input.commit ? `Removed ${washed}` : `${washed} to remove`,
+    verdict: words.washVerdict(washed, days, input.commit === true),
     counts: [count(washed, 'versions', 'version')],
     done: input.commit && washed > 0,
     next: washed > 0 && !input.commit ? 'term self wash --commit' : undefined,
@@ -644,19 +633,9 @@ function whatRuns(): Held {
 
 /** The package manager that owns the payload at `payload`, by where it put it (task/distro.ts, the Homebrew formula). */
 export function managerOf(payload: string, dpkgKnows = existsSync('/var/lib/dpkg/info/term.list')): Manager | undefined {
-  if (/[\\/](Caskroom|Cellar)[\\/]/.test(payload)) {
-    return 'homebrew'
-  }
+  const by = words.managerOf(payload, dpkgKnows)
 
-  if (/[\\/]WinGet[\\/]Packages[\\/]ClueSurf\.Term_/i.test(payload)) {
-    return 'winget'
-  }
-
-  if (payload === '/usr/lib/term') {
-    return dpkgKnows ? 'apt' : 'dnf'
-  }
-
-  return undefined
+  return by === '' ? undefined : (by as Manager)
 }
 
 // the payload this module was bundled into: host/line.js, one level under it
@@ -669,10 +648,7 @@ function runningVersion(held: Held): string {
 }
 
 function refuseUnmanaged(held: Exclude<Held, { form: 'installed' }>): void {
-  const subject =
-    held.form === 'managed'
-      ? `${SPELLED[held.by]} installed this copy, so ${SPELLED[held.by]} updates it: ${UPDATE[held.by]}`
-      : 'This copy is a source build, which is rebuilt, not updated: pnpm run make:line'
+  const subject = words.unmanagedSubject(held.form === 'managed' ? held.by : '')
 
   report({ glyph: 'failed', kind: 'problem', verb: 'self', subject })
   closeRun({ verdict: 'Nothing was changed', failure: 'usage' })
@@ -738,7 +714,7 @@ function holdOrRefuse(text: string): CodeHold | undefined {
 
 // an exact version installs exactly; a range installs its newest release
 function exactOr(text: string, hold: CodeHold): { version?: string; hold?: CodeHold } {
-  return /^\d+\.\d+\.\d+$/.test(text) ? { version: text } : { hold }
+  return isVersion(text) ? { version: text } : { hold }
 }
 
 // the nearest directory holding a deck.tree, walking up
@@ -772,14 +748,7 @@ function versionOf(choice: NeedChoice): string | undefined {
 }
 
 function byFact(choice: Extract<NeedChoice, { form: 'run' }>): string {
-  switch (choice.by) {
-    case 'pin':
-      return 'pinned in lock.tree'
-    case 'running':
-      return 'the running copy'
-    default:
-      return choice.request ? `the newest installed in ${choice.request.text}` : 'the newest installed'
-  }
+  return words.byFact(choice.by, choice.request?.text ?? '', choice.request !== undefined)
 }
 
 // a project's lock.tree pin, as `show` prints it
@@ -802,32 +771,21 @@ function pinFields(request: NeedRequest, home: string): ReturnType<typeof field>
 // The versions `wash` never removes, each with why: the front, the running copy, the default's answer, and this
 // directory's (its answer and its pin)
 function keptVersions(input: { home: string; running: string }): Map<string, string> {
-  const kept = new Map<string, string>()
-  const add = (version: string | undefined, why: string) => {
-    if (version && !kept.has(version)) {
-      kept.set(version, why)
-    }
-  }
   const project = projectRequest(process.cwd())?.request
+  const asked = [
+    { version: frontVersion(), why: 'the front' },
+    { version: input.running, why: 'running' },
+    { version: versionOf(chooseFor({ request: defaultRequest(input.home).request, home: input.home, running: input.running })), why: 'the default' },
+    { version: project?.pin ? showCode(project.pin.code) : undefined, why: 'pinned here' },
+    { version: project ? versionOf(chooseFor({ request: project, home: input.home, running: input.running })) : undefined, why: 'runs here' },
+  ]
 
-  add(frontVersion(), 'the front')
-  add(input.running, 'running')
-  add(versionOf(chooseFor({ request: defaultRequest(input.home).request, home: input.home, running: input.running })), 'the default')
-  add(project?.pin ? showCode(project.pin.code) : undefined, 'pinned here')
-  add(project ? versionOf(chooseFor({ request: project, home: input.home, running: input.running })) : undefined, 'runs here')
-
-  return kept
+  return new Map(words.keptVersions(asked.map(one => ({ version: one.version ?? '', why: one.why }))).map(one => [one.version, one.why]))
 }
 
 // `used today`, `used 12 days ago`, `never used`
 function usedFact(version: string, used = lastUsed(version)): string {
-  if (!used) {
-    return 'never used'
-  }
-
-  const days = Math.floor((Date.now() - used.getTime()) / DAY_MS)
-
-  return days <= 0 ? 'used today' : days === 1 ? 'used yesterday' : `used ${days} days ago`
+  return words.usedFact(used !== undefined, used ? Date.now() - used.getTime() : 0)
 }
 
 function readPackageVersion(payload: string): string {

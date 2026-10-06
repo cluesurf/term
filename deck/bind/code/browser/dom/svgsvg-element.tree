@@ -164,8 +164,9 @@ form svgsvg-element, name <SVGSVGElement>
     like svg-transform
 
   task create-svg-transform-from-matrix, name <createSVGTransformFromMatrix>
-    take matrix, like maybe
-      like dom-matrix2-d-init
+    take matrix
+      like maybe
+        like dom-matrix2-d-init
     like svg-transform
 
   task deselect-all, name <deselectAll>
@@ -253,19 +254,21 @@ form svgsvg-element, name <SVGSVGElement>
             like svgsvg-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -281,17 +284,19 @@ form svgsvg-element, name <SVGSVGElement>
             like svgsvg-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

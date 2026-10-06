@@ -292,8 +292,9 @@ task eval, name <eval>
 
 task parse-int, name <parseInt>
   take string, like native-string
-  take radix, like maybe
-    like native-number
+  take radix
+    like maybe
+      like native-number
   like native-number
 
 task parse-float, name <parseFloat>

@@ -1,0 +1,2045 @@
+# The formatter: re-print a `.tree` CST in canonical form. Operates on the concrete syntax tree (so comments are
+# preserved) and prints from the tree, never from the input's layout, so it is idempotent by design.
+#
+# THE LAYOUT is the five rules in note/term/format-rules.md, "Where each part of a line goes":
+#
+#   1. a statement is one line: `push items, 2`
+#   2. Term's own words chain with commas: `save items, make list, 3, 1`, `like list, like number`
+#   3. a call in statement or CONDITION position reads with commas (`fork test, is-above n, 0`), and a call in VALUE
+#      position takes parentheses (`back multiply(n, 2)`, `push result, read-number(cursor)`)
+#   4. a block stacks from the block on, and the parts before it stay on the head line: `map items` over its `task`
+#   5. past 84 columns, or with a comment inside, the group stacks
+#
+# THE CHECK is meaning, at two levels. Each group's own rendering is accepted only when it re-parses to the group it
+# was printed from (`shape`), which is what keeps a comma from landing one level off. And the whole result is accepted
+# only when its MILLED program and its import paths are identical to the input's. A result that fails it is refused and
+# the file is returned as written.
+#
+# Ported from format/format.ts (self-hosting, 2026-10-06), which stays as the face: it holds the options as its callers
+# write them (a `Set` of extra stacking heads, `undefined` for a choice left to the file), and hands in the meaning
+# check, the milled program and the import paths (format/meaning.ts), as tasks. A width is counted in UTF-16 units, as
+# JavaScript's `length` counts it, and a space is any character JavaScript's `\s` matches.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find substring
+  find starts-with
+  find ends-with
+  find trim
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+  find parse-result
+  find escape-text-chunks
+
+load ../parser/token
+  find token-source
+
+load ../parser/event
+  find follows
+
+# a text's length in UTF-16 units, as JavaScript's `length`
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+task width-limit
+  like number
+  mark private
+
+  back 84
+
+# how a tree is printed, as format.ts's `FormatOptions`: each choice a caller may leave to the file is a `maybe`
+form layout-options
+  # `false` keeps every comment line exactly as written
+  link wrap, like maybe, like boolean
+  # heads to keep stacked beyond the ones always stacked
+  link stack, like list, like text
+  # `false` turns rule 3 off, for a dialect whose heads are not calls
+  link calls, like maybe, like boolean
+  link lean, like maybe, like boolean
+  link role, like maybe, like text
+  # a grammar's dialect: no rule 3, and no stacking a group for a block beneath it
+  link dialect, like maybe, like boolean
+
+form layout-report
+  link text, like text
+  # why the result was refused and the file returned as written, when it was
+  link refused, like maybe, like text
+
+task no-options
+  like layout-options
+  mark private
+
+  back
+    make layout-options
+      bind wrap, make none
+      bind stack, make list
+      bind calls, make none
+      bind lean, make none
+      bind role, make none
+      bind dialect, make none
+
+task is-true
+  take given, like maybe, like boolean
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      back value
+    case none
+      back false
+
+task is-false
+  take given, like maybe, like boolean
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      back not(value)
+    case none
+      back false
+
+task role-is
+  take options, like layout-options
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift options/role
+    case some
+      link value
+      back is-equal(value, wanted)
+    case none
+      back false
+
+task has-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+task words-of
+  take line, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save word, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(line))
+    hook hold
+      save one, char-at(line, at)
+      fork test, is-equal(one, < >)
+        hold
+          fork test, is-unequal(word, <>)
+            hold
+              push(out, word)
+          save word, <>
+        miss
+          save word, <{word}{one}>
+      save at, add(at, 1)
+  fork test, is-unequal(word, <>)
+    hold
+      push(out, word)
+  back out
+
+# definition heads whose group never collapses onto one line (see format.ts for why each is here)
+task always-stack
+  like list, like text
+  mark private
+
+  back words-of(<load task form view walk fork sift hook case deck>)
+
+# the arms of a lean `fork` and of a `walk test`
+task arm-words
+  like list, like text
+  mark private
+
+  back words-of(<hold miss>)
+
+# heads that DECLARE rather than call: their children name and type a thing
+task declaration-heads
+  like list, like text
+  mark private
+
+  back words-of(<host take save link slot free mark seat like head>)
+
+# Term's own words: a group headed by one of these is not a call, so rule 3 never parenthesizes it
+task term-words
+  like list, like text
+  mark private
+
+  back words-of(<load form task host hook bind bear deck dock note save tell hold suit mask wear book kink lace cast tune view rule roll beam slot call head take like mark wait risk hide fold tag link case bond rein send back fork walk turn halt bust rest free move read make fuse loan code text term meet true false void miss fall else have must down name tree seed sift tick want show calm cite seek melt test seat>)
+
+# the other heads that hold a body: a proof and its induction step, a test, a mask, a template definition
+task bodies
+  like list, like text
+  mark private
+
+  back words-of(<rule test mask tree fold>)
+
+# the declaration heads that make up a task's signature, before its body
+task signature-heads
+  like list, like text
+  mark private
+
+  back words-of(<take free like mark seat hold>)
+
+# `mark <word>` where the word is one the mill reads as metadata
+task metadata-marks
+  like list, like text
+  mark private
+
+  back words-of(<async native unsafe draft stable unstable deprecated keep open roam>)
+
+# the words that head a literal or a read, which longhand writes closed as an argument
+task value-words
+  like list, like text
+  mark private
+
+  back words-of(<read code text term loan>)
+
+# the declarations that may sit only on a line of their own inside another
+task inner-declarations
+  like list, like text
+  mark private
+
+  back words-of(<take link slot free>)
+
+# ---- reading a group ----
+
+task nodes-of
+  take value, like node
+  like list, like node
+  mark private
+
+  sift value
+    case group
+      back nodes
+    miss
+      back make list
+
+task kids-of
+  take value, like node
+  like list, like node
+  mark private
+
+  save all, nodes-of(value)
+  save out, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, all/length)
+    hook hold
+      push(out, get(all, at))
+      save at, add(at, 1)
+  back out
+
+task node-at
+  take values, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, values/length))
+    hold
+      save found, get(values, at)
+      back make(some, found)
+  back make none
+
+task is-group-node
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      back true
+    miss
+      back false
+
+task is-optional
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      back is-true(optional)
+    miss
+      back false
+
+# the head of a group as written, or '' when it is not a plain word
+task head-name
+  take group, like node
+  like text
+  mark private
+
+  sift node-at(nodes-of(group), 0)
+    case some
+      link head
+      back flatten-plain(head)
+    case none
+      back <>
+
+# a word spelled in plain chunks, or none
+task plain-word
+  take given, like maybe, like node
+  like maybe, like text
+  mark private
+
+  sift given
+    case none
+      back make none
+    case some
+      link value
+      save word-node, make none
+      sift value
+        case name
+          save word-node, given
+        case group
+          fork test, is-equal(nodes/length, 1)
+            hold
+              save only, get(nodes, 0)
+              sift only
+                case name
+                  save word-node, make(some, only)
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+      sift word-node
+        case none
+          back make none
+        case some
+          link word
+          sift word
+            case name
+              save out, <>
+              walk parts
+                take part
+                sift part
+                  case chunk
+                    link chunk-text
+                    save out, <{out}{chunk-text}>
+                  miss
+                    back make none
+              back make(some, out)
+            miss
+              back make none
+
+task plain-word-is
+  take given, like maybe, like node
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift plain-word(given)
+    case some
+      link word
+      back is-equal(word, wanted)
+    case none
+      back false
+
+task plain-word-text
+  take given, like maybe, like node
+  like text
+  mark private
+
+  sift plain-word(given)
+    case some
+      link word
+      back word
+    case none
+      back <>
+
+task last-chunk-follows
+  take given, like maybe, like node
+  like maybe, like follows
+  mark private
+
+  sift given
+    case some
+      link value
+      sift value
+        case name
+          fork test, is-equal(parts/length, 0)
+            hold
+              back make none
+          save last, get(parts, subtract(parts/length, 1))
+          sift last
+            case chunk
+              back follows
+            miss
+              back make none
+        miss
+          back make none
+    case none
+      back make none
+
+# a word's last token is followed straight away by `(`: the chunk says what follows it
+task opens-paren
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift last-chunk-follows(given)
+    case some
+      link found
+      back true
+    case none
+      back false
+
+# `f()`: a call with no arguments, which parses exactly as the bare word `f`
+task empty-parens
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift last-chunk-follows(given)
+    case some
+      link found
+      sift found
+        case empty-parens
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-lower
+  take one, like text
+  like boolean
+  mark private
+
+  back has-text(words-of(<a b c d e f g h i j k l m n o p q r s t u v w x y z>), one)
+
+task is-word-char
+  take one, like text
+  like boolean
+  mark private
+
+  fork test, is-lower(one)
+    hold
+      back true
+  fork test, is-equal(one, <->)
+    hold
+      back true
+  back has-text(words-of(<0 1 2 3 4 5 6 7 8 9>), one)
+
+# `^[a-z][a-z0-9-]*(\/[a-z0-9-]+)*$`
+task is-call-word
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, or(is-equal(char-count(word), 0), not(is-lower(char-at(word, 0))))
+    hold
+      back false
+  save at, 1
+  save just-slashed, false
+  walk test
+    hook test, is-below(at, char-count(word))
+    hook hold
+      save one, char-at(word, at)
+      fork test, is-equal(one, </>)
+        hold
+          fork test, just-slashed
+            hold
+              back false
+          save just-slashed, true
+        miss
+          fork test, not(is-word-char(one))
+            hold
+              back false
+          save just-slashed, false
+      save at, add(at, 1)
+  back not(just-slashed)
+
+task first-segment
+  take word, like text
+  like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(word))
+    hook hold
+      fork test, is-equal(char-at(word, at), </>)
+        hold
+          back substring(word, 0, at)
+      save at, add(at, 1)
+  back word
+
+# a group that is a CALL: a plain word or a path with parts of its own, whose first segment is not one of Term's own
+# words
+task is-call
+  take group, like node
+  like boolean
+  mark private
+
+  save all, nodes-of(group)
+  fork test, is-below(all/length, 2)
+    hold
+      back false
+  sift plain-word(node-at(all, 0))
+    case some
+      link word
+      back and(is-call-word(word), not(has-text(term-words(), first-segment(word))))
+    case none
+      back false
+
+# the source line a group's head word was written on
+task written-line
+  take given, like maybe, like node
+  like maybe, like number
+  mark private
+
+  sift given
+    case none
+      back make none
+    case some
+      link value
+      save head, given
+      sift value
+        case group
+          save head, node-at(nodes, 0)
+        miss
+          save nothing, 0
+      sift head
+        case some
+          link written
+          sift written
+            case name
+              sift node-at(parts, 0)
+                case some
+                  link first
+                  sift first
+                    case chunk
+                      save line, span/start/line
+                      back make(some, line)
+                    miss
+                      back make none
+                case none
+                  back make none
+            miss
+              back make none
+        case none
+          back make none
+
+task same-line
+  take a, like maybe, like number
+  take b, like maybe, like number
+  like boolean
+  mark private
+
+  sift a
+    case some
+      link x
+      sift b
+        case some
+          link y
+          back is-equal(x, y)
+        case none
+          back false
+    case none
+      sift b
+        case some
+          link y
+          back false
+        case none
+          back true
+
+# IN A LEAN FILE A BARE HEAD UNDER A CALL IS A LABEL OR A CALL, and only the checker knows which: a call-shaped part
+# keeps the spelling it was written in, and one written on a line of its own stays there
+task lean-locked
+  take kid, like node
+  take parent, like node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  fork test, not(is-true(options/lean))
+    hold
+      back false
+  fork test, not(and(is-group-node(kid), is-call(kid)))
+    hold
+      back false
+  fork test, opens-paren(node-at(nodes-of(kid), 0))
+    hold
+      back false
+  save kid-line, written-line(make(some, kid))
+  sift kid-line
+    case none
+      back false
+    case some
+      link line
+      back not(same-line(kid-line, written-line(make(some, parent))))
+
+load ../parser/tree
+  find root-node
+
+task holds-lean-locked
+  take group, like node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  fork test, not(is-true(options/lean))
+    hold
+      back false
+  walk kids-of(group)
+    take kid
+    fork test, lean-locked(kid, group, options)
+      hold
+        back true
+    fork test, and(is-group-node(kid), holds-lean-locked(kid, options))
+      hold
+        back true
+  back false
+
+# Which parts of a group stand where a VALUE is expected (rule 3)
+task value-kids
+  take group, like node
+  like list, like boolean
+  mark private
+
+  save kids, kids-of(group)
+  save first, plain-word(node-at(kids, 0))
+  save out, make list
+  fork test, is-call(group)
+    hold
+      walk kids
+        take kid
+        push(out, true)
+      back out
+  save word, plain-word-text(node-at(nodes-of(group), 0))
+  save has-word, false
+  sift plain-word(node-at(nodes-of(group), 0))
+    case some
+      link found
+      save has-word, true
+    case none
+      save nothing, 0
+  save first-text, <>
+  save has-first, false
+  sift first
+    case some
+      link found
+      save first-text, found
+      save has-first, true
+    case none
+      save nothing, 0
+  save at, 0
+  walk kids
+    take kid
+    save place, false
+    fork test, has-word
+      hold
+        fork test, has-text(words-of(<back wait tick fall read>), word)
+          hold
+            save place, true
+        fork test, has-text(words-of(<save host bind make send call>), word)
+          hold
+            save place, is-minimum(at, 1)
+        fork test, is-equal(word, <walk>)
+          hold
+            save place, and(not(and(has-first, is-equal(first-text, <test>))), or(is-equal(at, 0), and(has-first, is-equal(first-text, <list>))))
+        fork test, is-equal(word, <sift>)
+          hold
+            save place, is-equal(at, 0)
+        fork test, is-equal(word, <fork>)
+          hold
+            save place, and(and(has-first, is-equal(first-text, <case>)), is-minimum(at, 1))
+    push(out, place)
+    save at, add(at, 1)
+  back out
+
+# a `view` PLACEMENT inside a body whose only content is one simple value
+task is-simple-placement
+  take group, like node
+  take depth, like number
+  like boolean
+  mark private
+
+  save all, nodes-of(group)
+  fork test, or(or(is-equal(depth, 0), is-unequal(head-name(group), <view>)), is-unequal(all/length, 3))
+    hold
+      back false
+  save tag, get(all, 1)
+  save value, get(all, 2)
+  fork test, not(is-word(tag))
+    hold
+      back false
+  sift value
+    case text
+      back true
+    miss
+      back is-word(value)
+
+task is-word
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      fork test, is-unequal(nodes/length, 1)
+        hold
+          back false
+      sift get(nodes, 0)
+        case name
+          back true
+        miss
+          back false
+    miss
+      back false
+
+# a lean `fork`, or a `walk test`: the groups whose `hold` and `miss` are arms
+task is-arm-parent
+  take group, like node
+  like boolean
+  mark private
+
+  save head, head-name(group)
+  fork test, is-equal(head, <fork>)
+    hold
+      back true
+  back and(is-equal(head, <walk>), plain-word-is(node-at(nodes-of(group), 1), <test>))
+
+task kid-holds-body
+  take kid, like node
+  like boolean
+  mark private
+
+  sift kid
+    case group
+      back is-above(nodes/length, 1)
+    miss
+      back false
+
+# a BLOCK (rule 4): a group that holds a body
+task is-block
+  take value, like node
+  take depth, like number
+  take parent, like maybe, like node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  save all, nodes-of(value)
+  fork test, or(not(is-group-node(value)), is-below(all/length, 2))
+    hold
+      back false
+  save head, head-name(value)
+  save first, plain-word(node-at(all, 1))
+  fork test, and(has-text(always-stack(), head), not(is-simple-placement(value, depth)))
+    hold
+      back true
+  fork test, or(has-text(bodies(), head), has-text(options/stack, head))
+    hold
+      back true
+  fork test, has-text(arm-words(), head)
+    hold
+      sift parent
+        case some
+          link above
+          fork test, is-arm-parent(above)
+            hold
+              back true
+        case none
+          save nothing, 0
+  # a guarded body and its handler: `mark unsafe` over statements, `halt take` over `take e` and statements
+  fork test, and(and(is-equal(head, <mark>), plain-word-is(node-at(all, 1), <unsafe>)), is-above(all/length, 2))
+    hold
+      back true
+  fork test, and(and(is-equal(head, <halt>), plain-word-is(node-at(all, 1), <take>)), is-above(all/length, 2))
+    hold
+      back true
+  # an event handler in a view, `seed click` over the call it runs, as against an attribute, `seed type, <email>`
+  fork test, is-equal(head, <seed>)
+    hold
+      sift first
+        case some
+          link word
+          save at, 2
+          walk test
+            hook test, is-below(at, all/length)
+            hook hold
+              fork test, kid-holds-body(get(all, at))
+                hold
+                  back true
+              save at, add(at, 1)
+        case none
+          save nothing, 0
+  back false
+
+# does any part beneath this group hold a body? Such a group stacks, from the block on
+task holds-block
+  take group, like node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  fork test, is-true(options/dialect)
+    hold
+      back false
+  save above, make(some, group)
+  walk kids-of(group)
+    take kid
+    fork test, is-block(kid, 1, above, options)
+      hold
+        back true
+    fork test, and(is-group-node(kid), holds-block(kid, options))
+      hold
+        back true
+  back false
+
+task is-leaf
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      back is-maximum(nodes/length, 1)
+    miss
+      back true
+
+task comments-count
+  take value, like node
+  like number
+  mark private
+
+  sift value
+    case group
+      sift comments
+        case some
+          link written
+          back written/length
+        case none
+          back 0
+    case text
+      sift comments
+        case some
+          link written
+          back written/length
+        case none
+          back 0
+    case integer
+      sift comments
+        case some
+          link written
+          back written/length
+        case none
+          back 0
+    case decimal
+      sift comments
+        case some
+          link written
+          back written/length
+        case none
+          back 0
+    case radix
+      sift comments
+        case some
+          link written
+          back written/length
+        case none
+          back 0
+    miss
+      back 0
+
+# does this node (or any descendant) carry a comment? Inlining would drop those comments, so such groups stack
+task has-comment
+  take value, like node
+  like boolean
+  mark private
+
+  fork test, is-above(comments-count(value), 0)
+    hold
+      back true
+  walk nodes-of(value)
+    take inner
+    fork test, has-comment(inner)
+      hold
+        back true
+  back false
+
+# ---- printing ----
+
+task braces
+  take open, like text
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}{open}>
+      save at, add(at, 1)
+  back out
+
+task flatten-plain
+  take value, like node
+  like text
+  mark private
+
+  back flatten(value, false, false, no-options(), false)
+
+# The inline (comma-joined) rendering of a node: `head a, b, c`. A part that a COMMA FOLLOWS and has parts of its own
+# is written PARENTHESIZED, and rule 3 adds the parentheses where the tree does not force them
+task flatten
+  take value, like node
+  take nested, like boolean
+  take in-value, like boolean
+  take options, like layout-options
+  take bare, like boolean
+  like text
+  mark private
+
+  sift value
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          sift optional
+            case some
+              link marked
+              fork test, marked
+                hold
+                  back <?>
+            case none
+              save nothing, 0
+          back <>
+      save head, get(nodes, 0)
+      save h, flatten-plain(head)
+      save mark, <>
+      fork test, is-true(optional)
+        hold
+          save mark, <?>
+      fork test, is-equal(nodes/length, 1)
+        hold
+          save closer, <>
+          fork test, empty-parens(make(some, head))
+            hold
+              save closer, <()>
+          back <{h}{closer}{mark}>
+      save places, value-kids(value)
+      save args, make list
+      save at, 0
+      save kids, kids-of(value)
+      walk kids
+        take kid
+        push(args, flatten(kid, forced-closed(value, at), get(places, at), options, false))
+        save at, add(at, 1)
+      # `host(route, port)` is a call to a task named `host`, and `host route, port` is the constant
+      save closed, and(not(bare), or(nested, printed-closed(value, in-value, options)))
+      save joined, join(args, <, >)
+      fork test, closed
+        hold
+          back <{h}{mark}({joined})>
+      back <{h}{mark} {joined}>
+    # an interpolation is re-emitted at ITS OWN brace depth, never a fixed `{{...}}`, and a path written after a call
+    # holds the call as braces the source never had, so it is written back closed and bare
+    case name
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save out, <{out}{chunk-text}>
+          case interpolation
+            link part-depth
+            link held
+            link part-call
+            save inner, <>
+            save has-group, false
+            sift held
+              case some
+                link group-node
+                sift group-node
+                  case group
+                    save has-group, true
+                    fork test, and(is-true(part-call), true)
+                      hold
+                        save inner, closed-call(flatten(group-node, is-above(nodes/length, 1), true, options, false))
+                      miss
+                        save inner, flatten(group-node, false, true, options, false)
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+            fork test, and(is-true(part-call), has-group)
+              hold
+                save out, <{out}{inner}>
+              miss
+                save out, <{out}{braces(<\{>, part-depth)}{inner}{braces(<\}>, part-depth)}>
+          miss
+            save nothing, 0
+      back out
+    case text
+      link text-parts
+      link text-raw
+      # a raw literal is written back as it was
+      sift text-raw
+        case some
+          link raw-value
+          back <\<\<{raw-value}\>\>>
+        case none
+          save nothing, 0
+      # the same re-escaping printTree does, computed across the WHOLE literal
+      save chunks, make list
+      walk text-parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            push(chunks, chunk-text)
+          miss
+            save nothing, 0
+      save escaped, escape-text-chunks(chunks)
+      save at, 0
+      save out, <>
+      walk text-parts
+        take part
+        sift part
+          case chunk
+            save out, <{out}{get(escaped, at)}>
+            save at, add(at, 1)
+          case interpolation
+            link part-depth
+            link held
+            save inner, <>
+            sift held
+              case some
+                link group-node
+                sift group-node
+                  case group
+                    save inner, flatten(group-node, false, true, options, false)
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+            save out, <{out}{braces(<\{>, part-depth)}{inner}{braces(<\}>, part-depth)}>
+          miss
+            save nothing, 0
+      back <\<{out}\>>
+    case integer
+      back read(text)
+    case decimal
+      back read(text)
+    case radix
+      back read(text)
+    miss
+      back <>
+
+# a call written as the root of a path always shows its parentheses, `greeting()/text`
+task closed-call
+  take value, like text
+  like text
+  mark private
+
+  fork test, ends-with(value, <)>)
+    hold
+      back value
+  back <{value}()>
+
+# a comparable structural fingerprint (ignores comments, spans, parents): used to verify a rendering round-trips
+task shape
+  take value, like node
+  like text
+  mark private
+
+  sift value
+    case group
+      save mark, <>
+      fork test, is-true(optional)
+        hold
+          save mark, <?>
+      save shapes, make list
+      walk nodes
+        take inner
+        push(shapes, shape(inner))
+      back <G{mark}({join(shapes, <,>)})>
+    case name
+      back <n:{flatten-plain(value)}>
+    case text
+      back <t:{flatten-plain(value)}>
+    miss
+      back <l:{flatten-plain(value)}>
+
+task group-of-nodes
+  take nodes, like list, like node
+  like node
+  mark private
+
+  back
+    make group
+      bind nodes, nodes
+
+# does `text`, read alone as one line, parse to exactly `nodes` under one group?
+task reads-as
+  take text, like text
+  take nodes, like list, like node
+  like boolean
+  mark private
+
+  save source
+    make token-source
+      bind file, <format>
+      bind text, text
+  save reparsed, parse(source)
+  fork test, not(reparsed/ok)
+    hold
+      back false
+  sift reparsed/tree
+    case root
+      link top
+      fork test, is-unequal(top/length, 1)
+        hold
+          back false
+      back is-equal(shape(get(top, 0)), shape(group-of-nodes(nodes)))
+
+task is-metadata-mark
+  take group, like node
+  like boolean
+  mark private
+
+  save all, nodes-of(group)
+  sift node-at(all, 1)
+    case some
+      link word
+      sift word
+        case group
+          link word-nodes
+          fork test, is-unequal(word-nodes/length, 1)
+            hold
+              back false
+          save written, flatten-plain(get(word-nodes, 0))
+          save bare-word, written
+          fork test, starts-with(written, <l:>)
+            hold
+              save bare-word, substring(written, 2)
+          fork test, not(has-text(metadata-marks(), bare-word))
+            hold
+              back false
+          back or(is-equal(all/length, 2), ends-with(written, <unsafe>))
+        miss
+          back false
+    case none
+      back false
+
+# would this child have to be PARENTHESIZED to survive an inline rendering?
+task needs-parens
+  take value, like node
+  like boolean
+  mark private
+
+  sift value
+    case group
+      fork test, is-maximum(nodes/length, 1)
+        hold
+          back false
+      walk kids-of(value)
+        take kid
+        sift kid
+          case name
+            back true
+          case group
+            back true
+          miss
+            save nothing, 0
+      back false
+    miss
+      back false
+
+# Would a one-line rendering have to close one of Term's own words in parentheses around two or more parts? Such a
+# group stacks instead. `closed` says the group is printed in parentheses
+task closes-a-word
+  take group, like node
+  take options, like layout-options
+  take closed, like boolean
+  like boolean
+  mark private
+
+  save kids, kids-of(group)
+  save places, value-kids(group)
+  # a grammar's words are not Term's
+  fork test, is-true(options/dialect)
+    hold
+      back false
+  fork test, and(has-text(declaration-heads(), head-name(group)), holds-declaration(group))
+    hold
+      back true
+  save at, 0
+  walk kids
+    take kid
+    save i, at
+    save at, add(at, 1)
+    sift kid
+      case group
+        fork test, is-below(nodes/length, 2)
+          hold
+            turn next
+      miss
+        turn next
+    save forced, forced-closed(group, i)
+    save shut, or(forced, printed-closed(kid, get(places, i), options))
+    save word, not(is-call(kid))
+    # a value word over one part is the longhand's own argument spelling, `read(a)`, `code(1)`
+    save value-word, and(has-text(value-words(), head-name(kid)), is-equal(nodes-of(kid)/length, 2))
+    fork test, or(and(and(forced, word), not(value-word)), and(and(closed, not(shut)), is-above(nodes-of(kid)/length, 2)))
+      hold
+        back true
+    fork test, closes-a-word(kid, options, or(closed, shut))
+      hold
+        back true
+  back false
+
+task holds-declaration
+  take group, like node
+  like boolean
+  mark private
+
+  walk kids-of(group)
+    take kid
+    sift kid
+      case group
+        fork test, and(has-text(inner-declarations(), head-name(kid)), is-above(nodes/length, 1))
+          hold
+            back true
+        fork test, holds-declaration(kid)
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false
+
+# is part `i` of a group closed in parentheses whatever its place: a part a comma follows, or the task a longhand
+# `call` names when it carries its own arguments
+task forced-closed
+  take group, like node
+  take i, like number
+  like boolean
+  mark private
+
+  save all, nodes-of(group)
+  fork test, is-below(i, subtract(all/length, 2))
+    hold
+      back true
+  fork test, not(and(is-equal(i, 0), plain-word-is(node-at(all, 0), <call>)))
+    hold
+      back false
+  sift node-at(all, add(i, 1))
+    case some
+      link kid
+      sift kid
+        case group
+          back is-above(nodes/length, 1)
+        miss
+          back false
+    case none
+      back false
+
+# is a group that is the LAST part of its line printed in parentheses (flatten's own decision)
+task printed-closed
+  take group, like node
+  take in-value, like boolean
+  take options, like layout-options
+  like boolean
+  mark private
+
+  save head, node-at(nodes-of(group), 0)
+  save lean, is-true(options/lean)
+  fork test, and(and(and(not(is-false(options/calls)), in-value), is-call(group)), not(lean))
+    hold
+      back true
+  fork test, and(and(lean, is-call(group)), opens-paren(head))
+    hold
+      back true
+  back and(plain-word-is(head, <host>), opens-paren(head))
+
+task is-js-space
+  take one, like text
+  like boolean
+  mark private
+
+  back has-text(js-spaces(), one)
+
+# what JavaScript's `\s` matches: the ASCII spaces and controls, and the Unicode spaces and separators
+task js-spaces
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, < >)
+  push(out, <	>)
+  push(out, from-code-point(10))
+  push(out, from-code-point(11))
+  push(out, from-code-point(12))
+  push(out, from-code-point(13))
+  push(out, from-code-point(160))
+  push(out, from-code-point(5760))
+  save at, 8192
+  walk test
+    hook test, is-maximum(at, 8202)
+    hook hold
+      push(out, from-code-point(at))
+      save at, add(at, 1)
+  push(out, from-code-point(8232))
+  push(out, from-code-point(8233))
+  push(out, from-code-point(8239))
+  push(out, from-code-point(8287))
+  push(out, from-code-point(12288))
+  push(out, from-code-point(65279))
+  back out
+
+bind from-code-point
+  take value, like number
+  like text
+  case node
+    text <String.fromCodePoint($value)>
+  case browser
+    text <String.fromCodePoint($value)>
+  case rust
+    text <char::from_u32($value as u32).map(|c| c.to_string()).unwrap_or_default()>
+  case swift
+    text <String(UnicodeScalar(UInt32($value))!)>
+  case kotlin
+    text <String(Character.toChars($value.toInt()))>
+
+# `text.split(/\s+/)`
+task split-spaces
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save word, <>
+  save at, 0
+  save in-space, false
+  walk test
+    hook test, is-below(at, char-count(value))
+    hook hold
+      save one, char-at(value, at)
+      fork test, is-js-space(one)
+        hold
+          fork test, not(in-space)
+            hold
+              push(out, word)
+              save word, <>
+          save in-space, true
+        miss
+          save word, <{word}{one}>
+          save in-space, false
+      save at, add(at, 1)
+  push(out, word)
+  back out
+
+# `text.replace(/^#+\s?/, '')`
+task without-hashes
+  take value, like text
+  like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, and(is-below(at, char-count(value)), is-equal(char-at(value, at), <#>))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, 0)
+    hold
+      back value
+  fork test, and(is-below(at, char-count(value)), is-js-space(char-at(value, at)))
+    hold
+      save at, add(at, 1)
+  back substring(value, at)
+
+# word-wrap a comment so no line exceeds the width. A comment that already fits is emitted unchanged, and a word longer
+# than the available width is left on its own line rather than broken mid-word
+task wrap-comment
+  take text, like text
+  take indent, like text
+  like list, like text
+  mark private
+
+  save trimmed, trim(text)
+  save out, make list
+  fork test, is-maximum(add(utf16-length(indent), utf16-length(trimmed)), width-limit())
+    hold
+      push(out, <{indent}{trimmed}>)
+      back out
+  save body, without-hashes(trimmed)
+  save prefix, <# >
+  save max, subtract(width-limit(), utf16-length(indent))
+  save line, prefix
+  walk split-spaces(body)
+    take word
+    fork test, is-equal(line, prefix)
+      hold
+        save line, <{prefix}{word}>
+      miss
+        fork test, is-maximum(add(add(utf16-length(line), 1), utf16-length(word)), max)
+          hold
+            save line, <{line} {word}>
+          miss
+            push(out, <{indent}{line}>)
+            save line, <{prefix}{word}>
+  fork test, is-unequal(line, prefix)
+    hold
+      push(out, <{indent}{line}>)
+  back out
+
+load ../parser/tree
+  find comment
+
+task comments-of
+  take value, like node
+  like list, like comment
+  mark private
+
+  save none-yet, make list
+  sift value
+    case group
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    case text
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    case integer
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    case decimal
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    case radix
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    miss
+      back none-yet
+
+task comment-lines
+  take value, like node
+  take indent, like text
+  take options, like layout-options
+  like list, like text
+  mark private
+
+  save out, make list
+  walk comments-of(value)
+    take one
+    fork test, is-false(options/wrap)
+      hold
+        push(out, <{indent}{trim(one/text)}>)
+      miss
+        walk wrap-comment(one/text, indent)
+          take line
+          push(out, line)
+  back out
+
+task indent-of
+  take depth, like number
+  like text
+  mark private
+
+  back braces(<  >, depth)
+
+form head-line
+  link count, like number
+  link text, like text
+
+task head-line-of
+  take count, like number
+  take text, like text
+  like head-line
+  mark private
+
+  back
+    make head-line
+      bind count, count
+      bind text, text
+
+# How many parts ride on a stacked group's head line, and the line itself. Rule 4: the parts before the first block
+# stay on the head line. Rule 5: a group that stacks for width or a comment keeps one leading part there. Every rider
+# line is re-parsed and must read as the head over exactly those parts
+task head-line
+  take group, like node
+  take depth, like number
+  take options, like layout-options
+  take places, like list, like boolean
+  take parent, like maybe, like node
+  like head-line
+  mark private
+
+  save indent, indent-of(depth)
+  save all, nodes-of(group)
+  save head, get(all, 0)
+  save h, flatten-plain(head)
+  save kids, kids-of(group)
+  save mark, <>
+  fork test, is-optional(group)
+    hold
+      save mark, <?>
+  save above, make(some, group)
+  # the parts a block-holding group may carry before its body
+  save limit, 1
+  save word, head-name(group)
+  save first-word, plain-word-text(node-at(kids, 0))
+  save is-arm, false
+  fork test, has-text(arm-words(), word)
+    hold
+      sift parent
+        case some
+          link outer
+          save is-arm, is-arm-parent(outer)
+        case none
+          save nothing, 0
+  fork test, is-arm
+    hold
+      # a lean arm's parts are all its body: `hold` over `halt`, never `hold halt`
+      save limit, 0
+    miss
+      fork test, and(is-equal(word, <walk>), or(is-equal(first-word, <list>), is-equal(first-word, <test>)))
+        hold
+          save limit, 2
+        miss
+          fork test, and(or(is-equal(word, <fork>), is-equal(word, <hook>)), or(is-equal(first-word, <test>), is-equal(first-word, <case>)))
+            hold
+              # the condition reads on its own head line: `fork test, is-above n, 0`
+              save limit, 2
+            miss
+              fork test, and(and(is-equal(word, <load>), is-equal(kids/length, 2)), is-name-group(node-at(kids, 1)))
+                hold
+                  # a native import and its alias, `load <node:fs/promises>, name fs-promise`
+                  save limit, 2
+                miss
+                  fork test, and(and(has-text(declaration-heads(), word), has-plain(node-at(kids, 0))), is-like-group(node-at(kids, 1)))
+                    hold
+                      # a declaration keeps its name and its type together, `host tense, like dimension`
+                      save limit, 2
+                    miss
+                      fork test, not(is-block(group, depth, parent, options))
+                        hold
+                          # a group that holds a block without being one: every part before the block
+                          save block, -1
+                          save at, 0
+                          walk kids
+                            take kid
+                            fork test, is-below(block, 0)
+                              hold
+                                fork test, or(is-block(kid, add(depth, 1), above, options), and(is-group-node(kid), holds-block(kid, options)))
+                                  hold
+                                    save block, at
+                            save at, add(at, 1)
+                          save limit, 1
+                          fork test, is-above(block, 0)
+                            hold
+                              save limit, block
+  save n, limit
+  fork test, is-below(kids/length, n)
+    hold
+      save n, kids/length
+  walk test
+    hook test, is-above(n, 0)
+    hook hold
+      save riders, make list
+      save k, 0
+      walk test
+        hook test, is-below(k, n)
+        hook hold
+          push(riders, get(kids, k))
+          save k, add(k, 1)
+      save fit, true
+      save i, 0
+      walk riders
+        take kid
+        fork test, fit
+          hold
+            fork test, or(or(has-comment(kid), is-block(kid, add(depth, 1), above, options)), and(is-group-node(kid), holds-block(kid, options)))
+              hold
+                save fit, false
+            fork test, lean-locked(kid, group, options)
+              hold
+                save fit, false
+            fork test, is-group-node(kid)
+              hold
+                fork test, holds-lean-locked(kid, options)
+                  hold
+                    save fit, false
+                fork test, closes-a-word(kid, options, or(is-below(i, subtract(n, 1)), printed-closed(kid, place-at(places, i), options)))
+                  hold
+                    save fit, false
+            # a part a comma follows that is not a word must close itself, and only a call reads well closed
+            fork test, not(or(or(is-equal(i, subtract(n, 1)), is-leaf(kid)), and(is-group-node(kid), is-call(kid))))
+              hold
+                save fit, false
+        save i, add(i, 1)
+      fork test, fit
+        hold
+          # the old, single-word head line: kept exactly, the optional marker at its end
+          fork test, and(is-equal(n, 1), is-leaf(get(riders, 0)))
+            hold
+              save rider, flatten(get(riders, 0), false, place-at(places, 0), options, false)
+              back head-line-of(1, <{indent}{h} {rider}{mark}>)
+          fork test, not(is-optional(group))
+            hold
+              # one part that is not a word rides only when it closes itself
+              save closes, true
+              fork test, is-equal(n, 1)
+                hold
+                  save only, get(riders, 0)
+                  save closes, and(and(is-group-node(only), is-call(only)), place-at(places, 0))
+              fork test, closes
+                hold
+                  save rendered, make list
+                  save j, 0
+                  walk riders
+                    take kid
+                    push(rendered, flatten(kid, is-below(j, subtract(n, 1)), place-at(places, j), options, false))
+                    save j, add(j, 1)
+                  save text, <{h} {join(rendered, <, >)}>
+                  save checked, make list
+                  push(checked, head)
+                  walk riders
+                    take kid
+                    push(checked, kid)
+                  fork test, and(is-maximum(add(utf16-length(indent), utf16-length(text)), width-limit()), reads-as(text, checked))
+                    hold
+                      back head-line-of(n, <{indent}{text}>)
+      save n, subtract(n, 1)
+  back head-line-of(0, <{indent}{h}{mark}>)
+
+task place-at
+  take places, like list, like boolean
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, places/length)
+    hold
+      back get(places, at)
+  back false
+
+task is-name-group
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      back and(is-group-node(value), is-equal(head-name(value), <name>))
+    case none
+      back false
+
+task is-like-group
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      back and(is-group-node(value), is-equal(head-name(value), <like>))
+    case none
+      back false
+
+task has-plain
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift plain-word(given)
+    case some
+      link word
+      back true
+    case none
+      back false
+
+task append-lines
+  take out, like list, like text
+  take more, like list, like text
+  like void
+  mark private
+
+  walk more
+    take line
+    push(out, line)
+
+# rules 1, 4 and 5: one line when the group holds no block, carries no comment to preserve, fits, and re-parses to the
+# same group
+task fits-one-line
+  take group, like node
+  take depth, like number
+  take parent, like maybe, like node
+  take options, like layout-options
+  take flat, like text
+  take shut, like boolean
+  like boolean
+  mark private
+
+  fork test, or(is-block(group, depth, parent, options), holds-block(group, options))
+    hold
+      back false
+  walk nodes-of(group)
+    take inner
+    fork test, has-comment(inner)
+      hold
+        back false
+  # a NON-LAST child that would need parentheses is another declaration, not an argument
+  fork test, has-text(declaration-heads(), head-name(group))
+    hold
+      save all, nodes-of(group)
+      save at, 1
+      walk test
+        hook test, is-below(at, subtract(all/length, 1))
+        hook hold
+          fork test, needs-parens(get(all, at))
+            hold
+              back false
+          save at, add(at, 1)
+  fork test, or(closes-a-word(group, options, shut), holds-lean-locked(group, options))
+    hold
+      back false
+  fork test, is-above(add(utf16-length(indent-of(depth)), utf16-length(flat)), width-limit())
+    hold
+      back false
+  back reads-as(flat, nodes-of(group))
+
+task first-word-of
+  take text, like text
+  like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(text))
+    hook hold
+      save one, char-at(text, at)
+      fork test, or(is-js-space(one), is-equal(one, <,>))
+        hold
+          back substring(text, 0, at)
+      save at, add(at, 1)
+  back text
+
+task format-group
+  take group, like node
+  take depth, like number
+  take options, like layout-options
+  take in-value, like boolean
+  take parent, like maybe, like node
+  like list, like text
+  mark private
+
+  save indent, indent-of(depth)
+  # a line that opens with a literal or a text keeps its comments on that node
+  save lines, comment-lines(group, indent, options)
+  sift node-at(nodes-of(group), 0)
+    case some
+      link first
+      fork test, not(is-group-node(first))
+        hold
+          append-lines(lines, comment-lines(first, indent, options))
+    case none
+      save nothing, 0
+  save closed, printed-closed(group, in-value, options)
+  save flat, flatten(group, false, in-value, options, false)
+  fork test, fits-one-line(group, depth, parent, options, flat, closed)
+    hold
+      push(lines, <{indent}{flat}>)
+      back lines
+  # a line written in parentheses that is too wide in them: the bare line is tried first. Never for `host`, where the
+  # parenthesis is the whole difference between a call and a constant
+  fork test, and(closed, not(plain-word-is(node-at(nodes-of(group), 0), <host>)))
+    hold
+      save open, flatten(group, false, in-value, options, true)
+      fork test, fits-one-line(group, depth, parent, options, open, false)
+        hold
+          push(lines, <{indent}{open}>)
+          back lines
+  save kids, kids-of(group)
+  save places, value-kids(group)
+  save head, head-line(group, depth, options, places, parent)
+  push(lines, head/text)
+  # blank-line grouping inside a task body: signature lines are grouped by head, the first real statement is set off
+  # from the signature, and a multi-line block is set off from a preceding simple statement
+  save space-body, is-equal(head-name(group), <task>)
+  save prev-head, <>
+  save has-prev, false
+  save prev-signature, false
+  save prev-compound, false
+  save above, make(some, group)
+  save i, 0
+  walk kids
+    take kid
+    save at, i
+    save i, add(i, 1)
+    fork test, is-below(at, head/count)
+      hold
+        turn next
+    save kid-lines, make list
+    save written, <>
+    sift kid
+      case group
+        save kid-lines, format-group(kid, add(depth, 1), options, place-at(places, at), above)
+        save written, head-name(kid)
+      miss
+        save kid-lines, comment-lines(kid, indent-of(add(depth, 1)), options)
+        push(kid-lines, <{indent-of(add(depth, 1))}{flatten(kid, false, place-at(places, at), options, false)}>)
+        save written, first-word-of(flatten-plain(kid))
+    # metadata written `mark async` lays out exactly as its old spelling `note async` did
+    save kid-head, written
+    fork test, and(is-equal(written, <mark>), and(is-group-node(kid), is-metadata-mark(kid)))
+      hold
+        save kid-head, <note>
+    save signature, has-text(signature-heads(), kid-head)
+    save compound, is-above(kid-lines/length, 1)
+    fork test, and(space-body, has-prev)
+      hold
+        save blank, false
+        fork test, and(prev-signature, signature)
+          hold
+            save blank, is-unequal(kid-head, prev-head)
+          miss
+            fork test, and(prev-signature, not(signature))
+              hold
+                save blank, true
+              miss
+                save blank, and(compound, not(prev-compound))
+        fork test, blank
+          hold
+            push(lines, <>)
+    append-lines(lines, kid-lines)
+    save prev-head, kid-head
+    save has-prev, true
+    save prev-signature, signature
+    save prev-compound, compound
+  back lines
+
+# one group laid out as the formatter lays it out at `depth`, one string per line, comments included, for the layout
+# lint (L044)
+task format-group-lines
+  take group, like node
+  take depth, like number
+  take options, like layout-options
+  take in-value, like boolean
+  take parent, like maybe, like node
+  like list, like text
+
+  back format-group(group, depth, options, in-value, parent)
+
+# which parts of a group stand in a value position (rule 3), for a caller walking the tree beside the formatter
+task value-places
+  take group, like node
+  like list, like boolean
+
+  back value-kids(group)
+
+# A GRAMMAR (a `mine` or `mint` file, or one in the `mill` role) is a dialect: its heads are not calls
+task is-grammar
+  take tree, like root-node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  fork test, role-is(options, <mill>)
+    hold
+      back true
+  sift tree
+    case root
+      walk nodes
+        take one
+        fork test, is-group-node(one)
+          hold
+            save head, head-name(one)
+            fork test, or(is-equal(head, <mine>), is-equal(head, <mint>))
+              hold
+                back true
+  back false
+
+task calling
+  take options, like layout-options
+  take tree, like root-node
+  like layout-options
+  mark private
+
+  save grammar, is-grammar(tree, options)
+  save calls, options/calls
+  sift options/calls
+    case none
+      save chosen, and(not(grammar), not(role-is(options, <view>)))
+      save calls, make(some, chosen)
+    case some
+      link given
+      save nothing, 0
+  save dialect, options/dialect
+  sift options/dialect
+    case none
+      save dialect, make(some, grammar)
+    case some
+      link given
+      save nothing, 0
+  back
+    make layout-options
+      bind wrap, options/wrap
+      bind stack, options/stack
+      bind calls, calls
+      bind lean, options/lean
+      bind role, options/role
+      bind dialect, dialect
+
+# one blank line between top-level definitions; comments ride with their group
+task print-tree-laid
+  take tree, like root-node
+  take options, like layout-options
+  like text
+  mark private
+
+  save blocks, make list
+  sift tree
+    case root
+      walk nodes
+        take one
+        fork test, is-group-node(one)
+          hold
+            save no-parent, make none
+            push(blocks, join(format-group(one, 0, options, false, no-parent), <\n>))
+  back <{join(blocks, <\n\n>)}\n>
+
+# The layout, from the tree, with no meaning check: for a caller that holds only a tree
+task format-tree
+  take tree, like root-node
+  take options, like layout-options
+  like text
+
+  back print-tree-laid(tree, calling(options, tree))
+
+# Format source text, and say what happened. Tolerant: a file that does not parse comes back unchanged. A file that
+# MILLS is held to its own meaning: the formatted text must mill to the same program, with the same import paths, or it
+# is refused and returned as written
+task format-report
+  take file, like text
+  take text, like text
+  take options, like layout-options
+  take program-of
+    like task
+      take tree, like root-node
+      take file, like text
+      take lean, like boolean
+      like maybe, like text
+  take imports-of
+    like task
+      take file, like text
+      take text, like text
+      like text
+  like layout-report
+
+  save written
+    make layout-report
+      bind text, text
+      bind refused, make none
+  save source
+    make token-source
+      bind file, file
+      bind text, text
+  save result, parse(source)
+  fork test, not(result/ok)
+    hold
+      back written
+  # a grammar is returned as written: the five rules are about Term's own words, and a grammar's are not
+  fork test, is-grammar(result/tree, options)
+    hold
+      back written
+  save laid, calling(options, result/tree)
+  save lean, is-true(options/lean)
+  save laid-text, print-tree-laid(result/tree, laid)
+  save laid-out
+    make layout-report
+      bind text, laid-text
+      bind refused, make none
+  fork test, or(role-is(options, <mill>), role-is(options, <view>))
+    hold
+      back laid-out
+  sift program-of(result/tree, file, lean)
+    case none
+      back laid-out
+    case some
+      link before
+      save again
+        make token-source
+          bind file, file
+          bind text, laid-text
+      save reparsed, parse(again)
+      save same, false
+      fork test, reparsed/ok
+        hold
+          sift program-of(reparsed/tree, file, lean)
+            case some
+              link after
+              save same, and(is-equal(after, before), is-equal(imports-of(file, laid-text), imports-of(file, text)))
+            case none
+              save nothing, 0
+      fork test, same
+        hold
+          back laid-out
+      back
+        make layout-report
+          bind text, text
+          bind refused, make(some, <the laid-out file mills to a different program or names different imports>)

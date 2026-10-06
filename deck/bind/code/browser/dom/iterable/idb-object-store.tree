@@ -22,6 +22,7 @@ form idb-object-store, name <IDBObjectStore>
         like native-string
         like iterable
           like native-string
-    take options, like maybe
-      like idb-index-parameters
+    take options
+      like maybe
+        like idb-index-parameters
     like idb-index

@@ -149,6 +149,7 @@ form object-constructor, name <ObjectConstructor>
       like native-string
 
   hook make
-    take value, like maybe
-      like native-any
+    take value
+      like maybe
+        like native-any
     like object

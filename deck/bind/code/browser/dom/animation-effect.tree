@@ -19,6 +19,7 @@ form animation-effect, name <AnimationEffect>
     like effect-timing
 
   task update-timing, name <updateTiming>
-    take timing, like maybe
-      like optional-effect-timing
+    take timing
+      like maybe
+        like optional-effect-timing
     like native-void

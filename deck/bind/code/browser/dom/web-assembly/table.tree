@@ -18,12 +18,14 @@ form table, name <Table>
 
   task grow, name <grow>
     take delta, like native-number
-    take value, like maybe
-      like native-any
+    take value
+      like maybe
+        like native-any
     like native-number
 
   task set, name <set>
     take index, like native-number
-    take value, like maybe
-      like native-any
+    take value
+      like maybe
+        like native-any
     like native-void

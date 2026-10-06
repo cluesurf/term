@@ -28,6 +28,7 @@ form html-or-svg-element, name <HTMLOrSVGElement>
     like native-void
 
   task focus, name <focus>
-    take options, like maybe
-      like focus-options
+    take options
+      like maybe
+        like focus-options
     like native-void

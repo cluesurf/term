@@ -33,8 +33,9 @@ form readonly-array, name <ReadonlyArray>
           like u
           like readonly-array
             like u
-    take this-arg, like maybe
-      like this
+    take this-arg
+      like maybe
+        like this
     like native-array
       like u
 
@@ -44,8 +45,9 @@ form readonly-array, name <ReadonlyArray>
       base native-number
       text <1>
     take this, like a
-    take depth, like maybe
-      like d
+    take depth
+      like maybe
+        like d
     like native-array
       like flat-array
         like a

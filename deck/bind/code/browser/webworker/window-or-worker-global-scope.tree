@@ -82,19 +82,22 @@ form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>
     like native-string
 
   task clear-interval, name <clearInterval>
-    take handle, like maybe
-      like native-number
+    take handle
+      like maybe
+        like native-number
     like native-void
 
   task clear-timeout, name <clearTimeout>
-    take handle, like maybe
-      like native-number
+    take handle
+      like maybe
+        like native-number
     like native-void
 
   task create-image-bitmap, name <createImageBitmap>
     take image, like image-bitmap-source
-    take options, like maybe
-      like image-bitmap-options
+    take options
+      like maybe
+        like image-bitmap-options
     like promise
       like image-bitmap
 
@@ -104,15 +107,17 @@ form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>
     take sy, like native-number
     take sw, like native-number
     take sh, like native-number
-    take options, like maybe
-      like image-bitmap-options
+    take options
+      like maybe
+        like image-bitmap-options
     like promise
       like image-bitmap
 
   task fetch, name <fetch>
     take input, like request-info
-    take init, like maybe
-      like request-init
+    take init
+      like maybe
+        like request-init
     like promise
       like response
 
@@ -122,8 +127,9 @@ form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>
 
   task set-interval, name <setInterval>
     take handler, like timer-handler
-    take timeout, like maybe
-      like native-number
+    take timeout
+      like maybe
+        like native-number
     take arguments
       like native-array
         like native-any
@@ -132,8 +138,9 @@ form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>
 
   task set-timeout, name <setTimeout>
     take handler, like timer-handler
-    take timeout, like maybe
-      like native-number
+    take timeout
+      like maybe
+        like native-number
     take arguments
       like native-array
         like native-any

@@ -67,11 +67,12 @@ form payment-request, name <PaymentRequest>
       like native-boolean
 
   task show, name <show>
-    take details-promise, like maybe
-      like or
-        like payment-details-update
-        like promise-like
+    take details-promise
+      like maybe
+        like or
           like payment-details-update
+          like promise-like
+            like payment-details-update
     like promise
       like payment-response
 
@@ -88,19 +89,21 @@ form payment-request, name <PaymentRequest>
             like payment-request-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -116,17 +119,19 @@ form payment-request, name <PaymentRequest>
             like payment-request-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

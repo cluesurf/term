@@ -47,8 +47,9 @@ form cache-storage, name <CacheStorage>
 
   task match, name <match>
     take request, like request-info
-    take options, like maybe
-      like multi-cache-query-options
+    take options
+      like maybe
+        like multi-cache-query-options
     like promise
       like or
         like response

@@ -1447,7 +1447,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'mold [file]',
-    'Shape Term data: a data file (long or compact) or JSON, printed as long form, compact (--pack) or JSON (--json)',
+    'Shape Term data: a data file (long or compact), JSON or tree/code, printed as long form, compact (--pack), JSON (--json) or tree/code (--code)',
     yargs =>
       yargs
         .positional('file', {
@@ -1461,9 +1461,13 @@ const cli = yargs(hideBin(process.argv))
         .option('tree', { type: 'boolean', description: 'The input is JSON' })
         .option('trees', { type: 'boolean', description: 'Keep tree anchors instead of expanding them' })
         .option('lines', { type: 'boolean', description: 'The input is a compact stream: one form per line, anchors re-declarable' })
-        .option('check', { type: 'boolean', description: 'Only report problems, exit 1 on any' }),
+        .option('check', { type: 'boolean', description: 'Only report problems, exit 1 on any' })
+        .option('code', { type: 'boolean', description: 'tree/code bytes, Zstandard frames where smaller (to a file or a pipe)' })
+        .option('canonical', { type: 'boolean', description: 'With --code: the canonical bytes, every frame uncompressed' }),
     async argv => {
       await callMold({
+        code: argv.code,
+        canonical: argv.canonical,
         root,
         file: argv.file,
         pack: argv.pack,

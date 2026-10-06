@@ -568,8 +568,9 @@ form document, name <Document>
       base link-read
         like html-element-tag-name-map
     take tag-name, like k
-    take options, like maybe
-      like element-creation-options
+    take options
+      like maybe
+        like element-creation-options
     like index
       like html-element-tag-name-map
       like k
@@ -579,16 +580,18 @@ form document, name <Document>
       base link-read
         like html-element-deprecated-tag-name-map
     take tag-name, like k
-    take options, like maybe
-      like element-creation-options
+    take options
+      like maybe
+        like element-creation-options
     like index
       like html-element-deprecated-tag-name-map
       like k
 
   task create-element, name <createElement>
     take tag-name, like native-string
-    take options, like maybe
-      like element-creation-options
+    take options
+      like maybe
+        like element-creation-options
     like html-element
 
   task create-element-ns, name <createElementNS>
@@ -617,8 +620,9 @@ form document, name <Document>
         like native-string
         like native-null
     take qualified-name, like native-string
-    take options, like maybe
-      like element-creation-options
+    take options
+      like maybe
+        like element-creation-options
     like element
 
   task create-element-ns, name <createElementNS>
@@ -627,10 +631,11 @@ form document, name <Document>
         like native-string
         like native-null
     take qualified-name, like native-string
-    take options, like maybe
-      like or
-        like native-string
-        like element-creation-options
+    take options
+      like maybe
+        like or
+          like native-string
+          like element-creation-options
     like element
 
   task create-event, name <createEvent>
@@ -867,12 +872,14 @@ form document, name <Document>
 
   task create-node-iterator, name <createNodeIterator>
     take root, like node
-    take what-to-show, like maybe
-      like native-number
-    take filter, like maybe
-      like or
-        like node-filter
-        like native-null
+    take what-to-show
+      like maybe
+        like native-number
+    take filter
+      like maybe
+        like or
+          like node-filter
+          like native-null
     like node-iterator
 
   task create-processing-instruction, name <createProcessingInstruction>
@@ -889,12 +896,14 @@ form document, name <Document>
 
   task create-tree-walker, name <createTreeWalker>
     take root, like node
-    take what-to-show, like maybe
-      like native-number
-    take filter, like maybe
-      like or
-        like node-filter
-        like native-null
+    take what-to-show
+      like maybe
+        like native-number
+    take filter
+      like maybe
+        like or
+          like node-filter
+          like native-null
     like tree-walker
 
   task element-from-point, name <elementFromPoint>
@@ -912,10 +921,12 @@ form document, name <Document>
 
   task exec-command, name <execCommand>
     take command-id, like native-string
-    take show-ui, like maybe
-      like native-boolean
-    take value, like maybe
-      like native-string
+    take show-ui
+      like maybe
+        like native-boolean
+    take value
+      like maybe
+        like native-string
     like native-boolean
 
   task exit-fullscreen, name <exitFullscreen>
@@ -1007,15 +1018,18 @@ form document, name <Document>
     head t
       base node
     take node, like t
-    take deep, like maybe
-      like native-boolean
+    take deep
+      like maybe
+        like native-boolean
     like t
 
   task open, name <open>
-    take unused1, like maybe
-      like native-string
-    take unused2, like maybe
-      like native-string
+    take unused1
+      like maybe
+        like native-string
+    take unused2
+      like maybe
+        like native-string
     like document
 
   task open, name <open>
@@ -1083,19 +1097,21 @@ form document, name <Document>
             like document-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -1111,17 +1127,19 @@ form document, name <Document>
             like document-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

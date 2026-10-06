@@ -11,6 +11,7 @@ load @term/bind/javascript/native
 form int16-array, name <Int16Array>
   task includes, name <includes>
     take search-element, like native-number
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-boolean

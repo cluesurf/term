@@ -19,8 +19,9 @@ form canvas-text, name <CanvasText>
     take text, like native-string
     take x, like native-number
     take y, like native-number
-    take max-width, like maybe
-      like native-number
+    take max-width
+      like maybe
+        like native-number
     like native-void
 
   task measure-text, name <measureText>
@@ -31,6 +32,7 @@ form canvas-text, name <CanvasText>
     take text, like native-string
     take x, like native-number
     take y, like native-number
-    take max-width, like maybe
-      like native-number
+    take max-width
+      like maybe
+        like native-number
     like native-void

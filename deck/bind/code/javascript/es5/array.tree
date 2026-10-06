@@ -75,8 +75,9 @@ form array, name <Array>
       like t
 
   task join, name <join>
-    take separator, like maybe
-      like native-string
+    take separator
+      like maybe
+        like native-string
     like native-string
 
   task reverse, name <reverse>
@@ -89,25 +90,29 @@ form array, name <Array>
       like native-undefined
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like native-array
       like t
 
   task sort, name <sort>
-    take compare-fn, like maybe
-      like task
-        take a, like t
-        take b, like t
-        like native-number
+    take compare-fn
+      like maybe
+        like task
+          take a, like t
+          take b, like t
+          like native-number
     like native-this
 
   task splice, name <splice>
     take start, like native-number
-    take delete-count, like maybe
-      like native-number
+    take delete-count
+      like maybe
+        like native-number
     like native-array
       like t
 
@@ -130,14 +135,16 @@ form array, name <Array>
 
   task index-of, name <indexOf>
     take search-element, like t
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task last-index-of, name <lastIndexOf>
     take search-element, like t
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task every, name <every>
@@ -152,8 +159,9 @@ form array, name <Array>
             like t
         like native-boolean
         rank value, like s
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
     rank self
       like native-array
@@ -168,8 +176,9 @@ form array, name <Array>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task some, name <some>
@@ -181,8 +190,9 @@ form array, name <Array>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task for-each, name <forEach>
@@ -194,8 +204,9 @@ form array, name <Array>
           like native-array
             like t
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task map, name <map>
@@ -208,8 +219,9 @@ form array, name <Array>
           like native-array
             like t
         like u
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like u
 
@@ -225,8 +237,9 @@ form array, name <Array>
             like t
         like native-boolean
         rank value, like s
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like s
 
@@ -239,8 +252,9 @@ form array, name <Array>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like t
 

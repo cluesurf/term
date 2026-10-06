@@ -1,0 +1,118 @@
+# `term bind`'s decisions that are not the network, the browser or the file it keeps: what the browser's landing
+# means, who a token names, how this platform opens a page, and the index address a login talks to.
+#
+# Ported from deck/call/code/bind.ts (self-hosting, 2026-10-06), which stays as the face: it listens on the loopback
+# address, calls term.surf, opens the browser, writes the token and prints through code/output.ts. Whether an address
+# is https is read by the URL parser there.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+form landing
+  link code, like text
+  link error, like text
+
+# What the browser brought back to the loopback address: a code with the state this login sent, or why it is not
+# one. Google's own error first (`access_denied` is a cancel), then a state that is not ours, then no code. An empty
+# parameter counts as none
+task landing-of
+  take error, like text
+  take has-state, like boolean
+  take state, like text
+  take wanted, like text
+  take code, like text
+  like landing
+
+  fork test, is-unequal(error, <>)
+    hold
+      save said, <Google answered {error}>
+      fork test, is-equal(error, <access_denied>)
+        hold
+          save said, <The login was cancelled in the browser>
+      back make-landing(<>, said)
+  fork test, or(not(has-state), is-unequal(state, wanted))
+    hold
+      back make-landing(<>, <The browser came back with a state this login did not send, so the answer was ignored>)
+  fork test, is-equal(code, <>)
+    hold
+      back make-landing(<>, <The browser came back without a code>)
+  back make-landing(code, <>)
+
+task make-landing
+  take code, like text
+  take error, like text
+  like landing
+  mark private
+
+  back
+    make landing
+      bind code, code
+      bind error, error
+
+# who a token names: its handle, else its email (an empty one too), else `your account`
+task who-of
+  take slug, like text
+  take has-email, like boolean
+  take email, like text
+  like text
+
+  fork test, is-unequal(slug, <>)
+    hold
+      back <@{slug}>
+  fork test, has-email
+    hold
+      back email
+  back <your account>
+
+# the program that opens a page in the default browser on this platform, and its arguments
+task opener-of
+  take os, like text
+  take url, like text
+  like list, like text
+
+  save out, make list
+  fork test, is-equal(os, <darwin>)
+    hold
+      push(out, <open>)
+      push(out, url)
+      back out
+  fork test, is-equal(os, <win32>)
+    hold
+      push(out, <cmd>)
+      push(out, </c>)
+      push(out, <start>)
+      push(out, <"">)
+      push(out, url)
+      back out
+  push(out, <xdg-open>)
+  push(out, url)
+  back out
+
+# the index a login talks to: the one given, trimmed, else term.surf's own, without a trailing slash
+task index-base
+  take given, like text
+  like text
+
+  save chosen, given
+  fork test, is-equal(given, <>)
+    hold
+      save chosen, <https://tool.term.surf>
+  save points, split(chosen, <>)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, 0), is-equal(get(points, subtract(end, 1)), </>))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)

@@ -9,6 +9,10 @@
 // An app is a directory with a `deck.tree` naming it, a page entry (`face/base.tree`, a module exporting a `boot`
 // task that mounts the page) and a cask entry (`cask.tree`, a module exporting `boot(bundle)` that opens the window
 // and hands the process to the platform). Output goes under `host/<target>/`. Design: note/term/cask/readme.md.
+//
+// What the build decides without its file system or a toolchain is Term, in cask-plan.tree: the tools each target
+// needs, the app's names, the cargo manifest, the driver line's labels, the device chosen and every manifest written.
+// This file holds the steps around them.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,50 +34,23 @@ import { runtimeVersion, toolchainOf, type RuntimeVersion } from '@term/call/cod
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { appleUsage, permissionLines } from '@term/call/code/device-declare'
 import { closeRun, count, field, followChild, isRunOpen, location, openRun, report, runTool, showPath } from '@term/call/code/output'
+import * as plan from '@term/call/code/cask-plan'
 
 export type CaskTarget = 'macos' | 'ios' | 'android' | 'linux' | 'windows'
 
 export const CASK_TARGETS: CaskTarget[] = ['macos', 'ios', 'android', 'linux', 'windows']
 
-// the compilers each target's build cannot do without, checked before the build starts. The Android SDK's own tools
-// (`aapt2`, `d8`, `apksigner`) are found inside the SDK where the build looks for them, not on the PATH. A Linux or
-// Windows cask built on another platform only writes its source and checks it when `cargo` happens to be there
-// (`makeRustProgram`), so `cargo` is needed only on the platform itself
-function caskTools(target: CaskTarget): string[] {
-  switch (target) {
-    case 'macos':
-    case 'ios':
-      return ['swiftc']
-    case 'android':
-      return ['kotlinc', 'java']
-    case 'linux':
-    case 'windows':
-      return RUST_TARGETS[target] === process.platform ? ['cargo'] : []
-    default:
-      return []
-  }
-}
-
-// the two targets the Rust cask serves (deck/cask/code/native/rust), and the host each one builds on
-const RUST_TARGETS: Partial<Record<CaskTarget, NodeJS.Platform>> = { linux: 'linux', windows: 'win32' }
-
-// the Android platform the cask is built against and the lowest it runs on
+// the Android platform the cask is built against and the lowest it runs on (cask-plan.tree `minimum-of` and
+// `android-manifest` hold the same two)
 const ANDROID_PLATFORM = 36
-const ANDROID_MINIMUM = 26
+const ANDROID_MINIMUM = Number(plan.minimumOf('android'))
 
-// the lowest iOS the cask runs on, and the simulator slice it is built for
-const IOS_MINIMUM = '17.0'
-const IOS_SIMULATOR_TARGET = `arm64-apple-ios${IOS_MINIMUM}-simulator`
+// the simulator slice iOS is built for, at the lowest iOS the cask runs on
+const IOS_SIMULATOR_TARGET = `arm64-apple-ios${plan.minimumOf('ios')}-simulator`
 
 // where a page entry and a cask entry live in an app, when the command is not told otherwise
 const DEFAULT_PAGE = 'face/base.tree'
 const DEFAULT_ENTRY = 'cask.tree'
-
-// the identifier prefix an app gets when its manifest does not say. `surf.term.blog` for `@term/blog`
-const IDENTIFIER_PREFIX = 'surf.term'
-
-// the lowest macOS the cask runs on: WKWebView's `takeSnapshot` and the concurrency the runtime uses
-const MACOS_MINIMUM = '14.0'
 
 // the Swift module every Apple app is built as, whatever the app is called. Left to swiftc it is the executable's name,
 // and an app named after an Apple framework shadows it: built as `Photos`, the program's own `import Photos` imported
@@ -102,13 +79,9 @@ export function swiftFlags(): string[] {
 export function appIdentity(root: string): { name: string; identifier: string } {
   const manifest = path.join(root, 'deck.tree')
   const declared = existsSync(manifest) ? manifestNameOf(manifest) : undefined
-  const last = (declared ?? path.basename(root)).split('/').pop() ?? 'app'
-  const word = last.replace(/[^a-z0-9]/gi, '')
+  const words = plan.appWordsOf(declared ?? path.basename(root))
 
-  return {
-    name: word.charAt(0).toUpperCase() + word.slice(1),
-    identifier: `${IDENTIFIER_PREFIX}.${word.toLowerCase()}`,
-  }
+  return { name: words.name, identifier: words.identifier }
 }
 
 // ---- the page ----
@@ -209,15 +182,7 @@ export async function buildPage({
 
   mkdirSync(into, { recursive: true })
   writeFileSync(path.join(into, 'app.js'), script.text)
-  writeFileSync(
-    path.join(into, 'index.html'),
-    [
-      '<!doctype html>',
-      `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`,
-      '<style>body{font:16px system-ui;margin:24px}input,textarea,button{font:inherit;display:block;margin:8px 0}</style>',
-      '</head><body><script type="module" src="./app.js"></script></body></html>',
-    ].join('\n'),
-  )
+  writeFileSync(path.join(into, 'index.html'), plan.pageHtml(title))
 
   return { bytes: script.text.length }
 }
@@ -230,42 +195,7 @@ export async function buildPage({
 // here, from before the labels) gets the entry's own. `cask/smoke` and the update test stopped compiling on
 // `missing argument labels` until this (2026-10-05). A driver that already labels, or a `boot` with none, is left
 export function labelBoot(driver: string, swift: string): string {
-  const signature = /\bfunc boot\(([^)]*)\)/.exec(swift)
-  const call = /^(\s*)boot\((.*)\)\s*$/.exec(driver)
-
-  if (!signature || !call || /^\s*[a-z][A-Za-z0-9]*\s*:/.test(call[2]!)) {
-    return driver
-  }
-
-  const labels = signature[1]!.split(',').map(param => param.trim().split(/[\s:]/)[0]!).filter(Boolean)
-  const args: string[] = []
-  let depth = 0
-  let quoted = false
-  let start = 0
-  const text = call[2]!
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!
-
-    if (c === '"' && text[i - 1] !== '\\') {
-      quoted = !quoted
-    } else if (!quoted && (c === '(' || c === '[')) {
-      depth++
-    } else if (!quoted && (c === ')' || c === ']')) {
-      depth--
-    } else if (!quoted && depth === 0 && c === ',') {
-      args.push(text.slice(start, i).trim())
-      start = i + 1
-    }
-  }
-
-  if (text.trim() !== '') {
-    args.push(text.slice(start).trim())
-  }
-
-  const named = args.map((arg, i) => (labels[i] && labels[i] !== '_' ? `${labels[i]}: ${arg}` : arg))
-
-  return `${call[1]}boot(${named.join(', ')})`
+  return plan.labelBoot(driver, swift)
 }
 
 // the cask program compiled to Swift, the cask runtime prepended, and `driver`, the top-level Swift line that
@@ -311,9 +241,7 @@ export function buildProgram({
   // a `boot` that can raise is `throws` in Swift, and the top-level line calling it must say `try`: it did not, and
   // the windows cask stopped building once `file/read` raised `absence` (2026-10-04). An error reaching the top
   // level ends the program with its message, which is what a raise nothing caught means
-  const throwing = /\bfunc boot\([^{]*\bthrows\b/.test(swift)
-  const labeled = labelBoot(driver, swift)
-  const line = throwing && !/^\s*try\b/.test(labeled) ? `try ${labeled}` : labeled
+  const line = plan.driverLine(driver, swift)
   const source = ['import Foundation', prelude, swift, line, ''].join('\n')
   const file = path.join(work, 'app.swift')
   mkdirSync(work, { recursive: true })
@@ -340,14 +268,8 @@ export function buildProgram({
     const section: string[] = []
 
     if (identifier) {
-      const prefixed = `SIMULATOR0.${identifier}`
       const entitlements = path.join(work, 'entitlements.plist')
-      writeFileSync(
-        entitlements,
-        `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>` +
-          `<key>application-identifier</key><string>${prefixed}</string>` +
-          `<key>keychain-access-groups</key><array><string>${prefixed}</string></array></dict></plist>\n`,
-      )
+      writeFileSync(entitlements, plan.simulatorEntitlements(identifier))
       section.push('-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', entitlements)
     }
 
@@ -365,7 +287,7 @@ export function buildProgram({
 
 // the crate name of an app: `blog` for `@term/blog`. A crate is snake_case
 export function crateOf(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  return plan.crateOf(name)
 }
 
 // the manifest of the app's cargo project: the stdlib's own crate list (deck/base/code/native/rust/Cargo.toml) read
@@ -374,55 +296,8 @@ export function crateOf(name: string): string {
 export function cargoManifest(crate: string, source: string): string {
   const stdlib = stdlibBase()
   const own = stdlib ? path.join(stdlib, 'code/native/rust/Cargo.toml') : undefined
-  // the `[dependencies]` table alone: what follows the header up to the next table
-  const table = own && existsSync(own) ? (readFileSync(own, 'utf8').split('[dependencies]')[1] ?? '').split(/\n\[/)[0] ?? '' : ''
-  // only the crates the emitted program and its shims reach (`hyper::`, `tokio_rustls::`): a crate nothing names is
-  // compiled for nothing, and one of them (tokio-rustls through aws-lc-sys) does not build on Windows on ARM at all.
-  // tokio and serde_json stay: the runtime and the cask reach them under other spellings
-  const dependencies = table
-    .split('\n')
-    .filter(line => {
-      const name = /^([A-Za-z0-9_-]+)\s*=/.exec(line)?.[1]
 
-      if (!name) {
-        return line.trim().startsWith('#') === false && line.trim() !== ''
-      }
-
-      return ['tokio', 'serde_json', 'serde'].includes(name) || source.includes(`${name.replaceAll('-', '_')}::`)
-    })
-    .join('\n')
-
-  return [
-    '# GENERATED by term make. The app as a cargo project: the stdlib\'s crates, SQLite for the database native, and',
-    '# the cask toolkit of each platform under its own cfg (deck/cask/code/native/rust/runtime/cask.rs).',
-    '[package]',
-    `name = "${crate}"`,
-    'version = "0.1.0"',
-    'edition = "2021"',
-    '',
-    '[dependencies]',
-    dependencies.trim(),
-    'rusqlite = { version = "0.32", features = ["bundled"] }',
-    '',
-    "[target.'cfg(target_os = \"linux\")'.dependencies]",
-    'gtk4 = "0.9"',
-    'webkit6 = "0.4"',
-    '',
-    "[target.'cfg(windows)'.dependencies]",
-    'windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_System_WinRT"] }',
-    'webview2-com = "0.33"',
-    '',
-    // a Term raise is a Result and never a panic, and nothing here catches one, so a panic is a stop: aborting drops the
-    // unwinding tables and landing pads, which shrinks the binary and lets LLVM treat panicking calls as noreturn
-    // without cleanup. Fat LTO across every crate (note/term/codegen/rust.md, Build profile)
-    '[profile.release]',
-    'opt-level = 3',
-    'lto = "fat"',
-    'codegen-units = 1',
-    'panic = "abort"',
-    'strip = true',
-    '',
-  ].join('\n')
+  return plan.cargoManifest(crate, own && existsSync(own) ? readFileSync(own, 'utf8') : '', source)
 }
 
 // compile the cask entry for rust into a cargo project at `<work>/cargo`, and build it when this machine is the
@@ -469,7 +344,7 @@ export function buildRustProgram({
   const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8' }).status === 0
   const native = [prelude, rust].join('\n')
 
-  if (RUST_TARGETS[target] === process.platform) {
+  if (plan.rustPlatform(target) === process.platform) {
     runTool('cargo', ['build', '--release', '--quiet'], { cwd: project })
 
     return { project, exe: path.join(project, 'target/release', target === 'windows' ? `${crate}.exe` : crate), native }
@@ -761,11 +636,9 @@ export function stampRuntimeVersion({
   native: string
   into: string
 }): RuntimeVersion {
-  const minimum =
-    target === 'ios' ? IOS_MINIMUM : target === 'macos' ? MACOS_MINIMUM : target === 'android' ? String(ANDROID_MINIMUM) : target
   const version = runtimeVersion({
     target,
-    minimum,
+    minimum: plan.minimumOf(target),
     toolchain: toolchainOf(target),
     sources: [{ name: 'program', text: native }],
   })
@@ -803,29 +676,7 @@ export function assembleApk({
 }): string {
   const tools = androidTools()
   const manifest = path.join(work, 'AndroidManifest.xml')
-  writeFileSync(
-    manifest,
-    [
-      '<?xml version="1.0" encoding="utf-8"?>',
-      `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="${version}">`,
-      `  <uses-sdk android:minSdkVersion="${ANDROID_MINIMUM}" android:targetSdkVersion="${ANDROID_PLATFORM}" />`,
-      '  <uses-permission android:name="android.permission.INTERNET" />',
-      ...permissionLines(native),
-      // no action bar: the page owns the whole screen, the way it does on every other platform
-      `  <application android:label="${name}" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`,
-      // every device trait change is handled in place (native-dom-0012): Android otherwise destroys the Activity, and
-      // the running program with it, to apply a dark mode, a split screen or a font size
-      '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
-      '      <intent-filter>',
-      '        <action android:name="android.intent.action.MAIN" />',
-      '        <category android:name="android.intent.category.LAUNCHER" />',
-      '      </intent-filter>',
-      '    </activity>',
-      '  </application>',
-      '</manifest>',
-      '',
-    ].join('\n'),
-  )
+  writeFileSync(manifest, plan.androidManifest(name, identifier, version, permissionLines(native)))
 
   const unsigned = path.join(work, `${name}-unsigned.apk`)
   const aligned = path.join(work, `${name}-aligned.apk`)
@@ -862,13 +713,7 @@ export function assembleApk({
 // an Android device or emulator adb can see, or the reason there is none
 export function androidDevice(): { serial: string } | { missing: string } {
   const tools = androidTools()
-  const list = execFileSync(tools.adb, ['devices'], { encoding: 'utf8' })
-  const ready = list
-    .split('\n')
-    .slice(1)
-    .map(line => line.trim().split(/\s+/))
-    .filter(parts => parts.length === 2 && parts[1] === 'device')
-  const serial = ready[0]?.[0]
+  const serial = plan.readySerial(execFileSync(tools.adb, ['devices'], { encoding: 'utf8' }))
 
   if (!serial) {
     return { missing: 'no Android device is online. Start the emulator: `emulator -avd pixel_api_36`, then `adb devices`' }
@@ -905,38 +750,10 @@ export function assembleIosBundle({
   // (device-declare.ts): iOS ends an app that asks for a privacy grant without one
   native?: string
 }): { app: string; exe: string; resources: string } {
-  const usage = Object.entries(appleUsage(native)).map(([key, text]) => `<key>${key}</key><string>${text}</string>`)
   const app = path.join(out, `${name}.app`)
   rmSync(app, { recursive: true, force: true })
   mkdirSync(app, { recursive: true })
-  writeFileSync(
-    path.join(app, 'Info.plist'),
-    [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-      '<plist version="1.0"><dict>',
-      `<key>CFBundleName</key><string>${name}</string>`,
-      `<key>CFBundleDisplayName</key><string>${name}</string>`,
-      `<key>CFBundleExecutable</key><string>${name}</string>`,
-      `<key>CFBundleIdentifier</key><string>${identifier}</string>`,
-      '<key>CFBundlePackageType</key><string>APPL</string>',
-      `<key>CFBundleShortVersionString</key><string>${version}</string>`,
-      `<key>CFBundleVersion</key><string>${version}</string>`,
-      `<key>MinimumOSVersion</key><string>${IOS_MINIMUM}</string>`,
-      '<key>LSRequiresIPhoneOS</key><true/>',
-      '<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>',
-      // portrait and both landscapes, as an iPhone app is by default: a Term app reads its width as a signal
-      // (native-dom-0012, 0035) and adapts, so locking it upright would only hide that
-      '<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>',
-      '<key>UIRequiresFullScreen</key><true/>',
-      // an empty launch screen dictionary is what tells iOS the app is built for the full display; without it the
-      // app runs letterboxed in a compatibility window
-      '<key>UILaunchScreen</key><dict/>',
-      ...usage,
-      '</dict></plist>',
-      '',
-    ].join('\n'),
-  )
+  writeFileSync(path.join(app, 'Info.plist'), plan.iosPlist(name, identifier, version, usageOf(native)))
 
   return { app, exe: path.join(app, name), resources: app }
 }
@@ -949,12 +766,16 @@ export function declareUsage(input: { plist: string; native: string }): void {
     return
   }
 
-  const text = readFileSync(input.plist, 'utf8')
-  const missing = Object.entries(appleUsage(input.native)).filter(([key]) => !text.includes(`<key>${key}</key>`))
+  const update = plan.usageAdded(readFileSync(input.plist, 'utf8'), usageOf(input.native))
 
-  if (missing.length > 0) {
-    writeFileSync(input.plist, text.replace('</dict></plist>', `${missing.map(([key, said]) => `<key>${key}</key><string>${said}</string>`).join('')}</dict></plist>`))
+  if (update.missing > 0) {
+    writeFileSync(input.plist, update.text)
   }
+}
+
+// the usage strings a program's native half needs, in the order device-declare.ts gives them
+function usageOf(native: string): plan.UsageText[] {
+  return Object.entries(appleUsage(native)).map(([key, said]) => ({ key, said }))
 }
 
 // a booted iOS simulator to run a cask on, or the reason there is none. Boots the first available iPhone when none
@@ -962,9 +783,7 @@ export function declareUsage(input: { plist: string; native: string }): void {
 export function simulator(): { udid: string } | { missing: string } {
   const list = execFileSync('xcrun', ['simctl', 'list', 'devices', 'available', '--json'], { encoding: 'utf8' })
   const devices = Object.values(JSON.parse(list).devices as Record<string, { udid: string; name: string; state: string }[]>).flat()
-  const phones = devices.filter(device => device.name.startsWith('iPhone'))
-
-  const booted = phones.find(device => device.state === 'Booted') ?? phones[0]
+  const booted = devices[plan.phoneOf(devices.map(device => device.name), devices.map(device => device.state))]
 
   if (!booted) {
     return { missing: 'no iOS simulator runtime is installed. Run `xcodebuild -downloadPlatform iOS`, then `term make --target ios` again' }
@@ -1008,25 +827,7 @@ export function assembleBundle({
   rmSync(app, { recursive: true, force: true })
   mkdirSync(macos, { recursive: true })
   mkdirSync(resources, { recursive: true })
-  writeFileSync(
-    path.join(contents, 'Info.plist'),
-    [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-      '<plist version="1.0"><dict>',
-      `<key>CFBundleName</key><string>${name}</string>`,
-      `<key>CFBundleDisplayName</key><string>${name}</string>`,
-      `<key>CFBundleExecutable</key><string>${name}</string>`,
-      `<key>CFBundleIdentifier</key><string>${identifier}</string>`,
-      '<key>CFBundlePackageType</key><string>APPL</string>',
-      `<key>CFBundleShortVersionString</key><string>${version}</string>`,
-      `<key>CFBundleVersion</key><string>${version}</string>`,
-      `<key>LSMinimumSystemVersion</key><string>${MACOS_MINIMUM}</string>`,
-      '<key>NSHighResolutionCapable</key><true/>',
-      '</dict></plist>',
-      '',
-    ].join('\n'),
-  )
+  writeFileSync(path.join(contents, 'Info.plist'), plan.macosPlist(name, identifier, version))
 
   return { app, exe: path.join(macos, name), resources }
 }
@@ -1098,14 +899,10 @@ export async function makeCask(input: {
   // the toolchain, before anything is built: a missing `cargo` or `swiftc` was found where the build first called
   // it, after the bridge and the program had been made (guides: basics/install, 2026-10-04). `term show tools` lists
   // them all
-  const needed = caskTools(input.target)
-  const missing = needed.filter(tool => toolVersion(tool) === undefined)
+  const missing = plan.caskTools(input.target, process.platform).filter(tool => toolVersion(tool) === undefined)
 
   if (missing.length > 0) {
-    throw refusal(
-      `a ${input.target} cask needs ${missing.join(' and ')}, and ${missing.length === 1 ? 'it is' : 'they are'} not on the PATH. term show tools lists each toolchain`,
-      'environment',
-    )
+    throw refusal(plan.missingToolsMessage(input.target, missing), 'environment')
   }
 
   const root = path.resolve(input.root)

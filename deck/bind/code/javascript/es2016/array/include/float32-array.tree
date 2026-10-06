@@ -11,6 +11,7 @@ load @term/bind/javascript/native
 form float32-array, name <Float32Array>
   task includes, name <includes>
     take search-element, like native-number
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-boolean

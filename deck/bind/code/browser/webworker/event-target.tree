@@ -33,10 +33,11 @@ form event-target, name <EventTarget>
       like or
         like event-listener-or-event-listener-object
         like native-null
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task dispatch-event, name <dispatchEvent>
@@ -49,8 +50,9 @@ form event-target, name <EventTarget>
       like or
         like event-listener-or-event-listener-object
         like native-null
-    take options, like maybe
-      like or
-        like event-listener-options
-        like native-boolean
+    take options
+      like maybe
+        like or
+          like event-listener-options
+          like native-boolean
     like native-void

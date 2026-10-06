@@ -64,47 +64,53 @@ form offscreen-canvas, name <OffscreenCanvas>
     lock false
 
   task convert-to-blob, name <convertToBlob>
-    take options, like maybe
-      like image-encode-options
+    take options
+      like maybe
+        like image-encode-options
     like promise
       like blob
 
   task get-context, name <getContext>
     take context-id, text <2d>
-    take options, like maybe
-      like canvas-rendering-context2-d-settings
+    take options
+      like maybe
+        like canvas-rendering-context2-d-settings
     like or
       like offscreen-canvas-rendering-context2-d
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <bitmaprenderer>
-    take options, like maybe
-      like image-bitmap-rendering-context-settings
+    take options
+      like maybe
+        like image-bitmap-rendering-context-settings
     like or
       like image-bitmap-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <webgl>
-    take options, like maybe
-      like web-gl-context-attributes
+    take options
+      like maybe
+        like web-gl-context-attributes
     like or
       like web-gl-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <webgl2>
-    take options, like maybe
-      like web-gl-context-attributes
+    take options
+      like maybe
+        like web-gl-context-attributes
     like or
       like web-gl2-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, like offscreen-rendering-context-id
-    take options, like maybe
-      like native-any
+    take options
+      like maybe
+        like native-any
     like or
       like offscreen-rendering-context
       like native-null

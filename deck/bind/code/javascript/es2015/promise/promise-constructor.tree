@@ -437,8 +437,9 @@ form promise-constructor, name <PromiseConstructor>
   task reject, name <reject>
     head t
       back native-never
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like promise
       like t
 
@@ -470,8 +471,9 @@ form promise-constructor, name <PromiseConstructor>
             like native-void
         take reject
           like task
-            take reason, like maybe
-              like native-any
+            take reason
+              like maybe
+                like native-any
             like native-void
         like native-void
     like promise

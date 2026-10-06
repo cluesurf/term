@@ -43,7 +43,8 @@ form array-constructor, name <ArrayConstructor>
         take v, like t
         take k, like native-number
         like u
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like u

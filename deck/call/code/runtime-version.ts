@@ -13,8 +13,11 @@ import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { TONE_ALPHABET } from '@cluesurf/save/canon/mark'
 
-// bumped only if the framing below changes, so two framings can never produce the same hash for different inputs
-const FRAMING = 'term-runtime-version-1'
+import * as port from '@term/call/code/runtime-frame'
+
+// THE FRAMING AND THE TONE are Term since 2026-10-06, call/code/runtime-frame.tree: every field length-prefixed, the
+// sources sorted by name, and the digest in the tone alphabet. This face hashes the frame with node's sha256, which is
+// synchronous where Term's is not, and asks the toolchain for its version.
 
 export type RuntimeVersionInput = {
   // the cask target: macos, ios, android, linux, windows
@@ -36,40 +39,21 @@ export type RuntimeVersion = {
 
 // every field length-prefixed, so no two different inputs can frame to the same bytes
 export function runtimeVersion(input: RuntimeVersionInput): RuntimeVersion {
-  const hash = createHash('sha256')
-  const field = (value: string): void => {
-    hash.update(`${Buffer.byteLength(value)}:`)
-    hash.update(value)
-  }
-
-  field(FRAMING)
-  field(input.target)
-  field(input.minimum)
-  field(input.toolchain)
-
-  for (const source of [...input.sources].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-    field(source.name)
-    field(source.text)
-  }
-
-  const hex = hash.digest('hex')
+  const frame = port.frame(input.target, input.minimum, input.toolchain, input.sources.map(source => ({ name: source.name, text: source.text })))
+  const hex = createHash('sha256').update(frame).digest('hex')
 
   return { hex, tone: toneOf(hex) }
 }
 
 // a sha256 in the tone alphabet, eight groups of eight. Never truncated
 export function toneOf(hex: string): string {
-  const letters = [...hex].map(ch => {
-    const index = parseInt(ch, 16)
+  const bad = port.notHex(hex)
 
-    if (Number.isNaN(index)) {
-      throw new Error(`toneOf: not hex: ${ch}`)
-    }
+  if (bad !== '') {
+    throw new Error(`toneOf: not hex: ${bad}`)
+  }
 
-    return TONE_ALPHABET[index]
-  })
-
-  return (letters.join('').match(/.{1,8}/g) ?? []).join('-')
+  return port.toneOf(hex, TONE_ALPHABET)
 }
 
 const toolchains = new Map<string, string>()

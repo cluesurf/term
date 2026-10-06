@@ -284,17 +284,27 @@ task caller
   send back, call fetch-page(read url)
 `)
 
-  pair('`mark unsafe` over statements is the guarded block `note unsafe` is', w => `
+  // a guarded block is a `fork` with `mark unsafe` on it (2026-10-06): either word holding statements of its own is
+  // refused, naming the fork, and test/compile/guard.ts holds the fork itself on every backend
+  for (const word of ['note', 'mark'] as const) {
+    const guarded = build(`
 task risky
   take x, like number
   like number
-  ${w} unsafe
+  ${word} unsafe
     halt <bad>
   halt take
     take e
     send back, code 0
   send back, read x
 `)
+
+    ok(
+      `4. \`${word} unsafe\` over statements is refused, naming \`fork\` / \`mark unsafe\``,
+      !guarded.ok && /a guarded block is a `fork`/.test(guarded.why),
+      guarded.ok ? 'built' : guarded.why,
+    )
+  }
 
   pair('`mark roam` emits what `note roam` emits', w => `
 task serve

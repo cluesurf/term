@@ -20,7 +20,8 @@ form readable-stream-generic-reader, name <ReadableStreamGenericReader>
       like native-undefined
 
   task cancel, name <cancel>
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like promise
       like native-void

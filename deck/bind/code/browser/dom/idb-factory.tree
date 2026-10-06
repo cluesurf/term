@@ -37,6 +37,7 @@ form idb-factory, name <IDBFactory>
 
   task open, name <open>
     take name, like native-string
-    take version, like maybe
-      like native-number
+    take version
+      like maybe
+        like native-number
     like idb-open-db-request

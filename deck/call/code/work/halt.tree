@@ -132,7 +132,10 @@ task stop-one
 
   like boolean
 
-  mark unsafe, call(node-process/kill, read(id), text <SIGTERM>), send back, true
+  fork
+    mark unsafe
+    call(node-process/kill, read(id), text <SIGTERM>)
+    send back, true
 
   halt take
     take error

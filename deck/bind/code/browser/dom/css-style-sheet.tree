@@ -33,12 +33,15 @@ form css-style-sheet, name <CSSStyleSheet>
     like css-rule-list
 
   task add-rule, name <addRule>
-    take selector, like maybe
-      like native-string
-    take style, like maybe
-      like native-string
-    take index, like maybe
-      like native-number
+    take selector
+      like maybe
+        like native-string
+    take style
+      like maybe
+        like native-string
+    take index
+      like maybe
+        like native-number
     like native-number
 
   task delete-rule, name <deleteRule>
@@ -47,11 +50,13 @@ form css-style-sheet, name <CSSStyleSheet>
 
   task insert-rule, name <insertRule>
     take rule, like native-string
-    take index, like maybe
-      like native-number
+    take index
+      like maybe
+        like native-number
     like native-number
 
   task remove-rule, name <removeRule>
-    take index, like maybe
-      like native-number
+    take index
+      like maybe
+        like native-number
     like native-void

@@ -1,0 +1,409 @@
+# `term test`'s decisions that are not its file system, its builds or its printing: which files a run collects, what
+# a control (a file of laws stated false on purpose) is judged by, the counts a round closes with, and what each item
+# and refusal says.
+#
+# Ported from deck/call/code/test.ts (self-hosting, 2026-10-06), which stays as the face: it walks the folders, builds
+# and runs each file, captures what the tests print, watches under `--ride` and prints through code/output.ts.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-upper-case
+  find contains, name text-contains
+
+load ./draft-mark
+  find is-space
+
+load ./work/item/event
+  find tally
+
+# ---- which files ----
+
+# a control is a file under the package's `test/case/` folder: its first two segments, split at either slash
+task is-control
+  take rel, like text
+  like boolean
+
+  save segments, make list
+  save segment, make list
+  walk split(rel, <>)
+    take point
+    fork test, or(is-equal(point, </>), is-equal(point, <\\>))
+      hold
+        push(segments, join(segment, <>))
+        save segment, make list
+      miss
+        push(segment, point)
+  push(segments, join(segment, <>))
+  fork test, is-below(segments/length, 2)
+    hold
+      back false
+  back and(is-equal(get(segments, 0), <test>), is-equal(get(segments, 1), <case>))
+
+# Is a file collected: it carries runnable tests (`test`) or proof obligations (`hold`, `rule`) at the start of a line
+# after any white space, a `hold` inside a `task` stating a universal law. With a filter, its path or its text must
+# hold the filter as well. A line ends at any of JavaScript's four line terminators
+task is-collected
+  take text, like text
+  take path, like text
+  take filter, like text
+  like boolean
+
+  save heads, make list
+  push(heads, <test >)
+  push(heads, <hold >)
+  push(heads, <rule >)
+  save found, false
+  save points, split(text, <>)
+  save at, 0
+  walk test
+    hook test, and(not(found), is-below(at, points/length))
+    hook hold
+      # `at` is a line's start: past its white space, then one of the three heads
+      save step, at
+      walk test
+        hook test, and(is-below(step, points/length), is-space(char-code-at(get(points, step), 0)))
+        hook hold
+          save step, add(step, 1)
+      walk heads
+        take head
+        save letters, split(head, <>)
+        fork test, not(is-above(add(step, letters/length), points/length))
+          hold
+            save kept, make list
+            save offset, 0
+            walk letters
+              take letter
+              push(kept, get(points, add(step, offset)))
+              save offset, add(offset, 1)
+            fork test, is-equal(join(kept, <>), head)
+              hold
+                save found, true
+      # the next line's start
+      walk test
+        hook test, and(is-below(at, points/length), not(is-line-end(char-code-at(get(points, at), 0))))
+        hook hold
+          save at, add(at, 1)
+      save at, add(at, 1)
+  fork test, not(found)
+    hold
+      back false
+  fork test, is-equal(filter, <>)
+    hold
+      back true
+  back or(text-contains(path, filter), text-contains(text, filter))
+
+task is-line-end
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+# ---- controls ----
+
+# the refusals a control is FOR: a goal not proven, out of reach, or proven wrong, and a proof the kernel refused. Any
+# other error means the control no longer states what it was written to state
+task is-refusal
+  take name, like text
+  like boolean
+
+  save names, make list
+  push(names, <unproven>)
+  push(names, <unchecked-hold>)
+  push(names, <invalid-proof>)
+  push(names, <unverified-proof>)
+  push(names, <looping-proof>)
+  push(names, <impure-proof>)
+  back contains(names, name)
+
+# the digits of the count a control's header states, `Expected: 3` or `Expected refusals: 17 (...)`, the first such,
+# or the empty text when it states none
+task control-count
+  take source, like text
+  like text
+
+  save points, split(source, <>)
+  save word, split(<Expected>, <>)
+  save more, split(< refusals>, <>)
+  save at, 0
+  walk test
+    hook test, not(is-above(add(at, word/length), points/length))
+    hook hold
+      fork test, holds-at(points, at, word)
+        hold
+          save after, add(at, word/length)
+          # ` refusals` first, then without it, as the pattern tries them
+          save tries, make list
+          fork test, holds-at(points, after, more)
+            hold
+              push(tries, add(after, more/length))
+          push(tries, after)
+          walk tries
+            take colon
+            fork test, and(is-below(colon, points/length), is-equal(get(points, colon), <:>))
+              hold
+                save step, add(colon, 1)
+                walk test
+                  hook test, and(is-below(step, points/length), is-space(char-code-at(get(points, step), 0)))
+                  hook hold
+                    save step, add(step, 1)
+                save digits, make list
+                walk test
+                  hook test, and(is-below(step, points/length), is-digit(get(points, step)))
+                  hook hold
+                    push(digits, get(points, step))
+                    save step, add(step, 1)
+                fork test, is-above(digits/length, 0)
+                  hold
+                    back join(digits, <>)
+      save at, add(at, 1)
+  back <>
+
+task is-digit
+  take point, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(point, 0)
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+task holds-at
+  take points, like list, like text
+  take at, like number
+  take wanted, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-above(add(at, wanted/length), points/length)
+    hold
+      back false
+  save step, 0
+  walk wanted
+    take one
+    fork test, is-unequal(get(points, add(at, step)), one)
+      hold
+        back false
+    save step, add(step, 1)
+  back true
+
+form control-verdict
+  link held, like boolean
+  link broken, like boolean
+  link fact, like text
+
+# A control's verdict. It states no count: broken. It built: failed, since the provers accepted a law it states false.
+# Refused for another reason than proof (`names` are the names of what refused it, the empty text for none): broken,
+# since it tests nothing. Else it holds when the goals refused (`places`, one per diagnostic, a goal counted once
+# however many diagnostics say so) are as many as its header expects
+task control-verdict-of
+  take digits, like text
+  take expected, like number
+  take refused, like boolean
+  take names, like list, like text
+  take places, like list, like text
+  like control-verdict
+
+  fork test, is-equal(digits, <>)
+    hold
+      back
+        make control-verdict
+          bind held, false
+          bind broken, true
+          bind fact, <a control states no count: write `Expected: N` in its header, N the goals it must refuse>
+  fork test, not(refused)
+    hold
+      back
+        make control-verdict
+          bind held, false
+          bind broken, false
+          bind fact, <0 of {expected} refused: the build accepted every law this control states false>
+  save others, make list
+  save goals, make list
+  save index, 0
+  walk names
+    take name
+    fork test, is-refusal(name)
+      hold
+        save place, get(places, index)
+        fork test, not(contains(goals, place))
+          hold
+            push(goals, place)
+      miss
+        fork test, not(contains(others, name))
+          hold
+            push(others, name)
+    save index, add(index, 1)
+  fork test, is-above(others/length, 0)
+    hold
+      save listed, join(others, <, >)
+      back
+        make control-verdict
+          bind held, false
+          bind broken, true
+          bind fact, <refused for another reason ({listed}), so it tests nothing>
+  fork test, is-equal(goals/length, expected)
+    hold
+      back
+        make control-verdict
+          bind held, true
+          bind broken, false
+          bind fact, <{expected} of {expected} refused>
+  save got, goals/length
+  back
+    make control-verdict
+      bind held, false
+      bind broken, false
+      bind fact, <{got} refused where its header expects {expected}>
+
+# ---- a round ----
+
+form round-totals
+  link pass, like number
+  link fail, like number
+  link proved, like number
+  link broken, like number
+  link skipped, like number
+  link controls, like number
+
+task tally-of
+  take amount, like number
+  take noun, like text
+  take one, like text
+  like tally
+  mark private
+
+  back
+    make tally
+      bind amount, amount
+      bind noun, noun
+      bind one, one
+      bind total, -1
+
+# the counts a round closes with: its tests and how many passed always, and each other count when it is not zero
+task totals-counts
+  take totals, like round-totals
+  like list, like tally
+
+  save counts, make list
+  push(counts, tally-of(add(totals/pass, totals/fail), <tests>, <test>))
+  push(counts, tally-of(totals/pass, <passed>, <>))
+  fork test, is-above(totals/fail, 0)
+    hold
+      push(counts, tally-of(totals/fail, <failed>, <>))
+  fork test, is-above(totals/proved, 0)
+    hold
+      push(counts, tally-of(totals/proved, <proof files checked>, <proof file checked>))
+  fork test, is-above(totals/controls, 0)
+    hold
+      push(counts, tally-of(totals/controls, <controls refused as expected>, <control refused as expected>))
+  fork test, is-above(totals/broken, 0)
+    hold
+      push(counts, tally-of(totals/broken, <files did not build>, <file did not build>))
+  fork test, is-above(totals/skipped, 0)
+    hold
+      push(counts, tally-of(totals/skipped, <files with no such case>, <file with no such case>))
+  back counts
+
+# did a round fail: a test that did not hold, or a file that did not build
+task round-failed
+  take totals, like round-totals
+  like boolean
+
+  back or(is-above(totals/fail, 0), is-above(totals/broken, 0))
+
+# the subject of a watched round's item: every file, or how many of them an edit reached
+task round-subject
+  take reached, like number
+  take files, like number
+  like text
+
+  fork test, is-equal(reached, files)
+    hold
+      back <every file>
+  back <{reached} of {files} files>
+
+# ---- what an item says ----
+
+# a test's phrase as a Problem's subject: its first UTF-16 unit upper-cased, as `charAt(0).toUpperCase() + slice(1)`
+# does, so a code point past U+FFFF is left as it is
+task case-subject
+  take label, like text
+  like text
+
+  save points, split(label, <>)
+  fork test, is-equal(points/length, 0)
+    hold
+      back label
+  save first, get(points, 0)
+  fork test, is-above(char-code-at(first, 0), 65535)
+    hold
+      back label
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      push(rest, get(points, at))
+      save at, add(at, 1)
+  save head, to-upper-case(first)
+  save tail, join(rest, <>)
+  back <{head}{tail}>
+
+# what a file that did not build says beside its item: the failure's last line
+task failure-fact
+  take failure, like text
+  like text
+
+  save lines, split(failure, <\n>)
+  back get(lines, subtract(lines/length, 1))
+
+form refusal
+  link subject, like text
+  link next, like text
+  link failure, like text
+
+# Why a run tests nothing before it builds anything, or the empty subject when it goes on: a backend it does not run
+# on, a snapshot update asked of a native backend (a snapshot is recorded on node, the one run that reads the values
+# back), or a toolchain this machine lacks
+task env-refusal
+  take env, like text
+  take native-envs, like list, like text
+  take update, like boolean
+  take missing, like list, like text
+  like refusal
+
+  fork test, and(and(is-unequal(env, <>), is-unequal(env, <node>)), not(contains(native-envs, env)))
+    hold
+      back
+        make refusal
+          bind subject, <term test runs on node, rust, swift and kotlin, and not on {env}>
+          bind next, <term test --env rust>
+          bind failure, <usage>
+  save native, and(is-unequal(env, <>), is-unequal(env, <node>))
+  fork test, and(native, update)
+    hold
+      back
+        make refusal
+          bind subject, <Snapshots are written on node: --update runs without --env, and --env {env} then holds the tests to them>
+          bind next, <term test --update>
+          bind failure, <usage>
+  fork test, is-above(missing/length, 0)
+    hold
+      save named, join(missing, < and >)
+      back
+        make refusal
+          bind subject, <Testing on {env} needs {named}, which this machine does not have>
+          bind next, <>
+          bind failure, <environment>
+  back
+    make refusal
+      bind subject, <>
+      bind next, <>
+      bind failure, <>

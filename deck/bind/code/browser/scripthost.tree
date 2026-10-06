@@ -72,8 +72,9 @@ host w-script, name <WScript>
       like native-string
       lock false
     task quit, name <Quit>
-      take exit-code, like maybe
-        like native-number
+      take exit-code
+        like maybe
+          like native-number
       like native-number
 
     link build-version, name <BuildVersion>
@@ -107,8 +108,9 @@ host w-script, name <WScript>
 
     task create-object, name <CreateObject>
       take str-prog-id, like native-string
-      take str-prefix, like maybe
-        like native-string
+      take str-prefix
+        like maybe
+          like native-string
       like native-any
 
     task disconnect-object, name <DisconnectObject>
@@ -117,10 +119,12 @@ host w-script, name <WScript>
 
     task get-object, name <GetObject>
       take str-pathname, like native-string
-      take str-prog-id, like maybe
-        like native-string
-      take str-prefix, like maybe
-        like native-string
+      take str-prog-id
+        like maybe
+          like native-string
+      take str-prefix
+        like maybe
+          like native-string
       like native-any
 
     task sleep, name <Sleep>

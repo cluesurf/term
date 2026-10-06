@@ -31,8 +31,9 @@ form node-list, name <NodeList>
         take key, like native-number
         take parent, like node-list
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   mesh index, like native-number

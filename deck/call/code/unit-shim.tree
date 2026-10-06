@@ -1,0 +1,447 @@
+# A program built one unit at a time, written out for a bundler (note/term/plan/incremental-best-in-class.md, steps 9
+# and 10): the reading of the emitted modules that decides what each unit imports from the prelude, and which names the
+# run reaches the program by.
+#
+# THE PRELUDE IS A MODULE, AND EACH MODULE IMPORTS THE SHIMS IT DOCKS. A module says it docks a native namespace with a
+# line `declare const <name>: any`; where the prelude binds that name at its top level, the line becomes an import of
+# it from the prelude, so each shim reaches exactly the modules that dock it.
+#
+# THE BUNDLE IS SHAKEN BY ITS ENTRY: the run keeps the entry's own names, every name the entry imports, the hive's wake
+# and the other runtime names, and the names a command table asks for.
+#
+# Ported from deck/call/code/unit-bundle.ts (self-hosting, 2026-10-06), which stays as the face: it writes the files.
+# Three patterns are read here by hand, each as JavaScript reads it: `^declare const ([A-Za-z_$][\w$]*): any$` and
+# `^import \{ ([^}]*) \} from ` under `m` (a line ends at a line feed, a carriage return, U+2028 or U+2029), and the
+# prelude's top-level binding of a name.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find starts-with
+  find char-code-at
+
+load ./draft-mark
+  find is-space
+
+# one line of a text and the break that ends it, the empty text for the last
+form text-line
+  link body, like text
+  link ending, like text
+
+# an export as the run names it: its Term name and the file that defines it
+form export-name
+  link name, like text
+  link file, like text
+
+task points-of
+  take value, like text
+  like list, like text
+  mark private
+
+  back split(value, <>)
+
+task code-of
+  take point, like text
+  like number
+  mark private
+
+  back char-code-at(point, 0)
+
+task is-line-break
+  take point, like text
+  like boolean
+  mark private
+
+  save code, code-of(point)
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+# a text's lines as `m` reads them, each with the break after it
+task lines-of
+  take value, like text
+  like list, like text-line
+  mark private
+
+  save out, make list
+  save body, make list
+  walk points-of(value)
+    take point
+    fork test, is-line-break(point)
+      hold
+        save line
+          make text-line
+            bind body, join(body, <>)
+            bind ending, point
+        push(out, line)
+        save body, make list
+      miss
+        push(body, point)
+  save last
+    make text-line
+      bind body, join(body, <>)
+      bind ending, <>
+  push(out, last)
+  back out
+
+task is-identifier-start
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(is-equal(code, 95), is-equal(code, 36)))
+
+# `\w`: an ASCII letter, digit or underscore
+task is-word
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(is-equal(code, 95), and(is-minimum(code, 48), is-maximum(code, 57))))
+
+# the name a whole line docks, `declare const <name>: any`, or the empty text
+task docked-in
+  take line, like text
+  like text
+  mark private
+
+  save points, points-of(line)
+  save prefix, points-of(<declare const >)
+  save suffix, points-of(<: any>)
+  fork test, is-below(points/length, add(add(prefix/length, suffix/length), 1))
+    hold
+      back <>
+  save at, 0
+  walk prefix
+    take want
+    fork test, is-unequal(get(points, at), want)
+      hold
+        back <>
+    save at, add(at, 1)
+  save end, subtract(points/length, suffix/length)
+  save tail, 0
+  walk suffix
+    take want
+    fork test, is-unequal(get(points, add(end, tail)), want)
+      hold
+        back <>
+    save tail, add(tail, 1)
+  save name, make list
+  save index, prefix/length
+  walk test
+    hook test, is-below(index, end)
+    hook hold
+      save code, code-of(get(points, index))
+      save fits, or(is-word(code), is-equal(code, 36))
+      fork test, is-equal(index, prefix/length)
+        hold
+          save fits, is-identifier-start(code)
+      fork test, not(fits)
+        hold
+          back <>
+      push(name, get(points, index))
+      save index, add(index, 1)
+  back join(name, <>)
+
+# the namespaces some modules dock, each once, in the order first met
+task docked-of
+  take codes, like list, like text
+  like list, like text
+
+  save out, make list
+  walk codes
+    take code
+    walk lines-of(code)
+      take line
+      save name, docked-in(line/body)
+      fork test, and(is-unequal(name, <>), not(contains(out, name)))
+        hold
+          push(out, name)
+  back out
+
+# a module with each docked line whose namespace the prelude offers turned into an import of it from there
+task rewrite-docked
+  take code, like text
+  take offered, like list, like text
+  like text
+
+  save out, make list
+  walk lines-of(code)
+    take line
+    save name, docked-in(line/body)
+    fork test, and(is-unequal(name, <>), contains(offered, name))
+      hold
+        push(out, <import \{ {name} \} from '../prelude'>)
+      miss
+        push(out, line/body)
+    push(out, line/ending)
+  back join(out, <>)
+
+# the prelude as a module exporting what it offers
+task prelude-module
+  take prelude, like text
+  take offered, like list, like text
+  like text
+
+  save names, join(offered, <, >)
+  back <{prelude}\n;\nexport \{ {names} \}\n>
+
+# does the text hold `word` at `at`
+task holds-at
+  take points, like list, like text
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save index, at
+  walk points-of(word)
+    take want
+    fork test, not(is-below(index, points/length))
+      hold
+        back false
+    fork test, is-unequal(get(points, index), want)
+      hold
+        back false
+    save index, add(index, 1)
+  back true
+
+# past a run of `\s` from `at`
+task past-space
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  save index, at
+  walk test
+    hook test, and(is-below(index, points/length), is-space(code-of(get(points, index))))
+    hook hold
+      save index, add(index, 1)
+  back index
+
+# where a keyword of a binding ends, past `\s+` after it, when one starts at `at` and is followed by white space, else -1
+task past-keyword
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  save words, make list
+  push(words, <const>)
+  push(words, <let>)
+  push(words, <var>)
+  push(words, <class>)
+  walk words
+    take word
+    fork test, holds-at(points, at, word)
+      hold
+        save after, add(at, points-of(word)/length)
+        save next, past-space(points, after)
+        fork test, is-above(next, after)
+          hold
+            back next
+  # `(async\s+)?function\*?`
+  save start, at
+  fork test, holds-at(points, at, <async>)
+    hold
+      save after, add(at, 5)
+      save next, past-space(points, after)
+      fork test, is-above(next, after)
+        hold
+          save start, next
+  fork test, holds-at(points, start, <function>)
+    hold
+      save after, add(start, 8)
+      fork test, holds-at(points, after, <*>)
+        hold
+          save starred, past-space(points, add(after, 1))
+          fork test, is-above(starred, add(after, 1))
+            hold
+              back starred
+      save next, past-space(points, after)
+      fork test, is-above(next, after)
+        hold
+          back next
+  back -1
+
+# whether the prelude binds `name` at its top level, as a shim binds its namespace (`const path = { ... }`): at the start
+# or after a `;` or a line feed, white space, `export` and white space or not, a binding keyword, white space, and the
+# name with a word boundary after it
+task defines-at-top
+  take prelude, like text
+  take name, like text
+  like boolean
+
+  save points, points-of(prelude)
+  save named, points-of(name)
+  save last-word, false
+  fork test, is-above(named/length, 0)
+    hold
+      save last-word, is-word(code-of(get(named, subtract(named/length, 1))))
+  save at, 0
+  walk test
+    hook test, not(is-above(at, points/length))
+    hook hold
+      save anchored, is-equal(at, 0)
+      fork test, is-above(at, 0)
+        hold
+          save before, get(points, subtract(at, 1))
+          save anchored, or(is-equal(before, <;>), is-equal(before, <\n>))
+      fork test, anchored
+        hold
+          save from, past-space(points, at)
+          save candidates, make list
+          push(candidates, from)
+          fork test, holds-at(points, from, <export>)
+            hold
+              save after, add(from, 6)
+              save next, past-space(points, after)
+              fork test, is-above(next, after)
+                hold
+                  push(candidates, next)
+          walk candidates
+            take start
+            save past, past-keyword(points, start)
+            fork test, and(is-minimum(past, 0), holds-at(points, past, name))
+              hold
+                save end, add(past, named/length)
+                save next-word, false
+                fork test, is-below(end, points/length)
+                  hold
+                    save next-word, is-word(code-of(get(points, end)))
+                fork test, is-unequal(last-word, next-word)
+                  hold
+                    back true
+      save at, add(at, 1)
+  back false
+
+# the namespaces of `docked` the prelude binds at its top level
+task offered-of
+  take prelude, like text
+  take docked, like list, like text
+  like list, like text
+
+  save out, make list
+  walk docked
+    take name
+    fork test, defines-at-top(prelude, name)
+      hold
+        push(out, name)
+  back out
+
+# the last piece of `split(/\s+as\s+/)` over a trimmed part: what follows the last ` as ` found left to right
+task alias-of
+  take part, like text
+  like text
+  mark private
+
+  save points, points-of(part)
+  save piece, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      save point, get(points, at)
+      fork test, is-space(code-of(point))
+        hold
+          save run, past-space(points, at)
+          fork test, and(holds-at(points, run, <as>), is-above(past-space(points, add(run, 2)), add(run, 2)))
+            hold
+              save piece, make list
+              save at, past-space(points, add(run, 2))
+              turn next
+      push(piece, point)
+      save at, add(at, 1)
+  back join(piece, <>)
+
+# a text without the `\s` it starts and ends with, as `trim` leaves it
+task trimmed
+  take value, like text
+  like text
+  mark private
+
+  save points, points-of(value)
+  save start, past-space(points, 0)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(code-of(get(points, subtract(end, 1)))))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# the local names of the entry module's value imports, `import { a, b as c } from`, as compile/modules.ts writes them:
+# each match of `^import \{ ([^}]*) \} from ` left to right, a line start being the start or after a line break
+task imported-of
+  take code, like text
+  like list, like text
+
+  save points, points-of(code)
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      save anchored, is-equal(at, 0)
+      fork test, is-above(at, 0)
+        hold
+          save anchored, is-line-break(get(points, subtract(at, 1)))
+      fork test, and(anchored, holds-at(points, at, <import \{ >))
+        hold
+          # the capture runs to the first `}`, which must follow a space and be followed by ` from `
+          save open, add(at, 9)
+          save close, open
+          walk test
+            hook test, and(is-below(close, points/length), is-unequal(get(points, close), <\}>))
+            hook hold
+              save close, add(close, 1)
+          fork test, and(and(is-below(close, points/length), is-above(close, open)), and(is-equal(get(points, subtract(close, 1)), < >), holds-at(points, add(close, 1), < from >)))
+            hold
+              save captured, make list
+              save index, open
+              walk test
+                hook test, is-below(index, subtract(close, 1))
+                hook hold
+                  push(captured, get(points, index))
+                  save index, add(index, 1)
+              walk split(join(captured, <>), <,>)
+                take part
+                push(out, alias-of(trimmed(part)))
+              save at, add(close, 7)
+              turn next
+      save at, add(at, 1)
+  back out
+
+# the names the run reaches the program by: which of the exports to keep, by place
+task runtime-exports
+  take entry, like text
+  take entry-code, like text
+  take exports, like list, like export-name
+  take keep, like list, like text
+  take camel
+    like task
+      take name, like text
+      like text
+  like list, like boolean
+
+  save imported, imported-of(entry-code)
+  save runtime, make list
+  push(runtime, <wake-hive>)
+  push(runtime, <boot>)
+  push(runtime, <start>)
+  push(runtime, <main>)
+  save out, make list
+  walk exports
+    take one
+    push(out, or(or(is-equal(one/file, entry), contains(runtime, one/name)), or(contains(keep, one/name), contains(imported, camel(one/name)))))
+  back out

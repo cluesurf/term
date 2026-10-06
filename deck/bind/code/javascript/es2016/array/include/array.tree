@@ -13,6 +13,7 @@ form array, name <Array>
 
   task includes, name <includes>
     take search-element, like t
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-boolean

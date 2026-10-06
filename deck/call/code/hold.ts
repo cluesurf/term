@@ -20,6 +20,9 @@
  * incremental hold), which compares the backends rather than proving anything.
  *
  * See note/term/proof-by-default/readme.md and note/term/law-and-proof.md.
+ *
+ * What the gate decides without a build or the terminal is Term, in hold-plan.tree: an obligation's key, the baseline
+ * split and what `--commit` writes, the kernel's reasons most common first, and the verdict with its counts.
  */
 
 import path from 'node:path'
@@ -44,6 +47,7 @@ import {
 import { renderReport } from '@term/test/code/prove-file'
 import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
 import { projectHome } from '@term/call/code/home'
+import * as plan from '@term/call/code/hold-plan'
 
 // where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
 // that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
@@ -122,7 +126,8 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
   let total = 0
   let proven = 0
   const kernel = { proven: 0, commands: 0, declined: 0 }
-  const reasons = new Map<string, number>()
+  // every declined task's reason, by its kind, in the order met
+  const kinds: string[] = []
   let uncertified = 0
 
   for (const file of files) {
@@ -169,11 +174,7 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
       kernel.declined += result.kernel.declined.length
 
       for (const { reason } of result.kernel.declined) {
-        // a kernel type error carries its own detail; count it under its kind
-        const kind = reason.startsWith('a kernel type error')
-          ? 'a kernel type error'
-          : reason
-        reasons.set(kind, (reasons.get(kind) ?? 0) + 1)
+        kinds.push(plan.reasonKind(reason))
       }
     }
 
@@ -184,10 +185,7 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
       proven += tally.proven
 
       for (const failure of tally.failed) {
-        const base = `${rel} ${failure.task} ${failure.origin}`
-        // the ordinal counts every obligation of the kind in the task, proven or not, so proving one does not
-        // renumber the rest
-        const key = `${base} ${failure.ordinal}`
+        const key = plan.obligationKey(rel, failure.task, failure.origin, failure.ordinal)
         failures.push({
           key,
           message: failure.diagnostic.message,
@@ -203,21 +201,19 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
       const pure = pureFunctions(result.program)
 
       for (const task of own) {
-        const name = task.method
-          ? `${task.method.form}/${task.method.name}`
-          : task.name
+        const name = plan.ledgerName(rel, task.method?.form ?? '', task.method?.name ?? '', task.name)
 
         if (task.roam) {
-          ledger.roaming.push(`${rel} ${name}`)
+          ledger.roaming.push(name)
         }
 
         // a `mark roam` task is counted once, as roaming: the prover reads it as no function (it may never return),
         // and it was also counted impure, beside its own count, though it reaches no native code (guides:
         // proofs/contracts, 2026-10-05)
         if (task.axiom) {
-          ledger.axioms.push(`${rel} ${name}`)
+          ledger.axioms.push(name)
         } else if (!task.roam && !pure.has(task.name)) {
-          ledger.native.push(`${rel} ${name}`)
+          ledger.native.push(name)
         }
       }
 
@@ -232,23 +228,21 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
     }
   }
 
-  const baseline = readBaseline(root)
-  const known = new Set(baseline?.obligations ?? [])
-  const current = new Set(failures.map(f => f.key))
+  const split = plan.baselineSplitOf(readBaseline(root)?.obligations ?? [], failures.map(f => f.key))
 
   return {
     files: files.length,
     failed,
-    open: [...open].sort(),
+    open: plan.sorted([...open]),
     total,
     proven,
-    baselined: failures.filter(f => known.has(f.key)).length,
-    fresh: failures.filter(f => !known.has(f.key)),
-    gone: [...known].filter(key => !current.has(key)).sort(),
+    baselined: split.baselined,
+    fresh: failures.filter((_, i) => split.fresh[i]),
+    gone: split.gone,
     ledger,
     kernel: {
       ...kernel,
-      reasons: [...reasons].sort((a, b) => b[1] - a[1]),
+      reasons: plan.reasonsOf(kinds).map(one => [one.reason, one.count] as [string, number]),
     },
     uncertified,
   }
@@ -286,14 +280,7 @@ export async function callHold(input: {
   reportProblems(found.compile, root)
 
   if (input.commit) {
-    const keys = [
-      ...new Set([
-        ...(readBaseline(root)?.obligations ?? []).filter(
-          key => !summary.gone.includes(key),
-        ),
-        ...summary.fresh.map(f => f.key),
-      ]),
-    ].sort()
+    const keys = plan.commitKeys(readBaseline(root)?.obligations ?? [], summary.gone, summary.fresh.map(f => f.key))
 
     writeFileSync(
       path.join(root, BASELINE),
@@ -344,7 +331,7 @@ export async function callHold(input: {
       count(kernel.declined, 'declined'),
     ],
     // one line per reason, most common first: `An expression the kernel cannot represent: 1`
-    message: kernel.reasons.slice(0, 4).map(([reason, n]) => `${reason.charAt(0).toUpperCase()}${reason.slice(1)}: ${n.toLocaleString('en-US')}`),
+    message: plan.reasonLines(kernel.reasons.map(([reason, n]) => ({ reason, count: n }))),
   })
 
   // the TRUST LEDGER: what the proofs rest on that nothing here proves
@@ -377,7 +364,7 @@ export async function callHold(input: {
     report({
       glyph: 'info',
       verb: 'hold',
-      subject: `${summary.gone.length} baselined obligation${summary.gone.length === 1 ? ' is' : 's are'} now proven or gone`,
+      subject: plan.goneSubject(summary.gone.length),
       fields: [field('next', `term hold --commit, to shrink ${BASELINE}`)],
     })
   }
@@ -388,7 +375,7 @@ export async function callHold(input: {
       glyph: 'failed',
       kind: 'problem',
       verb: 'prove',
-      subject: `${summary.open.length} claim${summary.open.length === 1 ? ' is' : 's are'} left open`,
+      subject: plan.openSubject(summary.open.length),
       message: [summary.open.join(', ')],
     })
   }
@@ -439,14 +426,7 @@ export async function callHold(input: {
     }
   }
 
-  const holds = summary.failed.length === 0 && summary.open.length === 0 && summary.fresh.length === 0 && crossOk
-  const counts = [
-    count(summary.proven, 'obligations proven', 'obligation proven', summary.total),
-    count(summary.baselined, 'in the baseline'),
-    ...(summary.failed.length > 0 ? [count(summary.failed.length, 'files do not hold', 'file does not hold')] : []),
-    ...(summary.open.length > 0 ? [count(summary.open.length, 'claims open', 'claim open')] : []),
-    ...(summary.fresh.length > 0 ? [count(summary.fresh.length, `not proven and not in ${BASELINE}`)] : []),
-  ]
+  const { holds, counts } = plan.gateOf(summary.proven, summary.total, summary.baselined, summary.failed.length, summary.open.length, summary.fresh.length, crossOk, BASELINE)
 
   // a gate that passed says so with a ✓ of its own: the items above are `·` summaries, and a run of `·` items closes
   // `·` (section 4), which reads as "nothing was done" for the one command whose whole job is a verdict

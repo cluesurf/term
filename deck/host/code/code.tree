@@ -1,0 +1,754 @@
+# tree/code, the encoded form of Term data, in Term, so a Term program encodes and decodes it on every backend. The
+# spec is note/term/host/10-code.md, and the compiler's reference codec (deck/make/code/compile/host-code.ts) writes the
+# same bytes: test/compile/host-code-term.ts holds the two to each other on every fixture and a few thousand generated
+# values.
+#
+#   to-code       one value, canonical: the header and one plain frame
+#   to-code-all   several values, a frame each, the way a stream is written
+#   from-code     every value of a stream. Anything that is not canonical tree/code raises `code-defect`
+#
+# The names follow `to-json` and `from-json` beside them.
+#
+# A Zstandard frame is read by the reference codec and the CLI. Here it raises `code-defect` with `no-decompressor`:
+# a Term app gets compression from its transport (`Content-Encoding: zstd`), over canonical bytes.
+#
+# An integer is carried in the signed 64-bit range here, the range a number holds on Rust, Swift and Kotlin.
+
+load @term/base/bytes
+  find from-text, name bytes-of-text
+  find to-text, name text-of-bytes
+  find to-byte-list
+  find from-byte-list
+
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+  find shift-left
+  find shift-right
+
+load @term/base/float
+  find truncate
+  find to-decimal
+  find to-number
+  find is-finite
+  find absolute
+
+load @term/base/float/64
+  find f64-to-bytes
+  find f64-from-bytes
+  find f32-to-bytes
+  find f32-from-bytes
+  find f64-fits-f32
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/exception
+  find mismatch
+
+load ./base
+  find data
+  find data-entry
+
+# bytes that are not canonical tree/code, or a value tree/code cannot carry. `problem` is the name the reference codec
+# gives the same defect (`truncated`, `non-canonical`, `bad-text`, ...), `at` the byte it was found at
+form code-defect
+  like mismatch
+    bind note, <Not tree/code>
+    link problem, like text
+    link at, like number
+    link reason, like text
+
+form code-reader
+  mark shared
+  link input, like list, like number
+  link at, like number
+  link end, like number
+
+# a frame's tables as the decoder holds them: by index to read a reference, by value to refuse a repeat. One object,
+# since every task the decoder hands it to adds to it
+form code-tables
+  mark shared
+  link texts, like list, like text
+  link known
+    like hash
+      like text
+      like boolean
+  link shapes, like list, like list, like text
+  link shaped
+    like hash
+      like text
+      like boolean
+
+# 2^53: a whole decimal at or past it is written as a double
+host whole-limit, 9007199254740992.0
+
+task refuse-code
+  mark private
+  take problem, like text
+  take at, like number
+  take reason, like text
+  like number
+  halt code-defect
+    bind thing, <tree/code>
+    bind problem, problem
+    bind at, at
+    bind reason, reason
+
+task number-data
+  mark private
+  take n, like number
+  like data
+  back
+    make number
+      bind value, n
+
+task decimal-data
+  mark private
+  take n, like float
+  like data
+  back
+    make decimal
+      bind value, n
+
+task text-data
+  mark private
+  take value, like text
+  like data
+  back
+    make text
+      bind value, value
+
+task flag-data
+  mark private
+  take value, like boolean
+  like data
+  back
+    make flag
+      bind value, value
+
+task array-data
+  mark private
+  take items, like list, like data
+  like data
+  back
+    make array
+      bind list, items
+
+task hash-data
+  mark private
+  take entries, like list, like data-entry
+  like data
+  back
+    make hash
+      bind list, entries
+
+# the UTF-8 length of a text, in bytes
+task utf8-length
+  mark private
+  take value, like text
+  like number
+  save raw, to-byte-list(bytes-of-text(value))
+  back raw/length
+
+# ---- encoding ----
+
+task to-code
+  take item, like data
+  like bytes
+  save out, make list
+  put-header(out)
+  put-frame(out, item)
+  back from-byte-list(out)
+
+task to-code-all
+  take items, like list, like data
+  like bytes
+  save out, make list
+  put-header(out)
+  walk items
+    take item
+    put-frame(out, item)
+  back from-byte-list(out)
+
+task put-header
+  mark private
+  take out, like list, like number
+  like number
+  out/push(211)
+  out/push(84)
+  out/push(82)
+  out/push(1)
+  back 0
+
+task put-frame
+  mark private
+  take out, like list, like number
+  take item, like data
+  like number
+  save body, make list
+  save texts, make hash
+  save shapes, make hash
+  put-value(body, item, texts, shapes)
+  out/push(1)
+  put-varint(out, body/length)
+  walk body
+    take one
+    out/push(one)
+  back 0
+
+task put-value
+  mark private
+  take out, like list, like number
+  take item, like data
+  take texts
+    like hash
+      like text
+      like number
+  take shapes
+    like hash
+      like text
+      like number
+  like number
+  sift item
+    case number
+      put-integer(out, value)
+    case decimal
+      put-decimal(out, value)
+    case text
+      put-text(out, value, texts)
+    case flag
+      fork test, value
+        hold
+          out/push(225)
+        miss
+          out/push(224)
+    case blank
+      out/push(226)
+    case array
+      # the field is `list`, renamed: `walk list` would read as the walk's own mode
+      link items
+      put-head(out, 4, items/length)
+      walk items
+        take one
+        put-value(out, one, texts, shapes)
+    case hash
+      link entries
+      put-hash(out, entries, texts, shapes)
+    case graft
+      refuse-code(<unencodable>, 0, <an unexpanded fuse {name}: expand the anchors before encoding>)
+  back 0
+
+task put-hash
+  mark private
+  take out, like list, like number
+  take entries, like list, like data-entry
+  take texts
+    like hash
+      like text
+      like number
+  take shapes
+    like hash
+      like text
+      like number
+  like number
+  # the shape's name: each key with its byte length before it, so no two key lists share one
+  save name, <{entries/length}>
+  save seen, make hash
+  walk entries
+    take entry
+    save key, entry/name
+    fork test, seen/has(key)
+      hold
+        refuse-code(<unencodable>, 0, <"{key}" is a key twice in one map>)
+    seen/set(key, true)
+    save size, utf8-length(key)
+    save name, <{name}|{size}:{key}>
+  fork test, shapes/has(name)
+    hold
+      put-head(out, 6, shapes/get(name))
+    miss
+      put-head(out, 5, entries/length)
+      walk entries
+        take entry
+        put-text(out, entry/name, texts)
+      shapes/set(name, shapes/size)
+  walk entries
+    take entry
+    put-value(out, entry/base, texts, shapes)
+  back 0
+
+task put-text
+  mark private
+  take out, like list, like number
+  take value, like text
+  take texts
+    like hash
+      like text
+      like number
+  like number
+  save filled, is-unequal(value, <>)
+  save known, false
+  fork test, filled
+    hold
+      save known, texts/has(value)
+  fork test, known
+    hold
+      put-head(out, 3, texts/get(value))
+    miss
+      save raw, to-byte-list(bytes-of-text(value))
+      put-head(out, 2, raw/length)
+      walk raw
+        take one
+        out/push(one)
+      fork test, filled
+        hold
+          texts/set(value, texts/size)
+  back 0
+
+task put-integer
+  mark private
+  take out, like list, like number
+  take value, like number
+  like number
+  fork test, is-minimum(value, 0)
+    hold
+      put-head(out, 0, value)
+    miss
+      put-head(out, 1, subtract(subtract(0, value), 1))
+  back 0
+
+# whether a decimal is negative zero: zero, with the sign bit set
+task is-negative-zero
+  mark private
+  take value, like float
+  like boolean
+  fork test, is-unequal(value, to-decimal(0))
+    hold
+      back false
+  save bits, to-byte-list(f64-to-bytes(value))
+  back is-minimum(bits/0, 128)
+
+# whether a decimal is a whole number under 2^53 in size: what simple 5 carries
+task is-small-whole
+  mark private
+  take value, like float
+  like boolean
+  back and(is-equal(truncate(value), value), is-below(absolute(value), whole-limit))
+
+# a decimal in the first form that holds it exactly: a whole number under 2^53 (not negative zero), a single, a double
+task put-decimal
+  mark private
+  take out, like list, like number
+  take value, like float
+  like number
+  fork test, not(is-finite(value))
+    hold
+      refuse-code(<unencodable>, 0, <a decimal that is not finite: tree/text has no spelling for it>)
+  save signed, is-negative-zero(value)
+  fork test, and(is-small-whole(value), not(signed))
+    hold
+      out/push(229)
+      put-integer(out, to-number(value))
+      back 0
+  fork test, and(f64-fits-f32(value), not(signed))
+    hold
+      out/push(228)
+      walk to-byte-list(f32-to-bytes(value))
+        take one
+        out/push(one)
+      back 0
+  out/push(227)
+  walk to-byte-list(f64-to-bytes(value))
+    take one
+    out/push(one)
+  back 0
+
+# a count: the minor when it is under 28, else 28 and the varint of what is past it
+task put-head
+  mark private
+  take out, like list, like number
+  take major, like number
+  take n, like number
+  like number
+  fork test, is-below(n, 28)
+    hold
+      out/push(add(multiply(major, 32), n))
+    miss
+      out/push(add(multiply(major, 32), 28))
+      put-varint(out, subtract(n, 28))
+  back 0
+
+# unsigned LEB128: seven bits a byte, least significant first, the high bit on every byte but the last
+task put-varint
+  mark private
+  take out, like list, like number
+  take value, like number
+  like number
+  save rest, value
+  walk test
+    hook test, is-minimum(rest, 128)
+    hook hold
+      out/push(bitwise-or(bitwise-and(rest, 127), 128))
+      save rest, shift-right(rest, 7)
+  out/push(rest)
+  back 0
+
+# ---- decoding ----
+
+task from-code
+  take input, like bytes
+  like list, like data
+  save all, to-byte-list(input)
+  save reader
+    make code-reader
+      bind input, all
+      bind at, 0
+      bind end, all/length
+  fork test, is-below(all/length, 4)
+    hold
+      refuse-code(<not-tree-code>, 0, <the input does not start with the tree/code header (d3 54 52)>)
+  fork test, or(is-unequal(all/0, 211), or(is-unequal(all/1, 84), is-unequal(all/2, 82)))
+    hold
+      refuse-code(<not-tree-code>, 0, <the input does not start with the tree/code header (d3 54 52)>)
+  save version, all/3
+  fork test, is-unequal(version, 1)
+    hold
+      refuse-code(<unknown-version>, 3, <tree/code version {version}, and this decoder reads version 1>)
+  save reader/at, 4
+  save out, make list
+  save ended, false
+  walk test
+    hook test, and(not(ended), is-below(reader/at, reader/end))
+    hook hold
+      save kind, take-byte(reader)
+      fork test, is-equal(kind, 0)
+        hold
+          fork test, is-below(reader/at, reader/end)
+            hold
+              refuse-code(<frame-length>, reader/at, <bytes follow the end of the stream>)
+          save ended, true
+        miss
+          take-frame(reader, kind, out)
+  back out
+
+task take-frame
+  mark private
+  take reader, like code-reader
+  take kind, like number
+  take out, like list, like data
+  like number
+  save start, subtract(reader/at, 1)
+  fork test, is-equal(kind, 2)
+    hold
+      refuse-code(<no-decompressor>, start, <a Zstandard frame: a Term app decodes plain frames, and its transport decompresses>)
+  fork test, is-unequal(kind, 1)
+    hold
+      refuse-code(<unknown-tag>, start, <a frame kind of {kind}>)
+  save length, take-varint(reader)
+  save left, subtract(reader/end, reader/at)
+  fork test, is-above(length, left)
+    hold
+      refuse-code(<truncated>, reader/at, <the frame says {length} bytes and {left} are left>)
+  save frame
+    make code-reader
+      bind input, reader/input
+      bind at, reader/at
+      bind end, add(reader/at, length)
+  save tables
+    make code-tables
+      bind texts, make list
+      bind known, make hash
+      bind shapes, make list
+      bind shaped, make hash
+  out/push(take-value(frame, tables, 0))
+  fork test, is-below(frame/at, frame/end)
+    hold
+      save past, subtract(frame/end, frame/at)
+      refuse-code(<frame-length>, frame/at, <the frame holds {past} bytes past its value>)
+  save reader/at, frame/end
+  back 0
+
+task take-byte
+  mark private
+  take reader, like code-reader
+  like number
+  fork test, is-minimum(reader/at, reader/end)
+    hold
+      refuse-code(<truncated>, reader/at, <the input ends inside a value>)
+  save at, reader/at
+  save one, reader/input/{at}
+  save reader/at, add(at, 1)
+  back one
+
+task take-varint
+  mark private
+  take reader, like code-reader
+  like number
+  save start, reader/at
+  save value, 0
+  save shift, 0
+  save last, 128
+  save count, 0
+  walk test
+    hook test, is-minimum(last, 128)
+    hook hold
+      save last, take-byte(reader)
+      save count, add(count, 1)
+      fork test, is-above(count, 9)
+        hold
+          refuse-code(<too-large>, start, <a varint past the 64-bit range this decoder carries>)
+      save value, bitwise-or(value, shift-left(bitwise-and(last, 127), shift))
+      save shift, add(shift, 7)
+  fork test, and(is-above(count, 1), is-equal(last, 0))
+    hold
+      refuse-code(<non-canonical>, start, <a varint is longer than it needs to be>)
+  back value
+
+task take-head
+  mark private
+  take reader, like code-reader
+  take minor, like number
+  take at, like number
+  like number
+  fork test, is-below(minor, 28)
+    hold
+      back minor
+  fork test, is-unequal(minor, 28)
+    hold
+      refuse-code(<unknown-tag>, at, <minor {minor} is not defined>)
+  back add(28, take-varint(reader))
+
+task take-value
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take depth, like number
+  like data
+  fork test, is-above(depth, 256)
+    hold
+      refuse-code(<too-deep>, reader/at, <values nest deeper than 256>)
+  save at, reader/at
+  save first, take-byte(reader)
+  save major, shift-right(first, 5)
+  save minor, bitwise-and(first, 31)
+  fork test, is-equal(major, 7)
+    hold
+      back take-simple(reader, tables, minor, at, depth)
+  save n, take-head(reader, minor, at)
+  save left, subtract(reader/end, reader/at)
+  fork test, is-equal(major, 0)
+    hold
+      back number-data(n)
+  fork test, is-equal(major, 1)
+    hold
+      back number-data(subtract(subtract(0, n), 1))
+  fork test, is-equal(major, 2)
+    hold
+      back take-text(reader, tables, n, at)
+  fork test, is-equal(major, 3)
+    hold
+      save known, tables/texts/length
+      fork test, is-minimum(n, known)
+        hold
+          refuse-code(<bad-reference>, at, <text {n} is referred to, and the frame has {known}>)
+      back text-data(tables/texts/{n})
+  fork test, is-equal(major, 4)
+    hold
+      fork test, is-above(n, left)
+        hold
+          refuse-code(<truncated>, at, <a list of {n} values, and {left} bytes are left>)
+      save items, make list
+      save k, 0
+      walk test
+        hook test, is-below(k, n)
+        hook hold
+          items/push(take-value(reader, tables, add(depth, 1)))
+          save k, add(k, 1)
+      back array-data(items)
+  fork test, is-equal(major, 5)
+    hold
+      fork test, is-above(multiply(n, 2), left)
+        hold
+          refuse-code(<truncated>, at, <a map of {n} keys, and {left} bytes are left>)
+      back take-shape(reader, tables, n, at, depth)
+  fork test, is-equal(major, 6)
+    hold
+      save known, tables/shapes/length
+      fork test, is-minimum(n, known)
+        hold
+          refuse-code(<bad-reference>, at, <shape {n} is referred to, and the frame has {known}>)
+      back take-entries(reader, tables, tables/shapes/{n}, depth)
+  refuse-code(<unknown-tag>, at, <a tag of {first}>)
+  back make blank
+
+task take-text
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take n, like number
+  take at, like number
+  like data
+  save left, subtract(reader/end, reader/at)
+  fork test, is-above(n, left)
+    hold
+      refuse-code(<truncated>, at, <a text of {n} bytes, and {left} are left>)
+  save raw, take-bytes(reader, n)
+  save value, text-of-bytes(raw)
+  # UTF-8 that does not read back to the same bytes was not valid UTF-8: the platform decoder replaced something
+  save written, to-byte-list(raw)
+  save again, to-byte-list(bytes-of-text(value))
+  fork test, is-unequal(again/length, n)
+    hold
+      refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+  save k, 0
+  walk test
+    hook test, is-below(k, n)
+    hook hold
+      fork test, is-unequal(again/{k}, written/{k})
+        hold
+          refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+      save k, add(k, 1)
+  fork test, is-unequal(value, <>)
+    hold
+      fork test, tables/known/has(value)
+        hold
+          refuse-code(<non-canonical>, at, <"{value}" is written again where a reference to it belongs>)
+      tables/texts/push(value)
+      tables/known/set(value, true)
+  back text-data(value)
+
+task take-shape
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take n, like number
+  take at, like number
+  take depth, like number
+  like data
+  save keys, make list
+  save seen, make hash
+  save name, <{n}>
+  save k, 0
+  walk test
+    hook test, is-below(k, n)
+    hook hold
+      save key-at, reader/at
+      save key, take-value(reader, tables, add(depth, 1))
+      sift key
+        case text
+          fork test, seen/has(value)
+            hold
+              refuse-code(<repeated-key>, key-at, <"{value}" is a key twice in one shape>)
+          seen/set(value, true)
+          keys/push(value)
+          save size, utf8-length(value)
+          save name, <{name}|{size}:{value}>
+        miss
+          refuse-code(<unknown-tag>, key-at, <a key of a map is not a text>)
+      save k, add(k, 1)
+  fork test, tables/shaped/has(name)
+    hold
+      refuse-code(<non-canonical>, at, <a shape is written again where a reference to it belongs>)
+  tables/shapes/push(keys)
+  tables/shaped/set(name, true)
+  back take-entries(reader, tables, keys, depth)
+
+task take-entries
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take keys, like list, like text
+  take depth, like number
+  like data
+  save left, subtract(reader/end, reader/at)
+  save count, keys/length
+  fork test, is-above(count, left)
+    hold
+      refuse-code(<truncated>, reader/at, <a map of {count} values, and {left} bytes are left>)
+  save entries, make list
+  walk keys
+    take key
+    save entry
+      make data-entry
+        bind name, key
+        bind base, take-value(reader, tables, add(depth, 1))
+    entries/push(entry)
+  back hash-data(entries)
+
+task take-simple
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take minor, like number
+  take at, like number
+  take depth, like number
+  like data
+  fork test, is-equal(minor, 0)
+    hold
+      back flag-data(false)
+  fork test, is-equal(minor, 1)
+    hold
+      back flag-data(true)
+  fork test, is-equal(minor, 2)
+    hold
+      back make blank
+  fork test, is-equal(minor, 3)
+    hold
+      save value, f64-from-bytes(take-bytes(reader, 8))
+      fork test, not(is-finite(value))
+        hold
+          refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
+      fork test, and(or(is-small-whole(value), f64-fits-f32(value)), not(is-negative-zero(value)))
+        hold
+          refuse-code(<non-canonical>, at, <the decimal {value} is written as a double, and a shorter form holds it>)
+      back decimal-data(value)
+  fork test, is-equal(minor, 4)
+    hold
+      save value, f32-from-bytes(take-bytes(reader, 4))
+      fork test, not(is-finite(value))
+        hold
+          refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
+      fork test, or(is-small-whole(value), is-negative-zero(value))
+        hold
+          refuse-code(<non-canonical>, at, <the decimal {value} is written as a single, and it belongs elsewhere>)
+      back decimal-data(value)
+  fork test, is-equal(minor, 5)
+    hold
+      save inner, take-value(reader, tables, add(depth, 1))
+      sift inner
+        case number
+          link integer
+          save whole, to-decimal(integer)
+          fork test, is-minimum(absolute(whole), whole-limit)
+            hold
+              refuse-code(<non-canonical>, at, <a whole decimal holds an integer past 2^53>)
+          back decimal-data(whole)
+        miss
+          refuse-code(<non-canonical>, at, <a whole decimal holds something other than an integer>)
+  refuse-code(<unknown-tag>, at, <simple {minor} is not defined in tree/code version 1>)
+  back make blank
+
+task take-bytes
+  mark private
+  take reader, like code-reader
+  take count, like number
+  like bytes
+  save left, subtract(reader/end, reader/at)
+  fork test, is-above(count, left)
+    hold
+      refuse-code(<truncated>, reader/at, <{count} bytes are needed and {left} are left>)
+  save raw, make list
+  save k, 0
+  save at, reader/at
+  walk test
+    hook test, is-below(k, count)
+    hook hold
+      save index, add(at, k)
+      raw/push(reader/input/{index})
+      save k, add(k, 1)
+  save reader/at, add(at, count)
+  back from-byte-list(raw)

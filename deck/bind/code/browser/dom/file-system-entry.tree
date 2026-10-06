@@ -30,8 +30,10 @@ form file-system-entry, name <FileSystemEntry>
     like native-string
 
   task get-parent, name <getParent>
-    take success-callback, like maybe
-      like file-system-entry-callback
-    take error-callback, like maybe
-      like error-callback
+    take success-callback
+      like maybe
+        like file-system-entry-callback
+    take error-callback
+      like maybe
+        like error-callback
     like native-void

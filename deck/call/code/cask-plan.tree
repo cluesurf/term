@@ -1,0 +1,764 @@
+# The native app cask's decisions that are not its file system or its toolchain (note/term/cask/readme.md): which
+# compilers a target needs, the app's name and bundle identifier, the crate name and cargo manifest of a Rust cask, the
+# driver line that calls a Swift program's `boot` with its labels, the device a list of them offers, and the manifests
+# an app declares itself in (Info.plist, AndroidManifest.xml, the simulator's entitlements, the page's index.html).
+#
+# Ported from deck/call/code/cask.ts (self-hosting, 2026-10-06), which stays as the face: it compiles, bundles,
+# writes the bundle, runs each tool and prints each step. Positions are code points, which agree with the original's
+# UTF-16 units wherever it compared one with ASCII alone.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-upper-case
+  find to-lower-case
+  find starts-with
+  find replace
+  find replace-all
+  find contains, name text-contains
+
+load ./draft-mark
+  find is-space
+
+load ./output-plan
+  find trimmed
+
+# ---- helpers over a text's code points ----
+
+# `[A-Za-z0-9_]`, what `\b` in a JavaScript pattern takes as a word
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+    hold
+      back true
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back true
+  fork test, and(is-minimum(code, 97), is-maximum(code, 122))
+    hold
+      back true
+  back is-equal(code, 95)
+
+task code-of
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  fork test, or(is-below(at, 0), not(is-below(at, points/length)))
+    hold
+      back -1
+  back char-code-at(get(points, at), 0)
+
+# the code points from `start` up to, not including, `end`, joined
+task piece
+  take points, like list, like text
+  take start, like number
+  take end, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# does `points` hold `wanted` starting at `at`
+task holds-at
+  take points, like list, like text
+  take at, like number
+  take wanted, like text
+  like boolean
+  mark private
+
+  save needle, split(wanted, <>)
+  fork test, is-above(add(at, needle/length), points/length)
+    hold
+      back false
+  save step, 0
+  walk needle
+    take one
+    fork test, is-unequal(get(points, add(at, step)), one)
+      hold
+        back false
+    save step, add(step, 1)
+  back true
+
+# where `wanted` starts at a word boundary (`\bwanted`) on or after `from`, or -1: what follows the start is the
+# wanted text's own first point, a word one, so the boundary asks only that the point before is not one
+task word-start
+  take points, like list, like text
+  take wanted, like text
+  take from, like number
+  like number
+  mark private
+
+  save lead, get(split(wanted, <>), 0)
+  save at, from
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      fork test, is-equal(get(points, at), lead)
+        hold
+          fork test, and(holds-at(points, at, wanted), not(is-word-code(code-of(points, subtract(at, 1)))))
+            hold
+              back at
+      save at, add(at, 1)
+  back -1
+
+# ---- the toolchain ----
+
+# the host platform each Rust target builds on, as Node names it, or the empty text for a target Rust does not serve
+task rust-platform
+  take target, like text
+  like text
+
+  fork test, is-equal(target, <linux>)
+    hold
+      back <linux>
+  fork test, is-equal(target, <windows>)
+    hold
+      back <win32>
+  back <>
+
+# the compilers a target's build cannot do without, checked before the build starts. The Android SDK's own tools are
+# found inside the SDK, not on the PATH. A Linux or Windows cask built on another platform only writes its source, so
+# `cargo` is needed only on the platform itself
+task cask-tools
+  take target, like text
+  take platform, like text
+  like list, like text
+
+  save tools, make list
+  fork test, or(is-equal(target, <macos>), is-equal(target, <ios>))
+    hold
+      push(tools, <swiftc>)
+      back tools
+  fork test, is-equal(target, <android>)
+    hold
+      push(tools, <kotlinc>)
+      push(tools, <java>)
+      back tools
+  fork test, or(is-equal(target, <linux>), is-equal(target, <windows>))
+    hold
+      fork test, is-equal(rust-platform(target), platform)
+        hold
+          push(tools, <cargo>)
+  back tools
+
+# what a build that lacks some of them is refused with
+task missing-tools-message
+  take target, like text
+  take missing, like list, like text
+  like text
+
+  save named, join(missing, < and >)
+  save verb, <they are>
+  fork test, is-equal(missing/length, 1)
+    hold
+      save verb, <it is>
+  back <a {target} cask needs {named}, and {verb} not on the PATH. term show tools lists each toolchain>
+
+# the lowest OS a target runs on, which the runtime version hashes: the iOS and macOS releases, the Android API level,
+# and the target's own name where there is none
+task minimum-of
+  take target, like text
+  like text
+
+  fork test, is-equal(target, <ios>)
+    hold
+      back <17.0>
+  fork test, is-equal(target, <macos>)
+    hold
+      back <14.0>
+  fork test, is-equal(target, <android>)
+    hold
+      back <26>
+  back target
+
+# ---- the app's names ----
+
+form app-words
+  link name, like text
+  link identifier, like text
+
+# the app's name and bundle identifier from the name its manifest declares, or its directory's when it declares none:
+# `@term/blog` is `Blog` and `surf.term.blog`. The last segment, kept to ASCII letters and digits
+task app-words-of
+  take source, like text
+  like app-words
+
+  save parts, split(source, </>)
+  save last, get(parts, subtract(parts/length, 1))
+  save kept, make list
+  walk split(last, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, and(is-word-code(code), is-unequal(code, 95))
+      hold
+        push(kept, point)
+  save word, join(kept, <>)
+  save name, word
+  fork test, is-above(kept/length, 0)
+    hold
+      save head, to-upper-case(get(kept, 0))
+      save tail, piece(kept, 1, kept/length)
+      save name, <{head}{tail}>
+  save lower, to-lower-case(word)
+  back
+    make app-words
+      bind name, name
+      bind identifier, <surf.term.{lower}>
+
+# the crate name of an app: `blog` for `@term/blog`. Lower-cased, and every UTF-16 unit not a lower-case ASCII letter
+# or a digit an underscore, so a code point past U+FFFF is two
+task crate-of
+  take name, like text
+  like text
+
+  save kept, make list
+  walk split(to-lower-case(name), <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 48), is-maximum(code, 57)))
+      hold
+        push(kept, point)
+      miss
+        push(kept, <_>)
+        fork test, is-above(code, 65535)
+          hold
+            push(kept, <_>)
+  back join(kept, <>)
+
+# ---- the Rust cask's cargo project ----
+
+# the name a cargo dependency line declares (`name = ...` with the name in `[A-Za-z0-9_-]`), or the empty text
+task dependency-name
+  take line, like text
+  like text
+  mark private
+
+  save points, split(line, <>)
+  save end, 0
+  walk test
+    hook test, and(is-below(end, points/length), or(is-word-code(code-of(points, end)), is-equal(code-of(points, end), 45)))
+    hook hold
+      save end, add(end, 1)
+  fork test, is-equal(end, 0)
+    hold
+      back <>
+  save at, end
+  walk test
+    hook test, and(is-below(at, points/length), is-space(code-of(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(code-of(points, at), 61)
+    hold
+      back piece(points, 0, end)
+  back <>
+
+# The crates of the stdlib's own manifest an app's project keeps: the `[dependencies]` table up to the next table, and
+# of it only what the emitted program and its shims reach (`hyper::`, `tokio_rustls::`) and tokio, serde_json and
+# serde, which the runtime and the cask reach under other spellings. A crate nothing names is compiled for nothing, and
+# one of them does not build on Windows on ARM at all. A line that names no crate stays unless it is blank or a comment
+task cargo-dependencies
+  take manifest, like text
+  take source, like text
+  like text
+
+  save tables, split(manifest, <[dependencies]>)
+  save table, <>
+  fork test, is-above(tables/length, 1)
+    hold
+      save table, get(split(get(tables, 1), <\n[>), 0)
+  save always, make list
+  push(always, <tokio>)
+  push(always, <serde_json>)
+  push(always, <serde>)
+  save kept, make list
+  walk split(table, <\n>)
+    take line
+    save name, dependency-name(line)
+    fork test, is-equal(name, <>)
+      hold
+        save bare, trimmed(line)
+        fork test, and(not(starts-with(bare, <#>)), is-unequal(bare, <>))
+          hold
+            push(kept, line)
+      miss
+        save spelled, replace-all(name, <->, <_>)
+        fork test, or(contains(always, name), text-contains(source, <{spelled}::>))
+          hold
+            push(kept, line)
+  back join(kept, <\n>)
+
+# the manifest of the app's cargo project: the stdlib's crates it reaches, SQLite for the database native, and each
+# platform's toolkit under its own `cfg`, so a project written on one platform checks on any other. A Term raise is a
+# Result and never a panic, so a panic is a stop: aborting drops the unwinding tables, and fat LTO runs across every
+# crate (note/term/codegen/rust.md, Build profile)
+task cargo-manifest
+  take crate, like text
+  take stdlib-manifest, like text
+  take source, like text
+  like text
+
+  save dependencies, trimmed(cargo-dependencies(stdlib-manifest, source))
+  save lines, make list
+  push(lines, <# GENERATED by term make. The app as a cargo project: the stdlib's crates, SQLite for the database native, and>)
+  push(lines, <# the cask toolkit of each platform under its own cfg (deck/cask/code/native/rust/runtime/cask.rs).>)
+  push(lines, <[package]>)
+  push(lines, <name = "{crate}">)
+  push(lines, <version = "0.1.0">)
+  push(lines, <edition = "2021">)
+  push(lines, <>)
+  push(lines, <[dependencies]>)
+  push(lines, dependencies)
+  push(lines, <rusqlite = \{ version = "0.32", features = ["bundled"] \}>)
+  push(lines, <>)
+  push(lines, <[target.'cfg(target_os = "linux")'.dependencies]>)
+  push(lines, <gtk4 = "0.9">)
+  push(lines, <webkit6 = "0.4">)
+  push(lines, <>)
+  push(lines, <[target.'cfg(windows)'.dependencies]>)
+  push(lines, <windows = \{ version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_System_WinRT"] \}>)
+  push(lines, <webview2-com = "0.33">)
+  push(lines, <>)
+  push(lines, <[profile.release]>)
+  push(lines, <opt-level = 3>)
+  push(lines, <lto = "fat">)
+  push(lines, <codegen-units = 1>)
+  push(lines, <panic = "abort">)
+  push(lines, <strip = true>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# ---- the Swift program's driver line ----
+
+# the first word of each of the parameters `func boot(...)` declares, its label: what comes before a space or a colon
+task boot-labels
+  take params, like text
+  like list, like text
+  mark private
+
+  save labels, make list
+  walk split(params, <,>)
+    take param
+    save points, split(trimmed(param), <>)
+    save end, 0
+    walk test
+      hook test, and(is-below(end, points/length), and(not(is-space(code-of(points, end))), is-unequal(code-of(points, end), 58)))
+      hook hold
+        save end, add(end, 1)
+    fork test, is-above(end, 0)
+      hold
+        push(labels, piece(points, 0, end))
+  back labels
+
+# a driver's arguments, split at each comma outside quotes, parentheses and brackets, each trimmed
+task boot-arguments
+  take text, like text
+  like list, like text
+  mark private
+
+  save points, split(text, <>)
+  save found, make list
+  save depth, 0
+  save quoted, false
+  save start, 0
+  save at, 0
+  walk points
+    take one
+    save code, char-code-at(one, 0)
+    fork test, and(is-equal(code, 34), is-unequal(code-of(points, subtract(at, 1)), 92))
+      hold
+        save quoted, not(quoted)
+      miss
+        fork test, and(not(quoted), or(is-equal(code, 40), is-equal(code, 91)))
+          hold
+            save depth, add(depth, 1)
+          miss
+            fork test, and(not(quoted), or(is-equal(code, 41), is-equal(code, 93)))
+              hold
+                save depth, subtract(depth, 1)
+              miss
+                fork test, and(and(not(quoted), is-equal(depth, 0)), is-equal(code, 44))
+                  hold
+                    push(found, trimmed(piece(points, start, at)))
+                    save start, add(at, 1)
+    save at, add(at, 1)
+  fork test, is-unequal(trimmed(text), <>)
+    hold
+      push(found, trimmed(piece(points, start, points/length)))
+  back found
+
+# Every argument of the line calling `boot` named by its label. A Swift task's inputs are labeled by name, so the
+# driver must name each one, and the labels are read off the emitted `func boot(...)`, so a driver written by position
+# gets the entry's own. A driver that already labels, a `boot` with none, or a line that is not one call of `boot` is
+# left as it is
+task label-boot
+  take driver, like text
+  take swift, like text
+  like text
+
+  # `\bfunc boot\(([^)]*)\)`: the parameters up to the first closing parenthesis
+  save code, split(swift, <>)
+  save opened, word-start(code, <func boot(>, 0)
+  fork test, is-below(opened, 0)
+    hold
+      back driver
+  save params-start, add(opened, 10)
+  save params-end, params-start
+  walk test
+    hook test, and(is-below(params-end, code/length), is-unequal(code-of(code, params-end), 41))
+    hook hold
+      save params-end, add(params-end, 1)
+  fork test, not(is-below(params-end, code/length))
+    hold
+      back driver
+  # `^(\s*)boot\((.*)\)\s*$`: white space, the call, its arguments on one line, and white space to the end
+  save line, split(driver, <>)
+  save lead, 0
+  walk test
+    hook test, and(is-below(lead, line/length), is-space(code-of(line, lead)))
+    hook hold
+      save lead, add(lead, 1)
+  fork test, not(holds-at(line, lead, <boot(>))
+    hold
+      back driver
+  save inside, add(lead, 5)
+  save last, subtract(line/length, 1)
+  walk test
+    hook test, and(is-minimum(last, inside), is-space(code-of(line, last)))
+    hook hold
+      save last, subtract(last, 1)
+  fork test, or(is-below(last, inside), is-unequal(code-of(line, last), 41))
+    hold
+      back driver
+  save at, inside
+  walk test
+    hook test, is-below(at, last)
+    hook hold
+      save point, code-of(line, at)
+      fork test, or(or(is-equal(point, 10), is-equal(point, 13)), or(is-equal(point, 8232), is-equal(point, 8233)))
+        hold
+          back driver
+      save at, add(at, 1)
+  # `^\s*[a-z][A-Za-z0-9]*\s*:`: the first argument already carries a label
+  save given, piece(line, inside, last)
+  save words, split(given, <>)
+  save step, 0
+  walk test
+    hook test, and(is-below(step, words/length), is-space(code-of(words, step)))
+    hook hold
+      save step, add(step, 1)
+  save first-code, code-of(words, step)
+  fork test, and(is-minimum(first-code, 97), is-maximum(first-code, 122))
+    hold
+      save step, add(step, 1)
+      walk test
+        hook test, and(and(is-below(step, words/length), is-word-code(code-of(words, step))), is-unequal(code-of(words, step), 95))
+        hook hold
+          save step, add(step, 1)
+      walk test
+        hook test, and(is-below(step, words/length), is-space(code-of(words, step)))
+        hook hold
+          save step, add(step, 1)
+      fork test, is-equal(code-of(words, step), 58)
+        hold
+          back driver
+  save labels, boot-labels(piece(code, params-start, params-end))
+  save named, make list
+  save index, 0
+  walk boot-arguments(given)
+    take argument
+    save label, <>
+    fork test, is-below(index, labels/length)
+      hold
+        save label, get(labels, index)
+    fork test, and(is-unequal(label, <>), is-unequal(label, <_>))
+      hold
+        push(named, <{label}: {argument}>)
+      miss
+        push(named, argument)
+    save index, add(index, 1)
+  save prefix, piece(line, 0, lead)
+  save joined, join(named, <, >)
+  back <{prefix}boot({joined})>
+
+# `\bfunc boot\([^{]*\bthrows\b`: does a `func boot(` declare `throws` before its body opens
+task boot-throws
+  take swift, like text
+  like boolean
+
+  save code, split(swift, <>)
+  save opened, word-start(code, <func boot(>, 0)
+  walk test
+    hook test, is-minimum(opened, 0)
+    hook hold
+      save at, add(opened, 10)
+      walk test
+        hook test, and(is-below(at, code/length), is-unequal(code-of(code, at), 123))
+        hook hold
+          fork test, and(and(holds-at(code, at, <throws>), not(is-word-code(code-of(code, subtract(at, 1))))), not(is-word-code(code-of(code, add(at, 6)))))
+            hold
+              back true
+          save at, add(at, 1)
+      save opened, word-start(code, <func boot(>, add(opened, 1))
+  back false
+
+# The top-level Swift line calling the program's `boot`, its arguments labeled. A `boot` that can raise is `throws` in
+# Swift, and the line calling it must say `try`: an error reaching the top level ends the program with its message,
+# which is what a raise nothing caught means
+task driver-line
+  take driver, like text
+  take swift, like text
+  like text
+
+  save labeled, label-boot(driver, swift)
+  fork test, not(boot-throws(swift))
+    hold
+      back labeled
+  # `^\s*try\b`
+  save points, split(labeled, <>)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, points/length), is-space(code-of(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, and(holds-at(points, at, <try>), not(is-word-code(code-of(points, add(at, 3)))))
+    hold
+      back labeled
+  back <try {labeled}>
+
+# ---- devices ----
+
+# the first device `adb devices` lists as ready, a line of two words the second of which is `device`, after the
+# heading line, or the empty text
+task ready-serial
+  take listed, like text
+  like text
+
+  save index, 0
+  walk split(listed, <\n>)
+    take line
+    fork test, is-above(index, 0)
+      hold
+        save points, split(trimmed(line), <>)
+        save words, make list
+        save word, make list
+        walk points
+          take point
+          fork test, is-space(char-code-at(point, 0))
+            hold
+              fork test, is-above(word/length, 0)
+                hold
+                  push(words, join(word, <>))
+                  save word, make list
+            miss
+              push(word, point)
+        fork test, is-above(word/length, 0)
+          hold
+            push(words, join(word, <>))
+        fork test, and(is-equal(words/length, 2), is-equal(get(words, 1), <device>))
+          hold
+            back get(words, 0)
+    save index, add(index, 1)
+  back <>
+
+# the iPhone a cask runs on, of the simulators listed: the one booted, else the first, else -1
+task phone-of
+  take names, like list, like text
+  take states, like list, like text
+  like number
+
+  save first, -1
+  save index, 0
+  walk names
+    take name
+    fork test, starts-with(name, <iPhone>)
+      hold
+        fork test, is-equal(get(states, index), <Booted>)
+          hold
+            back index
+        fork test, is-below(first, 0)
+          hold
+            save first, index
+    save index, add(index, 1)
+  back first
+
+# ---- the manifests ----
+
+form usage-text
+  link key, like text
+  link said, like text
+
+form usage-update
+  link missing, like number
+  link text, like text
+
+task usage-lines
+  take usage, like list, like usage-text
+  like text
+  mark private
+
+  save lines, make list
+  walk usage
+    take one
+    save key, one/key
+    save said, one/said
+    push(lines, <\<key\>{key}\</key\>\<string\>{said}\</string\>>)
+  back join(lines, <>)
+
+# the usage strings an Info.plist written before its program was compiled still lacks, added before its end. A key the
+# plist already carries is left as it is
+task usage-added
+  take plist, like text
+  take usage, like list, like usage-text
+  like usage-update
+
+  save missing, make list
+  walk usage
+    take one
+    save key, one/key
+    fork test, not(text-contains(plist, <\<key\>{key}\</key\>>))
+      hold
+        push(missing, one)
+  save text, plist
+  fork test, is-above(missing/length, 0)
+    hold
+      save added, usage-lines(missing)
+      save text, replace(plist, <\</dict\>\</plist\>>, <{added}\</dict\>\</plist\>>)
+  back
+    make usage-update
+      bind missing, missing/length
+      bind text, text
+
+task plist-head
+  take name, like text
+  take identifier, like text
+  take version, like text
+  like list, like text
+  mark private
+
+  save lines, make list
+  push(lines, <\<?xml version="1.0" encoding="UTF-8"?\>>)
+  push(lines, <\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>)
+  push(lines, <\<plist version="1.0"\>\<dict\>>)
+  push(lines, <\<key\>CFBundleName\</key\>\<string\>{name}\</string\>>)
+  push(lines, <\<key\>CFBundleDisplayName\</key\>\<string\>{name}\</string\>>)
+  push(lines, <\<key\>CFBundleExecutable\</key\>\<string\>{name}\</string\>>)
+  push(lines, <\<key\>CFBundleIdentifier\</key\>\<string\>{identifier}\</string\>>)
+  push(lines, <\<key\>CFBundlePackageType\</key\>\<string\>APPL\</string\>>)
+  push(lines, <\<key\>CFBundleShortVersionString\</key\>\<string\>{version}\</string\>>)
+  push(lines, <\<key\>CFBundleVersion\</key\>\<string\>{version}\</string\>>)
+  back lines
+
+# the Info.plist of the `.app` layout AppKit expects, so the process gets a Dock icon and a menu bar of its own
+task macos-plist
+  take name, like text
+  take identifier, like text
+  take version, like text
+  like text
+
+  save lines, plist-head(name, identifier, version)
+  save minimum, minimum-of(<macos>)
+  push(lines, <\<key\>LSMinimumSystemVersion\</key\>\<string\>{minimum}\</string\>>)
+  push(lines, <\<key\>NSHighResolutionCapable\</key\>\<true/\>>)
+  push(lines, <\</dict\>\</plist\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# The Info.plist of the flat `.app` iOS expects. Portrait and both landscapes, as an iPhone app is by default: a Term
+# app reads its width as a signal and adapts. An empty launch screen dictionary is what tells iOS the app is built for
+# the full display. The usage strings its device capabilities need, since iOS ends an app that asks for a privacy
+# grant without one
+task ios-plist
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take usage, like list, like usage-text
+  like text
+
+  save lines, plist-head(name, identifier, version)
+  save minimum, minimum-of(<ios>)
+  push(lines, <\<key\>MinimumOSVersion\</key\>\<string\>{minimum}\</string\>>)
+  push(lines, <\<key\>LSRequiresIPhoneOS\</key\>\<true/\>>)
+  push(lines, <\<key\>UIDeviceFamily\</key\>\<array\>\<integer\>1\</integer\>\<integer\>2\</integer\>\</array\>>)
+  push(lines, <\<key\>UISupportedInterfaceOrientations\</key\>\<array\>\<string\>UIInterfaceOrientationPortrait\</string\>\<string\>UIInterfaceOrientationLandscapeLeft\</string\>\<string\>UIInterfaceOrientationLandscapeRight\</string\>\</array\>>)
+  push(lines, <\<key\>UIRequiresFullScreen\</key\>\<true/\>>)
+  push(lines, <\<key\>UILaunchScreen\</key\>\<dict/\>>)
+  walk usage
+    take one
+    save key, one/key
+    save said, one/said
+    push(lines, <\<key\>{key}\</key\>\<string\>{said}\</string\>>)
+  push(lines, <\</dict\>\</plist\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# The simulator's entitlements, as a simulator build Xcode makes with no team carries them: the app's identifier and
+# its own keychain group under a placeholder team prefix. Without them the simulator's Keychain refuses every secret
+task simulator-entitlements
+  take identifier, like text
+  like text
+
+  save prefixed, <SIMULATOR0.{identifier}>
+  save head, <\<?xml version="1.0" encoding="UTF-8"?\>\n\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>\n\<plist version="1.0"\>\<dict\>>
+  save body, <\<key\>application-identifier\</key\>\<string\>{prefixed}\</string\>\<key\>keychain-access-groups\</key\>\<array\>\<string\>{prefixed}\</string\>\</array\>\</dict\>\</plist\>\n>
+  back <{head}{body}>
+
+# The AndroidManifest.xml of the APK, the permissions its device capabilities need among it. No action bar: the page
+# owns the whole screen, the way it does on every other platform. Every device trait change is handled in place, since
+# Android otherwise destroys the Activity, and the running program with it, to apply a dark mode or a font size
+task android-manifest
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take permissions, like list, like text
+  like text
+
+  save minimum, minimum-of(<android>)
+  save lines, make list
+  push(lines, <\<?xml version="1.0" encoding="utf-8"?\>>)
+  push(lines, <\<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{identifier}" android:versionCode="1" android:versionName="{version}"\>>)
+  push(lines, <  \<uses-sdk android:minSdkVersion="{minimum}" android:targetSdkVersion="36" /\>>)
+  push(lines, <  \<uses-permission android:name="android.permission.INTERNET" /\>>)
+  walk permissions
+    take one
+    push(lines, one)
+  push(lines, <  \<application android:label="{name}" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"\>>)
+  push(lines, <    \<activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density"\>>)
+  push(lines, <      \<intent-filter\>>)
+  push(lines, <        \<action android:name="android.intent.action.MAIN" /\>>)
+  push(lines, <        \<category android:name="android.intent.category.LAUNCHER" /\>>)
+  push(lines, <      \</intent-filter\>>)
+  push(lines, <    \</activity\>>)
+  push(lines, <  \</application\>>)
+  push(lines, <\</manifest\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# the page's index.html, which loads its bundle as a module
+task page-html
+  take title, like text
+  like text
+
+  save lines, make list
+  push(lines, <\<!doctype html\>>)
+  push(lines, <\<html\>\<head\>\<meta charset="utf-8"\>\<meta name="viewport" content="width=device-width, initial-scale=1"\>\<title\>{title}\</title\>>)
+  push(lines, <\<style\>body\{font:16px system-ui;margin:24px\}input,textarea,button\{font:inherit;display:block;margin:8px 0\}\</style\>>)
+  push(lines, <\</head\>\<body\>\<script type="module" src="./app.js"\>\</script\>\</body\>\</html\>>)
+  back join(lines, <\n>)

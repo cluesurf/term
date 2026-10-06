@@ -31,14 +31,16 @@ form animatable, name <Animatable>
           like keyframe
         like property-indexed-keyframes
         like native-null
-    take options, like maybe
-      like or
-        like native-number
-        like keyframe-animation-options
+    take options
+      like maybe
+        like or
+          like native-number
+          like keyframe-animation-options
     like animation
 
   task get-animations, name <getAnimations>
-    take options, like maybe
-      like get-animations-options
+    take options
+      like maybe
+        like get-animations-options
     like native-array
       like animation

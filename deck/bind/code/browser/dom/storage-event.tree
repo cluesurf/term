@@ -44,28 +44,35 @@ form storage-event, name <StorageEvent>
 
   task init-storage-event, name <initStorageEvent>
     take type, like native-string
-    take bubbles, like maybe
-      like native-boolean
-    take cancelable, like maybe
-      like native-boolean
-    take key, like maybe
-      like or
-        like native-string
-        like native-null
-    take old-value, like maybe
-      like or
-        like native-string
-        like native-null
-    take new-value, like maybe
-      like or
-        like native-string
-        like native-null
-    take url, like maybe
-      like or
-        like native-string
-        like url
-    take storage-area, like maybe
-      like or
-        like storage
-        like native-null
+    take bubbles
+      like maybe
+        like native-boolean
+    take cancelable
+      like maybe
+        like native-boolean
+    take key
+      like maybe
+        like or
+          like native-string
+          like native-null
+    take old-value
+      like maybe
+        like or
+          like native-string
+          like native-null
+    take new-value
+      like maybe
+        like or
+          like native-string
+          like native-null
+    take url
+      like maybe
+        like or
+          like native-string
+          like url
+    take storage-area
+      like maybe
+        like or
+          like storage
+          like native-null
     like native-void

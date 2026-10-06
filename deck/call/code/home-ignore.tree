@@ -1,0 +1,117 @@
+# The rules `term wake` writes keep a project's memory in git and everything else under `.base/` out of it, one rule per
+# level. Written for the folder before 2026-10-05, `.base/@cluesurf/term`, they would ignore the moved memory, and git
+# would read every remembered fact as deleted. So exactly those lines are renamed, and nothing else in the file is
+# touched, and only when the file holds the whole block `term wake` wrote: a file a person wrote with one similar line
+# is theirs.
+#
+# Ported from deck/call/code/home.ts (self-hosting, 2026-10-06), which stays as the face: it reads and writes the file.
+# A line is compared trimmed, as JavaScript's `trim` trims it.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load ./draft-mark
+  find is-space
+
+form ignore-rename
+  link from, like text
+  link to, like text
+
+task rename-of
+  take from, like text
+  take to, like text
+  like ignore-rename
+  mark private
+
+  back
+    make ignore-rename
+      bind from, from
+      bind to, to
+
+task ignore-renames
+  like list, like ignore-rename
+
+  save out, make list
+  push(out, rename-of(<!.base/@cluesurf/>, <!.base/@term/>))
+  push(out, rename-of(<.base/@cluesurf/*>, <.base/@term/*>))
+  push(out, rename-of(<!.base/@cluesurf/term/>, <!.base/@term/code/>))
+  push(out, rename-of(<.base/@cluesurf/term/*>, <.base/@term/code/*>))
+  push(out, rename-of(<!.base/@cluesurf/term/memory/>, <!.base/@term/code/memory/>))
+  back out
+
+# JavaScript's `trim`: every `\s` code point off both ends
+task trimmed
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-space(char-code-at(get(points, start), 0)))
+    hook hold
+      save start, add(start, 1)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(char-code-at(get(points, subtract(end, 1)), 0)))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# the file's text with the old rules renamed, or the empty text when it is not to be written: it lacks one of the old
+# rules, or renaming changes nothing
+task renamed-ignore
+  take text, like text
+  like text
+
+  save lines, split(text, <\n>)
+  save bare, make list
+  walk lines
+    take line
+    push(bare, trimmed(line))
+  walk ignore-renames()
+    take rename
+    save found, false
+    walk bare
+      take one
+      fork test, is-equal(one, rename/from)
+        hold
+          save found, true
+    fork test, not(found)
+      hold
+        back <>
+  save out, make list
+  save changed, false
+  save at, 0
+  walk lines
+    take line
+    save next, line
+    save one, get(bare, at)
+    walk ignore-renames()
+      take rename
+      fork test, is-equal(one, rename/from)
+        hold
+          save next, rename/to
+          halt
+    fork test, is-unequal(next, line)
+      hold
+        save changed, true
+    push(out, next)
+    save at, add(at, 1)
+  fork test, not(changed)
+    hold
+      back <>
+  back join(out, <\n>)

@@ -11,6 +11,7 @@ load @term/bind/javascript/native
 form file-system-directory-reader, name <FileSystemDirectoryReader>
   task read-entries, name <readEntries>
     take success-callback, like file-system-entries-callback
-    take error-callback, like maybe
-      like error-callback
+    take error-callback
+      like maybe
+        like error-callback
     like native-void

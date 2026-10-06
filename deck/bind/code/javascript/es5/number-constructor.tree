@@ -23,6 +23,7 @@ form number-constructor, name <NumberConstructor>
     like native-number
 
   hook make
-    take value, like maybe
-      like native-any
+    take value
+      like maybe
+        like native-any
     like number

@@ -135,7 +135,10 @@ task dedupe-findings
   like list, like finding-group
 
   host at, make hash
-  host groups, make list
+  # typed where it is made: a group is read back out (`group/count`) before the first push, where inference has not
+  # met its element
+  host groups, like list, like finding-group
+    make list
   walk findings
     take found
     save head, found/detail

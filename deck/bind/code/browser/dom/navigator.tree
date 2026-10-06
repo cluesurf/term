@@ -151,15 +151,17 @@ form navigator, name <Navigator>
       like or
         like native-string
         like url
-    take data, like maybe
-      like or
-        like body-init
-        like native-null
+    take data
+      like maybe
+        like or
+          like body-init
+          like native-null
     like native-boolean
 
   task share, name <share>
-    take data, like maybe
-      like share-data
+    take data
+      like maybe
+        like share-data
     like promise
       like native-void
 

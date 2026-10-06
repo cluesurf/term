@@ -1,0 +1,457 @@
+# `term boot`: what booting a program decides without a tool. The mode a first word names, the entry a manifest's
+# `boot` line names, the program's name as a command line prints it, the app's host settings from
+# `bind/host/base.tree`, whether a browser bundle must call `boot` itself, every task a command table calls, the run
+# entries written beside a bundle, and the tone-encoded names the production assets are copied under.
+#
+# Ported from deck/call/code/boot.ts (self-hosting, 2026-10-06), which stays as the face: it compiles, bundles with
+# esbuild, writes, spawns and watches.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find ends-with
+  find substring
+  find char-count
+  find char-code-at
+
+load @term/make/compile/node
+  find statement
+  find dock-route
+
+load @term/make/parser/tree
+  find node
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load ./draft-mark
+  find is-space
+
+# ---- the mode and the entry ----
+
+form boot-read
+  # `development`, `production`, or the empty text when the command line names none
+  link mode, like text
+  link entry, like maybe, like text
+
+# `term boot [mode] [entry]`: the first word is a mode when it is one of the six (`moon`, `dev`, `development`, `star`,
+# `prod`, `production`), and otherwise it is the entry, so `term boot app.tree` still boots that file
+task boot-mode
+  take first, like maybe, like text
+  take second, like maybe, like text
+  like boot-read
+
+  sift first
+    case some
+      link word
+      fork test, or(or(is-equal(word, <moon>), is-equal(word, <dev>)), is-equal(word, <development>))
+        hold
+          back
+            make boot-read
+              bind mode, <development>
+              bind entry, second
+      fork test, or(or(is-equal(word, <star>), is-equal(word, <prod>)), is-equal(word, <production>))
+        hold
+          back
+            make boot-read
+              bind mode, <production>
+              bind entry, second
+      back
+        make boot-read
+          bind mode, <>
+          bind entry, first
+    case none
+      back
+        make boot-read
+          bind mode, <>
+          bind entry, second
+
+task is-blank-point
+  take point, like text
+  like boolean
+  mark private
+
+  back is-space(char-code-at(point, 0))
+
+# The path a manifest's `boot` line names, as `/(?:^|\n)\s*boot\s+(\S+)/` reads it: at the start or after a line feed,
+# any white space (line breaks too), `boot`, white space, and the run that is not white space after it. The empty text
+# when there is none
+task boot-path-of
+  take text, like text
+  like text
+
+  save points, split(text, <>)
+  save word, split(<boot>, <>)
+  save at, 0
+  walk test
+    hook test, not(is-above(at, points/length))
+    hook hold
+      save anchored, is-equal(at, 0)
+      fork test, is-above(at, 0)
+        hold
+          save anchored, is-equal(get(points, subtract(at, 1)), <\n>)
+      fork test, anchored
+        hold
+          save index, at
+          walk test
+            hook test, and(is-below(index, points/length), is-blank-point(get(points, index)))
+            hook hold
+              save index, add(index, 1)
+          save matched, true
+          save offset, 0
+          walk word
+            take want
+            fork test, or(not(is-below(add(index, offset), points/length)), is-unequal(get(points, add(index, offset)), want))
+              hold
+                save matched, false
+            save offset, add(offset, 1)
+          fork test, matched
+            hold
+              save after, add(index, 4)
+              save start, after
+              walk test
+                hook test, and(is-below(start, points/length), is-blank-point(get(points, start)))
+                hook hold
+                  save start, add(start, 1)
+              save end, start
+              walk test
+                hook test, and(is-below(end, points/length), not(is-blank-point(get(points, end))))
+                hook hold
+                  save end, add(end, 1)
+              fork test, and(is-above(start, after), is-above(end, start))
+                hold
+                  save kept, make list
+                  save k, start
+                  walk test
+                    hook test, is-below(k, end)
+                    hook hold
+                      push(kept, get(points, k))
+                      save k, add(k, 1)
+                  back join(kept, <>)
+      save at, add(at, 1)
+  back <>
+
+# the program's name a command line prints in its usage: the last segment of the manifest's `deck <name>`, `.tree` off
+# its end, or the empty text when the manifest names none
+task bin-name-of
+  take deck, like text
+  like text
+
+  save parts, split(deck, </>)
+  save tail, get(parts, subtract(parts/length, 1))
+  fork test, ends-with(tail, <.tree>)
+    hold
+      back substring(tail, 0, subtract(char-count(tail), 5))
+  back tail
+
+# ---- the app's host settings ----
+
+form host-setting
+  link key, like text
+  link value, like text
+
+task chunks-of
+  take parts, like list, like node
+  like text
+  mark private
+
+  save out, make list
+  walk parts
+    take part
+    sift part
+      case chunk
+        link written
+        push(out, written)
+      miss
+        save nothing, 0
+  back join(out, <>)
+
+# the head of a group: its first node's chunks when it is a name, else none
+task head-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      save first, get(nodes, 0)
+      sift first
+        case name
+          save joined, chunks-of(parts)
+          back make(some, joined)
+        miss
+          back make none
+    miss
+      back make none
+
+# a group's first argument as text: a text or a name, its chunks, else the empty text
+task value-of
+  take group, like node
+  like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-below(nodes/length, 2)
+        hold
+          back <>
+      save second, get(nodes, 1)
+      sift second
+        case text
+          back chunks-of(parts)
+        case name
+          back chunks-of(parts)
+        miss
+          back <>
+    miss
+      back <>
+
+# The settings of the app's `bind/host/base.tree`: the first top-level `host` group, each child group with a head its
+# key and its first argument its value, in order. Nothing when the file does not parse
+task host-settings
+  take text, like text
+  take file, like text
+  like list, like host-setting
+
+  save out, make list
+  save source
+    make token-source
+      bind file, file
+      bind text, text
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back out
+  sift parsed/tree
+    case root
+      walk nodes
+        take one
+        sift one
+          case group
+            sift head-of(one)
+              case some
+                link head
+                fork test, is-equal(head, <host>)
+                  hold
+                    save at, 0
+                    walk nodes
+                      take child
+                      fork test, is-above(at, 0)
+                        hold
+                          sift child
+                            case group
+                              sift head-of(child)
+                                case some
+                                  link key
+                                  fork test, is-unequal(key, <>)
+                                    hold
+                                      save setting
+                                        make host-setting
+                                          bind key, key
+                                          bind value, value-of(child)
+                                      push(out, setting)
+                                case none
+                                  save nothing, 0
+                            miss
+                              save nothing, 0
+                      save at, add(at, 1)
+                    back out
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+  back out
+
+# ---- the program ----
+
+# whether a browser bundle's entry may only import the program: it defines no `boot`, or it runs one itself (the
+# lowering's `boot("", 0)`, or the `host(route, 0)` the simplifier makes of it). Otherwise the entry calls it
+task runs-boot
+  take program, like list, like statement
+  like boolean
+
+  save defines, false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, <boot>)
+          hold
+            save defines, true
+      miss
+        save nothing, 0
+  fork test, not(defines)
+    hold
+      back true
+  walk program
+    take one
+    sift one
+      case expression
+        sift expr
+          case call
+            sift callee
+              case variable
+                link callee-name
+                fork test, or(is-equal(callee-name, <boot>), is-equal(callee-name, <host>))
+                  hold
+                    back true
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
+
+# every task a command table calls: each route's own calls, its methods', and its subcommands', in that order
+task route-calls
+  take routes, like list, like dock-route
+  like list, like text
+
+  save out, make list
+  walk routes
+    take route
+    walk route/calls
+      take call
+      push(out, call/name)
+    walk route/methods
+      take method
+      walk method/calls
+        take call
+        push(out, call/name)
+    walk route-calls(route/children)
+      take name
+      push(out, name)
+  back out
+
+# ---- what is written beside a bundle ----
+
+# a node bundle's banner: a real `require`, anchored at what `anchor` names (the project's `index.js`, or the bundle
+# itself for one that ships)
+task node-banner
+  take anchor, like text
+  like text
+
+  back <import \{ createRequire as __createRequire \} from 'node:module'\nconst require = __createRequire({anchor})>
+
+# the run entry of a command-line program: the routes and the name given as JSON
+task cli-run-text
+  take routes-json, like text
+  take name-json, like text
+  like text
+
+  save lines, make list
+  push(lines, <import * as app from './app.mjs'>)
+  push(lines, <import \{ runCommandLine, toCamel \} from './dock.mjs'>)
+  push(lines, <app.wakeHive?.()>)
+  push(lines, <const routes = {routes-json}>)
+  push(lines, <const code = await runCommandLine(\{>)
+  push(lines, <  name: {name-json},>)
+  push(lines, <  routes,>)
+  push(lines, <  argv: process.argv.slice(2),>)
+  push(lines, <  resolve: task =\> app[toCamel(task)],>)
+  push(lines, <\})>)
+  push(lines, <process.exit(code)>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# the run entry of a server: its `boot`, `start` or `main`, the database url and the port
+task server-run-text
+  take port, like number
+  like text
+
+  save lines, make list
+  push(lines, <import * as app from './app.mjs'>)
+  push(lines, <app.wakeHive?.()>)
+  push(lines, <const boot = app.boot ?? app.start ?? app.main>)
+  push(lines, <if (!boot) \{ console.error('entry has no boot/start/main task'); process.exit(1) \}>)
+  push(lines, <const url = process.env.DATABASE_URL ?? ''>)
+  push(lines, <const port = Number(process.env.PORT ?? {port})>)
+  push(lines, <await boot(url, port)>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# a browser bundle's entry: an import of the program, which runs its own `boot`, or an import and the call
+task client-entry-text
+  take runs-boot, like boolean
+  like text
+
+  fork test, runs-boot
+    hold
+      back <import './boot'\n>
+  back <import \{ boot \} from './boot'\n\nboot('', 0)\n>
+
+# ---- the production assets ----
+
+# the outputs a deploy content-hashes, the stylesheet and the client bundle
+task asset-sources
+  like list, like text
+
+  save out, make list
+  push(out, <style/look.css>)
+  push(out, <boot.js>)
+  back out
+
+# a text in the tone alphabet, a letter per character (each by its first UTF-16 unit, modulo sixteen), grouped in fours
+# with dashes, so a content hash becomes a short pronounceable suffix (`mndb-tksh`)
+task tone-encode
+  take value, like text
+  like text
+
+  save tone, split(<mndbtkhsfvzxcwlr>, <>)
+  save letters, make list
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, is-above(code, 65535)
+      hold
+        # the first UTF-16 unit of a code point past U+FFFF, its high surrogate
+        save code, add(55296, divide(subtract(subtract(code, 65536), modulo(subtract(code, 65536), 1024)), 1024))
+    push(letters, get(tone, modulo(code, 16)))
+  save groups, make list
+  save group, make list
+  walk letters
+    take letter
+    push(group, letter)
+    fork test, is-equal(group/length, 4)
+      hold
+        push(groups, join(group, <>))
+        save group, make list
+  fork test, is-above(group/length, 0)
+    hold
+      push(groups, join(group, <>))
+  back join(groups, <->)
+
+# an asset's hashed copy: the tone before its last dot, or after its name when it has none
+task hashed-name
+  take logical, like text
+  take tone, like text
+  like text
+
+  save pieces, split(logical, <.>)
+  fork test, is-equal(pieces/length, 1)
+    hold
+      back <{logical}-{tone}>
+  save last, get(pieces, subtract(pieces/length, 1))
+  save front, make list
+  save at, 0
+  walk pieces
+    take piece
+    fork test, is-below(at, subtract(pieces/length, 1))
+      hold
+        push(front, piece)
+    save at, add(at, 1)
+  save stem, join(front, <.>)
+  back <{stem}-{tone}.{last}>

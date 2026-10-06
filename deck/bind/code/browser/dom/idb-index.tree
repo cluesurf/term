@@ -58,10 +58,11 @@ form idb-index, name <IDBIndex>
     like native-boolean
 
   task count, name <count>
-    take query, like maybe
-      like or
-        like idb-valid-key
-        like idb-key-range
+    take query
+      like maybe
+        like or
+          like idb-valid-key
+          like idb-key-range
     like idb-request
       like native-number
 
@@ -74,25 +75,29 @@ form idb-index, name <IDBIndex>
       like native-any
 
   task get-all, name <getAll>
-    take query, like maybe
-      like or
-        like idb-valid-key
-        like idb-key-range
-        like native-null
-    take count, like maybe
-      like native-number
+    take query
+      like maybe
+        like or
+          like idb-valid-key
+          like idb-key-range
+          like native-null
+    take count
+      like maybe
+        like native-number
     like idb-request
       like native-array
         like native-any
 
   task get-all-keys, name <getAllKeys>
-    take query, like maybe
-      like or
-        like idb-valid-key
-        like idb-key-range
-        like native-null
-    take count, like maybe
-      like native-number
+    take query
+      like maybe
+        like or
+          like idb-valid-key
+          like idb-key-range
+          like native-null
+    take count
+      like maybe
+        like native-number
     like idb-request
       like native-array
         like idb-valid-key
@@ -108,26 +113,30 @@ form idb-index, name <IDBIndex>
         like native-undefined
 
   task open-cursor, name <openCursor>
-    take query, like maybe
-      like or
-        like idb-valid-key
-        like idb-key-range
-        like native-null
-    take direction, like maybe
-      like idb-cursor-direction
+    take query
+      like maybe
+        like or
+          like idb-valid-key
+          like idb-key-range
+          like native-null
+    take direction
+      like maybe
+        like idb-cursor-direction
     like idb-request
       like or
         like idb-cursor-with-value
         like native-null
 
   task open-key-cursor, name <openKeyCursor>
-    take query, like maybe
-      like or
-        like idb-valid-key
-        like idb-key-range
-        like native-null
-    take direction, like maybe
-      like idb-cursor-direction
+    take query
+      like maybe
+        like or
+          like idb-valid-key
+          like idb-key-range
+          like native-null
+    take direction
+      like maybe
+        like idb-cursor-direction
     like idb-request
       like or
         like idb-cursor

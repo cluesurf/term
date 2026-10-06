@@ -48,8 +48,9 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take values
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task clear-bufferiv, name <clearBufferiv>
@@ -58,8 +59,9 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take values
       like iterable
         like g-lint
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task clear-bufferuiv, name <clearBufferuiv>
@@ -68,8 +70,9 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take values
       like iterable
         like g-luint
-    take src-offset, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
     like native-void
 
   task draw-buffers, name <drawBuffers>
@@ -130,10 +133,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-luint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform2uiv, name <uniform2uiv>
@@ -144,10 +149,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-luint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform3uiv, name <uniform3uiv>
@@ -158,10 +165,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-luint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform4uiv, name <uniform4uiv>
@@ -172,10 +181,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-luint
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix2x3fv, name <uniformMatrix2x3fv>
@@ -187,10 +198,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix2x4fv, name <uniformMatrix2x4fv>
@@ -202,10 +215,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix3x2fv, name <uniformMatrix3x2fv>
@@ -217,10 +232,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix3x4fv, name <uniformMatrix3x4fv>
@@ -232,10 +249,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix4x2fv, name <uniformMatrix4x2fv>
@@ -247,10 +266,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task uniform-matrix4x3fv, name <uniformMatrix4x3fv>
@@ -262,10 +283,12 @@ form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
     take data
       like iterable
         like g-lfloat
-    take src-offset, like maybe
-      like g-luint
-    take src-length, like maybe
-      like g-luint
+    take src-offset
+      like maybe
+        like g-luint
+    take src-length
+      like maybe
+        like g-luint
     like native-void
 
   task vertex-attrib-i4iv, name <vertexAttribI4iv>

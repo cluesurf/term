@@ -1,0 +1,205 @@
+# Two pure parts of separate compilation (compile/separate.ts): the units a module graph splits into, and a deck root
+# written as a token so a cached unit reads the same on another machine.
+#
+# Ported from compile/separate.ts (self-hosting, 2026-10-06), which stays as the face: it builds `portableBy`'s two
+# closures over `portable-out` and `portable-in`, and keeps the orchestration, the caches and the compile calls.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+  find contains
+
+load @term/base/math
+  find minimum
+
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+form tarjan
+  mark shared
+  link index, like hash, like text, like number
+  link low, like hash, like text, like number
+  link on-stack, like hash, like text, like boolean
+  link stack, like list, like text
+  link out, like list, like list, like text
+  link counter, like number
+
+# Tarjan strongly connected components over the file import graph, in reverse topological order of the condensation:
+# dependencies first, which is the build order
+task units
+  take files, like list, like text
+  take edges, like hash, like text, like list, like text
+  like list, like list, like text
+
+  save stack, make list
+  save out, make list
+  save state
+    make tarjan
+      bind index, make hash
+      bind low, make hash
+      bind on-stack, make hash
+      bind stack, stack
+      bind out, out
+      bind counter, 0
+  walk files
+    take file
+    fork test, not(state/index/has(file))
+      hold
+        strong-connect(state, edges, file)
+  back state/out
+
+task strong-connect
+  take state, like tarjan
+  take edges, like hash, like text, like list, like text
+  take v, like text
+  mark private
+
+  save state/index/{v}, state/counter
+  save state/low/{v}, state/counter
+  save state/counter, add(state/counter, 1)
+  push(state/stack, v)
+  save state/on-stack/{v}, true
+
+  fork test, edges/has(v)
+    hold
+      walk edges/get(v)
+        take w
+        fork test, not(state/index/has(w))
+          hold
+            strong-connect(state, edges, w)
+            save state/low/{v}, minimum(state/low/get(v), state/low/get(w))
+          miss
+            fork test, and(state/on-stack/has(w), state/on-stack/get(w))
+              hold
+                save state/low/{v}, minimum(state/low/get(v), state/index/get(w))
+
+  fork test, is-equal(state/low/get(v), state/index/get(v))
+    hold
+      save component, make list
+      save going, true
+      walk test
+        hook test, going
+        hook hold
+          save w, pop(state/stack)
+          save state/on-stack/{w}, false
+          push(component, w)
+          save going, is-unequal(w, v)
+      push(state/out, component)
+
+# a deck's root and its name
+form deck-root
+  link root, like text
+  link name, like text
+
+# the roots by deck, each root once with the last name given it, longest first (a stable sort, so equal lengths keep
+# the order the roots were first given in), so a deck nested inside another is written as itself
+task portable-roots
+  take decks, like list, like deck-root
+  like list, like deck-root
+
+  save order, make list
+  save named, make hash
+  walk decks
+    take deck
+    fork test, not(named/has(deck/root))
+      hold
+        push(order, deck/root)
+    save named/{deck/root}, deck/name
+  save out, make list
+  walk order
+    take root
+    save made
+      make deck-root
+        bind root, root
+        bind name, named/get(root)
+    push(out, made)
+  back sort-by-length(out)
+
+# insertion sort, longest first and stable, by UTF-16 length as `length` measured it
+task sort-by-length
+  take roots, like list, like deck-root
+  like list, like deck-root
+  mark private
+
+  # typed where it is made: its element is read (`/root`) before the first push, where inference has not met it
+  save out, like list, like deck-root
+    make list
+  walk roots
+    take one
+    save at, out/length
+    walk test
+      hook test, and(is-above(at, 0), is-below(utf16-length(get(out, subtract(at, 1))/root), utf16-length(one/root)))
+      hook hold
+        save at, subtract(at, 1)
+    save moved, make list
+    save i, 0
+    walk out
+      take kept
+      fork test, is-equal(i, at)
+        hold
+          push(moved, one)
+      push(moved, kept)
+      save i, add(i, 1)
+    fork test, is-equal(at, out/length)
+      hold
+        push(moved, one)
+    save out, moved
+  back out
+
+# `text.split(from).join(to)`
+task split-join
+  take given, like text
+  take from, like text
+  take to, like text
+  like text
+  mark private
+
+  back join(split(given, from), to)
+
+task root-mark
+  like text
+  mark private
+
+  back <␞>
+
+# every root written as its token
+task portable-out
+  take roots, like list, like deck-root
+  take given, like text
+  like text
+
+  save out, given
+  walk roots
+    take one
+    save out, split-join(out, one/root, <{root-mark()}{one/name}{root-mark()}>)
+  back out
+
+# every token read back as this machine's root
+task portable-in
+  take roots, like list, like deck-root
+  take given, like text
+  like text
+
+  fork test, not(contains(given, root-mark()))
+    hold
+      back given
+  save out, given
+  walk roots
+    take one
+    save out, split-join(out, <{root-mark()}{one/name}{root-mark()}>, one/root)
+  back out

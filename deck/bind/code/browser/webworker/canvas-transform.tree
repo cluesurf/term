@@ -40,8 +40,9 @@ form canvas-transform, name <CanvasTransform>
     like native-void
 
   task set-transform, name <setTransform>
-    take transform, like maybe
-      like dom-matrix2-d-init
+    take transform
+      like maybe
+        like dom-matrix2-d-init
     like native-void
 
   task transform, name <transform>

@@ -21,15 +21,17 @@ form audio-buffer, name <AudioBuffer>
   task copy-from-channel, name <copyFromChannel>
     take destination, like float32-array
     take channel-number, like native-number
-    take buffer-offset, like maybe
-      like native-number
+    take buffer-offset
+      like maybe
+        like native-number
     like native-void
 
   task copy-to-channel, name <copyToChannel>
     take source, like float32-array
     take channel-number, like native-number
-    take buffer-offset, like maybe
-      like native-number
+    take buffer-offset
+      like maybe
+        like native-number
     like native-void
 
   task get-channel-data, name <getChannelData>

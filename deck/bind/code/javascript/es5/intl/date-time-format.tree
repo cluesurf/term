@@ -13,10 +13,11 @@ load @term/bind/javascript/native
 
 form date-time-format, name <DateTimeFormat>
   task format, name <format>
-    take date, like maybe
-      like or
-        like date
-        like native-number
+    take date
+      like maybe
+        like or
+          like date
+          like native-number
     like native-string
 
   task resolved-options, name <resolvedOptions>

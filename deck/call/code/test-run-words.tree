@@ -1,0 +1,100 @@
+# The test runner's decisions that are not its build, its bundle or the module it imports: which tests `term test
+# --case` asks for, the label a test without a phrase gets, what a file of unproven holds says, and what `--update`
+# hands back from the tests' snapshots.
+#
+# Ported from deck/call/code/test-run.ts (self-hosting, 2026-10-06), which stays as the face: it preprocesses, compiles
+# through units or whole, bundles, imports the module and runs each test.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find to-lower-case
+  find replace-all
+  find contains, name text-contains
+
+# whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
+task case-matches
+  take phrase, like text
+  take name, like text
+  take label, like text
+  like boolean
+
+  save wanted, to-lower-case(phrase)
+  back or(text-contains(to-lower-case(label), wanted), text-contains(to-lower-case(name), wanted))
+
+# a test's label: its phrase, or its task's name with every dash a space when it has none
+task test-label
+  take name, like text
+  take has-label, like boolean
+  take label, like text
+  like text
+
+  fork test, has-label
+    hold
+      back label
+  back replace-all(name, <->, < >)
+
+# what a file whose compile left holds unproven fails with, below their rendered diagnostics
+task unproven-note
+  take rendered, like text
+  take unproven, like number
+  like text
+
+  fork test, is-equal(unproven, 1)
+    hold
+      back <{rendered}\n1 unproven hold>
+  back <{rendered}\n{unproven} unproven holds>
+
+form taken-snapshot
+  link phrase, like text
+  link values, like list, like text
+
+# under `--update`, what each test's `want snapshot`s saw, by its phrase in the order first taken, each phrase's texts
+# in the order taken. A key with no value beside it saw the empty text
+task taken-of
+  take keys, like list, like text
+  take values, like list, like text
+  like list, like taken-snapshot
+
+  save phrases, make list
+  save texts, make list
+  save at, 0
+  walk keys
+    take key
+    save value, <>
+    fork test, is-below(at, values/length)
+      hold
+        save value, get(values, at)
+    save found, -1
+    save index, 0
+    walk phrases
+      take phrase
+      fork test, and(is-below(found, 0), is-equal(phrase, key))
+        hold
+          save found, index
+      save index, add(index, 1)
+    fork test, is-below(found, 0)
+      hold
+        push(phrases, key)
+        save fresh, make list
+        push(fresh, value)
+        push(texts, fresh)
+      miss
+        save held, get(texts, found)
+        push(held, value)
+        save texts/{found}, held
+    save at, add(at, 1)
+  save out, make list
+  save index, 0
+  walk phrases
+    take phrase
+    save made
+      make taken-snapshot
+        bind phrase, phrase
+        bind values, get(texts, index)
+    push(out, made)
+    save index, add(index, 1)
+  back out

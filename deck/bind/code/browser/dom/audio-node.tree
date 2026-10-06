@@ -41,16 +41,19 @@ form audio-node, name <AudioNode>
 
   task connect, name <connect>
     take destination-node, like audio-node
-    take output, like maybe
-      like native-number
-    take input, like maybe
-      like native-number
+    take output
+      like maybe
+        like native-number
+    take input
+      like maybe
+        like native-number
     like audio-node
 
   task connect, name <connect>
     take destination-param, like audio-param
-    take output, like maybe
-      like native-number
+    take output
+      like maybe
+        like native-number
     like native-void
 
   task disconnect, name <disconnect>

@@ -15,6 +15,8 @@ import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import type { Resolver } from '@term/make/code/compile/load'
 import { closeRun, count, openRun, report, reportProblems } from '@term/call/code/output'
+// what `term lint` decides beside the parser and the rules: which fixes apply, the inert manifest fields, the words
+import * as words from '@term/call/code/lint-words'
 
 // turn a lint finding into the compiler's Diagnostic shape so it renders identically. The stable rule code (`L003`)
 // is printed as written (`rule`), and the rule name is the heading.
@@ -35,38 +37,14 @@ function toDiagnostic(finding: Finding, file: string): Diagnostic {
 // apply text edits to source. Edits are applied right-to-left so earlier offsets stay valid; overlapping edits are
 // dropped (the first one in source order wins).
 function applyEdits(text: string, edits: TextEdit[]): string {
-  const lineStarts = [0]
-
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\n') {
-      lineStarts.push(i + 1)
-    }
-  }
-
-  const offset = (pos: { line: number; column: number }) =>
-    (lineStarts[pos.line] ?? text.length) + pos.column
-
-  const ranges = edits
-    .map(e => ({
-      start: offset(e.span.start),
-      end: offset(e.span.end),
-      text: e.text,
-    }))
-    .sort((a, b) => b.start - a.start)
-
+  const ranges = words.appliedEdits(
+    text,
+    edits.map(e => ({ startLine: e.span.start.line, startColumn: e.span.start.column, endLine: e.span.end.line, endColumn: e.span.end.column, text: e.text })),
+  )
   let result = text
-  let lastStart = Infinity
 
   for (const range of ranges) {
-    if (range.end > lastStart) {
-      continue
-    } // overlaps an already-applied edit; skip
-
-    result =
-      result.slice(0, range.start) +
-      range.text +
-      result.slice(range.end)
-    lastStart = range.start
+    result = result.slice(0, range.start) + range.text + result.slice(range.end)
   }
 
   return result
@@ -85,8 +63,6 @@ function applyEdits(text: string, edits: TextEdit[]): string {
 //                               `base <dir>` under the load picks the package root and silences it
 //   L055 manifest-inert         a manifest field no tool reads (`test`, `book` and eleven more). See below
 
-const MANIFEST_CODES = { 'manifest-code-version': 'L050', 'manifest-bear': 'L051' } as const
-
 // the four above as catalog entries, for `term show kink`, which lists them beside the driver's (make/code/lint/lint.ts
 // `lintCatalog`). Kept here, next to the checks, so a new one is added in one place
 export const MANIFEST_CATALOG: { code: string; name: string; severity: 'warning'; docs: string; fixable: boolean }[] = [
@@ -99,8 +75,7 @@ export const MANIFEST_CATALOG: { code: string; name: string; severity: 'warning'
 // L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. `test ./test`
 // looked like it chose where `term test` looks, and it chooses nothing: it finds tests in `code/` and `test/` whatever
 // the line says (guides: packages/manifest, 2026-10-04). A nested `deck ./path` is the same. No `--fix`, because the
-// line may record an intent, and deleting it is the author's call
-const INERT_FIELDS = new Set(['test', 'book', 'tool', 'call', 'task', 'hook', 'hide', 'view', 'sort', 'term', 'text', 'cite', 'deck'])
+// line may record an intent, and deleting it is the author's call (lint-words.tree `is-inert`)
 
 export function inertManifestFields(text: string, file: string): Finding[] {
   if (manifestName(text, file) === undefined) {
@@ -132,14 +107,14 @@ export function inertManifestFields(text: string, file: string): Finding[] {
       const name = field.kind === 'group' ? field.nodes[0] : undefined
       const at = name ? spanOfNode(name) : undefined
 
-      if (word === undefined || !INERT_FIELDS.has(word) || !at) {
+      if (word === undefined || !words.isInert(word) || !at) {
         continue
       }
 
       out.push({
         rule: 'manifest-inert',
         code: 'L055',
-        message: `\`${word}\` in a manifest is read by nothing. It parses and is kept, and no tool acts on it`,
+        message: words.inertMessage(word),
         severity: 'warning',
         span: { start: at.start, end: { line: at.start.line, column: at.start.column + word.length } },
       })
@@ -156,7 +131,7 @@ export function manifestFindings(text: string, file: string): Finding[] {
 
   return manifestSpellings({ text, file }).map(found => ({
     rule: found.rule,
-    code: MANIFEST_CODES[found.rule],
+    code: words.manifestCode(found.rule),
     message: found.message,
     severity: 'warning',
     span: { start: { line: found.line, column: found.column }, end: { line: found.line, column: found.end } },
@@ -217,7 +192,7 @@ export function ambiguousLoads(text: string, file: string, resolve: Resolver): F
   const out: Finding[] = []
 
   for (const load of loadPaths(text, file)) {
-    if (load.base !== undefined || load.path.startsWith('.')) {
+    if (!words.isPackageLoad(load.path, load.base !== undefined)) {
       continue
     }
 
@@ -235,7 +210,7 @@ export function ambiguousLoads(text: string, file: string, resolve: Resolver): F
         code: 'L052',
         severity: 'warning',
         span: load.span,
-        message: `\`${load.path}\` names two files: ${found.file} in the code root, which it resolves to, and ${found.shadowed} in the package root, which it shadows. Write \`base ${load.path.replace(/^@[^/]+\/[^/]+\/|^@\//, '').split('/')[0]}\` under the load to mean the second`,
+        message: words.ambiguousMessage(load.path, found.file, found.shadowed),
       })
     }
   }
@@ -351,7 +326,7 @@ export async function callLint(input: {
 
   // the closing glyph is the worst finding's: ✗ for an error (exit 1), ▲ for warnings alone (exit 0, 1 under --strict)
   closeRun({
-    verdict: totalFindings === 0 ? 'No lint findings' : `${totalFindings} finding${totalFindings === 1 ? '' : 's'}`,
+    verdict: words.lintVerdict(totalFindings),
     counts,
     next: found.some(one => one.diagnostic.hint) && !input.fix ? 'term lint --fix' : undefined,
   })

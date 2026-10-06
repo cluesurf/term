@@ -6,9 +6,12 @@ const MAKE = path.resolve(__dirname, '../make')
 
 // this package's own ports the same way: `@term/deck/code/version` is deck/deck/code/version.tree, built to
 // host/port by `task/port-build.ts`, and code/code.ts is its face (self-hosting, 2026-10-05)
+// and `@term/call/`'s, whose modules ported to Term (call/code/manifest-read.tree beside its face manifest-name.ts,
+// 2026-10-06) are reached the same way by a test that imports the CLI's helpers (test/scaffold.test.ts)
 const ROOTS: Record<string, string> = {
   '@term/make/': MAKE,
   '@term/deck/': __dirname,
+  '@term/call/': path.resolve(__dirname, '../call'),
 }
 
 // `@term/make/<path>` the way the parent tsconfig's `paths` reads it: the TypeScript source under deck/make first,

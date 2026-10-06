@@ -22,40 +22,46 @@ form canvas-draw-path, name <CanvasDrawPath>
     like native-void
 
   task clip, name <clip>
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-void
 
   task clip, name <clip>
     take path, like path2-d
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-void
 
   task fill, name <fill>
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-void
 
   task fill, name <fill>
     take path, like path2-d
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-void
 
   task is-point-in-path, name <isPointInPath>
     take x, like native-number
     take y, like native-number
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-boolean
 
   task is-point-in-path, name <isPointInPath>
     take path, like path2-d
     take x, like native-number
     take y, like native-number
-    take fill-rule, like maybe
-      like canvas-fill-rule
+    take fill-rule
+      like maybe
+        like canvas-fill-rule
     like native-boolean
 
   task is-point-in-stroke, name <isPointInStroke>

@@ -24,8 +24,9 @@ form custom-element-registry, name <CustomElementRegistry>
   task define, name <define>
     take name, like native-string
     take constructor, like custom-element-constructor
-    take options, like maybe
-      like element-definition-options
+    take options
+      like maybe
+        like element-definition-options
     like native-void
 
   task get, name <get>

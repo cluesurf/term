@@ -33,8 +33,9 @@ form svg-transform-list, name <SVGTransformList>
       like native-null
 
   task create-svg-transform-from-matrix, name <createSVGTransformFromMatrix>
-    take matrix, like maybe
-      like dom-matrix2-d-init
+    take matrix
+      like maybe
+        like dom-matrix2-d-init
     like svg-transform
 
   task get-item, name <getItem>

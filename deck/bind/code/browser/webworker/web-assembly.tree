@@ -89,8 +89,9 @@ host global, name <Global>
       lock false
     hook make
       take descriptor, like global-descriptor
-      take v, like maybe
-        like native-any
+      take v
+        like maybe
+          like native-any
       like global
 
 host instance, name <Instance>
@@ -100,8 +101,9 @@ host instance, name <Instance>
       lock false
     hook make
       take module, like module
-      take import-object, like maybe
-        like imports
+      take import-object
+        like maybe
+          like imports
       like instance
 
 host memory, name <Memory>
@@ -163,15 +165,17 @@ task compile-streaming, name <compileStreaming>
 
 task instantiate, name <instantiate>
   take bytes, like buffer-source
-  take import-object, like maybe
-    like imports
+  take import-object
+    like maybe
+      like imports
   like promise
     like web-assembly-instantiated-source
 
 task instantiate, name <instantiate>
   take module-object, like module
-  take import-object, like maybe
-    like imports
+  take import-object
+    like maybe
+      like imports
   like promise
     like instance
 
@@ -181,8 +185,9 @@ task instantiate-streaming, name <instantiateStreaming>
       like response
       like promise-like
         like response
-  take import-object, like maybe
-    like imports
+  take import-object
+    like maybe
+      like imports
   like promise
     like web-assembly-instantiated-source
 

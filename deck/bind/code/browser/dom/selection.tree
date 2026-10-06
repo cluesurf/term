@@ -49,8 +49,9 @@ form selection, name <Selection>
       like or
         like node
         like native-null
-    take offset, like maybe
-      like native-number
+    take offset
+      like maybe
+        like native-number
     like native-void
 
   task collapse-to-end, name <collapseToEnd>
@@ -61,8 +62,9 @@ form selection, name <Selection>
 
   task contains-node, name <containsNode>
     take node, like node
-    take allow-partial-containment, like maybe
-      like native-boolean
+    take allow-partial-containment
+      like maybe
+        like native-boolean
     like native-boolean
 
   task delete-from-document, name <deleteFromDocument>
@@ -73,8 +75,9 @@ form selection, name <Selection>
 
   task extend, name <extend>
     take node, like node
-    take offset, like maybe
-      like native-number
+    take offset
+      like maybe
+        like native-number
     like native-void
 
   task get-range-at, name <getRangeAt>
@@ -104,8 +107,9 @@ form selection, name <Selection>
       like or
         like node
         like native-null
-    take offset, like maybe
-      like native-number
+    take offset
+      like maybe
+        like native-number
     like native-void
 
   task to-string, name <toString>

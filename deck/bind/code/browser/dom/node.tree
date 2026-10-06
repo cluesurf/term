@@ -144,8 +144,9 @@ form node, name <Node>
     like t
 
   task clone-node, name <cloneNode>
-    take deep, like maybe
-      like native-boolean
+    take deep
+      like maybe
+        like native-boolean
     like node
 
   task compare-document-position, name <compareDocumentPosition>
@@ -160,8 +161,9 @@ form node, name <Node>
     like native-boolean
 
   task get-root-node, name <getRootNode>
-    take options, like maybe
-      like get-root-node-options
+    take options
+      like maybe
+        like get-root-node-options
     like node
 
   task has-child-nodes, name <hasChildNodes>

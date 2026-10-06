@@ -221,8 +221,9 @@ form rtc-peer-connection, name <RTCPeerConnection>
     like rtc-signaling-state
 
   task add-ice-candidate, name <addIceCandidate>
-    take candidate, like maybe
-      like rtc-ice-candidate-init
+    take candidate
+      like maybe
+        like rtc-ice-candidate-init
     like promise
       like native-void
 
@@ -246,16 +247,18 @@ form rtc-peer-connection, name <RTCPeerConnection>
       like or
         like media-stream-track
         like native-string
-    take init, like maybe
-      like rtc-rtp-transceiver-init
+    take init
+      like maybe
+        like rtc-rtp-transceiver-init
     like rtc-rtp-transceiver
 
   task close, name <close>
     like native-void
 
   task create-answer, name <createAnswer>
-    take options, like maybe
-      like rtc-answer-options
+    take options
+      like maybe
+        like rtc-answer-options
     like promise
       like rtc-session-description-init
 
@@ -267,21 +270,24 @@ form rtc-peer-connection, name <RTCPeerConnection>
 
   task create-data-channel, name <createDataChannel>
     take label, like native-string
-    take data-channel-dict, like maybe
-      like rtc-data-channel-init
+    take data-channel-dict
+      like maybe
+        like rtc-data-channel-init
     like rtc-data-channel
 
   task create-offer, name <createOffer>
-    take options, like maybe
-      like rtc-offer-options
+    take options
+      like maybe
+        like rtc-offer-options
     like promise
       like rtc-session-description-init
 
   task create-offer, name <createOffer>
     take success-callback, like rtc-session-description-callback
     take failure-callback, like rtc-peer-connection-error-callback
-    take options, like maybe
-      like rtc-offer-options
+    take options
+      like maybe
+        like rtc-offer-options
     like promise
       like native-void
 
@@ -297,10 +303,11 @@ form rtc-peer-connection, name <RTCPeerConnection>
       like rtc-rtp-sender
 
   task get-stats, name <getStats>
-    take selector, like maybe
-      like or
-        like media-stream-track
-        like native-null
+    take selector
+      like maybe
+        like or
+          like media-stream-track
+          like native-null
     like promise
       like rtc-stats-report
 
@@ -316,13 +323,15 @@ form rtc-peer-connection, name <RTCPeerConnection>
     like native-void
 
   task set-configuration, name <setConfiguration>
-    take configuration, like maybe
-      like rtc-configuration
+    take configuration
+      like maybe
+        like rtc-configuration
     like native-void
 
   task set-local-description, name <setLocalDescription>
-    take description, like maybe
-      like rtc-local-session-description-init
+    take description
+      like maybe
+        like rtc-local-session-description-init
     like promise
       like native-void
 
@@ -358,19 +367,21 @@ form rtc-peer-connection, name <RTCPeerConnection>
             like rtc-peer-connection-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -386,17 +397,19 @@ form rtc-peer-connection, name <RTCPeerConnection>
             like rtc-peer-connection-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

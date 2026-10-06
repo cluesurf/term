@@ -16,8 +16,9 @@ load @term/bind/javascript/native
 
 form media-keys, name <MediaKeys>
   task create-session, name <createSession>
-    take session-type, like maybe
-      like media-key-session-type
+    take session-type
+      like maybe
+        like media-key-session-type
     like media-key-session
 
   task set-server-certificate, name <setServerCertificate>

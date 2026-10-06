@@ -33,8 +33,9 @@ form writable-stream-default-writer, name <WritableStreamDefaultWriter>
       like native-undefined
 
   task abort, name <abort>
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like promise
       like native-void
 
@@ -46,7 +47,8 @@ form writable-stream-default-writer, name <WritableStreamDefaultWriter>
     like native-void
 
   task write, name <write>
-    take chunk, like maybe
-      like w
+    take chunk
+      like maybe
+        like w
     like promise
       like native-void

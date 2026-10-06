@@ -1,0 +1,190 @@
+# The runtime version of a native build (native-dom-0015): one sha256 over everything that decides whether a page
+# update can run on an installed app. This module writes the bytes that are hashed and shows the digest. Every field is
+# its UTF-8 length, a colon and itself, so no two different inputs can frame to the same bytes; the framing's own name
+# comes first, then the target, the minimum OS, the toolchain, and each native source by name and text, the sources
+# sorted by name as JavaScript's `<` sorts texts (by UTF-16 unit), two of one name kept in the order given.
+#
+# Ported from deck/call/code/runtime-version.ts (self-hosting, 2026-10-06), which stays as the face: it hashes the frame
+# with node's sha256 (Term's is asynchronous, and the face is not) and asks the toolchain for its version. The tone
+# alphabet is handed in from @cluesurf/save, the one place it is written.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find char-code-at
+
+# bumped only if the framing changes, so two framings can never produce the same hash for different inputs
+task framing
+  like text
+
+  back <term-runtime-version-1>
+
+form native-source
+  link name, like text
+  link text, like text
+
+# a text's length in UTF-8 bytes, as node's `Buffer.byteLength` counts it: half a pair standing alone is the three
+# bytes of the replacement character it is written as
+task utf8-length
+  take value, like text
+  like number
+
+  save count, 0
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    save size, 4
+    fork test, is-below(code, 128)
+      hold
+        save size, 1
+      miss
+        fork test, is-below(code, 2048)
+          hold
+            save size, 2
+          miss
+            fork test, is-below(code, 65536)
+              hold
+                save size, 3
+    save count, add(count, size)
+  back count
+
+# a text's UTF-16 units, a code point past U+FFFF as its two halves
+task units
+  take value, like text
+  like list, like number
+  mark private
+
+  save out, make list
+  walk split(value, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, is-above(code, 65535)
+      hold
+        save rest, subtract(code, 65536)
+        push(out, add(55296, divide-whole(rest, 1024)))
+        push(out, add(56320, subtract(rest, multiply(divide-whole(rest, 1024), 1024))))
+      miss
+        push(out, code)
+  back out
+
+# whole division of a non-negative number
+task divide-whole
+  take value, like number
+  take by, like number
+  like number
+  mark private
+
+  back divide(subtract(value, modulo(value, by)), by)
+
+task by-name
+  take a, like native-source
+  take b, like native-source
+  like ordering
+  mark private
+
+  save x, units(a/name)
+  save y, units(b/name)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, x/length), is-below(at, y/length))
+    hook hold
+      save p, get(x, at)
+      save q, get(y, at)
+      fork test, is-below(p, q)
+        hold
+          back make less
+      fork test, is-above(p, q)
+        hold
+          back make greater
+      save at, add(at, 1)
+  fork test, is-below(x/length, y/length)
+    hold
+      back make less
+  fork test, is-above(x/length, y/length)
+    hold
+      back make greater
+  back make equal
+
+task field
+  take value, like text
+  like text
+  mark private
+
+  save size, utf8-length(value)
+  back <{size}:{value}>
+
+# the bytes hashed, as text
+task frame
+  take target, like text
+  take minimum, like text
+  take toolchain, like text
+  take sources, like list, like native-source
+  like text
+
+  save out, make list
+  push(out, field(framing()))
+  push(out, field(target))
+  push(out, field(minimum))
+  push(out, field(toolchain))
+  walk sort(sources, by-name)
+    take source
+    push(out, field(source/name))
+    push(out, field(source/text))
+  back join(out, <>)
+
+# a sha256's hexadecimal digits in the tone alphabet, eight groups of eight, never truncated. The empty text when a
+# character is no hexadecimal digit, which the face refuses
+task tone-of
+  take hex, like text
+  take alphabet, like text
+  like text
+
+  save letters, split(alphabet, <>)
+  save out, make list
+  save group, make list
+  walk split(hex, <>)
+    take point
+    save code, char-code-at(point, 0)
+    save index, -1
+    fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+      hold
+        save index, subtract(code, 48)
+    fork test, and(is-minimum(code, 97), is-maximum(code, 102))
+      hold
+        save index, subtract(code, 87)
+    fork test, and(is-minimum(code, 65), is-maximum(code, 70))
+      hold
+        save index, subtract(code, 55)
+    fork test, is-below(index, 0)
+      hold
+        back <>
+    push(group, get(letters, index))
+    fork test, is-equal(group/length, 8)
+      hold
+        push(out, join(group, <>))
+        save group, make list
+  fork test, is-above(group/length, 0)
+    hold
+      push(out, join(group, <>))
+  back join(out, <->)
+
+# the first character of a text that is no hexadecimal digit, as the refusal names it, or the empty text
+task not-hex
+  take hex, like text
+  like text
+
+  walk split(hex, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, not(or(or(and(is-minimum(code, 48), is-maximum(code, 57)), and(is-minimum(code, 97), is-maximum(code, 102))), and(is-minimum(code, 65), is-maximum(code, 70))))
+      hold
+        back point
+  back <>

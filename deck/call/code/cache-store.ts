@@ -54,6 +54,7 @@ import {
   CompileCache,
 } from '@term/make/code/compile/cache'
 import { hashText } from '@term/make/code/term/hash'
+import * as plan from '@term/call/code/cache-plan'
 import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import type { ParseMemo } from '@term/make/code/compile/load'
@@ -66,14 +67,16 @@ export const KEEP_VERSIONS = 2
 // The byte budget per kind, enforced once per process against the CURRENT version's directory. Generous on purpose:
 // with the layout above, `deck/bind`'s live output namespace is about a hundred megabytes and `deck/base`'s is under
 // one, so a project that trips this is doing something the author should hear about rather than something routine.
-export const OUTPUT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
-export const MILL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024
+export const OUTPUT_BUDGET_BYTES = plan.budgetFor('output')
+export const MILL_BUDGET_BYTES = plan.budgetFor('mill')
 
 // the separate build's units, machine-wide, the standard library's shared by every project (compile/separate.ts)
-export const UNIT_BUDGET_BYTES = 4 * 1024 * 1024 * 1024
+export const UNIT_BUDGET_BYTES = plan.budgetFor('unit')
 
+// which budget a kind has, which namespaces are dead and which entries go first are Term since 2026-10-06,
+// call/code/cache-plan.tree. This face lists, stats and removes
 export function budgetFor(kind: string): number {
-  return kind === 'mill' ? MILL_BUDGET_BYTES : kind === 'unit' ? UNIT_BUDGET_BYTES : OUTPUT_BUDGET_BYTES
+  return plan.budgetFor(kind)
 }
 
 // the kinds kept machine-wide rather than per project: an entry of either is keyed by content alone, so any project
@@ -280,16 +283,13 @@ export function reclaimStaleVersions(
     }
   }
 
-  const doomed = versions
-    .filter(v => v.name !== current)
-    .sort((a, b) => b.when - a.when)
-    .slice(Math.max(0, keep - 1))
+  const doomed = plan.doomedVersions(versions, current, keep)
 
-  for (const version of doomed) {
-    removeQuietly(path.join(base, version.name))
+  for (const name of doomed) {
+    removeQuietly(path.join(base, name))
   }
 
-  return doomed.map(v => v.name)
+  return doomed
 }
 
 // Hold one kind's CURRENT namespace under its byte budget by dropping the least recently used first. Everything a
@@ -301,29 +301,8 @@ export function enforceBudget(
   budget: number = budgetFor(kind),
 ): { removed: number; freed: number } {
   const base = path.join(dir, kind, slug)
-  const entries = cacheEntries(base)
-  let total = entries.reduce((n, e) => n + e.size, 0)
 
-  if (total <= budget) {
-    return { removed: 0, freed: 0 }
-  }
-
-  let removed = 0
-  let freed = 0
-
-  for (const entry of entries.sort((a, b) => a.when - b.when)) {
-    if (total <= budget) {
-      break
-    }
-
-    if (removeQuietly(entry.file)) {
-      total -= entry.size
-      freed += entry.size
-      removed++
-    }
-  }
-
-  return { removed, freed }
+  return plan.evict(cacheEntries(base), budget, removeQuietly)
 }
 
 // THE BUDGET IS HELD ONCE AN HOUR, NOT ONCE A PROCESS. Enforcing it walks and stats every entry in the namespace,

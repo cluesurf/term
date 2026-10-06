@@ -50,7 +50,8 @@ form reg-exp, name <RegExp>
 
   task {symbol/split}
     take string, like native-string
-    take limit, like maybe
-      like native-number
+    take limit
+      like maybe
+        like native-number
     like native-array
       like native-string

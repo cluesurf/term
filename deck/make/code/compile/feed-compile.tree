@@ -1,0 +1,3654 @@
+# The feed mill compiler: reads a @term/feed dialect's mine.tree grammar and GENERATES real Term (.tree) source text
+# implementing the reader, compiled ahead of time through the ordinary parse/mill/check/emit pipeline onto every
+# backend. It reads raw BYTES or CHARACTERS of an arbitrary format against `@term/feed/code/base.tree`'s
+# `feed-cursor` / `text-cursor` primitives. See note/term/project/feed-compiler.md, and compile/feed-mill.ts for why
+# each construct is read and emitted the way it is.
+#
+# Ported from compile/feed-mill.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - a rule is `feed-rule`, tagged on `kind` as the original's was, with its fields in the original's order. The
+#     original's `maybe` kind is `optional` here: a case named `maybe` takes the stdlib's `maybe` in this module and
+#     boxes every optional field. The face renames that one tag at its boundary
+#   - the original's module counters (`inRepetition`, `inSpan`) and the helper-name closure are one `feed-state`,
+#     `mark shared`, threaded through every compiling task
+#   - whether a rule carries a `send` KEY (`'send' in rule`, which the original asked twice, true even when the value
+#     was undefined) is `has-send-key`, by kind as the original's object literals had it
+#   - the code points and the numbers printed into the generated text go through binds that are JavaScript's own
+#     (`codePointAt`, `String.fromCodePoint`, `String`), so the text is the original's byte for byte
+#   - `feedMineLoads` stays in the face: it reads top-level group boundaries through parser/stream.ts `walkGroups`
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find starts-with
+  find trim
+  find trim-start
+
+load @term/base/text/string
+  find repeat
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/diagnostic
+  find span
+
+load ./mill-running
+  find word-of
+  find head-word
+  find text-of
+
+load ./templates
+  find span-of-whole
+
+load ../check/eliminate
+  find utf16-order
+
+# ---- the values ----
+
+form feed-rule
+  mark tag, name kind
+  # a repetition, count-directed when it says how many
+  case list
+    link children, like list, like feed-rule
+    link count
+      like maybe, like node
+      need false
+  case any
+    link children, like list, like feed-rule
+    link send
+      like maybe, like text
+      need false
+  case range
+    link base, like text
+    link head, like text
+  # a reference to another rule, with the arguments its `start` parameters receive
+  case form
+    link name, like text
+    link send
+      like maybe, like text
+      need false
+    link args
+      like maybe, like list, like feed-arg
+      need false
+  case value
+    link expr, like node
+  case send
+    link name, like text
+  case byte
+    link literal
+      like maybe, like float
+      need false
+    link send
+      like maybe, like text
+      need false
+  case char
+    link literal, like float
+    link send
+      like maybe, like text
+      need false
+  case text
+    link literal, like text
+    link send
+      like maybe, like text
+      need false
+  case not
+    link codes, like list, like float
+  case mark
+    link width, like float
+    link children, like list, like feed-rule
+    link send
+      like maybe, like text
+      need false
+  case int
+    link width, like float
+    link order, like text
+    link sign, like text
+    link send
+      like maybe, like text
+      need false
+  case bytes
+    link width, like node
+    link send
+      like maybe, like text
+      need false
+  # the original's `maybe`
+  case optional
+    link test
+      like maybe, like node
+      need false
+    link children, like list, like feed-rule
+    link send
+      like maybe, like text
+      need false
+  case until
+    link terminator, like float
+    link send
+      like maybe, like text
+      need false
+  case let
+    link name, like text
+    link expr, like node
+  # a span capture: the text its children consumed
+  case span
+    link children, like list, like feed-rule
+    link send, like text
+  # a rule parameter, with an optional default
+  case start
+    link name, like text
+    link fall
+      like maybe, like node
+      need false
+  # a read gated on a condition
+  case check
+    link op, like text
+    link base, like node
+    link head, like node
+    link children, like list, like feed-rule
+
+form feed-arg
+  link name, like text
+  link value, like node
+
+# the cursor primitives a substrate reads through
+form feed-ops
+  link cursor-type, like text
+  link peek, like text
+  link peek-code, like text
+  link advance, like text
+  link at-end, like text
+  link remaining, like text
+  link position, like text
+  link describe, like text
+  link imports, like list, like text
+
+# what the original kept in module variables and a closure
+form feed-state
+  mark shared
+  link in-repetition, like number
+  link in-span, like number
+  link helper-rule, like text
+  link helper-count, like number
+
+# the locals a sequence has bound so far, in order, with the type each one holds
+form feed-scope
+  mark shared
+  link sends, like list, like text
+  link types, like hash, like text, like list, like text
+
+# an inclusive range of code points a rule can begin with
+form first-span
+  link base, like float
+  link head, like float
+
+# a `share` value rendered, with the outer names it reads
+form shared-value
+  link text, like text
+  link reads, like list, like text
+
+form maybe-built
+  link lines, like list, like text
+  link params, like list, like text
+
+# a `check` as the maybe it is
+form maybe-shape
+  link test
+    like maybe, like node
+    need false
+  link test-text
+    like maybe, like text
+    need false
+  link test-reads
+    like maybe, like list, like text
+    need false
+  link children, like list, like feed-rule
+
+# ---- JavaScript's numbers and code points ----
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <(if $value.fract() == 0.0 && $value.abs() \< 1e21 \{ format!("\{\}", $value as i64) \} else \{ $value.to_string() \})>
+  case swift
+    text <($value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \< 1e15 ? String(Int64($value)) : String($value))>
+  case kotlin
+    text <(if ($value % 1.0 == 0.0 && Math.abs($value) \< 1e15) $value.toLong().toString() else $value.toString())>
+
+# `text.codePointAt(0)`, -1 for the empty text
+bind first-code
+  take value, like text
+  like float
+  case node
+    text <($value.codePointAt(0) ?? -1)>
+  case browser
+    text <($value.codePointAt(0) ?? -1)>
+  case rust
+    text <($value.chars().next().map(|c| c as u32 as f64).unwrap_or(-1.0))>
+  case swift
+    text <Double($value.unicodeScalars.first.map \{ Int($0.value) \} ?? -1)>
+  case kotlin
+    text <(if ($value.isEmpty()) -1.0 else $value.codePointAt(0).toDouble())>
+
+# `String.fromCodePoint(code)`
+bind code-text
+  take value, like float
+  like text
+  case node
+    text <String.fromCodePoint($value)>
+  case browser
+    text <String.fromCodePoint($value)>
+  case rust
+    text <(char::from_u32($value as u32).map(|c| c.to_string()).unwrap_or_default())>
+  case swift
+    text <(Unicode.Scalar(UInt32($value)).map \{ String($0) \} ?? "")>
+  case kotlin
+    text <String(Character.toChars($value.toInt()))>
+
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+# ---- reading the tree ----
+
+task kids-in
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task kid-at
+  take kids, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, kids/length)
+    hold
+      save found, get(kids, at)
+      back make(some, found)
+  back make none
+
+task word-in
+  take found, like maybe, like node
+  like maybe, like text
+  mark private
+
+  sift found
+    case some
+      link known
+      back word-of(known)
+    case none
+      back make none
+
+task maybe-is
+  take found, like maybe, like text
+  take word, like text
+  like boolean
+  mark private
+
+  sift found
+    case some
+      link known
+      back is-equal(known, word)
+    case none
+      back false
+
+# a group headed `word`
+task headed
+  take one, like node
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(is-group(one))
+    hold
+      back false
+  back maybe-is(head-word(one), word)
+
+task top-groups
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift tree
+    case root
+      walk nodes
+        take one
+        fork test, is-group(one)
+          hold
+            push(out, one)
+  back out
+
+# every rule kind's content: `group.nodes.slice(2)`
+task siblings-of
+  take group, like node
+  like list, like node
+  mark private
+
+  save kids, kids-in(group)
+  save out, make list
+  save at, 2
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+task groups-only
+  take kids, like list, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  walk kids
+    take one
+    fork test, is-group(one)
+      hold
+        push(out, one)
+  back out
+
+task is-number-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case integer
+      back true
+    case decimal
+      back true
+    case radix
+      back true
+    miss
+      back false
+
+task number-value
+  take one, like node
+  like maybe, like float
+  mark private
+
+  sift one
+    case integer
+      save whole, to-decimal(value)
+      back make(some, whole)
+    case decimal
+      save fraction, value
+      back make(some, fraction)
+    case radix
+      save whole, to-decimal(value)
+      back make(some, whole)
+    miss
+      back make none
+
+task is-text-node
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      back true
+    miss
+      back false
+
+# ---- reading the mine grammar into rules ----
+
+task has-send-key
+  take rule, like feed-rule
+  like boolean
+  mark private
+
+  sift rule
+    case any
+      sift send
+        case some
+          link known
+          back true
+        case none
+          back false
+    case form
+      back true
+    case byte
+      back true
+    case char
+      back true
+    case text
+      back true
+    case mark
+      back true
+    case int
+      back true
+    case bytes
+      back true
+    case optional
+      back true
+    case until
+      back true
+    case span
+      back true
+    miss
+      back false
+
+# the rule's `send` where it has one
+task send-of
+  take rule, like feed-rule
+  like maybe, like text
+  mark private
+
+  sift rule
+    case any
+      back send
+    case form
+      back send
+    case byte
+      back send
+    case char
+      back send
+    case text
+      back send
+    case mark
+      back send
+    case int
+      back send
+    case bytes
+      back send
+    case optional
+      back send
+    case until
+      back send
+    case span
+      back make(some, send)
+    miss
+      back make none
+
+# the same rule with its `send` set, the original's `prior.send = name` and `{ ...only, send: name }`
+task with-send
+  take rule, like feed-rule
+  take sent-name, like text
+  like feed-rule
+  mark private
+
+  save named, make(some, sent-name)
+  sift rule
+    case any
+      back
+        make any
+          bind children, children
+          bind send, named
+    case form
+      back
+        make form
+          bind name, name
+          bind send, named
+          bind args, args
+    case byte
+      back
+        make byte
+          bind literal, literal
+          bind send, named
+    case char
+      back
+        make char
+          bind literal, literal
+          bind send, named
+    case text
+      back
+        make text
+          bind literal, literal
+          bind send, named
+    case mark
+      back
+        make mark
+          bind width, width
+          bind children, children
+          bind send, named
+    case int
+      back
+        make int
+          bind width, width
+          bind order, order
+          bind sign, sign
+          bind send, named
+    case bytes
+      back
+        make bytes
+          bind width, width
+          bind send, named
+    case optional
+      back
+        make optional
+          bind test, test
+          bind children, children
+          bind send, named
+    case until
+      back
+        make until
+          bind terminator, terminator
+          bind send, named
+    case span
+      back
+        make span
+          bind children, children
+          bind send, sent-name
+    miss
+      back rule
+
+task is-sendable
+  take rule, like feed-rule
+  like boolean
+  mark private
+
+  sift rule
+    case any
+      back true
+    case byte
+      back true
+    case char
+      back true
+    case text
+      back true
+    case mark
+      back true
+    case int
+      back true
+    case bytes
+      back true
+    case until
+      back true
+    case form
+      back true
+    case optional
+      back true
+    miss
+      back false
+
+# a standalone `send <name>` after a value-producing rule renames that rule's own capture
+task merge-sends
+  take rules, like list, like feed-rule
+  like list, like feed-rule
+  mark private
+
+  save out, make list
+  walk rules
+    take rule
+    sift rule
+      case send
+        link sent
+        fork test, is-above(out/length, 0)
+          hold
+            save last, subtract(out/length, 1)
+            save prior, get(out, last)
+            save prior-send, send-of(prior)
+            save unsent, true
+            sift prior-send
+              case some
+                link known
+                save unsent, is-equal(known, <>)
+              case none
+                save nothing, 0
+            fork test, and(is-sendable(prior), unsent)
+              hold
+                save out/{last}, with-send(prior, sent)
+                turn next
+      miss
+        save nothing, 0
+    push(out, rule)
+  back out
+
+# the value of a `bind <name>, <value>`, whatever shape it is
+task bind-value
+  take group, like node
+  take name, like text
+  like maybe, like node
+  mark private
+
+  walk kids-in(group)
+    take child
+    fork test, and(headed(child, <bind>), maybe-is(word-in(kid-at(kids-in(child), 1)), name))
+      hold
+        back kid-at(kids-in(child), 2)
+  back make none
+
+task bind-text
+  take group, like node
+  take name, like text
+  like maybe, like text
+  mark private
+
+  sift bind-value(group, name)
+    case some
+      link value
+      fork test, is-text-node(value)
+        hold
+          save written, text-of(value)
+          back make(some, written)
+      fork test, headed(value, <text>)
+        hold
+          sift kid-at(kids-in(value), 1)
+            case some
+              link inner
+              save written, text-of(inner)
+              fork test, is-unequal(written, <>)
+                hold
+                  back make(some, written)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task bind-code
+  take group, like node
+  take name, like text
+  like maybe, like float
+  mark private
+
+  sift bind-value(group, name)
+    case some
+      link value
+      fork test, is-number-node(value)
+        hold
+          back number-value(value)
+      fork test, or(or(headed(value, <text>), headed(value, <share>)), headed(value, <code>))
+        hold
+          sift kid-at(kids-in(value), 1)
+            case some
+              link inner
+              fork test, is-number-node(inner)
+                hold
+                  back number-value(inner)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task bind-word
+  take group, like node
+  take name, like text
+  like maybe, like text
+  mark private
+
+  sift bind-value(group, name)
+    case some
+      link value
+      fork test, headed(value, <term>)
+        hold
+          back word-in(kid-at(kids-in(value), 1))
+    case none
+      save nothing, 0
+  back make none
+
+# the numeric value of a bare `code <n>` group
+task code-value
+  take group, like node
+  like maybe, like float
+  mark private
+
+  sift kid-at(kids-in(group), 1)
+    case some
+      link inner
+      back number-value(inner)
+    case none
+      back make none
+
+# `share <thing>`: a value passed rather than read from the cursor, rendered to the Term that means it
+task share-value
+  take given, like maybe, like node
+  like maybe, like shared-value
+  mark private
+
+  sift given
+    case some
+      link one
+      save none-read, make list
+      fork test, is-number-node(one)
+        hold
+          sift number-value(one)
+            case some
+              link known
+              save made
+                make shared-value
+                  bind text, <code {js-text(known)}>
+                  bind reads, none-read
+              back make(some, made)
+            case none
+              save nothing, 0
+      fork test, is-text-node(one)
+        hold
+          save made
+            make shared-value
+              bind text, print-node(one, 0)
+              bind reads, none-read
+          back make(some, made)
+      fork test, not(is-group(one))
+        hold
+          back make none
+      fork test, or(headed(one, <share>), headed(one, <read>))
+        hold
+          back share-value(kid-at(kids-in(one), 1))
+      sift word-of(one)
+        case some
+          link word
+          fork test, is-equal(word, <>)
+            hold
+              back make none
+          save reads, make list
+          push(reads, word)
+          save made
+            make shared-value
+              bind text, <read({word})>
+              bind reads, reads
+          back make(some, made)
+        case none
+          back make none
+    case none
+      back make none
+
+# a rendered expression as an argument a comma follows: the head closed over the rest
+task closed-argument
+  take given, like text
+  like text
+  mark private
+
+  save depth, 0
+  save at, 0
+  save size, char-count(given)
+  save before, <>
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(given, at)
+      fork test, or(is-equal(one, <(>), is-equal(one, <\<>))
+        hold
+          save depth, add(depth, 1)
+        miss
+          fork test, or(is-equal(one, <)>), is-equal(one, <\>>))
+            hold
+              save depth, subtract(depth, 1)
+            miss
+              fork test, and(is-equal(one, < >), is-equal(depth, 0))
+                hold
+                  save after, <>
+                  save rest-at, add(at, 1)
+                  walk test
+                    hook test, is-below(rest-at, size)
+                    hook hold
+                      save after, <{after}{char-at(given, rest-at)}>
+                      save rest-at, add(rest-at, 1)
+                  back <{before}({after})>
+      save before, <{before}{one}>
+      save at, add(at, 1)
+  back given
+
+# the arguments a `mine form` passes
+task args-of
+  take group, like node
+  like list, like feed-arg
+  mark private
+
+  save out, make list
+  walk siblings-of(group)
+    take child
+    fork test, not(headed(child, <bind>))
+      hold
+        turn next
+    save kids, kids-in(child)
+    sift word-in(kid-at(kids, 1))
+      case some
+        link name
+        sift kid-at(kids, 2)
+          case some
+            link value
+            save arg
+              make feed-arg
+                bind name, name
+                bind value, value
+            push(out, arg)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+  back out
+
+# a single-line rule's own nested `send`
+task nested-send
+  take group, like node
+  like maybe, like text
+  mark private
+
+  walk siblings-of(group)
+    take one
+    fork test, headed(one, <send>)
+      hold
+        back word-in(kid-at(kids-in(one), 1))
+  back make none
+
+task read-rules
+  take groups, like list, like node
+  like list, like feed-rule
+  mark private
+
+  save out, make list
+  walk groups
+    take child
+    sift read-feed-mine-rule(child)
+      case some
+        link rule
+        push(out, rule)
+      case none
+        save nothing, 0
+  back out
+
+task is-construct
+  take word, like text
+  like boolean
+  mark private
+
+  walk construct-words()
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+task construct-words
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <list>)
+  push(out, <any>)
+  push(out, <range>)
+  push(out, <form>)
+  push(out, <value>)
+  push(out, <byte>)
+  push(out, <char>)
+  push(out, <text>)
+  push(out, <not>)
+  push(out, <mark>)
+  push(out, <int>)
+  push(out, <bytes>)
+  push(out, <maybe>)
+  push(out, <until>)
+  push(out, <let>)
+  push(out, <send>)
+  push(out, <at>)
+  back out
+
+task find-headed
+  take kids, like list, like node
+  take word, like text
+  like maybe, like node
+  mark private
+
+  walk kids
+    take one
+    fork test, headed(one, word)
+      hold
+        back make(some, one)
+  back make none
+
+task read-feed-mine-rule
+  take group, like node
+  like maybe, like feed-rule
+
+  save kids, kids-in(group)
+  save head-read, head-word(group)
+
+  # `bind <name>` wrapping a bare `mine text`: a span capture. Around anything else, a plain named capture
+  fork test, maybe-is(head-read, <bind>)
+    hold
+      save name-read, word-in(kid-at(kids, 1))
+      save inner, make none
+      walk groups-only(siblings-of(group))
+        take one
+        fork test, and(headed(one, <mine>), maybe-is(word-in(kid-at(kids-in(one), 1)), <text>))
+          hold
+            save inner, make(some, one)
+            halt
+      save name, <>
+      sift name-read
+        case some
+          link known
+          save name, known
+        case none
+          save nothing, 0
+      fork test, is-equal(name, <>)
+        hold
+          back make none
+      sift inner
+        case none
+          save rules, read-rules(groups-only(siblings-of(group)))
+          fork test, is-equal(rules/length, 1)
+            hold
+              save only, get(rules, 0)
+              fork test, has-send-key(only)
+                hold
+                  save renamed, with-send(only, name)
+                  back make(some, renamed)
+              back make(some, only)
+          back make none
+        case some
+          link text-group
+          save children, read-rules(groups-only(siblings-of(text-group)))
+          fork test, is-above(children/length, 0)
+            hold
+              save made
+                make span
+                  bind children, children
+                  bind send, name
+              back make(some, made)
+          back make none
+
+  fork test, maybe-is(head-read, <send>)
+    hold
+      sift word-in(kid-at(kids, 1))
+        case some
+          link name
+          fork test, is-unequal(name, <>)
+            hold
+              save made
+                make send
+                  bind name, name
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, maybe-is(head-read, <start>)
+    hold
+      sift word-in(kid-at(kids, 1))
+        case some
+          link name
+          fork test, is-unequal(name, <>)
+            hold
+              save made
+                make start
+                  bind name, name
+                  bind fall, kid-at(kids, 2)
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, maybe-is(head-read, <check>)
+    hold
+      save op-read, word-in(kid-at(kids, 1))
+      save rule-kids, groups-only(siblings-of(group))
+      save base-node, make none
+      save front-node, make none
+      walk rule-kids
+        take one
+        fork test, and(headed(one, <bind>), maybe-is(word-in(kid-at(kids-in(one), 1)), <start>))
+          hold
+            save base-node, kid-at(kids-in(one), 2)
+            halt
+      walk rule-kids
+        take one
+        fork test, and(headed(one, <bind>), maybe-is(word-in(kid-at(kids-in(one), 1)), <front>))
+          hold
+            save front-node, kid-at(kids-in(one), 2)
+            halt
+      save op, <>
+      sift op-read
+        case some
+          link known
+          save op, known
+        case none
+          save nothing, 0
+      fork test, is-equal(op, <>)
+        hold
+          back make none
+      sift base-node
+        case some
+          link base-known
+          sift front-node
+            case some
+              link front-known
+              save children, make list
+              walk rule-kids
+                take child
+                # the two `bind`s are the condition, not the body
+                fork test, headed(child, <bind>)
+                  hold
+                    save bound, word-in(kid-at(kids-in(child), 1))
+                    fork test, or(maybe-is(bound, <start>), maybe-is(bound, <front>))
+                      hold
+                        turn next
+                sift read-feed-mine-rule(child)
+                  case some
+                    link rule
+                    push(children, rule)
+                  case none
+                    save nothing, 0
+              fork test, is-above(children/length, 0)
+                hold
+                  save made
+                    make check
+                      bind op, op
+                      bind base, base-known
+                      bind head, front-known
+                      bind children, children
+                  back make(some, made)
+              back make none
+            case none
+              back make none
+        case none
+          back make none
+
+  # `look after` with `mine form` children is an alternation
+  fork test, and(maybe-is(head-read, <look>), maybe-is(word-in(kid-at(kids, 1)), <after>))
+    hold
+      save out, read-rules(groups-only(siblings-of(group)))
+      fork test, is-above(out/length, 0)
+        hold
+          save made
+            make any
+              bind children, out
+          back make(some, made)
+      back make none
+
+  fork test, not(maybe-is(head-read, <mine>))
+    hold
+      back make none
+
+  # `mine <->`: a bare text literal as the whole body
+  sift kid-at(kids, 1)
+    case some
+      link bare
+      fork test, is-text-node(bare)
+        hold
+          save literal, text-of(bare)
+          save units, utf16-length(literal)
+          fork test, is-equal(units, 1)
+            hold
+              save made
+                make char
+                  bind literal, first-code(literal)
+                  bind send, nested-send(group)
+              back make(some, made)
+          fork test, is-above(units, 1)
+            hold
+              save made
+                make text
+                  bind literal, literal
+                  bind send, nested-send(group)
+              back make(some, made)
+    case none
+      save nothing, 0
+
+  save kind-read, word-in(kid-at(kids, 1))
+  save kind, <>
+  save has-kind, false
+  sift kind-read
+    case some
+      link known
+      save kind, known
+      save has-kind, true
+    case none
+      save nothing, 0
+  save raw, groups-only(siblings-of(group))
+
+  fork test, is-equal(kind, <list>)
+    hold
+      save count-node, make none
+      walk raw
+        take one
+        fork test, and(headed(one, <bind>), maybe-is(word-in(kid-at(kids-in(one), 1)), <count>))
+          hold
+            save count-node, kid-at(kids-in(one), 2)
+            halt
+      save made
+        make list
+          bind children, merge-sends(read-rules(raw))
+          bind count, count-node
+      back make(some, made)
+
+  fork test, is-equal(kind, <any>)
+    hold
+      save made
+        make any
+          bind children, merge-sends(read-rules(raw))
+      back make(some, made)
+
+  # a bound is the character itself or its code point, under `base`/`head` or `start`/`end`
+  fork test, is-equal(kind, <range>)
+    hold
+      save base-text, bind-text(group, <base>)
+      sift base-text
+        case none
+          save base-text, bind-text(group, <start>)
+        case some
+          link known
+          save nothing, 0
+      save head-text, bind-text(group, <head>)
+      sift head-text
+        case none
+          save head-text, bind-text(group, <end>)
+        case some
+          link known
+          save nothing, 0
+      save base-code, bind-code(group, <base>)
+      sift base-code
+        case none
+          save base-code, bind-code(group, <start>)
+        case some
+          link known
+          save nothing, 0
+      save head-code, bind-code(group, <head>)
+      sift head-code
+        case none
+          save head-code, bind-code(group, <end>)
+        case some
+          link known
+          save nothing, 0
+      save base-bound, <>
+      sift base-text
+        case some
+          link known
+          save base-bound, known
+        case none
+          sift base-code
+            case some
+              link known
+              save base-bound, code-text(known)
+            case none
+              save nothing, 0
+      save head-bound, <>
+      sift head-text
+        case some
+          link known
+          save head-bound, known
+        case none
+          sift head-code
+            case some
+              link known
+              save head-bound, code-text(known)
+            case none
+              save nothing, 0
+      fork test, and(is-unequal(base-bound, <>), is-unequal(head-bound, <>))
+        hold
+          save made
+            make range
+              bind base, base-bound
+              bind head, head-bound
+          back make(some, made)
+      back make none
+
+  fork test, is-equal(kind, <form>)
+    hold
+      save name-read, make none
+      sift find-headed(raw, <form>)
+        case some
+          link form-group
+          save name-read, word-in(kid-at(kids-in(form-group), 1))
+        case none
+          save nothing, 0
+      save send-read, make none
+      sift find-headed(raw, <send>)
+        case some
+          link send-group
+          save send-read, word-in(kid-at(kids-in(send-group), 1))
+        case none
+          save nothing, 0
+      save args, args-of(group)
+      save given-args, make none
+      fork test, is-above(args/length, 0)
+        hold
+          save given-args, make(some, args)
+      sift name-read
+        case some
+          link name
+          fork test, is-unequal(name, <>)
+            hold
+              save made
+                make form
+                  bind name, name
+                  bind send, send-read
+                  bind args, given-args
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <value>)
+    hold
+      sift kid-at(raw, 0)
+        case some
+          link expr-group
+          save made
+            make value
+              bind expr, expr-group
+          back make(some, made)
+        case none
+          back make none
+
+  fork test, is-equal(kind, <byte>)
+    hold
+      save literal, make none
+      sift find-headed(raw, <code>)
+        case some
+          link literal-group
+          save literal, code-value(literal-group)
+        case none
+          save nothing, 0
+      save made
+        make byte
+          bind literal, literal
+          bind send, nested-send(group)
+      back make(some, made)
+
+  # one character, by literal or by code point, with or without its head word
+  fork test, is-equal(kind, <char>)
+    hold
+      save siblings, siblings-of(group)
+      save written-node, make none
+      sift find-headed(raw, <text>)
+        case some
+          link text-group
+          save written-node, kid-at(kids-in(text-group), 1)
+        case none
+          save nothing, 0
+      sift written-node
+        case none
+          walk siblings
+            take one
+            fork test, is-text-node(one)
+              hold
+                save written-node, make(some, one)
+                halt
+        case some
+          link known
+          save nothing, 0
+      save literal, make none
+      sift written-node
+        case some
+          link known
+          save written, text-of(known)
+          fork test, is-unequal(written, <>)
+            hold
+              save written-code, first-code(written)
+              save literal, make(some, written-code)
+        case none
+          save nothing, 0
+      sift literal
+        case none
+          sift find-headed(raw, <code>)
+            case some
+              link code-group
+              save literal, code-value(code-group)
+            case none
+              walk siblings
+                take one
+                sift one
+                  case integer
+                    save as-float, to-decimal(value)
+                    save literal, make(some, as-float)
+                    halt
+                  case radix
+                    save as-float, to-decimal(value)
+                    save literal, make(some, as-float)
+                    halt
+                  miss
+                    save nothing, 0
+        case some
+          link known
+          save nothing, 0
+      sift literal
+        case some
+          link known
+          save made
+            make char
+              bind literal, known
+              bind send, nested-send(group)
+          back make(some, made)
+        case none
+          back make none
+
+  # the codes the next character must not be
+  fork test, is-equal(kind, <not>)
+    hold
+      save codes, make list
+      gather-codes(merge-sends(read-rules(raw)), codes)
+      fork test, is-above(codes/length, 0)
+        hold
+          save made
+            make not
+              bind codes, codes
+          back make(some, made)
+      back make none
+
+  fork test, is-equal(kind, <mark>)
+    hold
+      save width, bind-code(group, <width>)
+      save inner, make list
+      walk raw
+        take one
+        fork test, headed(one, <bind>)
+          hold
+            turn next
+        sift read-feed-mine-rule(one)
+          case some
+            link rule
+            push(inner, rule)
+          case none
+            save nothing, 0
+      sift width
+        case some
+          link known
+          fork test, is-above(inner/length, 0)
+            hold
+              save made
+                make mark
+                  bind width, known
+                  bind children, inner
+                  bind send, nested-send(group)
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <text>)
+    hold
+      # `mine text 13` nests the code inside the kind group
+      sift kid-at(kids, 1)
+        case some
+          link kind-group
+          fork test, is-group(kind-group)
+            hold
+              sift code-value(kind-group)
+                case some
+                  link inline-code
+                  save made
+                    make char
+                      bind literal, inline-code
+                      bind send, nested-send(group)
+                  back make(some, made)
+                case none
+                  save nothing, 0
+        case none
+          save nothing, 0
+      save literal-node, make none
+      sift find-headed(raw, <text>)
+        case some
+          link text-group
+          save literal-node, kid-at(kids-in(text-group), 1)
+        case none
+          save nothing, 0
+      sift literal-node
+        case none
+          walk siblings-of(group)
+            take one
+            fork test, is-text-node(one)
+              hold
+                save literal-node, make(some, one)
+                halt
+        case some
+          link known
+          save nothing, 0
+      sift literal-node
+        case some
+          link known
+          save literal, text-of(known)
+          fork test, is-above(utf16-length(literal), 0)
+            hold
+              save made
+                make text
+                  bind literal, literal
+                  bind send, nested-send(group)
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <int>)
+    hold
+      save width, bind-code(group, <width>)
+      save order, bind-word(group, <order>)
+      save sign, bind-word(group, <sign>)
+      sift width
+        case some
+          link known
+          save order-text, <>
+          sift order
+            case some
+              link given
+              save order-text, given
+            case none
+              save nothing, 0
+          save sign-text, <>
+          sift sign
+            case some
+              link given
+              save sign-text, given
+            case none
+              save nothing, 0
+          fork test, and(or(is-equal(order-text, <big>), is-equal(order-text, <little>)), or(is-equal(sign-text, <signed>), is-equal(sign-text, <unsigned>)))
+            hold
+              save made
+                make int
+                  bind width, known
+                  bind order, order-text
+                  bind sign, sign-text
+                  bind send, nested-send(group)
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <bytes>)
+    hold
+      sift bind-value(group, <width>)
+        case some
+          link width
+          fork test, is-group(width)
+            hold
+              save made
+                make bytes
+                  bind width, width
+                  bind send, nested-send(group)
+              back make(some, made)
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <maybe>)
+    hold
+      save test-group, find-headed(raw, <test>)
+      save test-expr, make none
+      sift test-group
+        case some
+          link known
+          save test-kids, kids-in(known)
+          save at, 1
+          walk test
+            hook test, is-below(at, test-kids/length)
+            hook hold
+              save one, get(test-kids, at)
+              fork test, is-group(one)
+                hold
+                  save test-expr, make(some, one)
+                  halt
+              save at, add(at, 1)
+        case none
+          save nothing, 0
+      save send-group, find-headed(raw, <send>)
+      save send-read, make none
+      sift send-group
+        case some
+          link known
+          save send-read, word-in(kid-at(kids-in(known), 1))
+        case none
+          save nothing, 0
+      # the original skipped the `test` and `send` groups it found, by identity: the first of each kind
+      save skipped-test, false
+      save skipped-send, false
+      save body, make list
+      walk raw
+        take child
+        fork test, and(not(skipped-test), headed(child, <test>))
+          hold
+            sift test-group
+              case some
+                link known
+                save skipped-test, true
+                turn next
+              case none
+                save nothing, 0
+        fork test, and(not(skipped-send), headed(child, <send>))
+          hold
+            sift send-group
+              case some
+                link known
+                save skipped-send, true
+                turn next
+              case none
+                save nothing, 0
+        sift read-feed-mine-rule(child)
+          case some
+            link rule
+            push(body, rule)
+          case none
+            save nothing, 0
+      save made
+        make optional
+          bind test, test-expr
+          bind children, merge-sends(body)
+          bind send, send-read
+      back make(some, made)
+
+  fork test, is-equal(kind, <until>)
+    hold
+      sift find-headed(raw, <mine>)
+        case some
+          link inner
+          sift read-feed-mine-rule(inner)
+            case some
+              link inner-rule
+              sift inner-rule
+                case byte
+                  sift literal
+                    case some
+                      link terminator
+                      save made
+                        make until
+                          bind terminator, terminator
+                          bind send, nested-send(group)
+                      back make(some, made)
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      back make none
+
+  fork test, is-equal(kind, <let>)
+    hold
+      save name-group, find-headed(raw, <name>)
+      save name-read, make none
+      save expr-group, make none
+      sift name-group
+        case some
+          link known
+          save name-read, word-in(kid-at(kids-in(known), 1))
+          # the first group that is not the name group; a second group headed `name` counts as another one
+          save skipped, false
+          walk raw
+            take one
+            fork test, and(not(skipped), headed(one, <name>))
+              hold
+                save skipped, true
+                turn next
+            save expr-group, make(some, one)
+            halt
+        case none
+          save expr-group, kid-at(raw, 0)
+      sift name-read
+        case some
+          link name
+          fork test, is-unequal(name, <>)
+            hold
+              sift expr-group
+                case some
+                  link expr
+                  save made
+                    make let
+                      bind name, name
+                      bind expr, expr
+                  back make(some, made)
+                case none
+                  save nothing, 0
+        case none
+          save nothing, 0
+      back make none
+
+  # `mine <rule-name>`: the short spelling of `mine form, form <rule-name>`
+  fork test, and(and(has-kind, is-unequal(kind, <>)), not(is-construct(kind)))
+    hold
+      save none-args, make none
+      save made
+        make form
+          bind name, kind
+          bind send, nested-send(group)
+          bind args, none-args
+      back make(some, made)
+  back make none
+
+task gather-codes
+  take rules, like list, like feed-rule
+  take codes, like list, like float
+  mark private
+
+  walk rules
+    take rule
+    sift rule
+      case char
+        push(codes, literal)
+      case any
+        gather-codes(children, codes)
+      case list
+        gather-codes(children, codes)
+      miss
+        save nothing, 0
+
+task feed-grammar-table
+  like hash, like text, like list, like feed-rule
+  mark private
+
+  back make hash
+
+task read-feed-mine-grammar
+  take tree, like root-node
+  like hash, like text, like list, like feed-rule
+
+  save grammar, feed-grammar-table()
+  walk top-groups(tree)
+    take group
+    fork test, not(headed(group, <mine>))
+      hold
+        turn next
+    sift word-in(kid-at(kids-in(group), 1))
+      case some
+        link name
+        fork test, is-equal(name, <>)
+          hold
+            turn next
+        save rules, read-rules(groups-only(siblings-of(group)))
+        save grammar/{name}, merge-sends(rules)
+      case none
+        save nothing, 0
+  back grammar
+
+# ---- what a grammar reads, refers to, drops and gets wrong ----
+
+task rule-children
+  take rule, like feed-rule
+  like list, like feed-rule
+  mark private
+
+  sift rule
+    case list
+      back children
+    case any
+      back children
+    case mark
+      back children
+    case optional
+      back children
+    case span
+      back children
+    case check
+      back children
+    miss
+      back make list
+
+task kind-word
+  take rule, like feed-rule
+  like text
+  mark private
+
+  sift rule
+    case list
+      back <list>
+    case any
+      back <any>
+    case range
+      back <range>
+    case form
+      back <form>
+    case value
+      back <value>
+    case send
+      back <send>
+    case byte
+      back <byte>
+    case char
+      back <char>
+    case text
+      back <text>
+    case not
+      back <not>
+    case mark
+      back <mark>
+    case int
+      back <int>
+    case bytes
+      back <bytes>
+    case optional
+      back <maybe>
+    case until
+      back <until>
+    case let
+      back <let>
+    case span
+      back <span>
+    case start
+      back <start>
+    case check
+      back <check>
+
+form substrate-seen
+  mark shared
+  link byte, like boolean
+  link text, like boolean
+
+task substrate-walk
+  take rules, like list, like feed-rule
+  take seen, like substrate-seen
+  mark private
+
+  walk rules
+    take rule
+    save kind, kind-word(rule)
+    fork test, or(or(is-equal(kind, <byte>), is-equal(kind, <int>)), is-equal(kind, <bytes>))
+      hold
+        save seen/byte, true
+    fork test, or(or(or(is-equal(kind, <char>), is-equal(kind, <text>)), is-equal(kind, <range>)), is-equal(kind, <span>))
+      hold
+        save seen/text, true
+    substrate-walk(rule-children(rule), seen)
+
+# which substrate a grammar reads, inferred from the constructs it uses: `<>` when it uses both or neither
+task feed-mine-substrate
+  take grammar, like hash, like text, like list, like feed-rule
+  like text
+
+  save seen
+    make substrate-seen
+      bind byte, false
+      bind text, false
+  walk grammar/values()
+    take rules
+    substrate-walk(rules, seen)
+  fork test, is-equal(seen/byte, seen/text)
+    hold
+      back <>
+  fork test, seen/byte
+    hold
+      back <byte>
+  back <text>
+
+task unknown-walk
+  take rules, like list, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take missing, like list, like text
+  mark private
+
+  walk rules
+    take rule
+    sift rule
+      case form
+        link form-name
+        fork test, not(grammar/has(form-name))
+          hold
+            add-text(missing, form-name)
+      miss
+        save nothing, 0
+    unknown-walk(rule-children(rule), grammar, missing)
+
+task add-text
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  walk into
+    take held
+    fork test, is-equal(held, one)
+      hold
+        back
+  push(into, one)
+
+# the rule names a grammar refers to and never defines, sorted
+task feed-mine-unknown-refs
+  take grammar, like hash, like text, like list, like feed-rule
+  like list, like text
+
+  save missing, make list
+  walk grammar/values()
+    take rules
+    unknown-walk(rules, grammar, missing)
+  back sort(missing, utf16-order)
+
+# the rules a grammar declares with a body that read to nothing
+task feed-mine-drops
+  take tree, like root-node
+  like list, like text
+
+  save grammar, read-feed-mine-grammar(tree)
+  save out, make list
+  walk top-groups(tree)
+    take group
+    fork test, not(headed(group, <mine>))
+      hold
+        turn next
+    sift word-in(kid-at(kids-in(group), 1))
+      case some
+        link name
+        fork test, is-equal(name, <>)
+          hold
+            turn next
+        fork test, grammar/has(name)
+          hold
+            fork test, is-above(grammar/get(name)/length, 0)
+              hold
+                turn next
+        save has-body, false
+        walk siblings-of(group)
+          take one
+          fork test, is-group(one)
+            hold
+              save has-body, true
+              halt
+        fork test, has-body
+          hold
+            push(out, name)
+      case none
+        save nothing, 0
+  back out
+
+task fault-walk
+  take one, like node
+  take out, like list, like text
+  mark private
+
+  fork test, not(is-group(one))
+    hold
+      back
+  fork test, headed(one, <mine>)
+    hold
+      save kind-read, word-in(kid-at(kids-in(one), 1))
+      fork test, or(maybe-is(kind-read, <char>), maybe-is(kind-read, <text>))
+        hold
+          sift read-feed-mine-rule(one)
+            case none
+              save kind, <char>
+              save noun, <character>
+              save extra, < or `mine char, code 46`>
+              fork test, maybe-is(kind-read, <text>)
+                hold
+                  save kind, <text>
+                  save noun, <text>
+                  save extra, <>
+              save line, add(span-of-whole(one)/start/line, 1)
+              push(out, <`mine {kind}` at line {line} names no {noun}, so the reader would stop checking it. Write the literal after it: `mine {kind}, \<.\>`, `mine {kind}, text \<.\>`{extra}>)
+            case some
+              link rule
+              save nothing, 0
+  walk kids-in(one)
+    take child
+    fault-walk(child, out)
+
+# the leaf rules that read to nothing anywhere in the grammar, each as a message naming its line
+task feed-mine-faults
+  take tree, like root-node
+  like list, like text
+
+  save out, make list
+  walk top-groups(tree)
+    take group
+    fault-walk(group, out)
+  back out
+
+# ---- printing an embedded Term expression back to source ----
+
+task print-node
+  take one, like node
+  take depth, like number
+  like text
+
+  sift one
+    case name
+      sift word-of(one)
+        case some
+          link word
+          back word
+        case none
+          back <>
+    case text
+      back <text \<{text-of(one)}\>>
+    case integer
+      back <code {js-text(to-decimal(value))}>
+    case decimal
+      back <code {js-text(value)}>
+    case radix
+      back <code {js-text(to-decimal(value))}>
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back <>
+      save head-node, get(nodes, 0)
+      save head-name, word-of(head-node)
+      save tail-args, siblings-from(nodes, 1)
+
+      # `make X / bind a, V1` stays stacked: a `bind` pair inside an outer paren loses its value
+      fork test, and(maybe-is(head-name, <make>), is-minimum(nodes/length, 2))
+        hold
+          save form-node, get(nodes, 1)
+          save form-name, <>
+          save all-args, make list
+          sift form-node
+            case group
+              link form-kids
+              save form-name, print-node(get(form-kids, 0), depth)
+              walk siblings-from(form-kids, 1)
+                take arg
+                push(all-args, arg)
+            miss
+              save form-name, print-node(form-node, depth)
+          walk siblings-from(nodes, 2)
+            take arg
+            push(all-args, arg)
+          fork test, is-equal(all-args/length, 0)
+            hold
+              back <make {form-name}>
+          save bind-lines, make list
+          walk all-args
+            take arg
+            push(bind-lines, print-bind(arg, add(depth, 1)))
+          back <make {form-name}\n{join(bind-lines, <\n>)}>
+
+      # `code <n>` and `text <...>` are literal prefixes, not calls
+      fork test, and(or(maybe-is(head-name, <code>), maybe-is(head-name, <text>)), is-equal(nodes/length, 2))
+        hold
+          save literal, get(nodes, 1)
+          sift literal
+            case integer
+              back <code {js-text(to-decimal(value))}>
+            case decimal
+              back <code {js-text(value)}>
+            case radix
+              back <code {js-text(to-decimal(value))}>
+            case text
+              back <text \<{text-of(literal)}\>>
+            miss
+              save nothing, 0
+
+      # `call f, a, b`, `call f(a, b)` and the stacked form are one call
+      fork test, and(maybe-is(head-name, <call>), is-minimum(nodes/length, 2))
+        hold
+          save callee-node, get(nodes, 1)
+          save callee-name, <>
+          save all-args, make list
+          sift callee-node
+            case group
+              link callee-kids
+              save callee-name, print-node(get(callee-kids, 0), 0)
+              walk siblings-from(callee-kids, 1)
+                take arg
+                push(all-args, arg)
+            miss
+              save callee-name, print-node(callee-node, 0)
+          walk siblings-from(nodes, 2)
+            take arg
+            push(all-args, arg)
+          fork test, is-equal(all-args/length, 0)
+            hold
+              back <call {callee-name}>
+          save printed, make list
+          walk all-args
+            take arg
+            push(printed, closed-argument(print-node(arg, 0)))
+          back <call {callee-name}({join(printed, <, >)})>
+
+      save head-text, print-node(head-node, 0)
+      fork test, is-equal(tail-args/length, 0)
+        hold
+          back head-text
+      save printed, make list
+      walk tail-args
+        take arg
+        push(printed, closed-argument(print-node(arg, 0)))
+      back <{head-text}({join(printed, <, >)})>
+    miss
+      back <>
+
+task siblings-from
+  take kids, like list, like node
+  take from, like number
+  like list, like node
+  mark private
+
+  save out, make list
+  save at, from
+  walk test
+    hook test, is-below(at, kids/length)
+    hook hold
+      push(out, get(kids, at))
+      save at, add(at, 1)
+  back out
+
+# one `bind key, value` line of a `make` at the given depth
+task print-bind
+  take one, like node
+  take depth, like number
+  like text
+  mark private
+
+  save pad, repeat(<  >, depth)
+  fork test, not(and(is-group(one), maybe-is(word-in(kid-at(kids-in(one), 0)), <bind>)))
+    hold
+      back <{pad}{print-node(one, depth)}>
+  save kids, kids-in(one)
+  save key-name, <>
+  sift kid-at(kids, 1)
+    case some
+      link key-node
+      sift key-node
+        case group
+          link key-kids
+          save key-name, print-node(get(key-kids, 0), depth)
+        miss
+          save key-name, print-node(key-node, depth)
+    case none
+      save nothing, 0
+  sift kid-at(kids, 2)
+    case some
+      link value-node
+      back <{pad}bind {key-name}, {print-node(value-node, depth)}>
+    case none
+      back <{pad}bind {key-name}>
+
+# ---- compiling a mine grammar to .tree source ----
+
+task ops-of
+  take substrate, like text
+  like feed-ops
+  mark private
+
+  save imports, make list
+  fork test, is-equal(substrate, <text>)
+    hold
+      push(imports, <find get-text-cursor-position>)
+      push(imports, <find describe-text-cursor-next>)
+      push(imports, <find text-cursor>)
+      push(imports, <find make-text-cursor>)
+      push(imports, <find is-text-cursor-at-end>)
+      push(imports, <find peek-text-cursor>)
+      push(imports, <find peek-text-cursor-code>)
+      push(imports, <find read-text-cursor>)
+      back
+        make feed-ops
+          bind cursor-type, <text-cursor>
+          bind peek, <peek-text-cursor>
+          bind peek-code, <peek-text-cursor-code>
+          bind advance, <read-text-cursor>
+          bind at-end, <is-text-cursor-at-end>
+          bind remaining, <>
+          bind position, <get-text-cursor-position>
+          bind describe, <describe-text-cursor-next>
+          bind imports, imports
+  push(imports, <find get-cursor-position>)
+  push(imports, <find describe-byte-cursor-next>)
+  push(imports, <find feed-cursor>)
+  push(imports, <find make-cursor>)
+  push(imports, <find at-end>)
+  push(imports, <find peek-byte>)
+  push(imports, <find read-byte>)
+  push(imports, <find read-bytes>)
+  push(imports, <find read-int>)
+  push(imports, <find remaining>)
+  push(imports, <find byte-order>)
+  push(imports, <find integer-sign>)
+  back
+    make feed-ops
+      bind cursor-type, <feed-cursor>
+      bind peek, <peek-byte>
+      bind peek-code, <peek-byte>
+      bind advance, <read-byte>
+      bind at-end, <at-end>
+      bind remaining, <remaining>
+      bind position, <get-cursor-position>
+      bind describe, <describe-byte-cursor-next>
+      bind imports, imports
+
+# a miss as the generated reader raises it
+task miss-text
+  take ops, like feed-ops
+  take expected, like text
+  like text
+  mark private
+
+  back <halt \<expected {expected} at position \{{ops/position}(cursor)\}, found \{{ops/describe}(cursor)\}\>>
+
+# one character as a miss names it: quoted when it can be written inside a text literal as itself, else its code
+task shown-character
+  take code, like float
+  like text
+  mark private
+
+  save character, code-text(code)
+  save plain, and(is-above(code, 32.0), is-below(code, 127.0))
+  walk special-characters()
+    take one
+    fork test, is-equal(one, character)
+      hold
+        save plain, false
+  fork test, plain
+    hold
+      back <"{character}">
+  back <character {js-text(code)}>
+
+task special-characters
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <\<>)
+  push(out, <\>>)
+  push(out, <\{>)
+  push(out, <\}>)
+  push(out, <\\>)
+  push(out, <">)
+  back out
+
+task push-all
+  take into, like list, like text
+  take lines, like list, like text
+  mark private
+
+  walk lines
+    take one
+    push(into, one)
+
+# the counters a run starts from. The original kept them in module variables, so a compile that threw inside a list
+# or a span left them raised for every compile after it in the process; the face keeps one of these for the module
+# and hands it to every compile, so the same is true here
+task fresh-feed-state
+  like feed-state
+
+  back
+    make feed-state
+      bind in-repetition, 0
+      bind in-span, 0
+      bind helper-rule, <>
+      bind helper-count, 0
+
+task compile-feed-mine
+  take grammar, like hash, like text, like list, like feed-rule
+  take substrate, like text
+  take cursor-import-path, like text
+  take extra-imports, like list, like text
+  take state, like feed-state
+  like text
+
+  save ops, ops-of(substrate)
+  save lines, make list
+  push(lines, <load {cursor-import-path}>)
+  walk ops/imports
+    take line
+    push(lines, <  {line}>)
+  push(lines, <>)
+  push(lines, <load @term/base/code/list>)
+  push(lines, <  find push>)
+  push(lines, <  find size>)
+  push(lines, <  find join>)
+  push(lines, <>)
+  push(lines, <load @term/base/code/maybe>)
+  push(lines, <  find unwrap-or>)
+  push(lines, <>)
+  push(lines, <load @term/base/code/boolean>)
+  push(lines, <  find and>)
+  push(lines, <  find not>)
+  push(lines, <>)
+  push-all(lines, extra-imports)
+
+  save helpers, make list
+  walk grammar/keys()
+    take name
+    save state/helper-rule, name
+    save state/helper-count, 0
+    save rule-lines, make list
+    compile-named-rule(name, grammar/get(name), ops, grammar, state, rule-lines, helpers)
+    push-all(lines, rule-lines)
+    push(lines, <>)
+
+  save all, make list
+  push-all(all, helpers)
+  push(all, <>)
+  push-all(all, lines)
+  back join(all, <\n>)
+
+task next-helper
+  take state, like feed-state
+  like text
+  mark private
+
+  save name, <{state/helper-rule}-helper-{state/helper-count}>
+  save state/helper-count, add(state/helper-count, 1)
+  back name
+
+# ---- types ----
+
+task indented
+  take lines, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk lines
+    take one
+    push(out, <  {one}>)
+  back out
+
+task with-head
+  take head, like text
+  take rest, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, head)
+  push-all(out, rest)
+  back out
+
+task one-line
+  take line, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, line)
+  back out
+
+task is-text-cursor
+  take ops, like feed-ops
+  like boolean
+  mark private
+
+  back is-equal(ops/cursor-type, <text-cursor>)
+
+task byte-block
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <like list>)
+  push(out, <  like u8>)
+  back out
+
+# the type of the value one rule captures
+task capture-type-of
+  take rule, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like list, like text
+  mark private
+
+  save on-text, is-text-cursor(ops)
+  sift rule
+    case form
+      back return-type-of(name, ops, grammar, seen)
+    case any
+      fork test, on-text
+        hold
+          back one-line(<like text>)
+      back one-line(<like u8>)
+    case byte
+      back one-line(<like u8>)
+    case char
+      fork test, on-text
+        hold
+          back one-line(<like text>)
+      back one-line(<like u8>)
+    case text
+      back one-line(<like text>)
+    case not
+      back one-line(<like number>)
+    case range
+      fork test, on-text
+        hold
+          back one-line(<like text>)
+      back one-line(<like u8>)
+    case span
+      back one-line(<like text>)
+    case mark
+      save out, make list
+      push(out, <like list>)
+      push(out, <  like text>)
+      back out
+    case bytes
+      back byte-block()
+    case until
+      fork test, on-text
+        hold
+          back one-line(<like text>)
+      back byte-block()
+    case check
+      save out, make list
+      push(out, <like maybe>)
+      push(out, <  like unknown>)
+      back out
+    case optional
+      save out, make list
+      push(out, <like maybe>)
+      push(out, <  like unknown>)
+      back out
+    case list
+      save kids, capturing-rules(children)
+      fork test, is-above(kids/length, 0)
+        hold
+          save last, get(kids, subtract(kids/length, 1))
+          back with-head(<like list>, indented(capture-type-of(last, ops, grammar, seen)))
+      back with-head(<like list>, indented(one-line(<like unknown>)))
+    miss
+      back one-line(<like number>)
+
+# the rules of a sequence that bind a local, in order
+task capturing-rules
+  take rules, like list, like feed-rule
+  like list, like feed-rule
+  mark private
+
+  save out, make list
+  walk rules
+    take rule
+    sift rule
+      case value
+        turn next
+      case send
+        turn next
+      case not
+        turn next
+      case list
+        turn next
+      miss
+        save nothing, 0
+    push(out, rule)
+  back out
+
+task has-text-in
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task without-starts
+  take rules, like list, like feed-rule
+  like list, like feed-rule
+  mark private
+
+  save out, make list
+  walk rules
+    take rule
+    sift rule
+      case start
+        turn next
+      miss
+        save nothing, 0
+    push(out, rule)
+  back out
+
+# a named rule's declared return type: a cycle falls back to `like unknown`
+task return-type-of
+  take name, like text
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like list, like text
+  mark private
+
+  fork test, has-text-in(seen, name)
+    hold
+      back one-line(<like unknown>)
+  fork test, not(grammar/has(name))
+    hold
+      back one-line(<like number>)
+  save rules, grammar/get(name)
+  save inner, make list
+  walk seen
+    take one
+    push(inner, one)
+  push(inner, name)
+  save body, without-starts(rules)
+  fork test, is-equal(body/length, 1)
+    hold
+      save only, get(body, 0)
+      sift only
+        case list
+          link only-children
+          save kids, capturing-rules(only-children)
+          fork test, is-above(kids/length, 0)
+            hold
+              save last, get(kids, subtract(kids/length, 1))
+              back with-head(<like list>, indented(capture-type-of(last, ops, grammar, inner)))
+          back with-head(<like list>, indented(one-line(<like number>)))
+        miss
+          save nothing, 0
+  back infer-return-type(body, ops, grammar, inner)
+
+task first-value
+  take rules, like list, like feed-rule
+  like maybe, like node
+  mark private
+
+  walk rules
+    take rule
+    sift rule
+      case value
+        back make(some, expr)
+      miss
+        save nothing, 0
+  back make none
+
+task infer-return-type
+  take rules, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like list, like text
+  mark private
+
+  save value-expr, first-value(rules)
+  sift value-expr
+    case some
+      link expr
+      save expr-kids, kids-in(expr)
+      fork test, maybe-is(word-in(kid-at(expr-kids, 0)), <make>)
+        hold
+          save form-name, make none
+          sift kid-at(expr-kids, 1)
+            case some
+              link form-node
+              sift form-node
+                case group
+                  link form-kids
+                  save form-name, word-in(kid-at(form-kids, 0))
+                miss
+                  save form-name, word-of(form-node)
+            case none
+              save nothing, 0
+          sift form-name
+            case some
+              link known
+              fork test, is-unequal(known, <>)
+                hold
+                  back one-line(<like {known}>)
+            case none
+              save nothing, 0
+      # a bare `read <name>` value carries the named capture's own type
+      fork test, and(maybe-is(word-in(kid-at(expr-kids, 0)), <read>), is-equal(expr-kids/length, 2))
+        hold
+          save captured-name, word-in(kid-at(expr-kids, 1))
+          walk rules
+            take rule
+            fork test, not(has-send-key(rule))
+              hold
+                turn next
+            save sent, send-of(rule)
+            save matches, false
+            sift sent
+              case some
+                link known
+                sift captured-name
+                  case some
+                    link wanted
+                    save matches, is-equal(known, wanted)
+                  case none
+                    save nothing, 0
+              case none
+                sift captured-name
+                  case none
+                    save matches, true
+                  case some
+                    link wanted
+                    save nothing, 0
+            fork test, matches
+              hold
+                back capture-type-of(rule, ops, grammar, seen)
+      back one-line(<like number>)
+    case none
+      save nothing, 0
+
+  # a nested list binds, so it is a candidate for the last capture here
+  save last, make none
+  walk rules
+    take rule
+    sift rule
+      case list
+        save last, make(some, rule)
+      miss
+        save solo, make list
+        push(solo, rule)
+        fork test, is-above(capturing-rules(solo)/length, 0)
+          hold
+            save last, make(some, rule)
+  sift last
+    case some
+      link known
+      back capture-type-of(known, ops, grammar, seen)
+    case none
+      back one-line(<like number>)
+
+task fresh-scope
+  like feed-scope
+  mark private
+
+  save sends, make list
+  save types, type-table()
+  back
+    make feed-scope
+      bind sends, sends
+      bind types, types
+
+task type-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task last-send
+  take scope, like feed-scope
+  like maybe, like text
+  mark private
+
+  fork test, is-above(scope/sends/length, 0)
+    hold
+      save last, get(scope/sends, subtract(scope/sends/length, 1))
+      back make(some, last)
+  back make none
+
+task text-or
+  take given, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# a whole rule, as a task reading it
+task compile-named-rule
+  take name, like text
+  take rules, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take state, like feed-state
+  take out, like list, like text
+  take helpers, like list, like text
+  mark private
+
+  save task-name, <read-{name}>
+  save scope, fresh-scope()
+  save none-seen, make list
+
+  # the rule's parameters, typed by their default
+  save takes, make list
+  walk rules
+    take rule
+    sift rule
+      case start
+        link start-name
+        link start-fall
+        save default-value, share-value(start-fall)
+        save declared, <like unknown>
+        save fall-text, <>
+        sift default-value
+          case some
+            link known
+            save fall-text, <, fall {known/text}>
+            fork test, starts-with(known/text, <text >)
+              hold
+                save declared, <like text>
+              miss
+                fork test, starts-with(known/text, <code >)
+                  hold
+                    save declared, <like number>
+          case none
+            save nothing, 0
+        save scope/types/{start-name}, one-line(declared)
+        push(takes, <  take {start-name}, {declared}{fall-text}>)
+      miss
+        save nothing, 0
+
+  save body0, without-starts(rules)
+  fork test, is-equal(body0/length, 1)
+    hold
+      save only, get(body0, 0)
+      sift only
+        case list
+          link inner-children
+          push(out, <task {task-name}>)
+          push(out, <  take cursor, like {ops/cursor-type}>)
+          push-all(out, takes)
+          push-all(out, indented(return-type-of(name, ops, grammar, none-seen)))
+          push(out, <  save result>)
+          push(out, <    make list>)
+          push(out, <  walk test>)
+          push(out, <    hook test>)
+          push(out, <      call not, call {ops/at-end}(read(cursor))>)
+          push(out, <    hook hold>)
+          save state/in-repetition, add(state/in-repetition, 1)
+          compile-sequence(inner-children, 3, ops, grammar, scope, state, out, helpers)
+          save state/in-repetition, subtract(state/in-repetition, 1)
+          save captured, text-or(last-send(scope), <item>)
+          push(out, <      call push(read(result), read({captured}))>)
+          push(out, <  send back, read result>)
+          back
+        miss
+          save nothing, 0
+
+  save body, make list
+  save value-expr, make none
+  walk body0
+    take rule
+    sift rule
+      case value
+        save value-expr, make(some, expr)
+        turn next
+      miss
+        save nothing, 0
+    compile-expr(rule, 1, ops, grammar, scope, state, body, helpers)
+
+  push(out, <task {task-name}>)
+  push(out, <  take cursor, like {ops/cursor-type}>)
+  push-all(out, takes)
+  push-all(out, indented(return-type-of(name, ops, grammar, none-seen)))
+  push-all(out, body)
+  sift value-expr
+    case some
+      link expr
+      push(out, <  send back>)
+      push(out, <    {print-node(expr, 2)}>)
+    case none
+      sift last-send(scope)
+        case some
+          link last
+          push(out, <  send back, read {last}>)
+        case none
+          save nothing, 0
+
+task bind-capture
+  take scope, like feed-scope
+  take name, like text
+  take rule, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  mark private
+
+  push(scope/sends, name)
+  save none-seen, make list
+  save scope/types/{name}, capture-type-of(rule, ops, grammar, none-seen)
+
+task compile-sequence
+  take rules, like list, like feed-rule
+  take indent, like number
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take scope, like feed-scope
+  take state, like feed-state
+  take out, like list, like text
+  take helpers, like list, like text
+  mark private
+
+  walk rules
+    take rule
+    compile-expr(rule, indent, ops, grammar, scope, state, out, helpers)
+
+task count-text
+  take scope, like feed-scope
+  like text
+  mark private
+
+  back <{scope/sends/length}>
+
+# one peek-code comparison against a code
+task peek-equals
+  take ops, like feed-ops
+  take code, like float
+  like text
+  mark private
+
+  back <call is-equal(call({ops/peek-code}(read(cursor))), code {js-text(code)})>
+
+task compile-expr
+  take rule, like feed-rule
+  take indent, like number
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take scope, like feed-scope
+  take state, like feed-state
+  take out, like list, like text
+  take helpers, like list, like text
+  mark private
+
+  save p, repeat(<  >, indent)
+  save nth, count-text(scope)
+
+  sift rule
+    case form
+      link form-name
+      link form-send
+      link form-args
+      save local-name, text-or(form-send, <match-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      # the arguments, as named arguments; the cursor is positional and first
+      save rendered, make list
+      sift form-args
+        case some
+          link given
+          walk given
+            take arg
+            save arg-value, arg/value
+            save given-value, make(some, arg-value)
+            sift share-value(given-value)
+              case some
+                link value
+                push(rendered, <{p}    bind {arg/name}, {value/text}>)
+              case none
+                save nothing, 0
+        case none
+          save nothing, 0
+      fork test, is-equal(rendered/length, 0)
+        hold
+          push(out, <{p}save {local-name}>)
+          push(out, <{p}  call read-{form-name}(read(cursor))>)
+          back
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call read-{form-name}>)
+      push(out, <{p}    read cursor>)
+      push-all(out, rendered)
+
+    case any
+      link any-children
+      link any-send
+      save helper-name, next-helper(state)
+      push-all(helpers, compile-any-helper(helper-name, any-children, ops, grammar))
+      save local-name, text-or(any-send, <char-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {helper-name}(read(cursor))>)
+
+    case byte
+      link byte-literal
+      link byte-send
+      save local-name, text-or(byte-send, <byte-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      sift byte-literal
+        case none
+          push(out, <{p}save {local-name}>)
+          push(out, <{p}  call {ops/advance}(read(cursor))>)
+        case some
+          link known
+          push(out, <{p}fork test>)
+          push(out, <{p}  hook test>)
+          push(out, <{p}    call not, {peek-equals(ops, known)}>)
+          push(out, <{p}  hook hold>)
+          push(out, <{p}    {miss-text(ops, <byte {js-text(known)}>)}>)
+          push(out, <{p}save {local-name}>)
+          push(out, <{p}  call {ops/advance}(read(cursor))>)
+
+    case char
+      link char-literal
+      link char-send
+      save local-name, text-or(char-send, <char-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}fork test>)
+      push(out, <{p}  hook test>)
+      push(out, <{p}    call not, {peek-equals(ops, char-literal)}>)
+      push(out, <{p}  hook hold>)
+      fork test, is-above(state/in-repetition, 0)
+        hold
+          push(out, <{p}    halt>)
+        miss
+          push(out, <{p}    {miss-text(ops, shown-character(char-literal))}>)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {ops/advance}(read(cursor))>)
+
+    case text
+      link text-literal
+      link text-send
+      save local-name, text-or(text-send, <text-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      save at, 0
+      save size, char-count(text-literal)
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          save code, first-code(char-at(text-literal, at))
+          push(out, <{p}fork test>)
+          push(out, <{p}  hook test>)
+          push(out, <{p}    call not, {peek-equals(ops, code)}>)
+          push(out, <{p}  hook hold>)
+          fork test, is-above(state/in-repetition, 0)
+            hold
+              push(out, <{p}    halt>)
+            miss
+              push(out, <{p}    {miss-text(ops, shown-character(code))}>)
+          push(out, <{p}  hook miss>)
+          push(out, <{p}    call {ops/advance}(read(cursor))>)
+          save at, add(at, 1)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  text \<{text-literal}\>>)
+
+    case range
+      link range-base
+      link range-head
+      save local-name, <char-{nth}>
+      save base-code, first-code(range-base)
+      save head-code, first-code(range-head)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}fork test>)
+      push(out, <{p}  hook test>)
+      push(out, <{p}    call not>)
+      push(out, <{p}      call and>)
+      push(out, <{p}        call is-minimum(call({ops/peek-code}(read(cursor))), code {js-text(base-code)})>)
+      push(out, <{p}        call is-maximum(call({ops/peek-code}(read(cursor))), code {js-text(head-code)})>)
+      push(out, <{p}  hook hold>)
+      fork test, is-above(state/in-repetition, 0)
+        hold
+          push(out, <{p}    halt>)
+        miss
+          push(out, <{p}    {miss-text(ops, <a character from {shown-character(base-code)} to {shown-character(head-code)}>)}>)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {ops/advance}(read(cursor))>)
+
+    case not
+      link not-codes
+      save chain, <>
+      save first, true
+      walk not-codes
+        take code
+        save one, <call is-equal(call({ops/peek-code}(read(cursor))), code {js-text(code)})>
+        fork test, first
+          hold
+            save chain, one
+            save first, false
+          miss
+            save chain, <call or({closed-argument(chain)}, {one})>
+      push(out, <{p}fork test>)
+      push(out, <{p}  hook test>)
+      push(out, <{p}    {chain}>)
+      push(out, <{p}  hook hold>)
+      push(out, <{p}    halt \<unexpected \{{ops/describe}(cursor)\} at position \{{ops/position}(cursor)\}\>>)
+
+    # the nested rules that many times, unrolled
+    case mark
+      link mark-width
+      link mark-children
+      link mark-send
+      save local-name, text-or(mark-send, <mark-{nth}>)
+      save parts, make list
+      save round, 0.0
+      walk test
+        hook test, is-below(round, mark-width)
+        hook hold
+          save inner, make list
+          compile-sequence(mark-children, indent, ops, grammar, scope, state, inner, helpers)
+          save bound, make none
+          walk inner
+            take line
+            fork test, starts-with(trim-start(line), <save >)
+              hold
+                save bound, make(some, line)
+          sift bound
+            case some
+              link known
+              push(parts, drop-save(trim(known)))
+            case none
+              save nothing, 0
+          push-all(out, inner)
+          save round, add(round, 1.0)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  make list>)
+      walk parts
+        take part
+        push(out, <{p}    read {part}>)
+
+    # a list nested inside another rule: repeat the children while the cursor has more
+    case list
+      link list-children
+      link list-count
+      save local-name, <list-{nth}>
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  make list>)
+      push(out, <{p}walk test>)
+      push(out, <{p}  hook test>)
+      save bound, make none
+      sift list-count
+        case some
+          link given
+          save given-count, make(some, given)
+          save bound, share-value(given-count)
+        case none
+          save nothing, 0
+      sift bound
+        case some
+          link known
+          push(out, <{p}    call and>)
+          push(out, <{p}      call not, call {ops/at-end}(read(cursor))>)
+          push(out, <{p}      call is-below(call(size(read({local-name}))), {known/text})>)
+        case none
+          push(out, <{p}    call not, call {ops/at-end}(read(cursor))>)
+      push(out, <{p}  hook hold>)
+      save before, scope/sends/length
+      save inner, make list
+      save state/in-repetition, add(state/in-repetition, 1)
+      compile-sequence(list-children, add(indent, 2), ops, grammar, scope, state, inner, helpers)
+      save state/in-repetition, subtract(state/in-repetition, 1)
+      push-all(out, inner)
+      save captured, <item>
+      sift last-send(scope)
+        case some
+          link known
+          save captured, known
+        case none
+          fork test, is-below(before, scope/sends/length)
+            hold
+              save captured, get(scope/sends, before)
+      push(out, <{p}    call push(read({local-name}), read({captured}))>)
+      push(scope/sends, local-name)
+
+    # run the children, then join what they consumed
+    case span
+      link span-children
+      link span-send
+      save inner, make list
+      save state/in-span, add(state/in-span, 1)
+      compile-sequence(span-children, indent, ops, grammar, scope, state, inner, helpers)
+      save state/in-span, subtract(state/in-span, 1)
+      push-all(out, inner)
+      save bound, make list
+      walk inner
+        take line
+        fork test, starts-with(line, <{p}save >)
+          hold
+            push(bound, drop-save(trim(line)))
+      bind-capture(scope, span-send, rule, ops, grammar)
+      push(out, <{p}save {span-send}-parts>)
+      push(out, <{p}  make list>)
+      walk bound
+        take part
+        save kind, type-words(scope, part)
+        fork test, starts-with(kind, <like maybe>)
+          hold
+            push(out, <{p}    call unwrap-or(read({part}), text \<\>)>)
+          miss
+            fork test, starts-with(kind, <like list>)
+              hold
+                push(out, <{p}    call join(read({part}), text \<\>)>)
+              miss
+                push(out, <{p}    read {part}>)
+      push(out, <{p}save {span-send}>)
+      push(out, <{p}  call join(read({span-send}-parts), text \<\>)>)
+
+    case int
+      link int-width
+      link int-order
+      link int-sign
+      link int-send
+      save local-name, text-or(int-send, <int-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call read-int(read(cursor), code({js-text(int-width)}), make({int-order}), make({int-sign}))>)
+
+    case bytes
+      link bytes-width
+      link bytes-send
+      save local-name, text-or(bytes-send, <bytes-{nth}>)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call read-bytes(read(cursor), {print-node(bytes-width, 0)})>)
+
+    case until
+      link until-terminator
+      link until-send
+      save local-name, text-or(until-send, <until-{nth}>)
+      save helper-name, next-helper(state)
+      push-all(helpers, compile-until-helper(helper-name, until-terminator, ops))
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {helper-name}(read(cursor))>)
+
+    # a `check` is a maybe with an explicit test, compiled through the same helper
+    case check
+      link check-op
+      link check-base
+      link check-head
+      link check-children
+      save local-name, <maybe-{nth}>
+      save helper-name, next-helper(state)
+      save built, compile-maybe-helper(helper-name, as-maybe(check-op, check-base, check-head, check-children), ops, grammar, scope, state)
+      push-all(helpers, built/lines)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {helper-name}({helper-args(built/params)})>)
+
+    case optional
+      link optional-test
+      link optional-children
+      link optional-send
+      save local-name, text-or(optional-send, <maybe-{nth}>)
+      save helper-name, next-helper(state)
+      save none-text, make none
+      save none-reads, make none
+      save shape
+        make maybe-shape
+          bind test, optional-test
+          bind test-text, none-text
+          bind test-reads, none-reads
+          bind children, optional-children
+      save built, compile-maybe-helper(helper-name, shape, ops, grammar, scope, state)
+      push-all(helpers, built/lines)
+      bind-capture(scope, local-name, rule, ops, grammar)
+      push(out, <{p}save {local-name}>)
+      push(out, <{p}  call {helper-name}({helper-args(built/params)})>)
+
+    case let
+      link let-name
+      link let-expr
+      bind-capture(scope, let-name, rule, ops, grammar)
+      push(out, <{p}save {let-name}>)
+      push(out, <{p}  {print-node(let-expr, 0)}>)
+
+    case send
+      link send-name
+      push(scope/sends, send-name)
+
+    miss
+      save nothing, 0
+
+task helper-args
+  take params, like list, like text
+  like text
+  mark private
+
+  save args, make list
+  push(args, <read(cursor)>)
+  walk params
+    take name
+    push(args, <read({name})>)
+  back join(args, <, >)
+
+# `line.trim().slice('save '.length)`
+task drop-save
+  take line, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 5
+  save size, char-count(line)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save out, <{out}{char-at(line, at)}>
+      save at, add(at, 1)
+  back out
+
+# the words of a local's recorded type, joined, `<>` for none
+task type-words
+  take scope, like feed-scope
+  take name, like text
+  like text
+  mark private
+
+  fork test, scope/types/has(name)
+    hold
+      back join(scope/types/get(name), < >)
+  back <>
+
+# ---- FIRST sets ----
+
+task single-span
+  take base, like float
+  take head, like float
+  like list, like first-span
+  mark private
+
+  save out, make list
+  save one
+    make first-span
+      bind base, base
+      bind head, head
+  push(out, one)
+  back out
+
+task code-or-zero
+  take given, like text
+  like float
+  mark private
+
+  save code, first-code(given)
+  fork test, is-below(code, 0.0)
+    hold
+      back 0.0
+  back code
+
+# the code points a rule can begin with, none when it cannot be decided
+task first-of
+  take rule, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  sift rule
+    case char
+      save spans, single-span(literal, literal)
+      back make(some, spans)
+    case text
+      save code, first-code(literal)
+      fork test, is-below(code, 0.0)
+        hold
+          back make none
+      save spans, single-span(code, code)
+      back make(some, spans)
+    case range
+      save spans, single-span(code-or-zero(base), code-or-zero(head))
+      back make(some, spans)
+    case form
+      back first-of-rule(name, grammar, seen)
+    case span
+      back first-of-sequence(children, grammar, seen)
+    case check
+      back first-of-sequence(children, grammar, seen)
+    case optional
+      back first-of-sequence(children, grammar, seen)
+    case list
+      back first-of-sequence(children, grammar, seen)
+    case any
+      save out, make list
+      walk children
+        take child
+        sift first-of(child, grammar, seen)
+          case some
+            link spans
+            walk spans
+              take one
+              push(out, one)
+          case none
+            back make none
+      back make(some, out)
+    miss
+      back make none
+
+task is-optional
+  take rule, like feed-rule
+  like boolean
+  mark private
+
+  sift rule
+    case optional
+      back true
+    miss
+      back false
+
+# the first characters a sequence can begin with: every optional rule's own, then the first required rule's
+task first-of-sequence
+  take rules, like list, like feed-rule
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  save out, make list
+  walk rules
+    take rule
+    sift rule
+      case not
+        turn next
+      case send
+        turn next
+      case let
+        turn next
+      case value
+        turn next
+      miss
+        save nothing, 0
+    sift first-of(rule, grammar, seen)
+      case some
+        link spans
+        walk spans
+          take one
+          push(out, one)
+        fork test, not(is-optional(rule))
+          hold
+            back make(some, out)
+      case none
+        fork test, is-above(out/length, 0)
+          hold
+            back make(some, out)
+        back make none
+  fork test, is-above(out/length, 0)
+    hold
+      back make(some, out)
+  back make none
+
+task first-of-rule
+  take name, like text
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like maybe, like list, like first-span
+  mark private
+
+  fork test, has-text-in(seen, name)
+    hold
+      back make none
+  fork test, not(grammar/has(name))
+    hold
+      back make none
+  save rules, grammar/get(name)
+  fork test, is-equal(rules/length, 0)
+    hold
+      back make none
+  save inner, make list
+  walk seen
+    take one
+    push(inner, one)
+  push(inner, name)
+  back first-of-sequence(rules, grammar, inner)
+
+task is-form-rule
+  take rule, like feed-rule
+  like boolean
+  mark private
+
+  sift rule
+    case form
+      back true
+    miss
+      back false
+
+# the spans as one test of `subject`, joined by nested `or`s
+task span-test
+  take spans, like list, like first-span
+  take subject, like text
+  like text
+  mark private
+
+  save chain, <>
+  save first, true
+  walk spans
+    take one
+    save part, <call and(call(is-minimum({subject}, code {js-text(one/base)})), call is-maximum({subject}, code {js-text(one/head)}))>
+    fork test, is-equal(one/base, one/head)
+      hold
+        save part, <call is-equal({subject}, code {js-text(one/base)})>
+    fork test, first
+      hold
+        save chain, part
+        save first, false
+      miss
+        save chain, <call or({closed-argument(chain)}, {part})>
+  back chain
+
+task compile-any-helper
+  take name, like text
+  take branches, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  like list, like text
+  mark private
+
+  save element, <like u8>
+  fork test, is-text-cursor(ops)
+    hold
+      save element, <like text>
+  walk branches
+    take branch
+    fork test, is-form-rule(branch)
+      hold
+        save element, <like unknown>
+  save lines, make list
+  push(lines, <task {name}>)
+  push(lines, <  take cursor, like {ops/cursor-type}>)
+  push(lines, <  {element}>)
+  push(lines, <  save code>)
+  push(lines, <    call {ops/peek-code}(read(cursor))>)
+
+  save ranges, 0
+  walk branches
+    take branch
+    sift branch
+      case range
+        link range-base
+        link range-head
+        fork test, is-equal(ranges, 0)
+          hold
+            push(lines, <  fork test>)
+        push(lines, <    hook test>)
+        push(lines, <      call and>)
+        push(lines, <        call is-minimum(read(code), code {js-text(code-or-zero(range-base))})>)
+        push(lines, <        call is-maximum(read(code), code {js-text(code-or-zero(range-head))})>)
+        push(lines, <    hook hold>)
+        push(lines, <      send back>)
+        push(lines, <        call {ops/advance}(read(cursor))>)
+        save ranges, add(ranges, 1)
+      miss
+        save nothing, 0
+
+  # dispatch on the first character for alternatives that are forms or literals
+  save dispatched, 0
+  save none-seen, make list
+  walk branches
+    take branch
+    save candidate, false
+    save form-name, make none
+    sift branch
+      case form
+        link branch-name
+        save candidate, true
+        save form-name, make(some, branch-name)
+      case char
+        save candidate, true
+      case text
+        save candidate, true
+      miss
+        save nothing, 0
+    fork test, not(candidate)
+      hold
+        turn next
+    sift first-of(branch, grammar, none-seen)
+      case some
+        link spans
+        fork test, is-equal(spans/length, 0)
+          hold
+            turn next
+        fork test, and(is-equal(dispatched, 0), is-equal(ranges, 0))
+          hold
+            push(lines, <  fork test>)
+        push(lines, <    hook test>)
+        push(lines, <      {span-test(spans, <read(code)>)}>)
+        push(lines, <    hook hold>)
+        push(lines, <      send back>)
+        sift form-name
+          case some
+            link known
+            push(lines, <        call read-{known}(read(cursor))>)
+          case none
+            push(lines, <        call {ops/advance}(read(cursor))>)
+        save dispatched, add(dispatched, 1)
+      case none
+        save nothing, 0
+
+  push(lines, <  {miss-text(ops, <a match for {name}>)}>)
+  back lines
+
+# `mine until`: what comes before the terminator, the terminator consumed, end of input stopping it too
+task compile-until-helper
+  take name, like text
+  take terminator, like float
+  take ops, like feed-ops
+  like list, like text
+  mark private
+
+  save on-text, is-text-cursor(ops)
+  save lines, make list
+  push(lines, <task {name}>)
+  push(lines, <  take cursor, like {ops/cursor-type}>)
+  fork test, on-text
+    hold
+      push(lines, <  like text>)
+    miss
+      push(lines, <  like list>)
+      push(lines, <    like u8>)
+  push(lines, <  save result>)
+  push(lines, <    make list>)
+  push(lines, <  walk test>)
+  push(lines, <    hook test>)
+  push(lines, <      call and>)
+  push(lines, <        call not, call {ops/at-end}(read(cursor))>)
+  push(lines, <        call not, {peek-equals(ops, terminator)}>)
+  push(lines, <    hook hold>)
+  push(lines, <      call push(read(result), call {ops/advance}(read(cursor)))>)
+  push(lines, <  fork test>)
+  push(lines, <    hook test>)
+  push(lines, <      call not, call {ops/at-end}(read(cursor))>)
+  push(lines, <    hook hold>)
+  push(lines, <      call {ops/advance}(read(cursor))>)
+  fork test, on-text
+    hold
+      push(lines, <  send back>)
+      push(lines, <    call join(read(result), text \<\>)>)
+      back lines
+  push(lines, <  send back, read result>)
+  back lines
+
+# every `read <name>` but `read cursor` an expression references, in the order first met
+task free-reads
+  take one, like node
+  take out, like list, like text
+  mark private
+
+  sift one
+    case group
+      fork test, and(maybe-is(word-in(kid-at(nodes, 0)), <read>), is-equal(nodes/length, 2))
+        hold
+          sift word-in(kid-at(nodes, 1))
+            case some
+              link name
+              fork test, and(is-unequal(name, <>), is-unequal(name, <cursor>))
+                hold
+                  add-text(out, name)
+            case none
+              save nothing, 0
+      walk nodes
+        take child
+        free-reads(child, out)
+    miss
+      save nothing, 0
+
+# the condition of a maybe with no explicit test: the next character is in its own FIRST set
+task first-test
+  take children, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  like text
+  mark private
+
+  save none-seen, make list
+  save spans, make list
+  walk children
+    take child
+    sift first-of(child, grammar, none-seen)
+      case some
+        link got
+        walk got
+          take one
+          push(spans, one)
+        halt
+      case none
+        save nothing, 0
+  fork test, is-equal(spans/length, 0)
+    hold
+      back <false>
+  back span-test(spans, <call({ops/peek-code}(read(cursor)))>)
+
+# a `check` as the maybe it is
+task as-maybe
+  take op, like text
+  take base, like node
+  take head, like node
+  take children, like list, like feed-rule
+  like maybe-shape
+  mark private
+
+  save given-base, make(some, base)
+  save given-front, make(some, head)
+  save base-value, share-value(given-base)
+  save front-value, share-value(given-front)
+  save none-test, make none
+  sift base-value
+    case some
+      link base-known
+      sift front-value
+        case some
+          link front-known
+          save reads, make list
+          push-all(reads, base-known/reads)
+          push-all(reads, front-known/reads)
+          save test-text, <call {op}({base-known/text}, {front-known/text})>
+          back
+            make maybe-shape
+              bind test, none-test
+              bind test-text, make(some, test-text)
+              bind test-reads, make(some, reads)
+              bind children, children
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save none-text, make none
+  save none-reads, make none
+  back
+    make maybe-shape
+      bind test, none-test
+      bind test-text, none-text
+      bind test-reads, none-reads
+      bind children, children
+
+task compile-maybe-helper
+  take name, like text
+  take shape, like maybe-shape
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take outer, like feed-scope
+  take state, like feed-state
+  like maybe-built
+  mark private
+
+  save helpers, make list
+  save body, make list
+  save scope, fresh-scope()
+  save value-expr, make none
+  walk shape/children
+    take child
+    sift child
+      case value
+        save value-expr, make(some, expr)
+        turn next
+      miss
+        save nothing, 0
+    compile-expr(child, 3, ops, grammar, scope, state, body, helpers)
+
+  # inside a span the payload is the text this maybe consumed, joined from every part it bound
+  save payload, <>
+  sift value-expr
+    case some
+      link expr
+      save payload, print-node(expr, 0)
+    case none
+      fork test, and(is-above(state/in-span, 0), is-above(scope/sends/length, 0))
+        hold
+          save joined, <>
+          walk scope/sends
+            take sent
+            save kind, type-words(scope, sent)
+            fork test, starts-with(kind, <like maybe>)
+              hold
+                save joined, <{joined}, call(unwrap-or(read({sent}), text \<\>))>
+              miss
+                fork test, starts-with(kind, <like list>)
+                  hold
+                    save joined, <{joined}, call(join(read({sent}), text \<\>))>
+                  miss
+                    save joined, <{joined}, read({sent})>
+          save payload, <call join(make(list{joined}), text \<\>)>
+        miss
+          save payload, <read {text-or(last-send(scope), <result>)}>
+
+  # only the names the test reads from outside this helper, each typed as the enclosing capture is
+  save candidates, make list
+  sift shape/test
+    case some
+      link test-node
+      free-reads(test-node, candidates)
+    case none
+      sift shape/test-reads
+        case some
+          link reads
+          push-all(candidates, reads)
+        case none
+          save nothing, 0
+  save params, make list
+  walk candidates
+    take one
+    fork test, outer/types/has(one)
+      hold
+        push(params, one)
+
+  save lines, make list
+  push-all(lines, helpers)
+  push(lines, <task {name}>)
+  push(lines, <  take cursor, like {ops/cursor-type}>)
+  walk params
+    take param
+    save typed, outer/types/get(param)
+    save first-line, <like number>
+    fork test, is-above(typed/length, 0)
+      hold
+        save first-line, get(typed, 0)
+    push(lines, <  take {param}, {first-line}>)
+    save at, 1
+    walk test
+      hook test, is-below(at, typed/length)
+      hook hold
+        push(lines, <  {get(typed, at)}>)
+        save at, add(at, 1)
+  push(lines, <  like maybe>)
+  push(lines, <    like unknown>)
+  push(lines, <  fork test>)
+  push(lines, <    hook test>)
+  save test-line, <>
+  sift shape/test
+    case some
+      link test-node
+      save test-line, <call is-above({closed-argument(print-node(test-node, 0))}, code 0)>
+    case none
+      sift shape/test-text
+        case some
+          link written
+          save test-line, <call is-above({closed-argument(written)}, code 0)>
+        case none
+          save test-line, first-test(shape/children, ops, grammar)
+  push(lines, <      {test-line}>)
+  push(lines, <    hook hold>)
+  push-all(lines, body)
+  push(lines, <      send back>)
+  push(lines, <        make some>)
+  push(lines, <          bind value, {payload}>)
+  push(lines, <  send back>)
+  push(lines, <    make none>)
+  back
+    make maybe-built
+      bind lines, lines
+      bind params, params

@@ -59,8 +59,9 @@ form svg-text-content-element, name <SVGTextContentElement>
     like native-number
 
   task get-char-num-at-position, name <getCharNumAtPosition>
-    take point, like maybe
-      like dom-point-init
+    take point
+      like maybe
+        like dom-point-init
     like native-number
 
   task get-computed-text-length, name <getComputedTextLength>
@@ -108,19 +109,21 @@ form svg-text-content-element, name <SVGTextContentElement>
             like svg-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -136,17 +139,19 @@ form svg-text-content-element, name <SVGTextContentElement>
             like svg-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

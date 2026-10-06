@@ -20,13 +20,15 @@ load @term/bind/javascript/native
 host plural-rules, name <PluralRules>
   like form
     hook make
-      take locales, like maybe
-        like or
-          like native-string
-          like native-array
+      take locales
+        like maybe
+          like or
             like native-string
-      take options, like maybe
-        like plural-rules-options
+            like native-array
+              like native-string
+      take options
+        like maybe
+          like plural-rules-options
       like plural-rules
 
     task supported-locales-of, name <supportedLocalesOf>
@@ -35,7 +37,8 @@ host plural-rules, name <PluralRules>
           like native-string
           like native-array
             like native-string
-      take options, like maybe
-        like plural-rules-options
+      take options
+        like maybe
+          like plural-rules-options
       like native-array
         like native-string

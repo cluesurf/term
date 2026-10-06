@@ -48,6 +48,7 @@ form reg-exp-constructor, name <RegExpConstructor>
 
   hook make
     take pattern, like native-string
-    take flags, like maybe
-      like native-string
+    take flags
+      like maybe
+        like native-string
     like reg-exp

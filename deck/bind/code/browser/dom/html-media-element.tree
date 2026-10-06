@@ -186,10 +186,12 @@ form html-media-element, name <HTMLMediaElement>
 
   task add-text-track, name <addTextTrack>
     take kind, like text-track-kind
-    take label, like maybe
-      like native-string
-    take language, like maybe
-      like native-string
+    take label
+      like maybe
+        like native-string
+    take language
+      like maybe
+        like native-string
     like text-track
 
   task can-play-type, name <canPlayType>
@@ -231,19 +233,21 @@ form html-media-element, name <HTMLMediaElement>
             like html-media-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -259,17 +263,19 @@ form html-media-element, name <HTMLMediaElement>
             like html-media-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

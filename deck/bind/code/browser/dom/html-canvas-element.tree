@@ -73,63 +73,73 @@ form html-canvas-element, name <HTMLCanvasElement>
     lock false
 
   task capture-stream, name <captureStream>
-    take frame-request-rate, like maybe
-      like native-number
+    take frame-request-rate
+      like maybe
+        like native-number
     like media-stream
 
   task get-context, name <getContext>
     take context-id, text <2d>
-    take options, like maybe
-      like canvas-rendering-context2-d-settings
+    take options
+      like maybe
+        like canvas-rendering-context2-d-settings
     like or
       like canvas-rendering-context2-d
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <bitmaprenderer>
-    take options, like maybe
-      like image-bitmap-rendering-context-settings
+    take options
+      like maybe
+        like image-bitmap-rendering-context-settings
     like or
       like image-bitmap-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <webgl>
-    take options, like maybe
-      like web-gl-context-attributes
+    take options
+      like maybe
+        like web-gl-context-attributes
     like or
       like web-gl-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, text <webgl2>
-    take options, like maybe
-      like web-gl-context-attributes
+    take options
+      like maybe
+        like web-gl-context-attributes
     like or
       like web-gl2-rendering-context
       like native-null
 
   task get-context, name <getContext>
     take context-id, like native-string
-    take options, like maybe
-      like native-any
+    take options
+      like maybe
+        like native-any
     like or
       like rendering-context
       like native-null
 
   task to-blob, name <toBlob>
     take callback, like blob-callback
-    take type, like maybe
-      like native-string
-    take quality, like maybe
-      like native-any
+    take type
+      like maybe
+        like native-string
+    take quality
+      like maybe
+        like native-any
     like native-void
 
   task to-data-url, name <toDataURL>
-    take type, like maybe
-      like native-string
-    take quality, like maybe
-      like native-any
+    take type
+      like maybe
+        like native-string
+    take quality
+      like maybe
+        like native-any
     like native-string
 
   task add-event-listener, name <addEventListener>
@@ -145,19 +155,21 @@ form html-canvas-element, name <HTMLCanvasElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -173,17 +185,19 @@ form html-canvas-element, name <HTMLCanvasElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

@@ -20,10 +20,11 @@ form weak-set-constructor, name <WeakSetConstructor>
     head t
       base native-object
       back native-object
-    take values, like maybe
-      like or
-        like native-array
-          like t
-        like native-null
+    take values
+      like maybe
+        like or
+          like native-array
+            like t
+          like native-null
     like weak-set
       like t

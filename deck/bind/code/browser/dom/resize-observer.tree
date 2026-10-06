@@ -14,8 +14,9 @@ form resize-observer, name <ResizeObserver>
 
   task observe, name <observe>
     take target, like element
-    take options, like maybe
-      like resize-observer-options
+    take options
+      like maybe
+        like resize-observer-options
     like native-void
 
   task unobserve, name <unobserve>

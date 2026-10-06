@@ -1,0 +1,400 @@
+# `term make --target uikit`'s decisions that are not the compiler, Xcode or the files (swiftui-target-0004): the
+# app's name and identifier, the line that starts its program, the Xcode project around it, the team a keychain's
+# signing identities name, the install manifest and the export options, and which of xcodebuild's lines say why it
+# failed.
+#
+# Ported from deck/call/code/uikit.ts (self-hosting, 2026-10-06), which stays as the face: it compiles, runs xcodebuild
+# and security, writes the project and prints through code/output.ts. The project's object ids are sha256 digests
+# made there, and a link is percent-encoded there.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-lower-case
+  find replace-all
+  find contains, name text-contains
+
+# the iOS the app asks for, the one the simulator builds name
+task ios-minimum
+  like text
+
+  back <17.0>
+
+form uikit-identity
+  link name, like text
+  link identifier, like text
+
+# an app folder's name as the app is named after it, its ASCII letters and digits, `App` when it has none, and its
+# bundle identifier
+task uikit-identity-of
+  take folder, like text
+  like uikit-identity
+
+  save kept, make list
+  walk split(folder, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), and(is-minimum(code, 48), is-maximum(code, 57)))
+      hold
+        push(kept, point)
+  save name, join(kept, <>)
+  fork test, is-equal(name, <>)
+    hold
+      save name, <App>
+  save lower, to-lower-case(name)
+  back
+    make uikit-identity
+      bind name, name
+      bind identifier, <surf.term.{lower}>
+
+task holds-at
+  take points, like list, like text
+  take at, like number
+  take wanted, like text
+  like boolean
+  mark private
+
+  save needle, split(wanted, <>)
+  fork test, is-above(add(at, needle/length), points/length)
+    hold
+      back false
+  save step, 0
+  walk needle
+    take one
+    fork test, is-unequal(get(points, add(at, step)), one)
+      hold
+        back false
+    save step, add(step, 1)
+  back true
+
+# `/func main\(\)[^{]*throws/`: the program's `main` raises, so the line that starts it says `try`
+task start-line
+  take swift, like text
+  like text
+
+  save points, split(swift, <>)
+  save at, 0
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      fork test, and(is-equal(get(points, at), <f>), holds-at(points, at, <func main()>))
+        hold
+          save step, add(at, 11)
+          walk test
+            hook test, and(is-below(step, points/length), is-unequal(get(points, step), <\{>))
+            hook hold
+              fork test, holds-at(points, step, <throws>)
+                hold
+                  back <try main()>
+              save step, add(step, 1)
+      save at, add(at, 1)
+  back <main()>
+
+# ---- the Xcode project ----
+
+form usage-entry
+  link key, like text
+  link said, like text
+
+task quoted
+  take value, like text
+  like text
+  mark private
+
+  save inner, replace-all(value, <">, <\\">)
+  back <"{inner}">
+
+task setting-line
+  take key, like text
+  take value, like text
+  like text
+  mark private
+
+  save shown, quoted(value)
+  back <\t\t\t\t{key} = {shown};>
+
+# a target's build settings, the simulator build's flags (cask.ts `buildProgram`): -O and whole module in Release,
+# exclusivity checks off, Swift 5 mode, never the app's own name as its module, and the usage strings its device
+# capabilities need into the generated Info.plist
+task target-settings
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take team, like text
+  take usage, like list, like usage-entry
+  take module, like text
+  take optimize, like boolean
+  like text
+  mark private
+
+  save lines, make list
+  push(lines, setting-line(<CODE_SIGN_STYLE>, <Automatic>))
+  fork test, is-unequal(team, <>)
+    hold
+      push(lines, setting-line(<DEVELOPMENT_TEAM>, team))
+  push(lines, setting-line(<CURRENT_PROJECT_VERSION>, version))
+  push(lines, setting-line(<GENERATE_INFOPLIST_FILE>, <YES>))
+  push(lines, setting-line(<INFOPLIST_KEY_CFBundleDisplayName>, name))
+  push(lines, setting-line(<INFOPLIST_KEY_UILaunchScreen_Generation>, <YES>))
+  push(lines, setting-line(<INFOPLIST_KEY_UIRequiresFullScreen>, <YES>))
+  push(lines, setting-line(<INFOPLIST_KEY_UISupportedInterfaceOrientations>, <UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight>))
+  push(lines, setting-line(<IPHONEOS_DEPLOYMENT_TARGET>, ios-minimum()))
+  push(lines, setting-line(<MARKETING_VERSION>, version))
+  push(lines, setting-line(<OTHER_SWIFT_FLAGS>, <-enforce-exclusivity=unchecked>))
+  push(lines, setting-line(<PRODUCT_BUNDLE_IDENTIFIER>, identifier))
+  push(lines, setting-line(<PRODUCT_NAME>, <$(TARGET_NAME)>))
+  push(lines, setting-line(<PRODUCT_MODULE_NAME>, module))
+  save mode, <singlefile>
+  save level, <-Onone>
+  fork test, optimize
+    hold
+      save mode, <wholemodule>
+      save level, <-O>
+  push(lines, setting-line(<SWIFT_COMPILATION_MODE>, mode))
+  push(lines, setting-line(<SWIFT_OPTIMIZATION_LEVEL>, level))
+  push(lines, setting-line(<SWIFT_VERSION>, <5.0>))
+  push(lines, setting-line(<TARGETED_DEVICE_FAMILY>, <1,2>))
+  walk usage
+    take one
+    save key, one/key
+    push(lines, setting-line(<INFOPLIST_KEY_{key}>, one/said))
+  back join(lines, <\n>)
+
+# The smallest project.pbxproj for one app target with one Swift file and a generated Info.plist. `ids` are its
+# fifteen object ids, in the order file, build, product, main group, sources group, products group, phase, target,
+# target list, target debug, target release, project, project list, project debug, project release. `module` is the
+# Swift module every Apple app is built as (cask.ts `SWIFT_MODULE`)
+task xcode-project
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take team, like text
+  take usage, like list, like usage-entry
+  take module, like text
+  take ids, like list, like text
+  like text
+
+  save file, get(ids, 0)
+  save build, get(ids, 1)
+  save product, get(ids, 2)
+  save main, get(ids, 3)
+  save sources, get(ids, 4)
+  save products, get(ids, 5)
+  save phase, get(ids, 6)
+  save target, get(ids, 7)
+  save target-list, get(ids, 8)
+  save target-debug, get(ids, 9)
+  save target-release, get(ids, 10)
+  save project, get(ids, 11)
+  save project-list, get(ids, 12)
+  save project-debug, get(ids, 13)
+  save project-release, get(ids, 14)
+  save app, quoted(<{name}.app>)
+  save named, quoted(name)
+  save debug, target-settings(name, identifier, version, team, usage, module, false)
+  save release, target-settings(name, identifier, version, team, usage, module, true)
+  save sdk, setting-line(<SDKROOT>, <iphoneos>)
+  save deploy, setting-line(<IPHONEOS_DEPLOYMENT_TARGET>, ios-minimum())
+  save whole, <{sdk}\n{deploy}>
+  save lines, make list
+  push(lines, <// !$*UTF8*$!>)
+  push(lines, <\{>)
+  push(lines, <\tarchiveVersion = 1;>)
+  push(lines, <\tclasses = \{>)
+  push(lines, <\t};>)
+  push(lines, <\tobjectVersion = 56;>)
+  push(lines, <\tobjects = \{>)
+  push(lines, <\t\t{build} = \{isa = PBXBuildFile; fileRef = {file}; };>)
+  push(lines, <\t\t{file} = \{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "\<group\>"; };>)
+  push(lines, <\t\t{product} = \{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = {app}; sourceTree = BUILT_PRODUCTS_DIR; };>)
+  push(lines, <\t\t{main} = \{isa = PBXGroup; children = ({sources}, {products}, ); sourceTree = "\<group\>"; };>)
+  push(lines, <\t\t{sources} = \{isa = PBXGroup; children = ({file}, ); path = {named}; sourceTree = "\<group\>"; };>)
+  push(lines, <\t\t{products} = \{isa = PBXGroup; children = ({product}, ); name = Products; sourceTree = "\<group\>"; };>)
+  push(lines, <\t\t{phase} = \{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({build}, ); runOnlyForDeploymentPostprocessing = 0; };>)
+  push(lines, <\t\t{target} = \{isa = PBXNativeTarget; buildConfigurationList = {target-list}; buildPhases = ({phase}, ); buildRules = (); dependencies = (); name = {named}; productName = {named}; productReference = {product}; productType = "com.apple.product-type.application"; };>)
+  push(lines, <\t\t{target-list} = \{isa = XCConfigurationList; buildConfigurations = ({target-debug}, {target-release}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };>)
+  push(lines, <\t\t{target-debug} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  push(lines, debug)
+  push(lines, <\t\t\t}; name = Debug; };>)
+  push(lines, <\t\t{target-release} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  push(lines, release)
+  push(lines, <\t\t\t}; name = Release; };>)
+  push(lines, <\t\t{project} = \{isa = PBXProject; attributes = \{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500; }; buildConfigurationList = {project-list}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({target}, ); };>)
+  push(lines, <\t\t{project-list} = \{isa = XCConfigurationList; buildConfigurations = ({project-debug}, {project-release}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };>)
+  push(lines, <\t\t{project-debug} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  push(lines, whole)
+  push(lines, <\t\t\t}; name = Debug; };>)
+  push(lines, <\t\t{project-release} = \{isa = XCBuildConfiguration; buildSettings = \{>)
+  push(lines, whole)
+  push(lines, <\t\t\t}; name = Release; };>)
+  push(lines, <\t};>)
+  push(lines, <\trootObject = {project};>)
+  push(lines, <}>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# ---- signing ----
+
+task is-team-code
+  take point, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(point, 0)
+  back or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 48), is-maximum(code, 57)))
+
+# The team of the one Apple signing identity a keychain lists, when exactly one team is among them, else the empty
+# text: each `"Apple Distribution: ... (TEAMID)"` or `"Apple Development: ..."`, the id ten capitals and digits
+task signing-team
+  take listed, like text
+  like text
+
+  save points, split(listed, <>)
+  save teams, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      save next, add(at, 1)
+      save after, -1
+      fork test, holds-at(points, at, <"Apple Distribution: >)
+        hold
+          save after, add(at, 21)
+      fork test, holds-at(points, at, <"Apple Development: >)
+        hold
+          save after, add(at, 20)
+      fork test, is-minimum(after, 0)
+        hold
+          # the first quote after, which `[^"]*` cannot pass, must close `(<ten>)`
+          save close, after
+          walk test
+            hook test, and(is-below(close, points/length), is-unequal(get(points, close), <">))
+            hook hold
+              save close, add(close, 1)
+          fork test, and(is-below(close, points/length), is-minimum(subtract(close, 12), after))
+            hold
+              save open, subtract(close, 12)
+              fork test, and(is-equal(get(points, open), <(>), is-equal(get(points, subtract(close, 1)), <)>))
+                hold
+                  save good, true
+                  save team, make list
+                  save step, add(open, 1)
+                  walk test
+                    hook test, is-below(step, subtract(close, 1))
+                    hook hold
+                      fork test, not(is-team-code(get(points, step)))
+                        hold
+                          save good, false
+                      push(team, get(points, step))
+                      save step, add(step, 1)
+                  fork test, good
+                    hold
+                      save found, join(team, <>)
+                      fork test, not(contains(teams, found))
+                        hold
+                          push(teams, found)
+                      save next, add(close, 1)
+      save at, next
+  fork test, is-equal(teams/length, 1)
+    hold
+      back get(teams, 0)
+  back <>
+
+# ---- the install page and the export ----
+
+# the manifest an itms-services link names, which names the .ipa at `base`
+task install-manifest
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take base, like text
+  like text
+
+  save lines, make list
+  push(lines, <\<?xml version="1.0" encoding="UTF-8"?\>>)
+  push(lines, <\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>)
+  push(lines, <\<plist version="1.0"\>\<dict\>\<key\>items\</key\>\<array\>\<dict\>>)
+  push(lines, <\<key\>assets\</key\>\<array\>\<dict\>\<key\>kind\</key\>\<string\>software-package\</string\>\<key\>url\</key\>\<string\>{base}/{name}.ipa\</string\>\</dict\>\</array\>>)
+  push(lines, <\<key\>metadata\</key\>\<dict\>\<key\>bundle-identifier\</key\>\<string\>{identifier}\</string\>\<key\>bundle-version\</key\>\<string\>{version}\</string\>\<key\>kind\</key\>\<string\>software\</string\>\<key\>title\</key\>\<string\>{name}\</string\>\</dict\>>)
+  push(lines, <\</dict\>\</array\>\</dict\>\</plist\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# the page an iPhone opens, its link the manifest's address as `encodeURIComponent` writes it
+task install-page
+  take name, like text
+  take version, like text
+  take encoded, like text
+  like text
+
+  back <\<!doctype html\>\<meta name="viewport" content="width=device-width"\>\<title\>{name}\</title\>\<p\>\<a href="itms-services://?action=download-manifest&amp;url={encoded}"\>Install {name} {version}\</a\>\</p\>\n>
+
+# the export's options: ad hoc for the team, signed automatically
+task export-options
+  take team, like text
+  like text
+
+  save lines, make list
+  push(lines, <\<?xml version="1.0" encoding="UTF-8"?\>>)
+  push(lines, <\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"\>>)
+  push(lines, <\<plist version="1.0"\>\<dict\>\<key\>method\</key\>\<string\>release-testing\</string\>\<key\>signingStyle\</key\>\<string\>automatic\</string\>\<key\>teamID\</key\>\<string\>{team}\</string\>\<key\>compileBitcode\</key\>\<false/\>\<key\>thinning\</key\>\<string\>&lt;none&gt;\</string\>\</dict\>\</plist\>>)
+  push(lines, <>)
+  back join(lines, <\n>)
+
+# ---- what a failed step said ----
+
+# a line lower-cased in ASCII alone, as a case-blind JavaScript pattern without `u` compares
+task ascii-lower
+  take line, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk split(line, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+      hold
+        push(out, to-lower-case(point))
+      miss
+        push(out, point)
+  back out
+
+# `/error:|warning: .*(sign|profile)|No profiles|No Accounts|requires a provisioning/i`: does a line of xcodebuild's
+# say why it failed: an error, a warning about signing or a profile on the same line, or one of the three refusals
+task is-failure-line
+  take line, like text
+  like boolean
+
+  save points, ascii-lower(line)
+  save lower, join(points, <>)
+  fork test, or(or(text-contains(lower, <error:>), text-contains(lower, <no profiles>)), or(text-contains(lower, <no accounts>), text-contains(lower, <requires a provisioning>)))
+    hold
+      back true
+  save at, 0
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      fork test, holds-at(points, at, <warning: >)
+        hold
+          save step, add(at, 9)
+          walk test
+            hook test, is-below(step, points/length)
+            hook hold
+              fork test, or(holds-at(points, step, <sign>), holds-at(points, step, <profile>))
+                hold
+                  back true
+              save code, char-code-at(get(points, step), 0)
+              fork test, or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+                hold
+                  save step, points/length
+                miss
+                  save step, add(step, 1)
+      save at, add(at, 1)
+  back false

@@ -49,8 +49,9 @@ form data-transfer, name <DataTransfer>
       like native-string
 
   task clear-data, name <clearData>
-    take format, like maybe
-      like native-string
+    take format
+      like maybe
+        like native-string
     like native-void
 
   task get-data, name <getData>

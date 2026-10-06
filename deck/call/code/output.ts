@@ -28,7 +28,12 @@ import { blankEvent, plainField, plainSubject } from '@term/call/code/work/item/
 import type { Event, Frame, ItemField, Tally } from '@term/call/code/work/item/event'
 import { makeStandard } from '@term/call/code/work/item/standard'
 import { formatPath } from '@term/call/code/work/item/format'
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import * as plan from '@term/call/code/output-plan'
+
+// A DIAGNOSTIC AS A PROBLEM ITEM, its code frame, which of a batch are one problem and what a failed tool says are Term
+// since 2026-10-06, call/code/output-plan.tree. This face holds the run open, reads the flags, prints through the
+// output library, follows child processes and writes the crash log.
 
 const STANDARD = makeStandard()
 
@@ -295,13 +300,9 @@ export function runTool(cmd: string, args: string[], spawnOptions: { cwd?: strin
   } catch (error) {
     const failed = error as { status?: number | null; signal?: string | null; stdout?: string; stderr?: string; code?: string }
     const missing = failed.code === 'ENOENT'
-    const name = path.basename(cmd)
-    const quote = `${failed.stdout ?? ''}${failed.stderr ?? ''}`.split('\n').filter(line => line.trim() !== '')
+    const said = plan.toolFailureOf(path.basename(cmd), missing, failed.signal || '', failed.status ?? 1, `${failed.stdout ?? ''}${failed.stderr ?? ''}`)
 
-    throw Object.assign(
-      new Error(missing ? `${name} is not installed, or not on the PATH` : `${name} ${failed.signal ? `stopped on ${failed.signal}` : `exited ${failed.status ?? 1}`}`),
-      { expected: true, quote, failure: missing ? 'environment' : undefined },
-    )
+    throw Object.assign(new Error(said.message), { expected: true, quote: said.quote, failure: missing ? 'environment' : undefined })
   }
 }
 
@@ -394,7 +395,7 @@ export function followChild(child: ChildProcess, source: string): void {
 // ---- problems ----
 
 // a source location as `path:line:col`, 1-based, relative to the root
-function placeOf(file: string, span: Span, root: string): string {
+function placeOf(file: string, span: Diagnostic['span'], root: string): string {
   return `${showPath(file, root)}:${span.start.line + 1}:${span.start.column + 1}`
 }
 
@@ -413,52 +414,14 @@ function sourceLines(file: string, text: string | undefined): string[] {
 // the code frame of a diagnostic: the primary span's line with one line of context before it when that line has
 // text, and the line of every related marker, `⋮` between lines that are not adjacent (section 7)
 function frameOf(diagnostic: Diagnostic, lines: string[]): Frame | undefined {
-  if (lines.length === 0) {
-    return undefined
-  }
+  const made = plan.frameOf(diagnostic as plan.Diagnostic, lines, STANDARD.frames.tabWidth)
 
-  const marks: Frame['marks'] = []
-  const shown = new Set<number>()
-  const add = (span: Span, label: string, primary: boolean): void => {
-    const line = span.start.line
-    const text = lines[line]
-
-    if (text === undefined) {
-      return
-    }
-
-    const stop = span.end.line === line ? span.end.column : text.length
-    marks.push({ line: line + 1, column: span.start.column + 1, length: Math.max(1, stop - span.start.column), label, primary })
-    shown.add(line)
-  }
-
-  add(diagnostic.span, diagnostic.markers[0]?.label ?? '', true)
-
-  // the related markers live in this file only when their span says so, or says nothing
-  for (const marker of diagnostic.markers.slice(1)) {
-    if (!marker.span.file || marker.span.file === diagnostic.file) {
-      add(marker.span, marker.label ?? '', false)
-    }
-  }
-
-  const before = diagnostic.span.start.line - 1
-
-  if (before >= 0 && (lines[before] ?? '').trim() !== '' && marks.length === 1) {
-    shown.add(before)
-  }
-
-  return {
-    lines: [...shown].sort((a, b) => a - b).map(line => ({ number: line + 1, value: lines[line] ?? '' })),
-    marks,
-    tabWidth: STANDARD.frames.tabWidth,
-  }
+  return made.form === 'some' ? (made.value as Frame) : undefined
 }
 
 // a diagnostic as a Problem item (section 12): the message is the subject, the location an `at` field, the source a
 // code frame, the hint a `next` field. A proof obligation's verb is `prove`, everything else `check`
 export function problemOf(diagnostic: Diagnostic, root: string, text?: string): Event {
-  const glyph = diagnostic.severity === 'error' ? 'failed' : diagnostic.severity === 'warning' ? 'warning' : 'info'
-  const proof = /proof|proven|hold|claim|obligation/.test(diagnostic.name)
   const fields: ItemField[] = [location(placeOf(diagnostic.file, diagnostic.span, root))]
 
   if (diagnostic.hint) {
@@ -466,25 +429,17 @@ export function problemOf(diagnostic: Diagnostic, root: string, text?: string): 
   }
 
   const frame = frameOf(diagnostic, sourceLines(diagnostic.file, text))
-  // a message of several lines keeps its breaks (section 7): the first line is the subject, the rest message lines.
-  // The kernel's mismatch is two lines on purpose, what was expected over what was found
-  const [first = '', ...rest] = diagnostic.message.split('\n')
-  // capital first, unless the message opens with a path or a name, which is written as it is (`mod-both/code/x.tree`)
-  // the first word without the punctuation a sentence puts after it (`kernel:` is a word, `a/b.tree` a path)
-  const opening = (first.split(' ')[0] ?? '').replace(/[:,;.]+$/, '')
-  const subject = /[/.:\\@`"<]/.test(opening) ? first : first.charAt(0).toUpperCase() + first.slice(1)
+  // the glyph, the verb, the subject a sentence (capital first unless it opens with a path or a name), the message's
+  // other lines, and the name with a lint rule's code: output-plan.tree `problem-words-of`
+  const words = plan.problemWordsOf(diagnostic as plan.Diagnostic)
 
   return makeItem({
-    glyph,
+    glyph: words.glyph,
     kind: 'problem',
-    verb: proof ? 'prove' : 'check',
-    // the subject is a sentence, capital first (section 7); the compiler writes its messages starting lowercase
-    subject,
-    message: rest.map(line => line.trim()).filter(line => line !== ''),
-    // the name, and a lint rule's stable code beside it (`prefer-host-for-constant L004`), which is what
-    // `# lint off` takes, so a reader learns from the run what to write. At the end of the title in the source color
-    // (the user's choice, 2026-10-05), where it was the facts line's one fact
-    code: (diagnostic as { rule?: string }).rule ? `${diagnostic.name} ${(diagnostic as { rule?: string }).rule}` : diagnostic.name,
+    verb: words.verb,
+    subject: words.subject,
+    message: words.message,
+    code: words.code,
     fields,
     frames: frame ? [frame] : [],
     place: { path: showPath(diagnostic.file, root), line: diagnostic.span.start.line + 1, column: diagnostic.span.start.column + 1 },
@@ -505,19 +460,8 @@ export function reportProblems(list: { diagnostic: Diagnostic; text?: string }[]
 
   // ONE item per problem: a diagnostic in a module several entries load comes back once per entry, and the build
   // printed a stdlib module's two errors four times each. The same file, place, name and message is the same problem
-  const seen = new Set<string>()
-  const unique = list.filter(each => {
-    const d = each.diagnostic
-    const key = `${d.file}:${d.span.start.line}:${d.span.start.column}:${d.name}:${d.message}`
-
-    if (seen.has(key)) {
-      return false
-    }
-
-    seen.add(key)
-
-    return true
-  })
+  const kept = plan.uniqueProblems(list.map(each => each.diagnostic as plan.Diagnostic))
+  const unique = list.filter((_, at) => kept[at])
 
   const standard = showAll ? { ...STANDARD, caps: { ...STANDARD.caps, problems: 0 } } : STANDARD
 

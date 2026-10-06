@@ -14,6 +14,21 @@ form arm-local
   link field, like text
   link local, like text
 
+# whether a name is one of the fields. It read the text task `contains` over the list, which TypeScript's `includes`
+# answered for an array too, and which was ambiguous wherever both of the stdlib's text modules were in scope
+task has-field
+  take fields, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk fields
+    take field
+    fork test, is-equal(field, name)
+      hold
+        back true
+  back false
+
 task arm-locals
   # the variant's field names, in declaration order
   take fields
@@ -43,7 +58,7 @@ task arm-locals
   save every, true
   walk binds
     take name
-    fork test, is-equal(contains(fields, name), false)
+    fork test, not(has-field(fields, name))
       hold
         save every, false
   fork test, every

@@ -25,14 +25,18 @@ form composition-event, name <CompositionEvent>
 
   task init-composition-event, name <initCompositionEvent>
     take type-arg, like native-string
-    take bubbles-arg, like maybe
-      like native-boolean
-    take cancelable-arg, like maybe
-      like native-boolean
-    take view-arg, like maybe
-      like or
-        like window-proxy
-        like native-null
-    take data-arg, like maybe
-      like native-string
+    take bubbles-arg
+      like maybe
+        like native-boolean
+    take cancelable-arg
+      like maybe
+        like native-boolean
+    take view-arg
+      like maybe
+        like or
+          like window-proxy
+          like native-null
+    take data-arg
+      like maybe
+        like native-string
     like native-void

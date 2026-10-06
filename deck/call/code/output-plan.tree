@@ -1,0 +1,388 @@
+# The terminal output's decisions that are not the library's own (note/term/output/standard.md): a diagnostic as a
+# Problem item (section 12) with its code frame (section 7), which of a batch of diagnostics are the same problem, and
+# what a failed tool step says and quotes.
+#
+# Ported from deck/call/code/output.ts (self-hosting, 2026-10-06), which stays as the face: it holds the run open across
+# a command, reads the flags, prints through the output library (code/work/item), follows child processes and writes
+# the crash log. Lengths are UTF-16 units where the original counted a text's `length`.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-upper-case
+  find contains, name text-contains
+
+load @term/make/parser/diagnostic
+  find diagnostic
+  find marker
+  find span
+  find to-text, name severity-text
+
+load ./work/item/event
+  find frame
+  find frame-line
+  find frame-mark
+
+load ./draft-mark
+  find is-space
+
+# a text's `length` as JavaScript counts it
+task units-of
+  take value, like text
+  like number
+
+  save count, 0
+  walk split(value, <>)
+    take point
+    save count, add(count, 1)
+    fork test, is-above(char-code-at(point, 0), 65535)
+      hold
+        save count, add(count, 1)
+  back count
+
+task is-blank
+  take value, like text
+  like boolean
+  mark private
+
+  walk split(value, <>)
+    take point
+    fork test, not(is-space(char-code-at(point, 0)))
+      hold
+        back false
+  back true
+
+# JavaScript's `trim`
+task trimmed
+  take value, like text
+  like text
+
+  save points, split(value, <>)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-space(char-code-at(get(points, start), 0)))
+    hook hold
+      save start, add(start, 1)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(char-code-at(get(points, subtract(end, 1)), 0)))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# ---- the code frame ----
+
+form frame-build
+  mark shared
+  link marks, like list, like frame-mark
+  link shown, like list, like number
+
+task add-mark
+  take into, like frame-build
+  take lines, like list, like text
+  take at, like span
+  take label, like text
+  take primary, like boolean
+  like void
+  mark private
+
+  save line, at/start/line
+  fork test, or(is-below(line, 0), not(is-below(line, lines/length)))
+    hold
+      back
+  save text, get(lines, line)
+  save stop, units-of(text)
+  fork test, is-equal(at/end/line, line)
+    hold
+      save stop, at/end/column
+  save length, subtract(stop, at/start/column)
+  fork test, is-below(length, 1)
+    hold
+      save length, 1
+  save mark
+    make frame-mark
+      bind line, add(line, 1)
+      bind column, add(at/start/column, 1)
+      bind length, length
+      bind label, label
+      bind primary, primary
+  push(into/marks, mark)
+  fork test, not(contains(into/shown, line))
+    hold
+      push(into/shown, line)
+
+task by-number
+  take a, like number
+  take b, like number
+  like ordering
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back make less
+  fork test, is-above(a, b)
+    hold
+      back make greater
+  back make equal
+
+task marker-label
+  take one, like marker
+  like text
+  mark private
+
+  save label, one/label
+  back label
+
+# the code frame of a diagnostic: the primary span's line with one line of context before it when that line has text
+# and no other marker is drawn, and the line of every related marker in this file (its span names no file, the empty
+# one, or this one), the lines in order
+task frame-of
+  take found, like diagnostic
+  take lines, like list, like text
+  take tab-width, like number
+  like maybe, like frame
+
+  fork test, is-equal(lines/length, 0)
+    hold
+      back make none
+  save build
+    make frame-build
+      bind marks, make list
+      bind shown, make list
+  save first-label, <>
+  fork test, is-above(found/markers/length, 0)
+    hold
+      save first-label, marker-label(get(found/markers, 0))
+  add-mark(build, lines, found/span, first-label, true)
+  save at, 0
+  walk found/markers
+    take one
+    fork test, is-above(at, 0)
+      hold
+        save here, true
+        sift one/span/file
+          case some
+            link named
+            save here, or(is-equal(named, <>), is-equal(named, found/file))
+          case none
+            save nothing, 0
+        fork test, here
+          hold
+            add-mark(build, lines, one/span, marker-label(one), false)
+    save at, add(at, 1)
+  save before, subtract(found/span/start/line, 1)
+  fork test, and(and(is-minimum(before, 0), is-equal(build/marks/length, 1)), and(is-below(before, lines/length), not(is-blank(get(lines, before)))))
+    hold
+      fork test, not(contains(build/shown, before))
+        hold
+          push(build/shown, before)
+  save rows, make list
+  walk sort(build/shown, by-number)
+    take line
+    save value, <>
+    fork test, is-below(line, lines/length)
+      hold
+        save value, get(lines, line)
+    save row
+      make frame-line
+        bind number, add(line, 1)
+        bind value, value
+    push(rows, row)
+  save made
+    make frame
+      bind lines, rows
+      bind marks, build/marks
+      bind tab-width, tab-width
+  back make(some, made)
+
+# ---- a diagnostic as a Problem item ----
+
+form problem-words
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link code, like text
+
+# the first UTF-16 unit of a text upper-cased, as `charAt(0).toUpperCase() + slice(1)` does: a code point past U+FFFF is
+# left as it is
+task capitalized
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  fork test, is-equal(points/length, 0)
+    hold
+      back value
+  save first, get(points, 0)
+  fork test, is-above(char-code-at(first, 0), 65535)
+    hold
+      back value
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      push(rest, get(points, at))
+      save at, add(at, 1)
+  save head, to-upper-case(first)
+  save tail, join(rest, <>)
+  back <{head}{tail}>
+
+# the first word without the punctuation a sentence puts after it (`:`, `,`, `;`, `.` at its end)
+task opening-word
+  take line, like text
+  like text
+  mark private
+
+  save word, get(split(line, < >), 0)
+  save points, split(word, <>)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, 0), contains(split(<:,;.>, <>), get(points, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# A diagnostic's words as a Problem item: its severity as the glyph, `prove` for a proof obligation and `check` for
+# anything else, the message's first line as the subject (a capital first, unless it opens with a path or a name,
+# which is written as it is), its other lines trimmed as the message, and its name with a lint rule's code beside it
+task problem-words-of
+  take found, like diagnostic
+  like problem-words
+
+  save severity, severity-text(found/severity)
+  save glyph, <info>
+  fork test, is-equal(severity, <error>)
+    hold
+      save glyph, <failed>
+  fork test, is-equal(severity, <warning>)
+    hold
+      save glyph, <warning>
+  save name, found/name
+  save verb, <check>
+  fork test, or(or(or(text-contains(name, <proof>), text-contains(name, <proven>)), or(text-contains(name, <hold>), text-contains(name, <claim>))), text-contains(name, <obligation>))
+    hold
+      save verb, <prove>
+  save lines, split(found/message, <\n>)
+  save first, get(lines, 0)
+  save opening, opening-word(first)
+  save subject, capitalized(first)
+  walk split(</.:\\@`"\<>, <>)
+    take sign
+    fork test, text-contains(opening, sign)
+      hold
+        save subject, first
+  save message, make list
+  save at, 0
+  walk lines
+    take line
+    fork test, is-above(at, 0)
+      hold
+        save kept, trimmed(line)
+        fork test, is-unequal(kept, <>)
+          hold
+            push(message, kept)
+    save at, add(at, 1)
+  save code, name
+  sift found/rule
+    case some
+      link rule
+      fork test, is-unequal(rule, <>)
+        hold
+          save code, <{name} {rule}>
+    case none
+      save nothing, 0
+  back
+    make problem-words
+      bind glyph, glyph
+      bind verb, verb
+      bind subject, subject
+      bind message, message
+      bind code, code
+
+# Which of a batch of diagnostics are kept: the first of each file, place, name and message. A diagnostic in a module
+# several entries load comes back once per entry, and is one problem
+task unique-problems
+  take found, like list, like diagnostic
+  like list, like boolean
+
+  save seen, make hash
+  save out, make list
+  walk found
+    take one
+    save file, one/file
+    save line, one/span/start/line
+    save column, one/span/start/column
+    save name, one/name
+    save message, one/message
+    save key, <{file}:{line}:{column}:{name}:{message}>
+    fork test, seen/has(key)
+      hold
+        push(out, false)
+      miss
+        save seen/{key}, true
+        push(out, true)
+  back out
+
+# ---- a failed tool step ----
+
+form tool-failure
+  link message, like text
+  link quote, like list, like text
+
+# What a toolchain step that failed says: the tool not installed, or stopped on a signal, or the code it exited with (1
+# when it gave none), and every line it wrote that is not blank, stdout before stderr
+task tool-failure-of
+  take name, like text
+  take missing, like boolean
+  take signal, like text
+  take status, like number
+  take written, like text
+  like tool-failure
+
+  save quote, make list
+  walk split(written, <\n>)
+    take line
+    fork test, not(is-blank(line))
+      hold
+        push(quote, line)
+  save message, <{name} exited {status}>
+  fork test, is-unequal(signal, <>)
+    hold
+      save message, <{name} stopped on {signal}>
+  fork test, missing
+    hold
+      save message, <{name} is not installed, or not on the PATH>
+  back
+    make tool-failure
+      bind message, message
+      bind quote, quote

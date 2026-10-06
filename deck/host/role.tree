@@ -1,0 +1,7 @@
+# Which files of @term/host are read with the LEAN surface (note/term/lean.md). The tree/code codec is new, and new
+# Term is written lean. The older modules stay longhand until `pnpm term:lean-convert` reads each equal.
+
+role code
+  mark lean
+  take @/code/code.tree
+  take @/test/code.tree

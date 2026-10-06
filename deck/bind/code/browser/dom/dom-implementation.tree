@@ -30,10 +30,11 @@ form dom-implementation, name <DOMImplementation>
       like or
         like native-string
         like native-null
-    take doctype, like maybe
-      like or
-        like document-type
-        like native-null
+    take doctype
+      like maybe
+        like or
+          like document-type
+          like native-null
     like xml-document
 
   task create-document-type, name <createDocumentType>
@@ -43,8 +44,9 @@ form dom-implementation, name <DOMImplementation>
     like document-type
 
   task create-html-document, name <createHTMLDocument>
-    take title, like maybe
-      like native-string
+    take title
+      like maybe
+        like native-string
     like document
 
   task has-feature, name <hasFeature>

@@ -36,9 +36,10 @@
 // to what that costs. See note/term/view/03-find.md and 04-catalog.md.
 //
 // Deriving the per-field table from a database's own indexes (`deriveSites`, `writeCatalog`, `readRows`) is Term
-// since 2026-10-04, compile/catalog-derive.tree. This file reads a catalog, through the data reader.
+// since 2026-10-04, compile/catalog-derive.tree, and reading a catalog since 2026-10-06, compile/catalog-read.tree.
+// This file is the face: it turns the port's lists into the `Set`s callers hold.
 
-import { readDataText, toJsonValue } from '@term/make/code/compile/host'
+import { readCatalogText } from '@term/make/code/compile/catalog-read'
 import { writeCatalogSized } from '@term/make/code/compile/catalog-derive'
 import type { SiteEntry } from '@term/make/code/compile/catalog-derive'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
@@ -79,55 +80,38 @@ export type CatalogResult =
   | { ok: false; diagnostics: Diagnostic[] }
 
 export function readCatalog(source: { file: string; text: string }): CatalogResult {
-  const data = readDataText(source)
+  const read = readCatalogText(source)
 
-  if (!data.ok) {
-    return { ok: false, diagnostics: data.diagnostics }
+  if (!read.ok) {
+    return { ok: false, diagnostics: read.diagnostics }
   }
 
-  const value = toJsonValue(data.data.root, true) as Record<string, unknown>
+  // a `void` or a `fuse` where a query or a field belongs was `null` to the JSON the original read, and it threw here
+  if (read.nullRead) {
+    throw new TypeError("Cannot read properties of null (reading 'name')")
+  }
+
   const catalog = emptyCatalog()
 
-  if (typeof value.deck === 'string') {
-    catalog.deck = value.deck
+  if (read.deck.form === 'some') {
+    catalog.deck = read.deck.value
   }
 
-  for (const name of ['view', 'call', 'load'] as const) {
-    for (const one of asList(value[name])) {
-      if (typeof one === 'string') {
-        catalog[name].add(one)
-      }
-    }
-  }
+  catalog.view = new Set(read.view)
+  catalog.call = new Set(read.call)
+  catalog.load = new Set(read.load)
 
-  for (const one of asList(value.task)) {
-    const entry = one as Record<string, unknown>
-    const name = typeof entry.name === 'string' ? entry.name : undefined
-
-    if (!name) {
-      continue
-    }
-
+  for (const [name, query] of read.task) {
     const site = new Map<string, ViewField>()
 
-    for (const field of asList(entry.site)) {
-      const shape = field as Record<string, unknown>
-      const fieldName = typeof shape.name === 'string' ? shape.name : undefined
-
-      if (!fieldName) {
-        continue
-      }
-
-      site.set(fieldName, {
-        hold: new Set(asList(shape.hold).filter((x): x is string => typeof x === 'string')),
-        sort: shape.sort === true,
-      })
+    for (const [fieldName, field] of query.site) {
+      site.set(fieldName, { hold: new Set(field.hold), sort: field.sort })
     }
 
     catalog.task.set(name, {
-      name,
-      back: entry.back === 'one' ? 'one' : 'list',
-      size: typeof entry.size === 'number' ? entry.size : undefined,
+      name: query.name,
+      back: query.back === 'one' ? 'one' : 'list',
+      size: query.size.form === 'some' ? query.size.value : undefined,
       site,
     })
   }
@@ -139,8 +123,4 @@ export function readCatalog(source: { file: string; text: string }): CatalogResu
 // lives here, where a TypeScript caller can leave it out
 export function writeCatalog(sites: Map<string, SiteEntry[]>, size = 500): string {
   return writeCatalogSized(sites, size)
-}
-
-function asList(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : []
 }

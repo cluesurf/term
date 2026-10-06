@@ -23,10 +23,11 @@ load @term/bind/javascript/native
 form x-path-evaluator-base, name <XPathEvaluatorBase>
   task create-expression, name <createExpression>
     take expression, like native-string
-    take resolver, like maybe
-      like or
-        like x-path-ns-resolver
-        like native-null
+    take resolver
+      like maybe
+        like or
+          like x-path-ns-resolver
+          like native-null
     like x-path-expression
 
   task create-ns-resolver, name <createNSResolver>
@@ -36,14 +37,17 @@ form x-path-evaluator-base, name <XPathEvaluatorBase>
   task evaluate, name <evaluate>
     take expression, like native-string
     take context-node, like node
-    take resolver, like maybe
-      like or
-        like x-path-ns-resolver
-        like native-null
-    take type, like maybe
-      like native-number
-    take result, like maybe
-      like or
-        like x-path-result
-        like native-null
+    take resolver
+      like maybe
+        like or
+          like x-path-ns-resolver
+          like native-null
+    take type
+      like maybe
+        like native-number
+    take result
+      like maybe
+        like or
+          like x-path-result
+          like native-null
     like x-path-result

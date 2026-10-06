@@ -37,9 +37,8 @@ import nodePath from 'node:path'
 
 import { env, keptAt, legacyUserHome, userHome } from '@term/call/code/home'
 import { closeRun, field, openRun, report, showPath } from '@term/call/code/output'
-
-// the index `term host` pings, and the same override (`TERM_INDEX_URL`) for a local API
-const DEFAULT_INDEX_URL = 'https://tool.term.surf'
+// what `term bind` decides beside the network and the browser: a landing, who a token names, the opener, the index
+import * as words from '@term/call/code/bind-words'
 
 // how long the loopback listener waits for the browser to come back before giving up
 const WAIT_MS = 5 * 60 * 1000
@@ -88,7 +87,8 @@ export async function callBind(input: {
     return
   }
 
-  const base = (env('INDEX_URL')?.trim() || DEFAULT_INDEX_URL).replace(/\/+$/, '')
+  // the index `term host` pings, and the same override (`TERM_INDEX_URL`) for a local API
+  const base = words.indexBase(env('INDEX_URL')?.trim() ?? '')
 
   if (!isSafe(base)) {
     report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `${base} is not https, so no token is fetched from it` })
@@ -145,7 +145,7 @@ export async function callBind(input: {
 
     await keep({ file: userHome('auth'), token: verified.value.token })
 
-    const who = verified.value.user?.slug ? `@${verified.value.user.slug}` : (verified.value.user?.email ?? 'your account')
+    const who = whoOf(verified.value.user)
     const fields = [field('token', showPath(userHome('auth'))), field('name', verified.value.name ?? '')]
 
     if (verified.value.expires_at) {
@@ -182,7 +182,7 @@ async function keepsLogin(input: { base: string; file: string }): Promise<boolea
   const held = await post<Held>({ base: input.base, path: '/sessions/terminal/select!', body: {}, token })
 
   if (held.ok) {
-    const who = held.value.user?.slug ? `@${held.value.user.slug}` : (held.value.user?.email ?? 'your account')
+    const who = whoOf(held.value.user)
     const fields = [field('token', showPath(input.file)), ...(held.value.expires_at ? [field('expires', held.value.expires_at)] : [])]
 
     report({ glyph: 'done', verb: 'check', subject: `this machine is logged in as ${who}`, fields })
@@ -202,6 +202,11 @@ async function keepsLogin(input: { base: string; file: string }): Promise<boolea
   closeRun({ verdict: 'Logged in, unchecked', next: 'term bind --again, to log in anew' })
 
   return true
+}
+
+// who a token names: its handle, else its email, else `your account`
+function whoOf(user: { email?: string | null; slug?: string | null } | undefined): string {
+  return words.whoOf(user?.slug ?? '', user?.email !== undefined && user?.email !== null, user?.email ?? '')
 }
 
 // forget the token on this machine. Revoking it is term.surf's, and the message says where
@@ -277,19 +282,16 @@ async function listen(state: string): Promise<{ port: number; landing: Promise<L
 
 // what the browser brought back: a code with our state, or the reason it is not one
 function readLanding(input: { url: URL; state: string }): Landing {
-  const error = input.url.searchParams.get('error')
+  const state = input.url.searchParams.get('state')
+  const landing = words.landingOf(
+    input.url.searchParams.get('error') ?? '',
+    state !== null,
+    state ?? '',
+    input.state,
+    input.url.searchParams.get('code') ?? '',
+  )
 
-  if (error) {
-    return { error: error === 'access_denied' ? 'The login was cancelled in the browser' : `Google answered ${error}` }
-  }
-
-  if (input.url.searchParams.get('state') !== input.state) {
-    return { error: 'The browser came back with a state this login did not send, so the answer was ignored' }
-  }
-
-  const code = input.url.searchParams.get('code')
-
-  return code ? { code } : { error: 'The browser came back without a code' }
+  return landing.error ? { error: landing.error } : { code: landing.code }
 }
 
 // POST JSON to term.surf and read the `{ result }` envelope, or the reason in its `{ note }` and the status. A `token`
@@ -325,11 +327,9 @@ async function post<T>(input: {
 
 // open the URL in the default browser. A failure is not one: the URL is already printed
 function openBrowser(url: string): void {
-  const os = platform()
-  const opener: [string, string[]] =
-    os === 'darwin' ? ['open', [url]] : os === 'win32' ? ['cmd', ['/c', 'start', '""', url]] : ['xdg-open', [url]]
+  const [program, ...args] = words.openerOf(platform(), url)
 
-  execFile(opener[0], opener[1], () => {})
+  execFile(program!, args, () => {})
 }
 
 // a token travels only over https, or to a loopback API in development, the rule the publish ping keeps

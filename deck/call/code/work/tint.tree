@@ -132,10 +132,11 @@ task format-error
 
   like text
 
+  # a caught value can be anything, so its `message` is narrowed to text before it is one: the gradual seam (D1)
   save message, read error/message
 
-  fork test
-    is-unequal message, make void
-    hold
+  sift message
+    case text
       back message
-  back <{{error}}>
+    miss
+      back <{error}>

@@ -19,8 +19,9 @@ form html-all-collection, name <HTMLAllCollection>
     like native-number
 
   task item, name <item>
-    take name-or-index, like maybe
-      like native-string
+    take name-or-index
+      like maybe
+        like native-string
     like or
       like html-collection
       like element

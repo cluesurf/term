@@ -24,20 +24,24 @@ form geolocation, name <Geolocation>
 
   task get-current-position, name <getCurrentPosition>
     take success-callback, like position-callback
-    take error-callback, like maybe
-      like or
-        like position-error-callback
-        like native-null
-    take options, like maybe
-      like position-options
+    take error-callback
+      like maybe
+        like or
+          like position-error-callback
+          like native-null
+    take options
+      like maybe
+        like position-options
     like native-void
 
   task watch-position, name <watchPosition>
     take success-callback, like position-callback
-    take error-callback, like maybe
-      like or
-        like position-error-callback
-        like native-null
-    take options, like maybe
-      like position-options
+    take error-callback
+      like maybe
+        like or
+          like position-error-callback
+          like native-null
+    take options
+      like maybe
+        like position-options
     like native-number

@@ -1,0 +1,1208 @@
+# The shapes every backend detects alike, so the analysis cannot drift between them: a map's keys or values, a native
+# collection or string call or read, a text-valued expression, the names a body reassigns, the spec a `fill` walks, a
+# valued return, the function parameters a task may keep, a swap of two list slots, and a scalar type.
+#
+# Ported from the first part of compile/backend.ts (self-hosting, 2026-10-06), which stays as the face: it keeps
+# `exhausted` (a TypeScript `never` check), the tables it exports, the throw `refuseAny` makes, and the analyses later in
+# the file. Two of these walked a body by reflection, `Object.entries` past `type` and `span`. Here they read
+# compile/node-reach.tree's walk with the same two names skipped: a call's callee is the expression reached right after
+# the call, and what a closure holds is the run of expressions after it, as long as its own reach less one.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find char-count
+  find split
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./node-reach
+  find reach-statements
+  find reach-expression
+
+load ./text-methods
+  find is-string-method
+  find host-method
+
+load ./lowered-members
+  find lowered-list-members
+  find lowered-map-members
+
+# ---- the shapes ----
+
+# a map's `keys` or `values`, which every backend materializes as a list
+form map-collect
+  link target, like expression
+  link name, like text
+
+# a native collection method or read on a map or a list receiver
+form collection-op
+  link target, like expression
+  link op, like text
+  link kind, like text
+
+# a native string method or read on a text receiver
+form string-op
+  link target, like expression
+  link op, like text
+
+task type-kind
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case unit
+          back <unit>
+        case unknown
+          back <unknown>
+        case dynamic
+          back <dynamic>
+        case bytes
+          back <bytes>
+        case array
+          back <array>
+        case map
+          back <map>
+        case named
+          back <named>
+        case function
+          back <function>
+        case variable
+          back <variable>
+    case none
+      back <>
+
+task kind-of-expression
+  take node, like expression
+  like text
+  mark private
+
+  back type-kind(expression-type(node))
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task map-collect-of
+  take callee, like expression
+  like maybe, like map-collect
+
+  sift callee
+    case member
+      fork test, and(is-equal(kind-of-expression(target), <map>), or(is-equal(name, <keys>), is-equal(name, <values>)))
+        hold
+          save found
+            make map-collect
+              bind target, target
+              bind name, name
+          back make(some, found)
+    miss
+      save nothing, 0
+  back make none
+
+task collection-op-of
+  take target, like expression
+  take op, like text
+  take kind, like text
+  like maybe, like collection-op
+  mark private
+
+  save found
+    make collection-op
+      bind target, target
+      bind op, op
+      bind kind, kind
+  back make(some, found)
+
+task collection-call
+  take callee, like expression
+  like maybe, like collection-op
+
+  sift callee
+    case member
+      save kind, kind-of-expression(target)
+      fork test, and(is-equal(kind, <map>), has-text(lowered-map-members(), name))
+        hold
+          back collection-op-of(target, name, <map>)
+      fork test, and(is-equal(kind, <array>), has-text(lowered-list-members(), name))
+        hold
+          back collection-op-of(target, name, <array>)
+    miss
+      save nothing, 0
+  back make none
+
+# is the value a text? The primitive, or the stdlib's `text` form named as such
+task is-text
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back true
+        case named
+          back is-equal(name, <text>)
+        miss
+          back false
+    case none
+      back false
+
+task string-op-of
+  take target, like expression
+  take op, like text
+  like maybe, like string-op
+  mark private
+
+  save found
+    make string-op
+      bind target, target
+      bind op, op
+  back make(some, found)
+
+task string-call
+  take callee, like expression
+  like maybe, like string-op
+
+  sift callee
+    case member
+      fork test, not(is-text(expression-type(target)))
+        hold
+          back make none
+      save op, host-method(name)
+      fork test, is-string-method(op)
+        hold
+          back string-op-of(target, op)
+    miss
+      save nothing, 0
+  back make none
+
+# the host string methods whose answer is a text
+task text-results
+  like list, like text
+  mark private
+
+  save out, make list
+  walk split(<charAt at substring slice toLowerCase toUpperCase trim trimStart trimEnd padStart padEnd replace replaceAll repeat concat>, < >)
+    take one
+    push(out, one)
+  back out
+
+# is this expression a text: typed one, or a host string method answering one, which the checker leaves `unknown`
+task text-valued
+  take node, like expression
+  like boolean
+
+  fork test, is-text(expression-type(node))
+    hold
+      back true
+  sift node
+    case call
+      sift string-call(callee)
+        case some
+          link found
+          back has-text(text-results(), found/op)
+        case none
+          back false
+    miss
+      back false
+
+# a native string PROPERTY READ (`value.length`) on a text receiver
+task string-read
+  take node, like expression
+  like maybe, like string-op
+
+  sift node
+    case member
+      fork test, and(is-text(expression-type(target)), is-equal(name, <length>))
+        hold
+          back string-op-of(target, <length>)
+    miss
+      save nothing, 0
+  back make none
+
+# a native collection PROPERTY READ (`map.size`, `array.length`) on a map or list receiver
+task collection-read
+  take node, like expression
+  like maybe, like collection-op
+
+  sift node
+    case member
+      save kind, kind-of-expression(target)
+      fork test, and(is-equal(kind, <map>), is-equal(name, <size>))
+        hold
+          back collection-op-of(target, <size>, <map>)
+      fork test, and(is-equal(kind, <array>), is-equal(name, <length>))
+        hold
+          back collection-op-of(target, <length>, <array>)
+    miss
+      save nothing, 0
+  back make none
+
+# ---- the names a body reassigns ----
+
+task add-name
+  take found, like list, like text
+  take name, like text
+  mark private
+
+  fork test, not(has-text(found, name))
+    hold
+      push(found, name)
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-maximum(48, code), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task reassigned-expression
+  take node, like expression
+  take found, like list, like text
+  mark private
+
+  sift node
+    case closure
+      reassigned-into(body, found)
+    case call
+      reassigned-expression(callee, found)
+      walk args
+        take one
+        reassigned-expression(one, found)
+    case binary
+      reassigned-expression(left, found)
+      reassigned-expression(right, found)
+    case unary
+      reassigned-expression(operand, found)
+    case array
+      walk items
+        take one
+        reassigned-expression(one, found)
+    case map
+      walk entries
+        take entry
+        reassigned-expression(entry/key, found)
+        reassigned-expression(entry/value, found)
+    case record
+      walk fields
+        take field
+        reassigned-expression(field/value, found)
+    case member
+      reassigned-expression(target, found)
+    case await
+      reassigned-expression(expr, found)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            reassigned-expression(value, found)
+          miss
+            save nothing, 0
+    case conditional
+      walk branches
+        take branch
+        reassigned-expression(branch/cond, found)
+        reassigned-expression(branch/value, found)
+      sift otherwise
+        case some
+          link known
+          reassigned-expression(known, found)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# a slot of a list or a map written by index or by a literal position, which every native backend writes through a
+# reference, so the binding stays immutable
+task element-write
+  take target, like expression
+  like boolean
+  mark private
+
+  sift target
+    case member
+      save kind, kind-of-expression(target)
+      fork test, not(or(is-equal(kind, <array>), is-equal(kind, <map>)))
+        hold
+          back false
+      sift index
+        case some
+          link known
+          back true
+        case none
+          back is-digits(name)
+    miss
+      back false
+
+task root-of-target
+  take target, like expression
+  like expression
+  mark private
+
+  sift target
+    case member
+      back root-of-target(target)
+    miss
+      back target
+
+task reassigned-into
+  take body, like list, like statement
+  take found, like list, like text
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        reassigned-expression(init, found)
+      case assign
+        fork test, element-write(target)
+          hold
+            reassigned-expression(value, found)
+            sift target
+              case member
+                sift index
+                  case some
+                    link known
+                    reassigned-expression(known, found)
+                  case none
+                    save nothing, 0
+              miss
+                save nothing, 0
+          miss
+            sift root-of-target(target)
+              case variable
+                add-name(found, name)
+              miss
+                save nothing, 0
+            reassigned-expression(value, found)
+      case expression
+        reassigned-expression(expr, found)
+      case return
+        sift value
+          case some
+            link known
+            reassigned-expression(known, found)
+          case none
+            save nothing, 0
+      case throw
+        reassigned-expression(value, found)
+      case if
+        walk branches
+          take branch
+          reassigned-expression(branch/cond, found)
+          reassigned-into(branch/body, found)
+        sift otherwise
+          case some
+            link known
+            reassigned-into(known, found)
+          case none
+            save nothing, 0
+      case match
+        reassigned-expression(subject, found)
+        walk cases
+          take branch
+          reassigned-into(branch/body, found)
+        sift otherwise
+          case some
+            link known
+            reassigned-into(known, found)
+          case none
+            save nothing, 0
+      case while
+        reassigned-expression(cond, found)
+        reassigned-into(body, found)
+      case guard
+        reassigned-into(body, found)
+        sift catch
+          case some
+            link caught
+            reassigned-into(caught/body, found)
+          case none
+            save nothing, 0
+      case for-each
+        reassigned-expression(iterable, found)
+        reassigned-into(body, found)
+      miss
+        save nothing, 0
+
+# the names reassigned anywhere in a body, closures included, in the order met
+task reassigned
+  take body, like list, like statement
+  like list, like text
+
+  save out, make list
+  reassigned-into(body, out)
+  back out
+
+# ---- unsupported ----
+
+# A target that cannot express a form emits this marker, a comment in its syntax, never a silent gap
+task unsupported
+  take target, like text
+  take form, like text
+  take comment, like text
+  like text
+
+  back <{comment} SEED-UNSUPPORTED on {target}: "{form}" is outside this target's fragment>
+
+# ---- filling a form from data ----
+
+form form-spec
+  link form, like text
+  link fields, like list, like spec-field
+
+form spec-field
+  link name, like text
+  link optional, like boolean
+  link kind, like form-kind
+
+form form-kind
+  mark tag, name kind
+  case text
+  case number
+  case decimal
+  case flag
+  case data
+  case any
+  case list
+    link item, like form-kind
+  case form
+    link spec, like form-spec
+
+# one field of a record as a `fill` reads it
+form record-field
+  link name, like text
+  link type, like type
+  link optional
+    like boolean
+    need false
+
+task form-spec-of
+  take given, like type
+  take records, like hash, like text, like list, like record-field
+  take seen, like list, like text
+  like form-spec
+
+  save name, <>
+  sift given
+    case named
+      link named-name
+      save name, named-name
+    miss
+      save nothing, 0
+  save inner, make list
+  walk seen
+    take one
+    add-name(inner, one)
+  add-name(inner, name)
+  save out, make list
+  fork test, records/has(name)
+    hold
+      walk records/get(name)
+        take field
+        save made
+          make spec-field
+            bind name, field/name
+            bind optional, field/optional
+            bind kind, form-kind-of(make(some, field/type), records, inner)
+        push(out, made)
+  back
+    make form-spec
+      bind form, name
+      bind fields, out
+
+task one-of-names
+  take name, like text
+  take names, like text
+  like boolean
+  mark private
+
+  back has-text(split(names, < >), name)
+
+task form-kind-of
+  take given, like maybe, like type
+  take records, like hash, like text, like list, like record-field
+  take seen, like list, like text
+  like form-kind
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back make form-kind/text
+        case boolean
+          back make form-kind/flag
+        case number
+          back make form-kind/number
+        case float
+          back make form-kind/decimal
+        case array
+          save item, form-kind-of(make(some, element), records, seen)
+          back
+            make form-kind/list
+              bind item, item
+        case named
+          link named-name
+          fork test, is-equal(named-name, <text>)
+            hold
+              back make form-kind/text
+          fork test, is-equal(named-name, <boolean>)
+            hold
+              back make form-kind/flag
+          fork test, one-of-names(named-name, <number integer natural size count index int uint int8 int16 int32 int64 uint8 uint16 uint32 uint64>)
+            hold
+              back make form-kind/number
+          fork test, one-of-names(named-name, <decimal float float32 float64 double real>)
+            hold
+              back make form-kind/decimal
+          fork test, is-equal(named-name, <data>)
+            hold
+              back make form-kind/data
+          fork test, is-equal(named-name, <list>)
+            hold
+              save first, make none
+              walk args
+                take one
+                save first, make(some, one)
+                halt
+              save item, form-kind-of(first, records, seen)
+              back
+                make form-kind/list
+                  bind item, item
+          fork test, and(records/has(named-name), not(has-text(seen, named-name)))
+            hold
+              save spec, form-spec-of(known, records, seen)
+              back
+                make form-kind/form
+                  bind spec, spec
+          back make form-kind/any
+        miss
+          back make form-kind/any
+    case none
+      back make form-kind/any
+
+# every form a spec reaches, the outer one first, each once. A form named in `known` (what the caller's map already
+# holds) is neither added nor walked into
+task spec-forms
+  take spec, like form-spec
+  take known, like list, like text
+  like list, like form-spec
+
+  save out, make list
+  save seen, make hash
+  walk known
+    take one
+    save seen/{one}, true
+  spec-forms-into(spec, out, seen)
+  back out
+
+task spec-forms-into
+  take spec, like form-spec
+  take out, like list, like form-spec
+  take seen, like hash, like text, like boolean
+  mark private
+
+  fork test, seen/has(spec/form)
+    hold
+      back
+  save seen/{spec/form}, true
+  push(out, spec)
+  walk spec/fields
+    take field
+    spec-forms-kind(field/kind, out, seen)
+
+task spec-forms-kind
+  take kind, like form-kind
+  take out, like list, like form-spec
+  take seen, like hash, like text, like boolean
+  mark private
+
+  sift kind
+    case form
+      spec-forms-into(spec, out, seen)
+    case list
+      spec-forms-kind(item, out, seen)
+    miss
+      save nothing, 0
+
+# a field whose type has no data spelling cannot be filled on a typed backend: the first such field, said as the build
+# says it, none when every field has one
+task refuse-any
+  take spec, like form-spec
+  take backend, like text
+  like maybe, like text
+
+  walk spec/fields
+    take field
+    save found, refused-kind(field/kind, <field "{field/name}" of "{spec/form}">, backend)
+    sift found
+      case some
+        link message
+        back found
+      case none
+        save nothing, 0
+  back make none
+
+task refused-kind
+  take kind, like form-kind
+  take at, like text
+  take backend, like text
+  like maybe, like text
+  mark private
+
+  sift kind
+    case any
+      save message, <"fill" with a form: {at} has a type with no data form, so it cannot be filled on {backend}>
+      back make(some, message)
+    case list
+      back refused-kind(item, <an item of {at}>, backend)
+    case form
+      walk spec/fields
+        take field
+        save found, refused-kind(field/kind, <field "{field/name}" of "{spec/form}">, backend)
+        sift found
+          case some
+            link message
+            back found
+          case none
+            save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# ---- a valued return ----
+
+# does any path of this body `return <value>` of a known concrete type that is not unit? A task with no declared result
+# but a valued return still needs a non-void native result type
+task has-valued-return
+  take body, like list, like statement
+  like boolean
+
+  walk body
+    take one
+    sift one
+      case return
+        sift value
+          case some
+            link returned-node
+            save returned, expression-type(returned-node)
+            sift returned-node
+              case await
+                sift returned
+                  case some
+                    link own
+                    save nothing, 0
+                  case none
+                    save returned, expression-type(expr)
+              miss
+                save nothing, 0
+            save kind, type-kind(returned)
+            fork test, and(is-unequal(kind, <>), and(is-unequal(kind, <unit>), is-unequal(kind, <unknown>)))
+              hold
+                back true
+          case none
+            save nothing, 0
+      case if
+        walk branches
+          take branch
+          fork test, has-valued-return(branch/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link known
+            fork test, has-valued-return(known)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case while
+        fork test, has-valued-return(body)
+          hold
+            back true
+      case for-each
+        fork test, has-valued-return(body)
+          hold
+            back true
+      case match
+        walk cases
+          take branch
+          fork test, has-valued-return(branch/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link known
+            fork test, has-valued-return(known)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case guard
+        fork test, has-valued-return(body)
+          hold
+            back true
+        sift catch
+          case some
+            link caught
+            fork test, has-valued-return(caught/body)
+              hold
+                back true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
+
+# ---- the walks by reflection ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+# The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3): a parameter stays
+# non-escaping only when every mention of it is the callee of a call made directly in the task's body, outside any
+# closure. Anything else (an argument, a return, a store, a read inside a closure, a write) escapes
+task escaping-params
+  take task-node, like statement
+  like list, like text
+
+  save escapes, make list
+  save watched, make list
+  save body, make list
+  sift task-node
+    case function
+      link task-name
+      link task-params
+      link task-body
+      save body, task-body
+      walk task-params
+        take param
+        save param-name, param/name
+        sift param/type
+          case some
+            link param-type
+            sift param-type
+              case function
+                push(watched, param-name)
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+    miss
+      save nothing, 0
+  fork test, is-equal(watched/length, 0)
+    hold
+      back escapes
+  save reached, reach-statements(body, type-and-span())
+  save expressions, reached/expressions
+  # which expressions a closure holds, and which are the callee of a direct call outside every closure
+  save inside, make hash
+  save exempt, make hash
+  save at, 0
+  walk expressions
+    take node
+    sift node
+      case closure
+        save own, reach-expression(node, type-and-span())
+        save held, subtract(own/expressions/length, 1)
+        save k, 1
+        walk test
+          hook test, is-maximum(k, held)
+          hook hold
+            save held-at, add(at, k)
+            save inside/{held-at}, true
+            save k, add(k, 1)
+      case call
+        fork test, not(inside/has(at))
+          hold
+            save callee-at, add(at, 1)
+            save exempt/{callee-at}, true
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  save at, 0
+  walk expressions
+    take node
+    save name, variable-name-of(node)
+    fork test, and(is-unequal(name, <>), has-text(watched, name))
+      hold
+        fork test, not(exempt/has(at))
+          hold
+            add-name(escapes, name)
+    save at, add(at, 1)
+  back escapes
+
+# is the name read anywhere in these statements, closures and nested blocks included
+task mentions
+  take body, like list, like statement
+  take name, like text
+  like boolean
+
+  walk reach-statements(body, type-and-span())/expressions
+    take node
+    fork test, is-equal(variable-name-of(node), name)
+      hold
+        back true
+  back false
+
+# ---- a swap of two slots ----
+
+form swap
+  link list, like expression
+  link first, like expression
+  link second, like expression
+  link temp, like text
+
+# a slot of a LIST read by a dynamic index, off a plain variable, the index a variable or an integer literal
+form list-slot
+  link list, like text
+  link index, like expression
+
+task list-slot-of
+  take node, like expression
+  like maybe, like list-slot
+  mark private
+
+  sift node
+    case member
+      sift index
+        case some
+          link known-index
+          save index-ok, false
+          sift known-index
+            case variable
+              save index-ok, true
+            case integer
+              save index-ok, true
+            miss
+              save nothing, 0
+          fork test, and(index-ok, is-equal(kind-of-expression(target), <array>))
+            hold
+              sift target
+                case variable
+                  link list-name
+                  save found
+                    make list-slot
+                      bind list, list-name
+                      bind index, known-index
+                  back make(some, found)
+                miss
+                  save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+task same-index
+  take a, like expression
+  take b, like expression
+  like boolean
+  mark private
+
+  sift a
+    case variable
+      link a-name
+      sift b
+        case variable
+          back is-equal(a-name, name)
+        miss
+          back false
+    case integer
+      link a-value
+      sift b
+        case integer
+          back is-equal(a-value, value)
+        miss
+          back false
+    miss
+      back false
+
+task names-index
+  take index, like expression
+  take first, like text
+  take second, like text
+  like boolean
+  mark private
+
+  sift index
+    case variable
+      back or(is-equal(name, first), is-equal(name, second))
+    miss
+      back false
+
+task statement-at
+  take body, like list, like statement
+  take at, like number
+  like maybe, like statement
+  mark private
+
+  fork test, is-below(at, body/length)
+    hold
+      save found, get(body, at)
+      back make(some, found)
+  back make none
+
+task let-parts
+  take given, like maybe, like statement
+  like maybe, like statement
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case let
+          back given
+        miss
+          back make none
+    case none
+      back make none
+
+# The three-statement swap of two list slots, the temporary read nowhere after. None for anything else, which is then
+# emitted statement by statement
+task swap-at
+  take body, like list, like statement
+  take at, like number
+  like maybe, like swap
+
+  save hold-at, statement-at(body, at)
+  save move-at, statement-at(body, add(at, 1))
+  save put-at, statement-at(body, add(at, 2))
+  save temp, <>
+  save hold-init, make none
+  sift hold-at
+    case some
+      link known
+      sift known
+        case let
+          save temp, name
+          save hold-init, make(some, init)
+        miss
+          back make none
+    case none
+      back make none
+  save move-target, make none
+  save move-value, make none
+  sift move-at
+    case some
+      link known
+      sift known
+        case assign
+          fork test, not(is-equal(to-text(op), <=>))
+            hold
+              back make none
+          save move-target, make(some, target)
+          save move-value, make(some, value)
+        miss
+          back make none
+    case none
+      back make none
+  save put-target, make none
+  save put-value, make none
+  sift put-at
+    case some
+      link known
+      sift known
+        case assign
+          fork test, not(is-equal(to-text(op), <=>))
+            hold
+              back make none
+          save put-target, make(some, target)
+          save put-value, make(some, value)
+        miss
+          back make none
+    case none
+      back make none
+  sift hold-init
+    case some
+      link init-node
+      sift move-target
+        case some
+          link move-target-node
+          sift move-value
+            case some
+              link move-value-node
+              sift put-target
+                case some
+                  link put-target-node
+                  sift put-value
+                    case some
+                      link put-value-node
+                      back swap-of(body, at, temp, init-node, move-target-node, move-value-node, put-target-node, put-value-node)
+                    case none
+                      back make none
+                case none
+                  back make none
+            case none
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+task swap-of
+  take body, like list, like statement
+  take at, like number
+  take temp, like text
+  take init-node, like expression
+  take move-target-node, like expression
+  take move-value-node, like expression
+  take put-target-node, like expression
+  take put-value-node, like expression
+  like maybe, like swap
+  mark private
+
+  sift list-slot-of(init-node)
+    case some
+      link read
+      sift list-slot-of(move-target-node)
+        case some
+          link first-write
+          sift list-slot-of(move-value-node)
+            case some
+              link second-read
+              sift list-slot-of(put-target-node)
+                case some
+                  link second-write
+                  fork test, not(and(is-equal(first-write/list, read/list), and(is-equal(second-read/list, read/list), is-equal(second-write/list, read/list))))
+                    hold
+                      back make none
+                  fork test, not(and(same-index(read/index, first-write/index), same-index(second-read/index, second-write/index)))
+                    hold
+                      back make none
+                  fork test, not(is-equal(variable-name-of(put-value-node), temp))
+                    hold
+                      back make none
+                  sift put-value-node
+                    case variable
+                      save nothing, 0
+                    miss
+                      back make none
+                  fork test, or(names-index(read/index, temp, read/list), names-index(second-read/index, temp, read/list))
+                    hold
+                      back make none
+                  save rest, make list
+                  save k, add(at, 3)
+                  walk test
+                    hook test, is-below(k, body/length)
+                    hook hold
+                      push(rest, get(body, k))
+                      save k, add(k, 1)
+                  fork test, mentions(rest, temp)
+                    hold
+                      back make none
+                  sift init-node
+                    case member
+                      link swap-list
+                      save found
+                        make swap
+                          bind list, swap-list
+                          bind first, read/index
+                          bind second, second-read/index
+                          bind temp, temp
+                      back make(some, found)
+                    miss
+                      back make none
+                case none
+                  back make none
+            case none
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+# ---- scalars ----
+
+task scalar-type
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        case string
+          back true
+        case named
+          fork test, is-above(args/length, 0)
+            hold
+              back false
+          back one-of-names(name, <text boolean number integer float>)
+        miss
+          back false
+    case none
+      back false

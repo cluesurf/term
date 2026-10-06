@@ -17,9 +17,11 @@ import path from 'node:path'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { entryShim } from '@term/call/code/make'
 import { toCamel } from '@term/make/code/compile/typescript'
+import * as port from '@term/call/code/unit-shim'
 
-// a module's own word that it docks a native namespace
-const DOCKED = /^declare const ([A-Za-z_$][\w$]*): any$/gm
+// THE READING OF THE EMITTED MODULES is Term since 2026-10-06, call/code/unit-shim.tree: which namespaces a module docks
+// (its line `declare const <name>: any`), which of them the prelude binds at its top level, each docked line turned
+// into an import, and which names the run keeps. This face writes the files.
 
 // writes the program under `dir` and answers the file to hand the bundler
 export function writeUnitBundle(input: {
@@ -38,15 +40,14 @@ export function writeUnitBundle(input: {
   mkdirSync(path.join(host, '.unit'), { recursive: true })
 
   // the namespaces the modules dock, and of those the ones a shim defines
-  const docked = new Set(input.modules.flatMap(([, emit]) => [...emit.code.matchAll(DOCKED)].map(found => found[1]!)))
-  const offered = new Set([...docked].filter(name => definesAtTop(input.prelude, name)))
+  const docked = port.dockedOf(input.modules.map(([, emit]) => emit.code))
+  const offered = port.offeredOf(input.prelude, docked)
 
   for (const [file, emit] of input.modules) {
-    const code = emit.code.replace(DOCKED, (line, name: string) => (offered.has(name) ? `import { ${name} } from '../prelude'` : line))
-    writeFileSync(path.join(host, '.unit', `${input.slug(file)}.ts`), code)
+    writeFileSync(path.join(host, '.unit', `${input.slug(file)}.ts`), port.rewriteDocked(emit.code, offered))
   }
 
-  writeFileSync(path.join(host, 'prelude.ts'), `${input.prelude}\n;\nexport { ${[...offered].join(', ')} }\n`)
+  writeFileSync(path.join(host, 'prelude.ts'), port.preludeModule(input.prelude, offered))
 
   const app = path.join(host, 'app.ts')
   const entryCode = input.modules.find(([file]) => file === input.entry)?.[1].code ?? ''
@@ -61,29 +62,13 @@ export function writeUnitBundle(input: {
 // starts from, and this entry re-exported the whole closure, so a command that trims one text shipped every task of the
 // text module (19 of 20 functions unused, tmp/shake-probe.sh, 2026-10-05). The artifact `term make` writes under host/
 // keeps the whole closure: a TypeScript importer reads any name off it
-const RUNTIME_NAMES = new Set(['wake-hive', 'boot', 'start', 'main'])
-
 export function runtimeExports<T extends { name: string; file: string }>(
   entry: string,
   entryCode: string,
   exports: T[],
   keep: string[] = [],
 ): T[] {
-  const kept = new Set(keep)
+  const kept = port.runtimeExports(entry, entryCode, exports.map(one => ({ name: one.name, file: one.file })), keep, toCamel)
 
-  // the local names of the entry module's value imports, as compile/modules.ts writes them: `import { a, b as c } from`
-  const imported = new Set(
-    [...entryCode.matchAll(/^import \{ ([^}]*) \} from /gm)].flatMap(found =>
-      found[1]!.split(',').map(part => part.trim().split(/\s+as\s+/).pop()!),
-    ),
-  )
-
-  return exports.filter(
-    one => one.file === entry || RUNTIME_NAMES.has(one.name) || kept.has(one.name) || imported.has(toCamel(one.name)),
-  )
-}
-
-// whether the prelude binds `name` at its top level, as a shim binds its namespace (`const path = { ... }`)
-function definesAtTop(prelude: string, name: string): boolean {
-  return new RegExp(`(^|[;\\n])\\s*(export\\s+)?(const|let|var|class|(async\\s+)?function\\*?)\\s+${name.replace(/\$/g, '\\$')}\\b`).test(prelude)
+  return exports.filter((_, at) => kept[at])
 }

@@ -121,7 +121,7 @@ task look
 task only-kind
   take symbols
     like list
-    like unknown
+      like unknown
   take kind, like text
 
   like list, like unknown

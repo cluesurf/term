@@ -1,0 +1,315 @@
+# A view catalog read out of its data file: the components, operators and packages a document may name, and per
+# query what it returns, its own result cap, and per field the predicates it accepts and whether it sorts. See
+# compile/view-catalog.ts for the format and why it is data, and note/term/view/04-catalog.md.
+#
+# Ported from `readCatalog` in compile/view-catalog.ts (self-hosting, 2026-10-06), which stays as the face and turns
+# the lists into the `Set`s its callers hold. The original read the file through JSON (`toJsonValue` with the keys
+# kept), and the port reads the value the way that object answered:
+#   - a key given again after a `fuse` is the last one given, as an object property is
+#   - a number past 2^53 travelled as text, so it is not a size
+#   - a `void` or an unexpanded `fuse` was `null`, and reading `name` off one threw. The port stops there and says so
+#     (`null-read`), and the face throws the same TypeError
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ../parser/token
+  find token-source
+
+load ./host-data
+  find host-value
+  find host-entry
+  find read-data-text
+
+form catalog-field
+  link hold, like list, like text
+  link sort, like boolean
+
+form catalog-query
+  link name, like text
+  link back, like text
+  link size, like maybe, like float
+  link site, like hash, like text, like catalog-field
+
+form catalog-read
+  link ok, like boolean
+  link deck, like maybe, like text
+  link view, like list, like text
+  link call, like list, like text
+  link load, like list, like text
+  link task, like hash, like text, like catalog-query
+  link diagnostics, like list, like diagnostic
+  link null-read, like boolean
+
+# the value under a key of a map, the last entry given it, as a JSON object kept the last
+task value-at
+  take given, like host-value
+  take key, like text
+  like maybe, like host-value
+  mark private
+
+  save found, make none
+  sift given
+    case hash
+      link entries
+      walk entries
+        take entry
+        fork test, is-equal(entry/name, key)
+          hold
+            save base, entry/base
+            save found, make(some, base)
+    miss
+      save nothing, 0
+  back found
+
+# a text value, as `typeof x === 'string'` read it
+task text-at
+  take given, like host-value
+  take key, like text
+  like maybe, like text
+  mark private
+
+  sift value-at(given, key)
+    case some
+      link found
+      sift found
+        case text
+          save written, value
+          back make(some, written)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# the items of a list value, none for anything else (`asList`)
+task items-at
+  take given, like host-value
+  take key, like text
+  like list, like host-value
+  mark private
+
+  sift value-at(given, key)
+    case some
+      link found
+      sift found
+        case list
+          link items
+          back items
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make list
+
+task texts-of
+  take items, like list, like host-value
+  like list, like text
+  mark private
+
+  save out, make list
+  walk items
+    take item
+    sift item
+      case text
+        save written, value
+        push(out, written)
+      miss
+        save nothing, 0
+  back out
+
+# a set's insertion: a text already held keeps its place
+task add-once
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  walk into
+    take held
+    fork test, is-equal(held, one)
+      hold
+        back
+  push(into, one)
+
+# what JSON made `null`: reading a field off it throws
+task is-null-value
+  take given, like host-value
+  like boolean
+  mark private
+
+  sift given
+    case blank
+      back true
+    case graft
+      back true
+    miss
+      back false
+
+# what `typeof x === 'number'` saw: a whole number below 2^53 (past it, JSON carried it as text), or any decimal
+task size-of
+  take given, like host-value
+  like maybe, like float
+  mark private
+
+  sift value-at(given, <size>)
+    case some
+      link found
+      sift found
+        case number
+          save whole, value
+          fork test, and(is-maximum(whole, 9007199254740991), is-minimum(whole, -9007199254740991))
+            hold
+              save as-float, to-decimal(whole)
+              back make(some, as-float)
+        case decimal
+          save fraction, value
+          back make(some, fraction)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task flag-true
+  take given, like host-value
+  take key, like text
+  like boolean
+  mark private
+
+  sift value-at(given, key)
+    case some
+      link found
+      sift found
+        case flag
+          back value
+        miss
+          back false
+    case none
+      back false
+
+task read-catalog-text
+  take source, like token-source
+  like catalog-read
+
+  save views, make list
+  save calls, make list
+  save loads, make list
+  save tasks, query-table()
+  save none-found, make list
+  save read, read-data-text(source, false)
+  fork test, not(read/ok)
+    hold
+      back
+        make catalog-read
+          bind ok, false
+          bind deck, make none
+          bind view, views
+          bind call, calls
+          bind load, loads
+          bind task, tasks
+          bind diagnostics, read/diagnostics
+          bind null-read, false
+
+  save root, read/file/root
+  save deck, text-at(root, <deck>)
+  walk texts-of(items-at(root, <view>))
+    take one
+    add-once(views, one)
+  walk texts-of(items-at(root, <call>))
+    take one
+    add-once(calls, one)
+  walk texts-of(items-at(root, <load>))
+    take one
+    add-once(loads, one)
+
+  save null-read, false
+  walk items-at(root, <task>)
+    take entry
+    fork test, is-null-value(entry)
+      hold
+        save null-read, true
+        halt
+    save name, <>
+    sift text-at(entry, <name>)
+      case some
+        link known
+        save name, known
+      case none
+        save nothing, 0
+    fork test, is-equal(name, <>)
+      hold
+        turn next
+    save site, field-table()
+    walk items-at(entry, <site>)
+      take field
+      fork test, is-null-value(field)
+        hold
+          save null-read, true
+          halt
+      save field-name, <>
+      sift text-at(field, <name>)
+        case some
+          link known
+          save field-name, known
+        case none
+          save nothing, 0
+      fork test, is-equal(field-name, <>)
+        hold
+          turn next
+      save holds, make list
+      walk texts-of(items-at(field, <hold>))
+        take one
+        add-once(holds, one)
+      save made
+        make catalog-field
+          bind hold, holds
+          bind sort, flag-true(field, <sort>)
+      save site/{field-name}, made
+    fork test, null-read
+      hold
+        halt
+    save back, <list>
+    sift text-at(entry, <back>)
+      case some
+        link known
+        fork test, is-equal(known, <one>)
+          hold
+            save back, <one>
+      case none
+        save nothing, 0
+    save query
+      make catalog-query
+        bind name, name
+        bind back, back
+        bind size, size-of(entry)
+        bind site, site
+    save tasks/{name}, query
+
+  back
+    make catalog-read
+      bind ok, true
+      bind deck, deck
+      bind view, views
+      bind call, calls
+      bind load, loads
+      bind task, tasks
+      bind diagnostics, none-found
+      bind null-read, null-read
+
+task query-table
+  like hash, like text, like catalog-query
+  mark private
+
+  back make hash
+
+task field-table
+  like hash, like text, like catalog-field
+  mark private
+
+  back make hash

@@ -7,6 +7,7 @@ load @term/bind/javascript/native
 
 form writable-stream-default-controller, name <WritableStreamDefaultController>
   task error, name <error>
-    take e, like maybe
-      like native-any
+    take e
+      like maybe
+        like native-any
     like native-void

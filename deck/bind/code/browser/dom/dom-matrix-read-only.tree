@@ -89,78 +89,102 @@ form dom-matrix-read-only, name <DOMMatrixReadOnly>
     like dom-matrix
 
   task multiply, name <multiply>
-    take other, like maybe
-      like dom-matrix-init
+    take other
+      like maybe
+        like dom-matrix-init
     like dom-matrix
 
   task rotate, name <rotate>
-    take rot-x, like maybe
-      like native-number
-    take rot-y, like maybe
-      like native-number
-    take rot-z, like maybe
-      like native-number
+    take rot-x
+      like maybe
+        like native-number
+    take rot-y
+      like maybe
+        like native-number
+    take rot-z
+      like maybe
+        like native-number
     like dom-matrix
 
   task rotate-axis-angle, name <rotateAxisAngle>
-    take x, like maybe
-      like native-number
-    take y, like maybe
-      like native-number
-    take z, like maybe
-      like native-number
-    take angle, like maybe
-      like native-number
+    take x
+      like maybe
+        like native-number
+    take y
+      like maybe
+        like native-number
+    take z
+      like maybe
+        like native-number
+    take angle
+      like maybe
+        like native-number
     like dom-matrix
 
   task rotate-from-vector, name <rotateFromVector>
-    take x, like maybe
-      like native-number
-    take y, like maybe
-      like native-number
+    take x
+      like maybe
+        like native-number
+    take y
+      like maybe
+        like native-number
     like dom-matrix
 
   task scale, name <scale>
-    take scale-x, like maybe
-      like native-number
-    take scale-y, like maybe
-      like native-number
-    take scale-z, like maybe
-      like native-number
-    take origin-x, like maybe
-      like native-number
-    take origin-y, like maybe
-      like native-number
-    take origin-z, like maybe
-      like native-number
+    take scale-x
+      like maybe
+        like native-number
+    take scale-y
+      like maybe
+        like native-number
+    take scale-z
+      like maybe
+        like native-number
+    take origin-x
+      like maybe
+        like native-number
+    take origin-y
+      like maybe
+        like native-number
+    take origin-z
+      like maybe
+        like native-number
     like dom-matrix
 
   task scale3d, name <scale3d>
-    take scale, like maybe
-      like native-number
-    take origin-x, like maybe
-      like native-number
-    take origin-y, like maybe
-      like native-number
-    take origin-z, like maybe
-      like native-number
+    take scale
+      like maybe
+        like native-number
+    take origin-x
+      like maybe
+        like native-number
+    take origin-y
+      like maybe
+        like native-number
+    take origin-z
+      like maybe
+        like native-number
     like dom-matrix
 
   task scale-non-uniform, name <scaleNonUniform>
-    take scale-x, like maybe
-      like native-number
-    take scale-y, like maybe
-      like native-number
+    take scale-x
+      like maybe
+        like native-number
+    take scale-y
+      like maybe
+        like native-number
     like dom-matrix
 
   task skew-x, name <skewX>
-    take sx, like maybe
-      like native-number
+    take sx
+      like maybe
+        like native-number
     like dom-matrix
 
   task skew-y, name <skewY>
-    take sy, like maybe
-      like native-number
+    take sy
+      like maybe
+        like native-number
     like dom-matrix
 
   task to-float32-array, name <toFloat32Array>
@@ -173,17 +197,21 @@ form dom-matrix-read-only, name <DOMMatrixReadOnly>
     like native-any
 
   task transform-point, name <transformPoint>
-    take point, like maybe
-      like dom-point-init
+    take point
+      like maybe
+        like dom-point-init
     like dom-point
 
   task translate, name <translate>
-    take tx, like maybe
-      like native-number
-    take ty, like maybe
-      like native-number
-    take tz, like maybe
-      like native-number
+    take tx
+      like maybe
+        like native-number
+    take ty
+      like maybe
+        like native-number
+    take tz
+      like maybe
+        like native-number
     like dom-matrix
 
   task to-string, name <toString>

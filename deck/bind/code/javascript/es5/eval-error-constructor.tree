@@ -15,6 +15,7 @@ form eval-error-constructor, name <EvalErrorConstructor>
     like eval-error
 
   hook make
-    take message, like maybe
-      like native-string
+    take message
+      like maybe
+        like native-string
     like eval-error

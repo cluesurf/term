@@ -28,8 +28,9 @@ form transform-stream-default-controller, name <TransformStreamDefaultController
     like native-void
 
   task error, name <error>
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like native-void
 
   task terminate, name <terminate>

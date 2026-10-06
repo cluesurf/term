@@ -1,0 +1,339 @@
+# `term hold`'s decisions that are not its builds or its printing (note/term/proof-by-default/readme.md): an
+# obligation's key, which failed obligations the baseline already lists and which it lists that are gone, what
+# `--commit` writes, the kernel's reasons for declining most common first, and the gate's verdict and counts.
+#
+# Ported from deck/call/code/hold.ts (self-hosting, 2026-10-06), which stays as the face: it compiles each file, reads
+# and writes hold.json, runs the cross-backend differential and prints through code/output.ts.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/text
+  find split
+  find char-code-at
+  find to-upper-case
+
+load @term/make/check/eliminate
+  find utf16-order
+
+load ./work/item/event
+  find tally
+
+# ---- keys ----
+
+# One obligation's key: its file, its task, what it was owed for, and its ordinal among that task's obligations of that
+# kind, counted over every one, proven or not, so proving one does not renumber the rest. No line number, so editing a
+# file above a task does not churn the baseline
+task obligation-key
+  take rel, like text
+  take task-name, like text
+  take origin, like text
+  take ordinal, like number
+  like text
+
+  back <{rel} {task-name} {origin} {ordinal}>
+
+# a task as the trust ledger names it: a method by its form and name, anything else by its name, after its file
+task ledger-name
+  take rel, like text
+  take method-form, like text
+  take method-name, like text
+  take name, like text
+  like text
+
+  fork test, is-unequal(method-form, <>)
+    hold
+      back <{rel} {method-form}/{method-name}>
+  back <{rel} {name}>
+
+# texts in JavaScript's default order, by UTF-16 unit
+task sorted
+  take values, like list, like text
+  like list, like text
+
+  back sort(values, utf16-order)
+
+# ---- the baseline ----
+
+form baseline-split
+  link baselined, like number
+  link fresh, like list, like boolean
+  link gone, like list, like text
+
+# The failed obligations against the baseline: how many it lists (one per failure, a key failing twice counted twice),
+# which are fresh (one flag per failure), and the keys it lists that no longer fail, each once, sorted
+task baseline-split-of
+  take known, like list, like text
+  take failed, like list, like text
+  like baseline-split
+
+  save listed, make hash
+  walk known
+    take key
+    save listed/{key}, true
+  save failing, make hash
+  walk failed
+    take key
+    save failing/{key}, true
+  save baselined, 0
+  save fresh, make list
+  walk failed
+    take key
+    fork test, listed/has(key)
+      hold
+        save baselined, add(baselined, 1)
+        push(fresh, false)
+      miss
+        push(fresh, true)
+  save gone, make list
+  save seen, make hash
+  walk known
+    take key
+    fork test, and(not(failing/has(key)), not(seen/has(key)))
+      hold
+        save seen/{key}, true
+        push(gone, key)
+  back
+    make baseline-split
+      bind baselined, baselined
+      bind fresh, fresh
+      bind gone, sorted(gone)
+
+# what `--commit` writes: the baseline's keys that are not gone and the fresh ones, each once, sorted
+task commit-keys
+  take known, like list, like text
+  take gone, like list, like text
+  take fresh, like list, like text
+  like list, like text
+
+  save dropped, make hash
+  walk gone
+    take key
+    save dropped/{key}, true
+  save seen, make hash
+  save keys, make list
+  walk known
+    take key
+    fork test, and(not(dropped/has(key)), not(seen/has(key)))
+      hold
+        save seen/{key}, true
+        push(keys, key)
+  walk fresh
+    take key
+    fork test, not(seen/has(key))
+      hold
+        save seen/{key}, true
+        push(keys, key)
+  back sorted(keys)
+
+# ---- the kernel ----
+
+# a declined task's reason as it is counted: a kernel type error carries its own detail, so it counts under its kind
+task reason-kind
+  take reason, like text
+  like text
+
+  save head, <a kernel type error>
+  save points, split(reason, <>)
+  save wanted, split(head, <>)
+  fork test, is-below(points/length, wanted/length)
+    hold
+      back reason
+  save at, 0
+  walk wanted
+    take one
+    fork test, is-unequal(get(points, at), one)
+      hold
+        back reason
+    save at, add(at, 1)
+  back head
+
+form reason-count
+  link reason, like text
+  link count, like number
+
+# each reason once with how many tasks it declined, most common first, a tie in the order first met
+task reasons-of
+  take kinds, like list, like text
+  like list, like reason-count
+
+  save names, make list
+  save counts, make list
+  walk kinds
+    take kind
+    save found, -1
+    save at, 0
+    walk names
+      take name
+      fork test, is-equal(name, kind)
+        hold
+          save found, at
+      save at, add(at, 1)
+    fork test, is-below(found, 0)
+      hold
+        push(names, kind)
+        push(counts, 1)
+      miss
+        save counts/{found}, add(get(counts, found), 1)
+  # an insertion sort, which keeps a tie in the order met
+  save order, make list
+  save index, 0
+  walk names
+    take name
+    save place, order/length
+    walk test
+      hook test, and(is-above(place, 0), is-below(get(counts, get(order, subtract(place, 1))), get(counts, index)))
+      hook hold
+        save place, subtract(place, 1)
+    save after, make list
+    save step, 0
+    walk order
+      take one
+      fork test, is-equal(step, place)
+        hold
+          push(after, index)
+      push(after, one)
+      save step, add(step, 1)
+    fork test, is-equal(place, order/length)
+      hold
+        push(after, index)
+    save order, after
+    save index, add(index, 1)
+  save out, make list
+  walk order
+    take one
+    save made
+      make reason-count
+        bind reason, get(names, one)
+        bind count, get(counts, one)
+    push(out, made)
+  back out
+
+# a whole number as `toLocaleString('en-US')` writes it, its thousands grouped by commas
+task grouped
+  take value, like number
+  like text
+  mark private
+
+  save digits, split(<{value}>, <>)
+  save out, make list
+  save at, 0
+  walk digits
+    take digit
+    fork test, and(is-above(at, 0), is-equal(modulo(subtract(digits/length, at), 3), 0))
+      hold
+        push(out, <,>)
+    push(out, digit)
+    save at, add(at, 1)
+  back join(out, <>)
+
+# the line a reason gets: its first UTF-16 unit upper-cased and its count, `An expression the kernel cannot
+# represent: 1`
+task reason-line
+  take reason, like text
+  take count, like number
+  like text
+
+  save points, split(reason, <>)
+  save head, <>
+  save tail, reason
+  fork test, and(is-above(points/length, 0), not(is-above(char-code-at(get(points, 0), 0), 65535)))
+    hold
+      save head, to-upper-case(get(points, 0))
+      save rest, make list
+      save at, 1
+      walk test
+        hook test, is-below(at, points/length)
+        hook hold
+          push(rest, get(points, at))
+          save at, add(at, 1)
+      save tail, join(rest, <>)
+  save shown, grouped(count)
+  back <{head}{tail}: {shown}>
+
+# the lines of the four most common reasons
+task reason-lines
+  take reasons, like list, like reason-count
+  like list, like text
+
+  save lines, make list
+  walk reasons
+    take one
+    fork test, is-below(lines/length, 4)
+      hold
+        push(lines, reason-line(one/reason, one/count))
+  back lines
+
+# ---- the verdict ----
+
+form gate
+  link holds, like boolean
+  link counts, like list, like tally
+
+task tally-of
+  take amount, like number
+  take noun, like text
+  take one, like text
+  take total, like number
+  like tally
+  mark private
+
+  back
+    make tally
+      bind amount, amount
+      bind noun, noun
+      bind one, one
+      bind total, total
+
+# The gate: it holds when every file compiled, no claim is open and every failed obligation is in the baseline (and,
+# under `--cross`, every backend agreed). Its counts: the obligations proven of all of them, those in the baseline,
+# and each way it did not hold that happened
+task gate-of
+  take proven, like number
+  take total, like number
+  take baselined, like number
+  take failed, like number
+  take open, like number
+  take fresh, like number
+  take cross-ok, like boolean
+  take baseline, like text
+  like gate
+
+  save counts, make list
+  push(counts, tally-of(proven, <obligations proven>, <obligation proven>, total))
+  push(counts, tally-of(baselined, <in the baseline>, <>, -1))
+  fork test, is-above(failed, 0)
+    hold
+      push(counts, tally-of(failed, <files do not hold>, <file does not hold>, -1))
+  fork test, is-above(open, 0)
+    hold
+      push(counts, tally-of(open, <claims open>, <claim open>, -1))
+  fork test, is-above(fresh, 0)
+    hold
+      push(counts, tally-of(fresh, <not proven and not in {baseline}>, <>, -1))
+  back
+    make gate
+      bind holds, and(and(is-equal(failed, 0), is-equal(open, 0)), and(is-equal(fresh, 0), cross-ok))
+      bind counts, counts
+
+# `3 baselined obligations are now proven or gone`, `1 claim is left open`
+task gone-subject
+  take gone, like number
+  like text
+
+  fork test, is-equal(gone, 1)
+    hold
+      back <1 baselined obligation is now proven or gone>
+  back <{gone} baselined obligations are now proven or gone>
+
+task open-subject
+  take open, like number
+  like text
+
+  fork test, is-equal(open, 1)
+    hold
+      back <1 claim is left open>
+  back <{open} claims are left open>

@@ -41,8 +41,9 @@ form analyze-ask
 
 form lint-ask
   link root, like text
-  link paths, like list
-    like text
+  link paths
+    like list
+      like text
   link fix, like boolean
 
 task lint

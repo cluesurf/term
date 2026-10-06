@@ -5,6 +5,26 @@
 import { Hono } from 'hono'
 // aliased: the seed `serve` task is emitted into the same bundle scope, so the hono adapter must not shadow it
 import { serve as honoServe } from '@hono/node-server'
+import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
+
+// tree/code (note/term/host/10-code.md): bytes on the wire, base64 inside the program, the way a binary asset
+// already travels, since `request.body` and `response.body` are text. A request body is read as bytes, never as
+// UTF-8 (which would corrupt it), and unpacked when it came as `Content-Encoding: zstd`, up to TREE_CODE_LIMIT. A
+// response body is packed with Zstandard when the client accepts it and that makes it smaller
+const TREE_CODE = 'application/tree+code'
+const TREE_CODE_LIMIT = 64 * 1024 * 1024
+const TREE_CODE_PACK_ABOVE = 256
+
+function isTreeCode(type: string | undefined): boolean {
+  return (type ?? '').toLowerCase().split(';')[0]?.trim() === TREE_CODE
+}
+
+function acceptsZstd(accept: string | undefined): boolean {
+  return (accept ?? '')
+    .toLowerCase()
+    .split(',')
+    .some(part => part.trim().split(';')[0] === 'zstd' && !/;\s*q=0(\.0*)?\s*$/.test(part.trim()))
+}
 
 type Request = { method: string; path: string; body: string; headers: Map<string, string>; query: Map<string, string> }
 type Response = { status: number; body: string; headers?: Map<string, string> }
@@ -86,10 +106,26 @@ const transport = {
     const app = new Hono()
     app.all('*', async context => {
       const url = new URL(context.req.url)
-      const body =
-        context.req.method === 'GET' || context.req.method === 'HEAD'
-          ? ''
-          : await context.req.text()
+      let body = ''
+
+      if (context.req.method !== 'GET' && context.req.method !== 'HEAD') {
+        if (isTreeCode(context.req.header('content-type'))) {
+          let raw = Buffer.from(await context.req.arrayBuffer())
+
+          if ((context.req.header('content-encoding') ?? '').toLowerCase().trim() === 'zstd') {
+            try {
+              raw = zstdDecompressSync(raw, { maxOutputLength: TREE_CODE_LIMIT })
+            } catch {
+              // past the limit, or not Zstandard at all: refused before the handler sees it
+              return context.body('', 413 as never, { ...NO_STORE })
+            }
+          }
+
+          body = raw.toString('base64')
+        } else {
+          body = await context.req.text()
+        }
+      }
       // the request's headers by lower-case name, and its query string decoded, as the `request` form declares them
       const headers = new Map<string, string>()
       context.req.raw.headers.forEach((value, name) => headers.set(name.toLowerCase(), value))
@@ -114,6 +150,23 @@ const transport = {
       }
 
       const typed = Object.keys(given).some(name => name.toLowerCase() === 'content-type')
+      const givenType = Object.entries(given).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+
+      // tree/code: the body is base64 inside the program and bytes on the wire, packed when the client takes zstd
+      if (isTreeCode(givenType) && code !== 1 && !(code >= 300 && code < 400)) {
+        const plain = Buffer.from(out, 'base64')
+        const vary = { Vary: 'Accept-Encoding' }
+
+        if (plain.length >= TREE_CODE_PACK_ABOVE && acceptsZstd(context.req.header('accept-encoding'))) {
+          const packed = zstdCompressSync(plain)
+
+          if (packed.length < plain.length) {
+            return context.body(packed as never, status, { ...NO_STORE, ...given, ...vary, 'Content-Encoding': 'zstd' })
+          }
+        }
+
+        return context.body(plain as never, status, { ...NO_STORE, ...given, ...vary })
+      }
 
       if (typed && code !== 1 && !(code >= 300 && code < 400 && out)) {
         return context.body(out, status, { ...NO_STORE, ...given })

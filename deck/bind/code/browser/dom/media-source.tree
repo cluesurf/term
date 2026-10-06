@@ -92,8 +92,9 @@ form media-source, name <MediaSource>
     like native-void
 
   task end-of-stream, name <endOfStream>
-    take error, like maybe
-      like end-of-stream-error
+    take error
+      like maybe
+        like end-of-stream-error
     like native-void
 
   task remove-source-buffer, name <removeSourceBuffer>
@@ -118,19 +119,21 @@ form media-source, name <MediaSource>
             like media-source-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -146,17 +149,19 @@ form media-source, name <MediaSource>
             like media-source-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

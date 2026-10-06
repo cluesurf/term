@@ -22,26 +22,28 @@ form promise, name <Promise>
       back t
     head t-result2
       back native-never
-    take onfulfilled, like maybe
-      like or
-        like task
-          take value, like t
-          like or
-            like t-result1
-            like promise-like
+    take onfulfilled
+      like maybe
+        like or
+          like task
+            take value, like t
+            like or
               like t-result1
-        like native-undefined
-        like native-null
-    take onrejected, like maybe
-      like or
-        like task
-          take reason, like native-any
-          like or
-            like t-result2
-            like promise-like
+              like promise-like
+                like t-result1
+          like native-undefined
+          like native-null
+    take onrejected
+      like maybe
+        like or
+          like task
+            take reason, like native-any
+            like or
               like t-result2
-        like native-undefined
-        like native-null
+              like promise-like
+                like t-result2
+          like native-undefined
+          like native-null
     like promise
       like or
         like t-result1
@@ -50,16 +52,17 @@ form promise, name <Promise>
   task catch, name <catch>
     head t-result
       back native-never
-    take onrejected, like maybe
-      like or
-        like task
-          take reason, like native-any
-          like or
-            like t-result
-            like promise-like
+    take onrejected
+      like maybe
+        like or
+          like task
+            take reason, like native-any
+            like or
               like t-result
-        like native-undefined
-        like native-null
+              like promise-like
+                like t-result
+          like native-undefined
+          like native-null
     like promise
       like or
         like t

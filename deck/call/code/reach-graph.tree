@@ -139,11 +139,11 @@ task expressions-in
     miss
       save nothing, 0
 
+# every expression of a block, a parent before its parts (context-slice.tree reads it too)
 task statements-in
   take body, like list, like statement
   take out, like list, like expression
   like void
-  mark private
 
   walk body
     take one

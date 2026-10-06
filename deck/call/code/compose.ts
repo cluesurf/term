@@ -31,8 +31,12 @@ import { entrySpelling } from '@term/make/code/compile/native-main'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
-import { permissionLines } from '@term/call/code/device-declare'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
+import * as plan from '@term/call/code/compose-plan'
+
+// WHAT A BUILD DECIDES WITHOUT A TOOL is Term since 2026-10-06, call/code/compose-plan.tree: the app's name and
+// package, kotlinc's class name, the Android manifest, jpackage's arguments, the dex order, the libraries' names, the
+// prelude and flags checks, and what a failure is reported as. This face runs the compilers and tools.
 import { kotlinc } from '@term/call/code/kotlin-worker'
 import type { KotlinCompiler } from '@term/call/code/kotlin-worker'
 
@@ -49,8 +53,7 @@ function toolchainScript(): string {
 }
 
 // the same floor and target as the cask's APKs
-const MINIMUM_SDK = 26
-const TARGET_SDK = 36
+const MINIMUM_SDK = plan.minimumSdk()
 
 // a command's failure as its errors, not the warnings around them
 function failure(error: unknown): string {
@@ -61,9 +64,10 @@ function failure(error: unknown): string {
 
 // what a tool said, cut to its errors
 function errorsOf(text: string): string {
-  const errors = text.split('\n').filter(line => /error|e: |Exception/.test(line))
+  // the lines are chosen by the port; what is cut here counts UTF-16 units, as the original cut them
+  const errors = plan.errorLines(text)
 
-  return (errors.length > 0 ? errors.slice(0, 12).join('\n') : text.slice(-1200)).slice(0, 2400)
+  return (errors !== '' ? errors : text.slice(-1200)).slice(0, 2400)
 }
 
 function run(command: string, args: string[], cwd?: string): void {
@@ -228,7 +232,7 @@ export function buildCompose({
   const result = stage(stages, 'term', () => compile({ file: entry, text }, { resolve, env: 'compose', cache }))
 
   if (!result.ok) {
-    return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
+    return { form: 'failed', stage: 'compile', reason: plan.failureReason(result.diagnostics.map(d => d.message)) }
   }
 
   const refused = stage(stages, 'scope', () => refusedScope(scope, entry, text, resolve))
@@ -243,7 +247,7 @@ export function buildCompose({
   const prelude = nativePrelude(result.program, 'compose', readRuntime, kotlin)
 
   // the Compose runtime and not the Android one: no Android class may reach a desktop build
-  if (!prelude.includes('fun CxTree(') || prelude.includes('android.widget')) {
+  if (!plan.holdsComposeAlone(prelude)) {
     return { form: 'failed', stage: 'prelude', reason: 'the prelude does not hold the Compose runtime alone' }
   }
 
@@ -257,7 +261,7 @@ export function buildCompose({
     return { form: 'failed', stage: 'flags', reason: String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 800) }
   }
 
-  if (!classpath.includes('ui-desktop') || !plugin.endsWith('.jar')) {
+  if (!plan.holdsComposeFlags(classpath, plugin)) {
     return { form: 'failed', stage: 'flags', reason: `no Compose classpath or plugin: ${plugin}` }
   }
 
@@ -276,15 +280,13 @@ export function buildCompose({
   })
 
   if (built.status !== 0) {
-    const errors = built.output.split('\n').filter(line => /error:/.test(line))
-
-    return { form: 'failed', stage: 'build', reason: errors.slice(0, 8).join('\n') || built.output.slice(-800) }
+    return { form: 'failed', stage: 'build', reason: plan.buildErrors(built.output) || built.output.slice(-800) }
   }
 
   // kotlinc names a file's top-level class after the file, capitalized, a character no name may hold written `_`:
   // `app.kt` holds `AppKt` and `compose-linux.kt` holds `Compose_linuxKt` (it was guessed `ComposeLinuxKt`, which no
   // build found until a name had a hyphen in it)
-  const main = `${name.charAt(0).toUpperCase()}${name.slice(1)}`.replace(/[^A-Za-z0-9_$]/g, '_') + 'Kt'
+  const main = plan.mainClassOf(name)
 
   // the runtime's jar first: the program is run, and packaged, with it beside the Compose libraries
   return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main, runtimeJars: built.runtimeJars, stages }
@@ -343,7 +345,7 @@ export function buildComposeAndroid({
   const result = stage(stages, 'term', () => compile({ file: entry, text }, { resolve, env: 'compose-android', cache }))
 
   if (!result.ok) {
-    return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
+    return { form: 'failed', stage: 'compile', reason: plan.failureReason(result.diagnostics.map(d => d.message)) }
   }
 
   const refused = stage(stages, 'scope', () => refusedScope(scope, entry, text, resolve))
@@ -479,9 +481,7 @@ export function buildComposeAndroid({
 
 // the dex files d8 wrote into a folder, in its own order: classes.dex, then classes2.dex, classes3.dex, ...
 function dexFiles(dir: string): string[] {
-  const order = (file: string) => Number(/classes(\d*)\.dex$/.exec(file)?.[1] || '1')
-
-  return filesUnder(dir, '.dex').sort((a, b) => order(a) - order(b))
+  return plan.dexSorted(filesUnder(dir, '.dex'))
 }
 
 // where the Android stages that do not change between edits are kept: beside the Compose runtimes
@@ -610,22 +610,7 @@ function linkAndroidApp(input: {
   native: string
 }): { base: string; rJar: string; rDex: string } {
   const { libraries, tools, identifier, name, assets } = input
-  const manifestText = [
-    '<?xml version="1.0" encoding="utf-8"?>',
-    `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="0.0.2">`,
-    `  <uses-sdk android:minSdkVersion="${MINIMUM_SDK}" android:targetSdkVersion="${TARGET_SDK}" />`,
-    ...permissionLines(input.native),
-    `  <application android:label="${name}" android:theme="@android:style/Theme.Material.Light.NoActionBar">`,
-    '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
-    '      <intent-filter>',
-    '        <action android:name="android.intent.action.MAIN" />',
-    '        <category android:name="android.intent.category.LAUNCHER" />',
-    '      </intent-filter>',
-    '    </activity>',
-    '  </application>',
-    '</manifest>',
-    '',
-  ].join('\n')
+  const manifestText = plan.androidManifest(identifier, name, input.native)
   const key = keyOf(['link', libraries.key, manifestText, ...Object.keys(assets).sort()], Object.keys(assets).sort().map(one => assets[one]!))
   const dir = kept(join(ANDROID_CACHE, 'link'), key, into => {
     const manifest = join(into, 'AndroidManifest.xml')
@@ -678,7 +663,7 @@ export function composeInput({ jar, libraries, input }: { jar: string; libraries
   rmSync(input, { recursive: true, force: true })
   mkdirSync(input, { recursive: true })
   copyFileSync(jar, join(input, basename(jar)))
-  libraries.forEach((library, index) => copyFileSync(library, join(input, `${String(index).padStart(3, '0')}-${basename(library)}`)))
+  libraries.forEach((library, index) => copyFileSync(library, join(input, plan.libraryName(index, basename(library)))))
 }
 
 // jpackage's arguments for a desktop app image, every path as the machine that RUNS jpackage sees it: this one's, or
@@ -699,23 +684,7 @@ export function jpackageArguments({
   dest: string
   console?: boolean
 }): string[] {
-  return [
-    '--type',
-    'app-image',
-    '--input',
-    input,
-    '--main-jar',
-    basename(jar),
-    '--main-class',
-    main,
-    '--name',
-    name,
-    '--dest',
-    dest,
-    '--java-options',
-    '--enable-native-access=ALL-UNNAMED',
-    ...(console ? ['--win-console'] : []),
-  ]
+  return plan.jpackageArguments(input, basename(jar), main, name, dest, console)
 }
 
 // a built desktop jar packaged by jpackage as an app image with its own JVM, for the OS this runs on: the jar and every
@@ -744,9 +713,9 @@ export function packageComposeDesktop({
 
 // an app folder's name as an app is named after it, and its Android package: what `make` builds and `work` launches
 export function composeIdentity(root: string): { name: string; identifier: string } {
-  const name = basename(root).replace(/[^A-Za-z0-9]/g, '') || 'App'
+  const identity = plan.identityOf(basename(root))
 
-  return { name, identifier: `surf.term.${name.toLowerCase()}` }
+  return { name: identity.name, identifier: identity.identifier }
 }
 
 // `term make --target compose|compose-android`: the app's entry (`app.tree` by default, a program with a `main` task

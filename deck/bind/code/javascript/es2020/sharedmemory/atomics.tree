@@ -91,8 +91,9 @@ form atomics, name <Atomics>
     take typed-array, like big-int64-array
     take index, like native-number
     take value, like native-bigint
-    take timeout, like maybe
-      like native-number
+    take timeout
+      like maybe
+        like native-number
     like or
       text <ok>
       text <not-equal>
@@ -101,8 +102,9 @@ form atomics, name <Atomics>
   task notify, name <notify>
     take typed-array, like big-int64-array
     take index, like native-number
-    take count, like maybe
-      like native-number
+    take count
+      like maybe
+        like native-number
     like native-number
 
   task xor, name <xor>

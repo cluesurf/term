@@ -1,0 +1,756 @@
+# Per-module ESM emit (Tier 2, separate compilation): the plan of each module. Where `emitTypeScript` emits the whole
+# merged program as one blob, the dev server serves one ESM file per source module, with `import` lines reconnecting
+# the references that cross modules. This works out, per module, those import lines, the binds it borrows from other
+# modules with the native modules their files dock, whether it is a component module (an HMR boundary), and the files
+# it depends on.
+#
+# The merged program carries no module boundaries except each statement's `span.file`. So the import graph is rebuilt
+# here: statements grouped by that file, a name -> defining-file map (the last definition wins, as `emitTypeScript`'s
+# dedup does, which resolves the abstract and impl native-delegation case to the impl), then for each module an import
+# of every function and type another module defines that it names. A name is imported from its TRUE definer, so `bear`
+# re-exports need no handling (ESM resolves them).
+#
+# Ported from compile/modules.ts (self-hosting, 2026-10-06), which stays as the face: it emits each module's body with
+# `emitTypeScript` and joins the pieces, and hands in what this cannot spell itself, as tasks: the URL a file is
+# imported by, the TypeScript emitter's camel and pascal spellings (whose reserved words live in compile/typescript.ts),
+# and whether a statement carries a `stubExport` at all, since an absent text and an empty one read alike in Term. Every
+# set the original kept is a list in insertion order beside a hash of what it holds, because the order of the imports,
+# of their groups and of the borrowed binds is the order the original's sets iterated in.
+
+load @term/base/list
+  find list
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find statement
+  find expression
+  find type
+  find statement-span
+
+load ./render-names
+  find render-names
+
+load ../check/eliminate
+  find utf16-order
+
+# one module's plan: the face emits its body from `statements` behind `borrowed`
+form module-plan
+  link file, like text
+  link statements, like list, like statement
+  link borrowed, like list, like statement
+  # the `import` lines, value imports first, each group's names sorted
+  link lines, like list, like text
+  # the files it imports from, value imports' first
+  link imports, like list, like text
+  link is-zone, like boolean
+
+form module-plans
+  link plans, like list, like module-plan
+  # every enum variant name in the program, so a module building `make some` writes the discriminant even when the
+  # enum is another module's
+  link variants, like list, like text
+
+# names in the order first given, without repeats: the original's `Set<string>`
+form name-set
+  mark shared
+  link order, like list, like text
+  link held, like hash, like text, like boolean
+
+task fresh-names
+  like name-set
+  mark private
+
+  save order, make list
+  save held, text-flags()
+  back
+    make name-set
+      bind order, order
+      bind held, held
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task add-name
+  take into, like name-set
+  take name, like text
+  mark private
+
+  fork test, into/held/has(name)
+    hold
+      back
+  save into/held/{name}, true
+  push(into/order, name)
+
+task has-name
+  take names, like name-set
+  take name, like text
+  like boolean
+  mark private
+
+  back names/held/has(name)
+
+# the file a statement came from, `<entry>` for none
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link known
+      back known
+    case none
+      back <\<entry\>>
+
+# ---- the references a module makes ----
+
+# the named-type references inside a type, for `import type`
+task walk-type
+  take given, like type
+  take types, like name-set
+  mark private
+
+  sift given
+    case named
+      add-name(types, name)
+      walk args
+        take arg
+        walk-type(arg, types)
+    case array
+      walk-type(element, types)
+    case map
+      walk-type(key, types)
+      walk-type(value, types)
+    case function
+      walk params
+        take param
+        walk-type(param, types)
+      walk-type(result, types)
+    miss
+      save nothing, 0
+
+task walk-maybe-type
+  take given, like maybe, like type
+  take types, like name-set
+  mark private
+
+  sift given
+    case some
+      link known
+      walk-type(known, types)
+    case none
+      save nothing, 0
+
+# the references in an expression: names that may be another module's values, and named types in annotations
+task walk-expression
+  take given, like expression
+  take values, like name-set
+  take types, like name-set
+  mark private
+
+  sift given
+    case variable
+      # a reference to a top-level function needs a value import, and so may a module's constant, which the resolver
+      # binds as `local` at module scope. Every such name is gathered, and imported only where another module defines
+      # it at top level and this one does not. Parameters and builtins never import
+      save counted, true
+      sift binding
+        case some
+          link known
+          sift known
+            case parameter
+              save counted, false
+            case builtin
+              save counted, false
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, counted
+        hold
+          add-name(values, name)
+    case call
+      walk-expression(callee, values, types)
+      walk args
+        take arg
+        walk-expression(arg, values, types)
+    case binary
+      walk-expression(left, values, types)
+      walk-expression(right, values, types)
+    case unary
+      walk-expression(operand, values, types)
+    case array
+      walk items
+        take item
+        walk-expression(item, values, types)
+    case map
+      walk entries
+        take entry
+        walk-expression(entry/key, values, types)
+        walk-expression(entry/value, values, types)
+    case record
+      # a form constructor emits an object literal, no value import, and its fields may reference more
+      walk fields
+        take field
+        walk-expression(field/value, values, types)
+    case member
+      walk-expression(target, values, types)
+    case await
+      walk-expression(expr, values, types)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            walk-expression(inner, values, types)
+          miss
+            save nothing, 0
+    case closure
+      walk params
+        take param
+        walk-maybe-type(param/type, types)
+      walk-maybe-type(result, types)
+      walk-statements(body, values, types)
+    case conditional
+      walk branches
+        take branch
+        walk-expression(branch/cond, values, types)
+        walk-expression(branch/value, values, types)
+      sift otherwise
+        case some
+          link known
+          walk-expression(known, values, types)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task walk-statements
+  take statements, like list, like statement
+  take values, like name-set
+  take types, like name-set
+  mark private
+
+  walk statements
+    take one
+    walk-statement(one, values, types)
+
+task walk-maybe-statements
+  take given, like maybe, like list, like statement
+  take values, like name-set
+  take types, like name-set
+  mark private
+
+  sift given
+    case some
+      link known
+      walk-statements(known, values, types)
+    case none
+      save nothing, 0
+
+# the references in a statement: its expressions and its type annotations
+task walk-statement
+  take one, like statement
+  take values, like name-set
+  take types, like name-set
+  mark private
+
+  sift one
+    case let
+      walk-expression(init, values, types)
+      walk-maybe-type(type, types)
+    case assign
+      walk-expression(target, values, types)
+      walk-expression(value, values, types)
+    case expression
+      walk-expression(expr, values, types)
+    case if
+      walk branches
+        take branch
+        walk-expression(branch/cond, values, types)
+        walk-statements(branch/body, values, types)
+      walk-maybe-statements(otherwise, values, types)
+    case while
+      walk-expression(cond, values, types)
+      walk-statements(body, values, types)
+    case match
+      walk-expression(subject, values, types)
+      walk cases
+        take arm
+        walk-statements(arm/body, values, types)
+      walk-maybe-statements(otherwise, values, types)
+    case guard
+      walk-statements(body, values, types)
+      sift catch
+        case some
+          link known
+          walk-statements(known/body, values, types)
+        case none
+          save nothing, 0
+    case for-each
+      walk-expression(iterable, values, types)
+      walk-statements(body, values, types)
+    case return
+      sift value
+        case some
+          link known
+          walk-expression(known, values, types)
+        case none
+          save nothing, 0
+    case throw
+      walk-expression(value, values, types)
+    case hold
+      walk-expression(expr, values, types)
+    case function
+      walk params
+        take param
+        walk-maybe-type(param/type, types)
+      walk-maybe-type(result, types)
+      walk-statements(body, values, types)
+    case record-type
+      walk fields
+        take field
+        walk-type(field/type, types)
+      walk variants
+        take variant
+        walk variant/fields
+          take field
+          walk-type(field/type, types)
+    case instance
+      # a trait impl references the trait and the target type
+      add-name(types, mask)
+      add-name(types, target)
+    miss
+      save nothing, 0
+
+# ---- what each module defines ----
+
+form defined-names
+  # the file each top-level value and type is defined in, the last definition winning
+  link values, like hash, like text, like text
+  link types, like hash, like text, like text
+  # the name a separately compiled task's own module exports it by, where this program calls it something else
+  link exported, like hash, like text, like text
+  link type-exported, like hash, like text, like text
+
+task text-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task defined-names-of
+  take program, like list, like statement
+  take has-stub-export
+    like task
+      take one, like statement
+      like boolean
+  like defined-names
+  mark private
+
+  save values, text-table()
+  save types, text-table()
+  save exported, text-table()
+  save type-exported, text-table()
+  walk program
+    take one
+    save file, file-of(one)
+    sift one
+      case function
+        fork test, and(has-stub-export(one), is-unequal(read(stub-export), name))
+          hold
+            save exported/{name}, read(stub-export)
+        save values/{name}, file
+      case let
+        fork test, and(has-stub-export(one), is-unequal(read(stub-export), name))
+          hold
+            save exported/{name}, read(stub-export)
+        # a top-level constant is a value another module may read, exported in per-module mode
+        save values/{name}, file
+      case view
+        save values/{name}, file
+      case record-type
+        fork test, and(has-stub-export(one), is-unequal(read(stub-export), name))
+          hold
+            save type-exported/{name}, read(stub-export)
+        save types/{name}, file
+      case mask
+        fork test, and(has-stub-export(one), is-unequal(read(stub-export), name))
+          hold
+            save type-exported/{name}, read(stub-export)
+        save types/{name}, file
+      miss
+        save nothing, 0
+  back
+    make defined-names
+      bind values, values
+      bind types, types
+      bind exported, exported
+      bind type-exported, type-exported
+
+# a statement's own top-level name, where it has one: what an import of the same name would collide with
+task own-name
+  take one, like statement
+  like maybe, like text
+  mark private
+
+  sift one
+    case let
+      back make(some, name)
+    case function
+      back make(some, name)
+    case record-type
+      back make(some, name)
+    case mask
+      back make(some, name)
+    case bind
+      back make(some, name)
+    case view
+      back make(some, name)
+    case roll
+      back make(some, name)
+    case tell
+      back make(some, name)
+    case hold
+      # `name` is the hold's own only when it was given, and an empty one reads as none
+      save given, read(name)
+      fork test, is-unequal(given, <>)
+        hold
+          back make(some, given)
+      back make none
+    miss
+      back make none
+
+# the render-runtime names a component module's emitted code calls but its AST never names (the view ABI and the HMR
+# bookkeeping), added to its value imports
+task zone-runtime
+  like list, like text
+  mark private
+
+  save names, render-names()
+  save out, make list
+  push(out, names/element)
+  push(out, names/text)
+  push(out, names/dynamic)
+  push(out, names/attribute)
+  push(out, names/event)
+  push(out, <append>)
+  push(out, names/show)
+  push(out, names/each)
+  push(out, <open-scope>)
+  push(out, <close-scope>)
+  push(out, <make-signal>)
+  push(out, <read-signal>)
+  push(out, <dispose-scope>)
+  push(out, <remove>)
+  back out
+
+# one group of imports per defining file, in the order each file was first reached
+form import-groups
+  mark shared
+  link files, like list, like text
+  link names, like hash, like text, like name-set
+
+task fresh-groups
+  like import-groups
+  mark private
+
+  save files, make list
+  save names, group-table()
+  back
+    make import-groups
+      bind files, files
+      bind names, names
+
+task group-table
+  like hash, like text, like name-set
+  mark private
+
+  back make hash
+
+task group-add
+  take groups, like import-groups
+  take file, like text
+  take name, like text
+  mark private
+
+  fork test, not(groups/names/has(file))
+    hold
+      push(groups/files, file)
+      save groups/names/{file}, fresh-names()
+  save held, groups/names/get(file)
+  add-name(held, name)
+
+# the plan of each module, every file's statements read as the context of each
+task plan-modules
+  take program, like list, like statement
+  take url-for
+    like task
+      take file, like text
+      like text
+  take camel
+    like task
+      take name, like text
+      like text
+  take pascal
+    like task
+      take name, like text
+      like text
+  take has-stub-export
+    like task
+      take one, like statement
+      like boolean
+  take only, like maybe, like list, like text
+  like module-plans
+
+  # group statements by their source file, in program order within each
+  save files, make list
+  save by-file, statement-table()
+  walk program
+    take one
+    save file, file-of(one)
+    fork test, not(by-file/has(file))
+      hold
+        push(files, file)
+        save fresh-bucket, make list
+        save by-file/{file}, fresh-bucket
+    save bucket, by-file/get(file)
+    push(bucket, one)
+
+  save defined, defined-names-of(program, has-stub-export)
+
+  # A BIND IS WRITTEN INTO ITS CALLER, so a module calling another module's bind needs the bind itself, and the native
+  # modules the bind's own file docks, since its text may name one
+  save binds, bind-table()
+  save docks, statement-table()
+  walk program
+    take one
+    sift one
+      case bind
+        save binds/{name}, one
+      case native
+        save is-type, false
+        sift kind
+          case some
+            link known
+            sift known
+              case type
+                save is-type, true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        fork test, not(is-type)
+          hold
+            save dock-file, file-of(one)
+            fork test, not(docks/has(dock-file))
+              hold
+                save fresh-docks, make list
+                save docks/{dock-file}, fresh-docks
+            save held-docks, docks/get(dock-file)
+            push(held-docks, one)
+      miss
+        save nothing, 0
+
+  save variant-names, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        walk variants
+          take variant
+          push(variant-names, variant/name)
+      miss
+        save nothing, 0
+
+  save wanted, text-flags()
+  save filtering, false
+  sift only
+    case some
+      link given
+      save filtering, true
+      walk given
+        take one
+        save wanted/{one}, true
+    case none
+      save nothing, 0
+
+  save plans, make list
+  walk files
+    take file
+    # a separate unit's closure stubs sit under their own files: only the files asked for are emitted
+    fork test, and(filtering, not(wanted/has(file)))
+      hold
+        turn next
+    save statements, by-file/get(file)
+    save values, fresh-names()
+    save types, fresh-names()
+    walk-statements(statements, values, types)
+
+    # a component module is a self-accepting HMR boundary, and its hot wiring calls render-runtime helpers its AST
+    # does not name
+    save is-zone, false
+    walk statements
+      take one
+      sift one
+        case view
+          save is-zone, true
+        miss
+          save nothing, 0
+    fork test, is-zone
+      hold
+        walk zone-runtime()
+          take helper
+          add-name(values, helper)
+
+    save value-imports, fresh-groups()
+    save type-imports, fresh-groups()
+
+    save own, text-flags()
+    walk statements
+      take one
+      sift own-name(one)
+        case some
+          link known
+          save own/{known}, true
+        case none
+          save nothing, 0
+
+    walk values/order
+      take name
+      fork test, defined/values/has(name)
+        hold
+          save from, defined/values/get(name)
+          fork test, and(and(is-unequal(from, <>), is-unequal(from, file)), not(own/has(name)))
+            hold
+              fork test, defined/exported/has(name)
+                hold
+                  save export-name, defined/exported/get(name)
+                  group-add(value-imports, from, <{camel(export-name)} as {camel(name)}>)
+                miss
+                  group-add(value-imports, from, camel(name))
+
+    walk types/order
+      take name
+      fork test, defined/types/has(name)
+        hold
+          save from, defined/types/get(name)
+          fork test, and(and(is-unequal(from, <>), is-unequal(from, file)), not(own/has(name)))
+            hold
+              fork test, defined/type-exported/has(name)
+                hold
+                  save export-name, defined/type-exported/get(name)
+                  group-add(type-imports, from, <{pascal(export-name)} as {pascal(name)}>)
+                miss
+                  group-add(type-imports, from, pascal(name))
+
+    save lines, make list
+    walk value-imports/files
+      take dep
+      save held, value-imports/names/get(dep)
+      save sorted, sort(held/order, utf16-order)
+      push(lines, <import \{ {join(sorted, <, >)} \} from "{url-for(dep)}">)
+    walk type-imports/files
+      take dep
+      save held, type-imports/names/get(dep)
+      save sorted, sort(held/order, utf16-order)
+      push(lines, <import type \{ {join(sorted, <, >)} \} from "{url-for(dep)}">)
+
+    # the binds this module calls from other modules, each with the native modules its own file docks
+    save borrowed, make list
+    save docked, text-flags()
+    walk statements
+      take one
+      sift native-alias(one)
+        case some
+          link own-alias
+          save docked/{own-alias}, true
+        case none
+          save nothing, 0
+    walk values/order
+      take name
+      fork test, not(binds/has(name))
+        hold
+          turn next
+      save called, binds/get(name)
+      save bind-file, file-of(called)
+      fork test, or(is-equal(bind-file, file), own/has(name))
+        hold
+          turn next
+      fork test, docks/has(bind-file)
+        hold
+          walk docks/get(bind-file)
+            take dock
+            sift native-alias(dock)
+              case some
+                link dock-alias
+                fork test, not(docked/has(dock-alias))
+                  hold
+                    save docked/{dock-alias}, true
+                    push(borrowed, dock)
+              case none
+                save nothing, 0
+      push(borrowed, called)
+
+    save imports, make list
+    save seen-imports, text-flags()
+    walk value-imports/files
+      take dep
+      fork test, not(seen-imports/has(dep))
+        hold
+          save seen-imports/{dep}, true
+          push(imports, dep)
+    walk type-imports/files
+      take dep
+      fork test, not(seen-imports/has(dep))
+        hold
+          save seen-imports/{dep}, true
+          push(imports, dep)
+
+    save plan
+      make module-plan
+        bind file, file
+        bind statements, statements
+        bind borrowed, borrowed
+        bind lines, lines
+        bind imports, imports
+        bind is-zone, is-zone
+    push(plans, plan)
+
+  back
+    make module-plans
+      bind plans, plans
+      bind variants, variant-names
+
+# the alias a native statement docks its module under
+task native-alias
+  take one, like statement
+  like maybe, like text
+  mark private
+
+  sift one
+    case native
+      back make(some, alias)
+    miss
+      back make none
+
+task statement-table
+  like hash, like text, like list, like statement
+  mark private
+
+  back make hash
+
+task bind-table
+  like hash, like text, like statement
+  mark private
+
+  back make hash

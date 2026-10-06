@@ -73,10 +73,12 @@ form event, name <Event>
 
   task init-event, name <initEvent>
     take type, like native-string
-    take bubbles, like maybe
-      like native-boolean
-    take cancelable, like maybe
-      like native-boolean
+    take bubbles
+      like maybe
+        like native-boolean
+    take cancelable
+      like maybe
+        like native-boolean
     like native-void
 
   task prevent-default, name <preventDefault>

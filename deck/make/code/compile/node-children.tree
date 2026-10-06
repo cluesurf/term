@@ -1,0 +1,903 @@
+# The nodes directly under a node: what a walk by reflection meets next below it, through every field node.tree
+# declares, the records between (a branch, a field value, a match arm, a parameter, a dock's parts) passed through.
+#
+# About a hundred and fifty compiler passes walk the AST by reflection, `Object.entries` over whatever they are handed,
+# and most of them stop at some forms to do their own thing there, and descend through everything else. compile/
+# node-reach.tree is that walk run to the bottom; this is ONE step of it, so a pass ported to Term writes its own cases
+# and hands the rest to `node-children`, which is the descent the original's `default` made. The order is node-reach's
+# (fields as node.tree declares them, which is the order the AST's objects are built in), and a name in `skip` is not
+# descended into, spelled as the TypeScript spells it (`stubShape`), at every depth, as a reflective walk skips it.
+#
+# Written for self-hosting, 2026-10-06, for the analyses of compile/backend.ts and check/holds.ts.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find catch-clause
+  find closure-param
+  find declared-param
+  find declared-signature
+  find dock-argument
+  find dock-call
+  find dock-component
+  find dock-route
+  find dock-send
+  find dock-take
+  find expression
+  find field-value
+  find form-extend
+  find function-param
+  find statement
+  find type
+  find view-node
+
+# one node a walk can stop at: an expression, a statement, a type or a view node
+form node-handle
+  mark tag, name of
+  case expression-handle
+    link node, like expression
+  case statement-handle
+    link node, like statement
+  case type-handle
+    link node, like type
+  case view-handle
+    link node, like view-node
+
+# what one step gathers, and the names it does not descend into
+form step
+  mark shared
+  link skip, like list, like text
+  link out, like list, like node-handle
+
+task enters
+  take at, like step
+  take key, like text
+  like boolean
+  mark private
+
+  back not(contains(at/skip, key))
+
+task add-expression
+  take at, like step
+  take node, like expression
+  mark private
+
+  save made
+    make node-handle/expression-handle
+      bind node, node
+  push(at/out, made)
+
+task add-statement
+  take at, like step
+  take node, like statement
+  mark private
+
+  save made
+    make node-handle/statement-handle
+      bind node, node
+  push(at/out, made)
+
+task add-type
+  take at, like step
+  take node, like type
+  mark private
+
+  save made
+    make node-handle/type-handle
+      bind node, node
+  push(at/out, made)
+
+task add-view
+  take at, like step
+  take node, like view-node
+  mark private
+
+  save made
+    make node-handle/view-handle
+      bind node, node
+  push(at/out, made)
+
+task add-maybe-expression
+  take at, like step
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      add-expression(at, inner)
+    case none
+      back
+
+task add-maybe-type
+  take at, like step
+  take given, like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link inner
+      add-type(at, inner)
+    case none
+      back
+
+task add-block
+  take at, like step
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take one
+    add-statement(at, one)
+
+task add-maybe-block
+  take at, like step
+  take given, like maybe, like list, like statement
+  mark private
+
+  sift given
+    case some
+      link body
+      add-block(at, body)
+    case none
+      back
+
+task add-own-type
+  take at, like step
+  take given, like maybe, like type
+  mark private
+
+  fork test, enters(at, <type>)
+    hold
+      add-maybe-type(at, given)
+
+task add-field-values
+  take at, like step
+  take values, like list, like field-value
+  mark private
+
+  walk values
+    take one
+    fork test, enters(at, <value>)
+      hold
+        add-expression(at, one/value)
+
+task add-closure-params
+  take at, like step
+  take params, like list, like closure-param
+  mark private
+
+  walk params
+    take one
+    fork test, enters(at, <type>)
+      hold
+        add-maybe-type(at, one/type)
+
+task add-function-params
+  take at, like step
+  take params, like list, like function-param
+  mark private
+
+  walk params
+    take one
+    fork test, enters(at, <type>)
+      hold
+        add-maybe-type(at, one/type)
+    fork test, enters(at, <fallback>)
+      hold
+        add-maybe-expression(at, one/fallback)
+
+task add-declared-params
+  take at, like step
+  take params, like list, like declared-param
+  mark private
+
+  walk params
+    take one
+    fork test, enters(at, <type>)
+      hold
+        add-maybe-type(at, one/type)
+
+task add-signature
+  take at, like step
+  take signature, like declared-signature
+  mark private
+
+  fork test, enters(at, <params>)
+    hold
+      add-declared-params(at, signature/params)
+  fork test, enters(at, <result>)
+    hold
+      add-maybe-type(at, signature/result)
+
+task add-maybe-signature
+  take at, like step
+  take given, like maybe, like declared-signature
+  mark private
+
+  sift given
+    case some
+      link signature
+      add-signature(at, signature)
+    case none
+      back
+
+task add-maybe-statement
+  take at, like step
+  take given, like maybe, like statement
+  mark private
+
+  sift given
+    case some
+      link inner
+      add-statement(at, inner)
+    case none
+      back
+
+task add-maybe-catch
+  take at, like step
+  take given, like maybe, like catch-clause
+  mark private
+
+  sift given
+    case some
+      link clause
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, clause/body)
+    case none
+      back
+
+task add-extend
+  take at, like step
+  take extended, like form-extend
+  mark private
+
+  fork test, enters(at, <base>)
+    hold
+      add-type(at, extended/base)
+  fork test, enters(at, <heads>)
+    hold
+      walk extended/heads
+        take head
+        fork test, enters(at, <type>)
+          hold
+            add-maybe-type(at, head/type)
+        fork test, enters(at, <links>)
+          hold
+            walk head/links
+              take one
+              fork test, enters(at, <type>)
+                hold
+                  add-type(at, one/type)
+  fork test, enters(at, <links>)
+    hold
+      walk extended/links
+        take one
+        fork test, enters(at, <type>)
+          hold
+            add-type(at, one/type)
+        fork test, enters(at, <fallback>)
+          hold
+            add-maybe-expression(at, one/fallback)
+  fork test, enters(at, <pins>)
+    hold
+      add-field-values(at, extended/pins)
+
+task add-maybe-extend
+  take at, like step
+  take given, like maybe, like form-extend
+  mark private
+
+  sift given
+    case some
+      link extended
+      add-extend(at, extended)
+    case none
+      back
+
+task add-arguments
+  take at, like step
+  take arguments, like list, like dock-argument
+  mark private
+
+  walk arguments
+    take one
+    fork test, enters(at, <value>)
+      hold
+        add-expression(at, one/value)
+
+task add-calls
+  take at, like step
+  take calls, like list, like dock-call
+  mark private
+
+  walk calls
+    take one-call
+    fork test, enters(at, <args>)
+      hold
+        add-arguments(at, one-call/args)
+
+task add-sends
+  take at, like step
+  take sends, like list, like dock-send
+  mark private
+
+  walk sends
+    take one
+    fork test, enters(at, <value>)
+      hold
+        add-maybe-expression(at, one/value)
+
+task add-takes
+  take at, like step
+  take takes, like list, like dock-take
+  mark private
+
+  walk takes
+    take one
+    fork test, enters(at, <type>)
+      hold
+        add-maybe-type(at, one/type)
+
+task add-maybe-component
+  take at, like step
+  take given, like maybe, like dock-component
+  mark private
+
+  sift given
+    case some
+      link component
+      fork test, enters(at, <props>)
+        hold
+          add-arguments(at, component/props)
+    case none
+      back
+
+task add-route
+  take at, like step
+  take route, like dock-route
+  mark private
+
+  fork test, enters(at, <takes>)
+    hold
+      add-takes(at, route/takes)
+  fork test, enters(at, <methods>)
+    hold
+      walk route/methods
+        take method
+        fork test, enters(at, <takes>)
+          hold
+            add-takes(at, method/takes)
+        fork test, enters(at, <calls>)
+          hold
+            add-calls(at, method/calls)
+        fork test, enters(at, <sends>)
+          hold
+            add-sends(at, method/sends)
+  fork test, enters(at, <calls>)
+    hold
+      add-calls(at, route/calls)
+  fork test, enters(at, <component>)
+    hold
+      add-maybe-component(at, route/component)
+  fork test, enters(at, <directives>)
+    hold
+      add-sends(at, route/directives)
+  fork test, enters(at, <sends>)
+    hold
+      add-sends(at, route/sends)
+  fork test, enters(at, <hooks>)
+    hold
+      walk route/hooks
+        take one-hook
+        fork test, enters(at, <calls>)
+          hold
+            add-calls(at, one-hook/calls)
+  fork test, enters(at, <children>)
+    hold
+      walk route/children
+        take child
+        add-route(at, child)
+
+task expression-children
+  take at, like step
+  take node, like expression
+  mark private
+
+  sift node
+    case template
+      fork test, enters(at, <parts>)
+        hold
+          walk parts
+            take part
+            sift part
+              case value
+                link inner
+                fork test, enters(at, <value>)
+                  hold
+                    add-expression(at, inner)
+              case chunk
+                turn next
+      add-own-type(at, type)
+    case binary
+      fork test, enters(at, <left>)
+        hold
+          add-expression(at, left)
+      fork test, enters(at, <right>)
+        hold
+          add-expression(at, right)
+      add-own-type(at, type)
+    case unary
+      fork test, enters(at, <operand>)
+        hold
+          add-expression(at, operand)
+      add-own-type(at, type)
+    case call
+      fork test, enters(at, <callee>)
+        hold
+          add-expression(at, callee)
+      fork test, enters(at, <args>)
+        hold
+          walk args
+            take one
+            add-expression(at, one)
+      add-own-type(at, type)
+      fork test, enters(at, <into>)
+        hold
+          add-maybe-type(at, into)
+    case array
+      fork test, enters(at, <items>)
+        hold
+          walk items
+            take one
+            add-expression(at, one)
+      add-own-type(at, type)
+    case map
+      fork test, enters(at, <entries>)
+        hold
+          walk entries
+            take entry
+            fork test, enters(at, <key>)
+              hold
+                add-expression(at, entry/key)
+            fork test, enters(at, <value>)
+              hold
+                add-expression(at, entry/value)
+      add-own-type(at, type)
+    case record
+      fork test, enters(at, <fields>)
+        hold
+          add-field-values(at, fields)
+      add-own-type(at, type)
+      # a `need false` list, walked where it is read so nothing is written into the program
+      fork test, enters(at, <positional>)
+        hold
+          walk positional
+            take one
+            add-expression(at, one)
+    case member
+      fork test, enters(at, <target>)
+        hold
+          add-expression(at, target)
+      fork test, enters(at, <index>)
+        hold
+          add-maybe-expression(at, index)
+      add-own-type(at, type)
+    case await
+      fork test, enters(at, <expr>)
+        hold
+          add-expression(at, expr)
+      add-own-type(at, type)
+    case closure
+      fork test, enters(at, <params>)
+        hold
+          add-closure-params(at, params)
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, body)
+      fork test, enters(at, <result>)
+        hold
+          add-maybe-type(at, result)
+      add-own-type(at, type)
+    case conditional
+      fork test, enters(at, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(at, <cond>)
+              hold
+                add-expression(at, branch/cond)
+            fork test, enters(at, <value>)
+              hold
+                add-expression(at, branch/value)
+      fork test, enters(at, <otherwise>)
+        hold
+          add-maybe-expression(at, otherwise)
+      add-own-type(at, type)
+    case integer
+      add-own-type(at, type)
+    case float
+      add-own-type(at, type)
+    case boolean
+      add-own-type(at, type)
+    case string
+      add-own-type(at, type)
+    case unit
+      add-own-type(at, type)
+    case null
+      add-own-type(at, type)
+    case variable
+      add-own-type(at, type)
+    case hole
+      add-own-type(at, type)
+
+task statement-children
+  take at, like step
+  take node, like statement
+  mark private
+
+  sift node
+    case let
+      fork test, enters(at, <init>)
+        hold
+          add-expression(at, init)
+      fork test, enters(at, <type>)
+        hold
+          add-maybe-type(at, type)
+    case assign
+      fork test, enters(at, <target>)
+        hold
+          add-expression(at, target)
+      fork test, enters(at, <value>)
+        hold
+          add-expression(at, read(value))
+    case expression
+      fork test, enters(at, <expr>)
+        hold
+          add-expression(at, expr)
+    case if
+      fork test, enters(at, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(at, <cond>)
+              hold
+                add-expression(at, branch/cond)
+            fork test, enters(at, <body>)
+              hold
+                add-block(at, branch/body)
+      fork test, enters(at, <otherwise>)
+        hold
+          add-maybe-block(at, otherwise)
+    case while
+      fork test, enters(at, <cond>)
+        hold
+          add-expression(at, cond)
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, body)
+      fork test, enters(at, <must>)
+        hold
+          walk read(must)
+            take one
+            add-expression(at, one)
+      fork test, enters(at, <down>)
+        hold
+          add-maybe-expression(at, down)
+    case match
+      fork test, enters(at, <subject>)
+        hold
+          add-expression(at, subject)
+      fork test, enters(at, <cases>)
+        hold
+          walk cases
+            take arm
+            fork test, enters(at, <body>)
+              hold
+                add-block(at, arm/body)
+      fork test, enters(at, <otherwise>)
+        hold
+          add-maybe-block(at, otherwise)
+    case for-each
+      fork test, enters(at, <iterable>)
+        hold
+          add-expression(at, iterable)
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, body)
+      fork test, enters(at, <must>)
+        hold
+          walk read(must)
+            take one
+            add-expression(at, one)
+    case return
+      fork test, enters(at, <value>)
+        hold
+          add-maybe-expression(at, read(value))
+    case guard
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, body)
+      fork test, enters(at, <catch>)
+        hold
+          add-maybe-catch(at, catch)
+    case throw
+      fork test, enters(at, <value>)
+        hold
+          add-expression(at, read(value))
+    case hold
+      fork test, enters(at, <expr>)
+        hold
+          add-expression(at, expr)
+    case function
+      fork test, enters(at, <params>)
+        hold
+          add-function-params(at, params)
+      fork test, enters(at, <body>)
+        hold
+          add-block(at, body)
+      fork test, enters(at, <result>)
+        hold
+          add-maybe-type(at, result)
+      fork test, enters(at, <stubShape>)
+        hold
+          add-maybe-statement(at, stub-shape)
+      fork test, enters(at, <stubBody>)
+        hold
+          walk stub-body
+            take one
+            add-statement(at, one)
+      fork test, enters(at, <universals>)
+        hold
+          walk universals
+            take one
+            fork test, enters(at, <expr>)
+              hold
+                add-expression(at, one/expr)
+            fork test, enters(at, <types>)
+              hold
+                walk one/types
+                  take param
+                  fork test, enters(at, <type>)
+                    hold
+                      add-maybe-type(at, param/type)
+      fork test, enters(at, <have>)
+        hold
+          walk read(have)
+            take one
+            add-expression(at, one)
+      fork test, enters(at, <must>)
+        hold
+          walk read(must)
+            take one
+            add-expression(at, one)
+      fork test, enters(at, <down>)
+        hold
+          add-maybe-expression(at, down)
+      fork test, enters(at, <declared>)
+        hold
+          add-maybe-signature(at, declared)
+    case record-type
+      fork test, enters(at, <indices>)
+        hold
+          walk indices
+            take one
+            fork test, enters(at, <type>)
+              hold
+                add-type(at, one/type)
+      fork test, enters(at, <fields>)
+        hold
+          walk fields
+            take field
+            fork test, enters(at, <type>)
+              hold
+                add-type(at, field/type)
+            fork test, enters(at, <fallback>)
+              hold
+                add-maybe-expression(at, field/fallback)
+      fork test, enters(at, <variants>)
+        hold
+          walk variants
+            take variant
+            fork test, enters(at, <fields>)
+              hold
+                walk variant/fields
+                  take field
+                  fork test, enters(at, <type>)
+                    hold
+                      add-type(at, field/type)
+            fork test, enters(at, <indexValues>)
+              hold
+                walk variant/index-values
+                  take one
+                  add-expression(at, one)
+      fork test, enters(at, <alias>)
+        hold
+          add-maybe-type(at, alias)
+      fork test, enters(at, <extend>)
+        hold
+          add-maybe-extend(at, extend)
+      fork test, enters(at, <pins>)
+        hold
+          add-field-values(at, pins)
+    case mask
+      fork test, enters(at, <tasks>)
+        hold
+          walk tasks
+            take one
+            fork test, enters(at, <signature>)
+              hold
+                add-signature(at, one/signature)
+    case bind
+      fork test, enters(at, <params>)
+        hold
+          walk params
+            take one
+            fork test, enters(at, <type>)
+              hold
+                add-maybe-type(at, one/type)
+      fork test, enters(at, <result>)
+        hold
+          add-maybe-type(at, result)
+    case view
+      fork test, enters(at, <params>)
+        hold
+          add-closure-params(at, params)
+      fork test, enters(at, <body>)
+        hold
+          walk body
+            take one
+            add-view(at, one)
+    case dock
+      fork test, enters(at, <route>)
+        hold
+          add-route(at, route)
+    miss
+      back
+
+task type-children
+  take at, like step
+  take node, like type
+  mark private
+
+  sift node
+    case array
+      fork test, enters(at, <element>)
+        hold
+          add-type(at, element)
+    case map
+      fork test, enters(at, <key>)
+        hold
+          add-type(at, key)
+      fork test, enters(at, <value>)
+        hold
+          add-type(at, value)
+    case named
+      fork test, enters(at, <args>)
+        hold
+          walk args
+            take one
+            add-type(at, one)
+      fork test, enters(at, <valueArgs>)
+        hold
+          walk value-args
+            take one
+            add-expression(at, one)
+    case function
+      fork test, enters(at, <params>)
+        hold
+          walk params
+            take one
+            add-type(at, one)
+      fork test, enters(at, <result>)
+        hold
+          add-type(at, result)
+    miss
+      back
+
+task view-children
+  take at, like step
+  take one, like view-node
+  mark private
+
+  sift one
+    case element
+      fork test, enters(at, <attributes>)
+        hold
+          walk attributes
+            take attribute
+            fork test, enters(at, <value>)
+              hold
+                add-expression(at, attribute/value)
+      fork test, enters(at, <props>)
+        hold
+          add-field-values(at, props)
+      fork test, enters(at, <children>)
+        hold
+          walk children
+            take inner
+            add-view(at, inner)
+    case read
+      fork test, enters(at, <value>)
+        hold
+          add-expression(at, read(value))
+    case fork
+      fork test, enters(at, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(at, <cond>)
+              hold
+                add-expression(at, branch/cond)
+            fork test, enters(at, <body>)
+              hold
+                walk branch/body
+                  take inner
+                  add-view(at, inner)
+      # a `need false` list, walked where it is read so nothing is written into the program
+      fork test, enters(at, <otherwise>)
+        hold
+          walk otherwise
+            take inner
+            add-view(at, inner)
+    case walk
+      fork test, enters(at, <iterable>)
+        hold
+          add-expression(at, iterable)
+      fork test, enters(at, <body>)
+        hold
+          walk body
+            take inner
+            add-view(at, inner)
+    case save
+      fork test, enters(at, <value>)
+        hold
+          add-expression(at, read(value))
+    case call
+      fork test, enters(at, <value>)
+        hold
+          add-expression(at, read(value))
+    miss
+      back
+
+# the nodes directly under one, in the order a reflective walk meets them, through every field not named in `skip`
+task node-children
+  take handle, like node-handle
+  take skip, like list, like text
+  like list, like node-handle
+
+  save found, make list
+  save at
+    make step
+      bind skip, skip
+      bind out, found
+  sift handle
+    case expression-handle
+      expression-children(at, node)
+    case statement-handle
+      statement-children(at, node)
+    case type-handle
+      type-children(at, node)
+    case view-handle
+      view-children(at, node)
+  back found
+
+# the statements of a block, each as a handle, for a walk that starts at a body
+task block-handles
+  take body, like list, like statement
+  like list, like node-handle
+
+  save found, make list
+  walk body
+    take one
+    save made
+      make node-handle/statement-handle
+        bind node, one
+    push(found, made)
+  back found

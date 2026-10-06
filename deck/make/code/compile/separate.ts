@@ -34,6 +34,7 @@ import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/
 import type { NameDef } from '@term/make/code/compile/stub'
 import { namesPrinted, namesReachedIndexed } from '@term/make/code/compile/names'
 import type { DefAt } from '@term/make/code/compile/names'
+import { portableIn, portableOut, portableRoots, units as unitsOf } from '@term/make/code/compile/unit-graph'
 
 // more definitions than any one unit holds, so a place's key (`unit * span + at`) sorts by unit and then by place
 const NAME_SPAN = 1_000_000
@@ -115,80 +116,26 @@ export type UnitMemo = Map<string, UnitBuild | { diagnostics: Diagnostic[] }>
 
 // A deck's root written as a token (`␞@term/base␞`), and read back as this machine's. Longest root first, so a deck
 // nested inside another is written as itself. The token's mark is a character no path and no compiler output holds
-const ROOT_MARK = '␞'
-
 export type Portable = { out: (text: string) => string; in: (text: string) => string }
 
+// the roots, the token and both directions are compile/unit-graph.tree (self-hosting, 2026-10-06); this keeps the two
+// closures a caller holds
 export function portableBy(decks: { name: string; root: string }[]): Portable {
-  const named = new Map<string, string>()
-
-  for (const deck of decks) {
-    named.set(deck.root, deck.name)
-  }
-
-  const roots = [...named].sort((a, b) => b[0].length - a[0].length)
+  const roots = portableRoots(decks)
 
   return {
-    out: text => roots.reduce((into, [root, name]) => into.split(root).join(`${ROOT_MARK}${name}${ROOT_MARK}`), text),
-    in: text =>
-      text.includes(ROOT_MARK) ? roots.reduce((into, [root, name]) => into.split(`${ROOT_MARK}${name}${ROOT_MARK}`).join(root), text) : text,
+    out: text => portableOut(roots, text),
+    in: text => portableIn(roots, text),
   }
 }
 
 // Tarjan strongly connected components over the file import graph. Returns units in REVERSE topological order of
-// the condensation (dependencies first), which is exactly the build order.
+// the condensation (dependencies first), which is exactly the build order. compile/unit-graph.tree since 2026-10-06
 export function units(
   files: string[],
   edges: Map<string, string[]>,
 ): string[][] {
-  const index = new Map<string, number>()
-  const low = new Map<string, number>()
-  const onStack = new Set<string>()
-  const stack: string[] = []
-  const out: string[][] = []
-
-  let counter = 0
-
-  function strongConnect(v: string): void {
-    index.set(v, counter)
-    low.set(v, counter)
-    counter++
-    stack.push(v)
-    onStack.add(v)
-
-    for (const w of edges.get(v) ?? []) {
-      if (!index.has(w)) {
-        strongConnect(w)
-        low.set(v, Math.min(low.get(v)!, low.get(w)!))
-      } else if (onStack.has(w)) {
-        low.set(v, Math.min(low.get(v)!, index.get(w)!))
-      }
-    }
-
-    if (low.get(v) === index.get(v)) {
-      const component: string[] = []
-
-      let w: string
-
-      do {
-        w = stack.pop()!
-        onStack.delete(w)
-        component.push(w)
-      } while (w !== v)
-
-      out.push(component)
-    }
-  }
-
-  for (const f of files) {
-    if (!index.has(f)) {
-      strongConnect(f)
-    }
-  }
-
-  // Tarjan emits components in reverse topological order of the condensation already (a component is finished only
-  // after everything it reaches), which is dependencies-first: the build order.
-  return out
+  return unitsOf(files, edges)
 }
 
 export function compileSeparate(

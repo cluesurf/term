@@ -34,8 +34,9 @@ form readable-stream, name <ReadableStream>
     like native-boolean
 
   task cancel, name <cancel>
-    take reason, like maybe
-      like native-any
+    take reason
+      like maybe
+        like native-any
     like promise
       like native-void
 
@@ -49,8 +50,9 @@ form readable-stream, name <ReadableStream>
       like readable-writable-pair
         like t
         like r
-    take options, like maybe
-      like stream-pipe-options
+    take options
+      like maybe
+        like stream-pipe-options
     like readable-stream
       like t
 
@@ -58,8 +60,9 @@ form readable-stream, name <ReadableStream>
     take dest
       like writable-stream
         like r
-    take options, like maybe
-      like stream-pipe-options
+    take options
+      like maybe
+        like stream-pipe-options
     like promise
       like native-void
 

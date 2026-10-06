@@ -4,6 +4,9 @@
 load ../code/base
   find read
   find write
+  # the two exceptions it raises, so a handler reads their fields typed, by a `sift` (D1)
+  find data-mismatch
+  find data-defect
   find pack
   find to-json
   find from-json
@@ -104,23 +107,32 @@ test <fill refuses a value that does not fit, naming the path>
     call fill(call(read(text <host a\n  list b\n    1, \<x\>\n>)), call(read(text <host a\n  list b\n    \<number\>\n>)))
   halt take
     take problem
-    save refused, read problem/link/path
+    fork case, read problem
+      case data-mismatch
+        save refused, read path
+      hook miss
+        save refused, text <some other exception>
   want hold
     call is-equal
       read refused
       text <a/b/1>
 
 test <text that is not data is a defect naming the rule>
-  save rule, text <>
+  # not `rule`: the `data-defect` arm binds its field `rule`, which would hide this for the whole arm
+  save named, text <>
   fork
     mark unsafe
     call read(text <host x, 1, 2\n>)
   halt take
     take problem
-    save rule, read problem/link/rule
+    fork case, read problem
+      case data-defect
+        save named, read rule
+      hook miss
+        save named, text <some other exception>
   want hold
     call is-equal
-      read rule
+      read named
       text <"x" has 2 values. A list is written "list x">
 
 test <a stream reads line by line, a later anchor replacing the earlier>

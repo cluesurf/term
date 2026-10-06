@@ -1379,8 +1379,9 @@ form css-style-declaration, name <CSSStyleDeclaration>
       like or
         like native-string
         like native-null
-    take priority, like maybe
-      like native-string
+    take priority
+      like maybe
+        like native-string
     like native-void
 
   mesh index, like native-number

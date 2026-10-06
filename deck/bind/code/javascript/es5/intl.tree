@@ -36,13 +36,15 @@ load @term/bind/javascript/native
 host collator, name <Collator>
   like form
     hook make
-      take locales, like maybe
-        like or
-          like native-string
-          like native-array
+      take locales
+        like maybe
+          like or
             like native-string
-      take options, like maybe
-        like collator-options
+            like native-array
+              like native-string
+      take options
+        like maybe
+          like collator-options
       like collator
 
     task supported-locales-of, name <supportedLocalesOf>
@@ -51,21 +53,24 @@ host collator, name <Collator>
           like native-string
           like native-array
             like native-string
-      take options, like maybe
-        like collator-options
+      take options
+        like maybe
+          like collator-options
       like native-array
         like native-string
 
 host number-format, name <NumberFormat>
   like form
     hook make
-      take locales, like maybe
-        like or
-          like native-string
-          like native-array
+      take locales
+        like maybe
+          like or
             like native-string
-      take options, like maybe
-        like number-format-options
+            like native-array
+              like native-string
+      take options
+        like maybe
+          like number-format-options
       like number-format
 
     task supported-locales-of, name <supportedLocalesOf>
@@ -74,21 +79,24 @@ host number-format, name <NumberFormat>
           like native-string
           like native-array
             like native-string
-      take options, like maybe
-        like number-format-options
+      take options
+        like maybe
+          like number-format-options
       like native-array
         like native-string
 
 host date-time-format, name <DateTimeFormat>
   like form
     hook make
-      take locales, like maybe
-        like or
-          like native-string
-          like native-array
+      take locales
+        like maybe
+          like or
             like native-string
-      take options, like maybe
-        like date-time-format-options
+            like native-array
+              like native-string
+      take options
+        like maybe
+          like date-time-format-options
       like date-time-format
 
     task supported-locales-of, name <supportedLocalesOf>
@@ -97,7 +105,8 @@ host date-time-format, name <DateTimeFormat>
           like native-string
           like native-array
             like native-string
-      take options, like maybe
-        like date-time-format-options
+      take options
+        like maybe
+          like date-time-format-options
       like native-array
         like native-string

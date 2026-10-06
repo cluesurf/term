@@ -24,13 +24,15 @@ form vb-array, name <VBArray>
     like t
 
   task lbound, name <lbound>
-    take dimension, like maybe
-      like native-number
+    take dimension
+      like maybe
+        like native-number
     like native-number
 
   task ubound, name <ubound>
-    take dimension, like maybe
-      like native-number
+    take dimension
+      like maybe
+        like native-number
     like native-number
 
   task to-array, name <toArray>

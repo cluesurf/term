@@ -23,14 +23,16 @@ form string, name <String>
 
   task includes, name <includes>
     take search-string, like native-string
-    take position, like maybe
-      like native-number
+    take position
+      like maybe
+        like native-number
     like native-boolean
 
   task ends-with, name <endsWith>
     take search-string, like native-string
-    take end-position, like maybe
-      like native-number
+    take end-position
+      like maybe
+        like native-number
     like native-boolean
 
   task normalize, name <normalize>
@@ -43,8 +45,9 @@ form string, name <String>
     like native-string
 
   task normalize, name <normalize>
-    take form, like maybe
-      like native-string
+    take form
+      like maybe
+        like native-string
     like native-string
 
   task repeat, name <repeat>
@@ -53,8 +56,9 @@ form string, name <String>
 
   task starts-with, name <startsWith>
     take search-string, like native-string
-    take position, like maybe
-      like native-number
+    take position
+      like maybe
+        like native-number
     like native-boolean
 
   task anchor, name <anchor>

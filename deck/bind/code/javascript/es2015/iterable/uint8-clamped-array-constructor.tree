@@ -19,13 +19,15 @@ form uint8-clamped-array-constructor, name <Uint8ClampedArrayConstructor>
     take array-like
       like iterable
         like native-number
-    take mapfn, like maybe
-      like task
-        take v, like native-number
-        take k, like native-number
-        like native-number
-    take this-arg, like maybe
-      like native-any
+    take mapfn
+      like maybe
+        like task
+          take v, like native-number
+          take k, like native-number
+          like native-number
+    take this-arg
+      like maybe
+        like native-any
     like uint8-clamped-array
 
   hook make

@@ -1,0 +1,1464 @@
+# The resolver: bind every name to its definition. Walks the compile AST with a scope stack, attaches a binding to each
+# variable, handles forward references to functions, and reports unknown names with a did-you-mean. An unresolved name
+# that is not legally runtime-deferred becomes an unknown-name diagnostic. This is the hole-filling pass.
+#
+# Ported from check/resolve.ts (self-hosting, 2026-10-06), which stays as the face: it holds the overload groups'
+# module state and hands them in. The decisions:
+#   - a variable's binding is written into the program it was handed, as the original did, by an arm writing its
+#     subject (way 1, handoff.md). Its callers read the program they passed
+#   - the original turned a variable named `hole` that nothing binds into a typed hole by rewriting its tag in place.
+#     A case's tag cannot be written, so `resolve-expression` hands back the expression to keep and every place that
+#     holds one writes it back: the variable itself, or the hole that replaces it
+#   - a lean call's arguments, names and flags are read again after `nest-lean-calls`, which writes new ones into it
+#   - a `need false` list is walked where it is read, never handed to a call, which would write `[]` into the node
+#   - a span's width counts UTF-16 units, as `name.length` did
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+  find nearest
+  find fix
+  find edit
+
+load ../compile/node
+  find binding
+  find expression
+  find expression-span
+  find statement-span
+  find template-part
+  find form-field
+  find universal
+  find statement
+  find view-node
+  find match-case
+  find statement-branch
+  find program
+
+load ../compile/surface
+  find is-binary-builtin
+  find is-unary-builtin
+
+load ./lean-nest
+  find is-foldable
+  find lean-labels
+  find lean-calls-nested
+
+load ./arm
+  find arm-locals
+
+load ./seam
+  find type-test-of
+
+bind utf16-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+# what a resolution keeps while it walks: the scopes from the global one up, the file being resolved, and the tables
+# read off the program before the walk
+form resolve-state
+  mark shared
+  link file, like text
+  link diagnostics, like list, like diagnostic
+  link stack, like list, like hash, like text, like binding
+  # variant name -> its field names, so a `case <variant>` arm binds them as locals
+  link variant-fields, like hash, like text, like list, like text
+  # datatype names, so a type used as a value resolves
+  link type-names, like hash, like text, like boolean
+  # variant names: a bare lean head naming one is a construction the checker rewrites
+  link variant-names, like hash, like text, like boolean
+  # a task's parameter names, for the lean repair of a label left inside another
+  link task-params, like hash, like text, like list, like text
+  # field name -> the field names of the form it is declared as
+  link fields-under, like hash, like text, like list, like text
+  # an exception form's props, for an arm over a caught exception
+  link exception-link, like hash, like text, like list, like text
+
+# the fields every caught exception binds in an arm, beside its own props (infer keeps the same list)
+task exception-shared
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <host>)
+  push(out, <form>)
+  push(out, <note>)
+  push(out, <code>)
+  push(out, <time>)
+  back out
+
+# the JS intrinsics the generated bindings use to express operators, control flow, and dynamic member access. Always
+# in scope
+task intrinsics
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <fill-form>)
+  push(out, <melt-form>)
+  push(out, <native-test>)
+  push(out, <native-test-else>)
+  push(out, <debug>)
+  push(out, <compute-binary-operation>)
+  push(out, <compute-prefixed-unary-operation>)
+  push(out, <call-keyword>)
+  push(out, <set-dynamic-aspect>)
+  push(out, <get-dynamic-aspect>)
+  push(out, <delete-dynamic-aspect>)
+  push(out, <try>)
+  back out
+
+task empty-scope
+  like hash, like text, like binding
+  mark private
+
+  back make hash
+
+task function-binding
+  take arity, like number
+  like binding
+  mark private
+
+  back
+    make binding/function
+      bind arity, arity
+
+# build the global scope: top-level functions (and form methods by their bare names), native aliases, mask tasks,
+# views and the intrinsics. Pure over the program, so the incremental compiler builds it once and reuses it
+task build-global-scope
+  take program, like list, like statement
+  take groups, like hash, like text, like list, like text
+  like hash, like text, like binding
+
+  save global, empty-scope()
+  walk program
+    take one
+    sift one
+      case function
+        save global/{name}, function-binding(params/length)
+        # a form method is callable by its bare name; a real top-level function of the same name wins
+        sift method
+          case some
+            link known-method
+            save method-name, known-method/name
+            fork test, not(global/has(method-name))
+              hold
+                save global/{method-name}, function-binding(params/length)
+          case none
+            save nothing, 0
+      case bind
+        save global/{name}, function-binding(params/length)
+      case mask
+        walk tasks
+          take task-of
+          save task-name, task-of/name
+          fork test, not(global/has(task-name))
+            hold
+              save global/{task-name}, function-binding(task-of/signature/params/length)
+      case native
+        save deferred, make binding/deferred
+        save global/{alias}, deferred
+      case view
+        save global/{name}, function-binding(params/length)
+      miss
+        save nothing, 0
+
+  # a typed choice among same-named tasks of several modules: its own key, resolved as its first member is until the
+  # checker re-targets it
+  walk groups/keys()
+    take key
+    save members, groups/get(key)
+    fork test, is-above(members/length, 0)
+      hold
+        save first-name, get(members, 0)
+        fork test, and(global/has(first-name), not(global/has(key)))
+          hold
+            save global/{key}, global/get(first-name)
+
+  walk intrinsics()
+    take intrinsic
+    save builtin, make binding/builtin
+    save global/{intrinsic}, builtin
+  back global
+
+# the name a typed hole is written with, where nothing of that name is in scope
+task hole-name
+  like text
+
+  back <hole>
+
+# the span of a name written last in an expression's span: a lean `foo` spans the word, a longhand `read foo` the whole
+# reference, and the name ends both. A span over several lines is returned whole
+task name-span
+  take at, like span
+  take name, like text
+  like span
+
+  save width, utf16-length(name)
+  fork test, or(is-unequal(at/start/line, at/end/line), is-below(subtract(at/end/column, width), at/start/column))
+    hold
+      back at
+  save start
+    make position
+      bind line, at/end/line
+      bind column, subtract(at/end/column, width)
+  back
+    make span
+      bind start, start
+      bind end, at/end
+      bind file, at/file
+
+# ---- the scope ----
+
+task look
+  take state, like resolve-state
+  take name, like text
+  like maybe, like binding
+  mark private
+
+  save at, subtract(state/stack/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save scope, get(state/stack, at)
+      fork test, scope/has(name)
+        hold
+          save found, scope/get(name)
+          back make(some, found)
+      save at, subtract(at, 1)
+  back make none
+
+task is-bound
+  take state, like resolve-state
+  take name, like text
+  like boolean
+  mark private
+
+  sift look(state, name)
+    case some
+      link found
+      back true
+    case none
+      back false
+
+# every name in scope, each once, from the global scope up
+task known-names
+  take state, like resolve-state
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk state/stack
+    take scope
+    walk scope/keys()
+      take name
+      fork test, not(seen/has(name))
+        hold
+          save seen/{name}, true
+          push(out, name)
+  back out
+
+task declare
+  take state, like resolve-state
+  take name, like text
+  take kind, like binding
+  mark private
+
+  save top, get(state/stack, subtract(state/stack/length, 1))
+  save top/{name}, kind
+
+task declare-local
+  take state, like resolve-state
+  take name, like text
+  mark private
+
+  save local, make binding/local
+  declare(state, name, local)
+
+task declare-parameter
+  take state, like resolve-state
+  take name, like text
+  mark private
+
+  save parameter, make binding/parameter
+  declare(state, name, parameter)
+
+task open-scope
+  take state, like resolve-state
+  mark private
+
+  push(state/stack, empty-scope())
+
+task close-scope
+  take state, like resolve-state
+  mark private
+
+  pop(state/stack)
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task texts-at
+  take table, like hash, like text, like list, like text
+  take key, like text
+  like list, like text
+  mark private
+
+  fork test, table/has(key)
+    hold
+      back table/get(key)
+  back make list
+
+# ---- expressions ----
+
+task unknown-name
+  take state, like resolve-state
+  take name, like text
+  take at, like span
+  mark private
+
+  save suggestion, nearest(name, known-names(state))
+  save message, <the name "{name}" is not defined>
+  fork test, is-equal(suggestion, <>)
+    hold
+      save input
+        make diagnostic-input
+          bind file, state/file
+          bind span, at
+          bind message, make(some, message)
+      push(state/diagnostics, diagnose(make(unknown-name), input))
+      back
+  # the near spelling as an edit too, a guess and so not sure: two names can be equally near
+  save change
+    make edit
+      bind span, name-span(at, name)
+      bind text, suggestion
+      bind was, name
+  save changes, make list
+  push(changes, change)
+  save offered
+    make fix
+      bind title, <Write "{suggestion}">
+      bind sure, false
+      bind edits, changes
+  save fixes, make list
+  push(fixes, offered)
+  save hint, <did you mean "{suggestion}"?>
+  save input
+    make diagnostic-input
+      bind file, state/file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+      bind fixes, make(some, fixes)
+  push(state/diagnostics, diagnose(make(unknown-name), input))
+
+# a variable, bound or reported. The expression to keep: the variable, or the typed hole it is
+task resolve-variable
+  take state, like resolve-state
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case variable
+      link variable-name
+      link variable-span
+      sift look(state, variable-name)
+        case some
+          link found
+          save node/binding, make(some, found)
+          back node
+        case none
+          save nothing, 0
+      # a type used as a first-class value: no local binding, resolved as the type itself
+      fork test, state/type-names/has(variable-name)
+        hold
+          back node
+      # arithmetic and comparison the emitter lowers to an operator
+      fork test, or(is-binary-builtin(variable-name), is-unary-builtin(variable-name))
+        hold
+          back node
+      # a TYPED HOLE: `hole` where a value goes, and nothing of that name in scope. The checker answers it
+      fork test, is-equal(variable-name, hole-name())
+        hold
+          back
+            make expression/hole
+              bind name, variable-name
+              bind span, variable-span
+      unknown-name(state, variable-name, variable-span)
+      back node
+    miss
+      back node
+
+task is-variable-named
+  take node, like expression
+  take wanted, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back wanted/has(name)
+    miss
+      back false
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task is-variable
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back true
+    miss
+      back false
+
+# a call's fields as they stand now, read again after the lean nesting wrote new ones
+task call-args
+  take node, like expression
+  like list, like expression
+  mark private
+
+  sift node
+    case call
+      back args
+    miss
+      back make list
+
+task call-names
+  take node, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk names
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+task call-flags
+  take node, like expression
+  like list, like boolean
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk lean-names
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+task text-at
+  take names, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, names/length)
+    hold
+      back get(names, at)
+  back <>
+
+task flag-at
+  take flags, like list, like boolean
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, flags/length)
+    hold
+      back get(flags, at)
+  back false
+
+task callee-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      back callee
+    miss
+      back node
+
+task resolve-call
+  take state, like resolve-state
+  take node, like expression
+  like expression
+  mark private
+
+  save callee-name, variable-name-of(callee-of(node))
+  save is-lean, call-is-lean(node)
+  save callee-is-name, is-variable(callee-of(node))
+  # THE LEAN SURFACE: a bare head naming a variant is a construction of that case, which the checker rewrites into a
+  # record. It binds to nothing here, so it is left for the checker rather than reported as undefined
+  save head-variant, and(and(is-lean, callee-is-name), and(not(is-bound(state, callee-name)), state/variant-names/has(callee-name)))
+  save current, node
+  fork test, not(head-variant)
+    hold
+      save current, with-callee(current, resolve-expression(state, callee-of(current)))
+
+  # A LEAN LABEL THAT NAMES NO PARAMETER IS A NESTED CALL (check/lean-nest.tree), for EVERY lean call: a callee with no
+  # parameters on record has no parameter a label could name
+  fork test, is-lean
+    hold
+      save has-params, false
+      save params, make list
+      fork test, callee-is-name
+        hold
+          fork test, state/task-params/has(callee-name)
+            hold
+              save params, state/task-params/get(callee-name)
+              save has-params, true
+            miss
+              fork test, state/variant-fields/has(callee-name)
+                hold
+                  save params, state/variant-fields/get(callee-name)
+                  save has-params, true
+      save chosen, make list
+      walk lean-labels(current)
+        take label
+        fork test, and(not(and(has-params, has-text(params, label/written))), or(is-bound(state, label/name), is-foldable(label/name)))
+          hold
+            push(chosen, label/at)
+      save nested, lean-calls-nested(current, chosen)
+      save current, nested/node
+
+      # AND WHAT IS LEFT ON A CALLEE THAT IS NOT A NAME IS REFUSED: a member or native call never reaches the checker's
+      # arrangement, so a label left on it would be dropped in silence
+      fork test, not(is-variable(callee-of(current)))
+        hold
+          save flags-now, call-flags(current)
+          save names-now, call-names(current)
+          save any-flag, false
+          walk flags-now
+            take one
+            fork test, one
+              hold
+                save any-flag, true
+          fork test, any-flag
+            hold
+              save left, make list
+              save at, 0
+              walk names-now
+                take one
+                fork test, and(is-unequal(one, <>), flag-at(flags-now, at))
+                  hold
+                    push(left, one)
+                save at, add(at, 1)
+              save listed, join(left, <, >)
+              save message, <this call has no parameters on record, so its properties ({listed}) name nothing>
+              save hint, <write the value positionally, or use `bind \<name\>, \<value\>` where the name is documentation>
+              save input
+                make diagnostic-input
+                  bind file, state/file
+                  bind span, expression-span(current)
+                  bind message, make(some, message)
+                  bind hint, make(some, hint)
+              push(state/diagnostics, diagnose(make(type-mismatch), input))
+
+  # THE LEAN SURFACE: an inline comma after a BARE-WORD value leaves the next property inside it. A nested head that
+  # names a field of THIS construction is left for the checker, which puts it back by the declared fields
+  save swallowed, make hash
+  fork test, and(is-lean, callee-is-name)
+    hold
+      walk texts-at(state/variant-fields, callee-name)
+        take one
+        save swallowed/{one}, true
+      walk texts-at(state/task-params, callee-name)
+        take one
+        save swallowed/{one}, true
+
+  save names-now, call-names(current)
+  save args-now, call-args(current)
+  save arg-at, 0
+  walk args-now
+    take arg
+    save at, arg-at
+    save arg-at, add(arg-at, 1)
+    # the LABEL this argument was written under, which says whose fields its children are
+    save label, text-at(names-now, at)
+    save under, make list
+    fork test, is-unequal(label, <>)
+      hold
+        save under, texts-at(state/fields-under, label)
+    # THE LEAN SURFACE: a bare word among a lean call's arguments may be a FLAG naming a boolean parameter, which only
+    # the checker can say, so an unbound word is left unresolved here
+    fork test, and(is-lean, is-variable(arg))
+      hold
+        save arg-name, variable-name-of(arg)
+        fork test, and(and(not(is-bound(state, arg-name)), not(state/type-names/has(arg-name))), and(not(is-binary-builtin(arg-name)), not(is-unary-builtin(arg-name))))
+          hold
+            turn next
+    # a property's children arrive as an array, and the swallowed head sits among them
+    fork test, and(is-above(swallowed/keys()/length, 0), is-array(arg))
+      hold
+        save args-now/{at}, resolve-property(state, arg, swallowed, under)
+        turn next
+    save args-now/{at}, resolve-expression(state, arg)
+  back with-args(current, args-now)
+
+task is-array
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case array
+      back true
+    miss
+      back false
+
+task call-is-lean
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      back lean
+    miss
+      back false
+
+task with-callee
+  take node, like expression
+  take callee-now, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save node/callee, callee-now
+    miss
+      save nothing, 0
+  back node
+
+task with-args
+  take node, like expression
+  take args-now, like list, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save node/args, args-now
+    miss
+      save nothing, 0
+  back node
+
+# a property's array of children: a swallowed head's own arguments, a nested object's labels' values, and anything else
+# resolved as itself
+task resolve-property
+  take state, like resolve-state
+  take arg, like expression
+  take swallowed, like hash, like text, like boolean
+  take under, like list, like text
+  like expression
+  mark private
+
+  sift arg
+    case array
+      save item-at, 0
+      walk items
+        take item
+        save at, item-at
+        save item-at, add(item-at, 1)
+        fork test, deferred-head(state, item, swallowed)
+          hold
+            save items/{at}, resolve-call-args(state, item)
+            turn next
+        # A NESTED OBJECT: the children of a property head are the inner form's own labels, folded by the checker by
+        # the declared type
+        fork test, and(is-above(under/length, 0), nested-head(state, item, under))
+          hold
+            save items/{at}, resolve-call-args(state, item)
+            turn next
+        save items/{at}, resolve-expression(state, item)
+      save arg/items, items
+    miss
+      save nothing, 0
+  back arg
+
+# a call whose head is a swallowed field name nothing binds
+task deferred-head
+  take state, like resolve-state
+  take item, like expression
+  take swallowed, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift item
+    case call
+      sift callee
+        case variable
+          back and(not(is-bound(state, name)), swallowed/has(name))
+        miss
+          back false
+    miss
+      back false
+
+# a call whose head names a field of the form the label is declared as, and nothing binds
+task nested-head
+  take state, like resolve-state
+  take item, like expression
+  take under, like list, like text
+  like boolean
+  mark private
+
+  sift item
+    case call
+      sift callee
+        case variable
+          back and(not(is-bound(state, name)), has-text(under, name))
+        miss
+          back false
+    miss
+      back false
+
+task resolve-call-args
+  take state, like resolve-state
+  take item, like expression
+  like expression
+  mark private
+
+  sift item
+    case call
+      save item/args, resolve-expressions(state, args)
+    miss
+      save nothing, 0
+  back item
+
+task resolve-expressions
+  take state, like resolve-state
+  take items, like list, like expression
+  like list, like expression
+  mark private
+
+  save at, 0
+  walk items
+    take one
+    save items/{at}, resolve-expression(state, one)
+    save at, add(at, 1)
+  back items
+
+# resolve one expression, writing every binding into it, and answer the expression to keep in its place
+task resolve-expression
+  take state, like resolve-state
+  take node, like expression
+  like expression
+
+  sift node
+    case variable
+      back resolve-variable(state, node)
+    case binary
+      save node/left, resolve-expression(state, left)
+      save node/right, resolve-expression(state, right)
+    case unary
+      save node/operand, resolve-expression(state, operand)
+    case call
+      back resolve-call(state, node)
+    case array
+      save node/items, resolve-expressions(state, items)
+    case map
+      save at, 0
+      walk entries
+        take entry
+        save entry/key, resolve-expression(state, entry/key)
+        save entry/value, resolve-expression(state, entry/value)
+        save entries/{at}, entry
+        save at, add(at, 1)
+      save node/entries, entries
+    case record
+      save at, 0
+      walk fields
+        take field
+        save field/value, resolve-expression(state, field/value)
+        save fields/{at}, field
+        save at, add(at, 1)
+      save node/fields, fields
+    case member
+      save node/target, resolve-expression(state, target)
+    case template
+      save at, 0
+      walk parts
+        take part
+        save parts/{at}, resolve-part(state, part)
+        save at, add(at, 1)
+      save node/parts, parts
+    case await
+      save node/expr, resolve-expression(state, expr)
+    case closure
+      # a function literal: its body with its params in scope, so names used only inside still get their binding
+      open-scope(state)
+      walk params
+        take param
+        declare-parameter(state, param/name)
+      save node/body, resolve-statements(state, body)
+      close-scope(state)
+    case conditional
+      save at, 0
+      walk branches
+        take branch
+        save branch/cond, resolve-expression(state, branch/cond)
+        save branch/value, resolve-expression(state, branch/value)
+        save branches/{at}, branch
+        save at, add(at, 1)
+      save node/branches, branches
+      sift otherwise
+        case some
+          link known
+          save kept-otherwise, resolve-expression(state, known)
+          save node/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+task resolve-part
+  take state, like resolve-state
+  take part, like template-part
+  like template-part
+  mark private
+
+  sift part
+    case value
+      save part/value, resolve-expression(state, value)
+    miss
+      save nothing, 0
+  back part
+
+# ---- statements ----
+
+# the statements of a block, in the scope the caller opened
+task resolve-statements
+  take state, like resolve-state
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  save at, 0
+  walk body
+    take statement
+    save body/{at}, resolve-statement(state, statement)
+    save at, add(at, 1)
+  back body
+
+task resolve-body
+  take state, like resolve-state
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  open-scope(state)
+  save resolved, resolve-statements(state, body)
+  close-scope(state)
+  back resolved
+
+task resolve-statement
+  take state, like resolve-state
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case let
+      save node/init, resolve-expression(state, init)
+      declare-local(state, name)
+    case assign
+      save node/target, resolve-expression(state, target)
+      save node/value, resolve-expression(state, value)
+    case expression
+      save node/expr, resolve-expression(state, expr)
+    case return
+      sift value
+        case some
+          link known
+          save kept-value, resolve-expression(state, known)
+          save node/value, make(some, kept-value)
+        case none
+          save nothing, 0
+    case while
+      save node/cond, resolve-expression(state, cond)
+      save node/body, resolve-body(state, body)
+    case if
+      save at, 0
+      walk branches
+        take branch
+        save branches/{at}, resolve-branch(state, branch)
+        save at, add(at, 1)
+      save node/branches, branches
+      sift otherwise
+        case some
+          link known
+          save kept-otherwise, resolve-body(state, known)
+          save node/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    case guard
+      save node/body, resolve-body(state, body)
+      sift catch
+        case some
+          link caught
+          open-scope(state)
+          declare-local(state, caught/name)
+          save caught/body, resolve-statements(state, caught/body)
+          close-scope(state)
+          save node/catch, make(some, caught)
+        case none
+          save nothing, 0
+    case for-each
+      save node/iterable, resolve-expression(state, iterable)
+      open-scope(state)
+      declare-local(state, item)
+      # a second `take` binds the turn's index
+      fork test, is-unequal(index, <>)
+        hold
+          declare-local(state, index)
+      save node/body, resolve-statements(state, body)
+      close-scope(state)
+    case match
+      save node/subject, resolve-expression(state, subject)
+      save at, 0
+      walk cases
+        take branch
+        save cases/{at}, resolve-arm(state, branch)
+        save at, add(at, 1)
+      save node/cases, cases
+      sift otherwise
+        case some
+          link known
+          save kept-otherwise, resolve-body(state, known)
+          save node/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    case hold
+      save node/expr, resolve-expression(state, expr)
+    case throw
+      save node/value, resolve-expression(state, value)
+    case function
+      open-scope(state)
+      walk params
+        take param
+        declare-parameter(state, param/name)
+      save node/body, resolve-statements(state, body)
+      # A RULE'S "FOR EVERY" HYPOTHESES are expressions like the rest, with the rule's marks and their own binders. Read
+      # through a copy and written back only when there are some, so a task without them gets no field
+      save resolved-universals, make list
+      walk universals-of(node)
+        take universal
+        open-scope(state)
+        walk universal/binders
+          take binder
+          declare-parameter(state, binder)
+        save universal/expr, resolve-expression(state, universal/expr)
+        close-scope(state)
+        push(resolved-universals, universal)
+      fork test, is-above(resolved-universals/length, 0)
+        hold
+          save node/universals, resolved-universals
+      close-scope(state)
+    # a view component: names in its body resolve as a function's do, and element refs are declared up front so an
+    # event handler can read a ref defined anywhere
+    case view
+      open-scope(state)
+      walk params
+        take param
+        declare-parameter(state, param/name)
+      walk view-refs(body)
+        take ref
+        declare-local(state, ref)
+      save node/body, resolve-view-nodes(state, body)
+      close-scope(state)
+    miss
+      save nothing, 0
+  back node
+
+# a task's universals, copied, so reading them never writes an empty list into a task that has none
+task universals-of
+  take node, like statement
+  like list, like universal
+  mark private
+
+  save out, make list
+  sift node
+    case function
+      walk universals
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+# a branch of an `if`. `is-text(value)` as a whole test, with no task of that name in scope, asks what an `unknown` holds:
+# only its local is resolved here, and the checker rewrites the branch into a `sift` arm (check/seam.tree)
+task resolve-branch
+  take state, like resolve-state
+  take branch, like statement-branch
+  like statement-branch
+  mark private
+
+  save narrowed, false
+  sift type-test-of(branch/cond)
+    case some
+      link test
+      fork test, not(is-bound(state, test/test))
+        hold
+          sift branch/cond
+            case call
+              save narrowed, true
+            miss
+              save nothing, 0
+    case none
+      save nothing, 0
+  fork test, narrowed
+    hold
+      save branch/cond, resolve-first-argument(state, branch/cond)
+    miss
+      save branch/cond, resolve-expression(state, branch/cond)
+  save branch/body, resolve-body(state, branch/body)
+  back branch
+
+task resolve-first-argument
+  take state, like resolve-state
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save first, get(args, 0)
+      save args/0, resolve-expression(state, first)
+      save node/args, args
+    miss
+      save nothing, 0
+  back node
+
+# a match arm: the shared fields and props of a caught exception, then the variant's fields by `arm-locals`
+task resolve-arm
+  take state, like resolve-state
+  take branch, like match-case
+  like match-case
+  mark private
+
+  open-scope(state)
+  save binds, make list
+  walk branch/binds
+    take one
+    push(binds, one)
+  # an arm over a caught exception binds the shared fields and the form's own props by name
+  fork test, state/exception-link/has(branch/label)
+    hold
+      save shared-and-props, exception-shared()
+      walk state/exception-link/get(branch/label)
+        take prop
+        push(shared-and-props, prop)
+      walk arm-locals(shared-and-props, binds)
+        take one
+        declare-local(state, one/local)
+  # the matched variant's fields as locals, by `arm-locals`, as the checker and every emitter bind them
+  fork test, state/variant-fields/has(branch/label)
+    hold
+      walk arm-locals(state/variant-fields/get(branch/label), binds)
+        take one
+        declare-local(state, one/local)
+    miss
+      walk binds
+        take one
+        declare-local(state, one)
+  save branch/body, resolve-statements(state, branch/body)
+  close-scope(state)
+  back branch
+
+# every element ref (`name x`) anywhere in a view tree
+task view-refs
+  take nodes, like list, like view-node
+  like list, like text
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    sift one
+      case element
+        fork test, is-unequal(ref, <>)
+          hold
+            push(out, ref)
+        walk view-refs(children)
+          take inner
+          push(out, inner)
+      case fork
+        walk branches
+          take branch
+          walk view-refs(branch/body)
+            take inner
+            push(out, inner)
+        save rest, make list
+        walk otherwise
+          take kept
+          push(rest, kept)
+        walk view-refs(rest)
+          take inner
+          push(out, inner)
+      case walk
+        walk view-refs(body)
+          take inner
+          push(out, inner)
+      miss
+        save nothing, 0
+  back out
+
+task resolve-view-nodes
+  take state, like resolve-state
+  take nodes, like list, like view-node
+  like list, like view-node
+  mark private
+
+  save at, 0
+  walk nodes
+    take one
+    save nodes/{at}, resolve-view-node(state, one)
+    save at, add(at, 1)
+  back nodes
+
+task resolve-view-node
+  take state, like resolve-state
+  take one, like view-node
+  like view-node
+  mark private
+
+  sift one
+    case element
+      save at, 0
+      walk attributes
+        take attribute
+        save attribute/value, resolve-expression(state, attribute/value)
+        save attributes/{at}, attribute
+        save at, add(at, 1)
+      save one/attributes, attributes
+      save at, 0
+      walk props
+        take prop
+        save prop/value, resolve-expression(state, prop/value)
+        save props/{at}, prop
+        save at, add(at, 1)
+      save one/props, props
+      save one/children, resolve-view-nodes(state, children)
+    case read
+      save one/value, resolve-expression(state, value)
+    case save
+      save one/value, resolve-expression(state, value)
+      declare-local(state, name)
+    # a setup statement: resolved like any other expression, so the names it calls are checked
+    case call
+      save one/value, resolve-expression(state, value)
+    case fork
+      save at, 0
+      walk branches
+        take branch
+        save branch/cond, resolve-expression(state, branch/cond)
+        open-scope(state)
+        save branch/body, resolve-view-nodes(state, branch/body)
+        close-scope(state)
+        save branches/{at}, branch
+        save at, add(at, 1)
+      save one/branches, branches
+      # a need-false list, copied before it is handed on so nothing writes `[]` into the node; its nodes are the
+      # node's own, written where they stand
+      save rest, make list
+      walk otherwise
+        take kept
+        push(rest, kept)
+      open-scope(state)
+      resolve-view-nodes(state, rest)
+      close-scope(state)
+    case walk
+      save one/iterable, resolve-expression(state, iterable)
+      open-scope(state)
+      declare-local(state, item)
+      save one/body, resolve-view-nodes(state, body)
+      close-scope(state)
+    miss
+      save nothing, 0
+  back one
+
+# ---- the tables ----
+
+task add-name
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  fork test, not(has-text(into, one))
+    hold
+      push(into, one)
+
+task field-names
+  take program, like list, like statement
+  take name, like text
+  like maybe, like list, like text
+  mark private
+
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        fork test, is-equal(record-name, name)
+          hold
+            save out, make list
+            walk fields
+              take field
+              push(out, field/name)
+            back make(some, out)
+      miss
+        save nothing, 0
+  back make none
+
+task resolve-tables
+  take state, like resolve-state
+  take program, like list, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        save names, make list
+        walk params
+          take param
+          push(names, param/name)
+        save state/task-params/{name}, names
+      miss
+        save nothing, 0
+
+  walk program
+    take one
+    sift one
+      case record-type
+        save state/type-names/{name}, true
+        walk variants
+          take variant
+          save variant-name, variant/name
+          save state/variant-names/{variant-name}, true
+        # a variantless record is matched under its OWN name, so its record-level fields bind in that arm too
+        fork test, is-above(fields/length, 0)
+          hold
+            save own, make list
+            walk fields
+              take field
+              push(own, field/name)
+            save state/variant-fields/{name}, own
+        # TWO FORMS MAY NAME A CASE ALIKE: every field any case of that name has is declared, and the checker binds
+        # each by the subject's real type
+        walk variants
+          take variant
+          save merged, make list
+          save variant-name, variant/name
+          walk texts-at(state/variant-fields, variant-name)
+            take kept
+            add-name(merged, kept)
+          walk variant/fields
+            take field
+            add-name(merged, field/name)
+          save state/variant-fields/{variant-name}, merged
+      miss
+        save nothing, 0
+
+  # an exception form's props (its `<form>-link` record), for an arm over a caught exception
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        save is-exception, false
+        walk chain
+          take link-name
+          fork test, is-equal(link-name, <exception>)
+            hold
+              save is-exception, true
+        fork test, is-exception
+          hold
+            save props-of, make list
+            fork test, is-unequal(props, <>)
+              hold
+                sift field-names(program, props)
+                  case some
+                    link found
+                    save props-of, found
+                  case none
+                    save nothing, 0
+            save state/exception-link/{record-name}, props-of
+      miss
+        save nothing, 0
+
+  # a field's declared form may be read before it is declared, so a second pass
+  walk program
+    take one
+    sift one
+      case record-type
+        save all-fields, make list
+        walk fields
+          take field
+          push(all-fields, field)
+        walk variants
+          take variant
+          walk variant/fields
+            take variant-field
+            save as-field
+              make form-field
+                bind name, variant-field/name
+                bind type, variant-field/type
+            push(all-fields, as-field)
+        walk all-fields
+          take field
+          sift field/type
+            case named
+              sift field-names(program, name)
+                case some
+                  link under
+                  fork test, is-above(under/length, 0)
+                    hold
+                      save seen, texts-at(state/fields-under, field/name)
+                      save grown, make list
+                      walk seen
+                        take kept
+                        push(grown, kept)
+                      walk under
+                        take more
+                        add-name(grown, more)
+                      save field-name, field/name
+                      save state/fields-under/{field-name}, grown
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+
+# ---- the entry ----
+
+form resolve-scope
+  link scope
+    like maybe, like hash, like text, like binding
+    need false
+  link only
+    like maybe, like text
+    need false
+
+task statement-file
+  take one, like statement
+  take fallback, like text
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+task resolve-program
+  take program, like list, like statement
+  take file, like text
+  take groups, like hash, like text, like list, like text
+  take given-scope, like maybe, like hash, like text, like binding
+  take only, like maybe, like text
+  like list, like diagnostic
+
+  save global, empty-scope()
+  sift given-scope
+    case some
+      link known
+      save global, known
+    case none
+      save global, build-global-scope(program, groups)
+  save stack, make list
+  push(stack, global)
+  save found, make list
+  save state
+    make resolve-state
+      bind file, file
+      bind diagnostics, found
+      bind stack, stack
+      bind variant-fields, make hash
+      bind type-names, make hash
+      bind variant-names, make hash
+      bind task-params, make hash
+      bind fields-under, make hash
+      bind exception-link, make hash
+  resolve-tables(state, program)
+
+  walk program
+    take one
+    take at
+    save state/file, statement-file(one, file)
+    # incremental: resolve only the requested function's body
+    sift only
+      case some
+        link wanted
+        save matches, false
+        sift one
+          case function
+            save matches, is-equal(name, wanted)
+          miss
+            save nothing, 0
+        fork test, not(matches)
+          hold
+            turn next
+      case none
+        save nothing, 0
+    save program/{at}, resolve-statement(state, one)
+  back found

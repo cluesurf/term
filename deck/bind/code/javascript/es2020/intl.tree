@@ -27,22 +27,26 @@ load @term/bind/javascript/native
 host relative-time-format, name <RelativeTimeFormat>
   like form
     hook make
-      take locales, like maybe
-        like or
-          like unicode-bcp47-locale-identifier
-          like native-array
+      take locales
+        like maybe
+          like or
             like unicode-bcp47-locale-identifier
-      take options, like maybe
-        like relative-time-format-options
+            like native-array
+              like unicode-bcp47-locale-identifier
+      take options
+        like maybe
+          like relative-time-format-options
       like relative-time-format
 
     task supported-locales-of, name <supportedLocalesOf>
-      take locales, like maybe
-        like or
-          like unicode-bcp47-locale-identifier
-          like native-array
+      take locales
+        like maybe
+          like or
             like unicode-bcp47-locale-identifier
-      take options, like maybe
-        like relative-time-format-options
+            like native-array
+              like unicode-bcp47-locale-identifier
+      take options
+        like maybe
+          like relative-time-format-options
       like native-array
         like unicode-bcp47-locale-identifier

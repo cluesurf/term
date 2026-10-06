@@ -21,32 +21,22 @@
 // through <sub> when named); `hook make / make <form> / bind f, read <case>` builds a record. A mint with no
 // make passes through: a single matched case's value rides out as it is (a literal keeps its own data kind, a
 // word rides as its text), which is what a pure alternation (host-entry, host-scalar) wants.
+//
+// The executor is compile/mill-running.tree (self-hosting, 2026-10-06). This face keeps the shapes the bridge and
+// the deck readers hold: a missing word or span is `undefined`, the lean rules are a `Set`, and a minted form's fields
+// are a `Record`. A capture and a match are the port's own, field for field what they were. A grammar is the port's
+// too, and nothing outside reads its rules, whose `maybe` is spelled `optional` there.
 
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
-import { partsOf, groupsOf } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
-import { unescapeText } from '@term/make/code/compile/surface'
+import * as port from '@term/make/code/compile/mill-running'
 
 // a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node it
-// came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file, and
-// the CST `node` itself, so a built AST node can point back at the exact surface syntax it was read from. A span
-// alone loses the shape, and the shape is what an accurate diagnostic needs (mint-bridge-0001).
-// an integer literal as a number while that is exact, and as a bigint read from its own text past 2^53, where the
-// parsed number has already rounded to a different integer. Every checker names a literal by its value, so a rounded
-// literal made `x * 9007199254740993 == x * 9007199254740992` a true statement about one constant.
-function exactInteger(parsed: number, text: string): number | bigint {
-  if (Number.isSafeInteger(parsed)) {
-    return parsed
-  }
-
-  try {
-    return BigInt(text.replace(/_/g, ''))
-  } catch {
-    return parsed
-  }
-}
-
+// came from, so a consumer's diagnostic points at the line in the file, and the CST `node` itself, so a built AST
+// node can point back at the exact surface syntax it was read from (mint-bridge-0001). An integer literal is a
+// number while that is exact, and a bigint read from its own text past 2^53, where the parsed number has already
+// rounded to a different integer.
 export type MillCapture =
   | { kind: 'word'; value: string; span?: Span; node?: Node }
   | { kind: 'text'; value: string; span?: Span; node?: Node }
@@ -69,732 +59,62 @@ export type MillCapture =
 // one rule's fill: site name -> the captures that landed there, in order
 export type MillMatch = Map<string, MillCapture[]>
 
-// ---- the mine grammar, read from its own parse tree ----
-
-export type MineRule =
-  | { kind: 'term'; word?: string; children: MineRule[]; site?: string }
-  | { kind: 'text'; site?: string }
-  | { kind: 'code'; site?: string }
-  | { kind: 'path'; site?: string }
-  | { kind: 'node' }
-  | { kind: 'word'; site?: string }
-  | { kind: 'open'; children: MineRule[]; site?: string }
-  | { kind: 'maybe'; children: MineRule[] }
-  | { kind: 'list'; children: MineRule[] }
-  | { kind: 'any'; children: MineRule[] }
-  | { kind: 'form'; like: string; site?: string }
+export type MineRule = port.MineRule
 
 export type MineGrammar = Map<string, MineRule[]>
-
 
 export const ZERO_SPAN: Span = {
   start: { line: 0, column: 0 },
   end: { line: 0, column: 0 },
 }
 
+const unbox = <T>(value: port.Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
+
 // The EXTENT a node covers: head through the last child, so a diagnostic underlines the whole construct and a
-// source-slice autofix captures the exact surface syntax. This is the span every AST node carries, and it is the
-// one `compile/mill.ts` imports as its own `spanOf` — one implementation, so the hand-written mill and the
-// executor can never drift on where a node begins and ends (mint-bridge-0001).
+// source-slice autofix captures the exact surface syntax. This is the span every AST node carries (mint-bridge-0001).
 //
 // Distinct from `spanOfNode` below, which answers a different question: where to point a caret. Keep both.
 export function spanOfWhole(node: Node): Span {
-  switch (node.kind) {
-    case 'integer':
-    case 'decimal':
-    case 'radix':
-      return node.span
-    case 'name':
-
-    case 'text': {
-      const chunk = node.parts.find(p => p.kind === 'chunk')
-
-      return chunk?.kind === 'chunk' ? chunk.span : ZERO_SPAN
-    }
-
-    case 'chunk':
-      return node.span
-
-    case 'group': {
-      const head = node.nodes[0]
-
-      if (!head) {
-        return ZERO_SPAN
-      }
-
-      // span the whole construct, head through the last child, so diagnostics underline the full term and
-      // source-slice autofixes (the linter) capture the exact surface syntax, not just the head keyword.
-      const last = node.nodes[node.nodes.length - 1]!
-
-      return { start: spanOfWhole(head).start, end: spanOfWhole(last).end }
-    }
-
-    default:
-      return ZERO_SPAN
-  }
+  return port.spanOfWhole(node as never)
 }
 
 // the source span a node covers (its first token's), so a consumer's diagnostic can point at the line
 export function spanOfNode(node: Node | undefined): Span | undefined {
-  if (!node) {
-    return undefined
-  }
-
-  switch (node.kind) {
-    case 'name':
-    case 'text': {
-      const part = node.parts[0]
-
-      return part?.kind === 'chunk' ? part.span : undefined
-    }
-    case 'integer':
-    case 'decimal':
-    case 'radix':
-      return node.span
-    case 'group':
-      return spanOfNode(node.nodes[0])
-    default:
-      return undefined
-  }
+  return node ? unbox(port.spanOfNode(node as never)) : undefined
 }
 
 // exported for reuse by other tree-CST-reading compilers (feed-mill.ts's grammar reader among them) — these four
 // are generic ".tree node -> word/phrase/text" readers, nothing here is mill's own rule vocabulary specifically
 export function wordOf(node: Node | undefined): string | undefined {
-  if (!node) {
-    return undefined
-  }
-
-  if (node.kind === 'name') {
-    // an interpolation part renders as written (`{platform}` in a load path is part of the word)
-    return partsOf(node)
-      .map(p =>
-        p.kind === 'chunk'
-          ? p.text
-          : `{${p.group?.kind === 'group' && p.group.nodes[0]?.kind === 'name' ? p.group.nodes[0].parts.map(q => (q.kind === 'chunk' ? q.text : '')).join('') : ''}}`,
-      )
-      .join('')
-  }
-
-  if (
-    node.kind === 'group' &&
-    node.nodes.length >= 1 &&
-    node.nodes[0]?.kind === 'name'
-  ) {
-    return wordOf(node.nodes[0])
-  }
-
-  return undefined
+  return node ? unbox(port.wordOf(node as never)) : undefined
 }
-
 
 // the full word chain a node denotes: a multi-word value parses as nested heads (`vitest run` is
 // vitest > run), so a phrase reconstructs by walking head plus terms recursively, space-joined
 export function phraseOf(node: Node | undefined): string | undefined {
-  const head = wordOf(node)
-
-  if (head === undefined || node?.kind !== 'group') {
-    return head
-  }
-
-  const parts = [head]
-
-  let cursor: Node | undefined = node.nodes[1]
-
-  while (cursor && cursor.kind === 'group') {
-    const next: string | undefined = wordOf(cursor)
-
-    if (next === undefined) {
-      break
-    }
-
-    parts.push(next)
-    cursor = cursor.nodes[1]
-  }
-
-  return parts.join(' ')
+  return node ? unbox(port.phraseOf(node as never)) : undefined
 }
 
 export function headWord(group: GroupNode): string | undefined {
-  return group.nodes[0]?.kind === 'name'
-    ? wordOf(group.nodes[0])
-    : undefined
+  return unbox(port.headWord(group as never))
 }
 
 // the VALUE of a text literal: its chunks, with the escape sequences resolved. A reader that skips the
 // unescaping gets `\n` as two characters, which is a different string from the one the source wrote.
 export function textOf(node: Node): string {
-  return node.kind === 'text'
-    ? unescapeText(
-        node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join(''),
-      )
-    : ''
-}
-
-// the site name a rule group carries (`site <name>` child)
-function siteOf(group: GroupNode): string | undefined {
-  for (const child of group.nodes) {
-    if (child.kind === 'group' && headWord(child) === 'site') {
-      return wordOf(child.nodes[1])
-    }
-  }
-
-  return undefined
-}
-
-function readMineRule(group: GroupNode): MineRule | undefined {
-  if (headWord(group) !== 'mine') {
-    return undefined
-  }
-
-  const kindNode = group.nodes[1]
-  const kind = wordOf(kindNode)
-  const site = siteOf(group)
-  const childRules = (): MineRule[] => {
-    const rules: MineRule[] = []
-
-    for (const child of group.nodes.slice(2)) {
-      if (child.kind === 'group') {
-        const rule = readMineRule(child)
-
-        if (rule) {
-          rules.push(rule)
-        }
-      }
-    }
-
-    return rules
-  }
-
-  switch (kind) {
-    case 'term': {
-      // `mine term, term <w>` carries the word under the second `term`; a bare `mine term` captures a word
-      const wordGroup = group.nodes.find(
-        (n, i): n is GroupNode =>
-          i >= 2 && n.kind === 'group' && headWord(n) === 'term',
-      )
-      const word = wordGroup ? wordOf(wordGroup.nodes[1]) : undefined
-      const children: MineRule[] = []
-
-      for (const child of group.nodes.slice(2)) {
-        if (
-          child.kind === 'group' &&
-          headWord(child) === 'mine'
-        ) {
-          const rule = readMineRule(child)
-
-          if (rule) {
-            children.push(rule)
-          }
-        }
-      }
-
-      // the word can also ride inside the term group's own children (`mine term, term host` puts nothing there,
-      // but `term term` nesting under kindNode does): check the kind node's group for a nested word
-      const nested =
-        !word &&
-        kindNode?.kind === 'group' &&
-        kindNode.nodes.length > 1
-          ? wordOf(kindNode.nodes[1])
-          : undefined
-
-      return { kind: 'term', word: word ?? nested, children, site }
-    }
-    case 'text':
-      return { kind: 'text', site }
-    case 'code':
-      return { kind: 'code', site }
-    case 'path':
-      return { kind: 'path', site }
-    case 'node':
-      return { kind: 'node' }
-    case 'word':
-      return { kind: 'word', site }
-    case 'open':
-      // a group with ANY head word (a bare call spells the callee as the head): the word is captured at the
-      // site, and the child rules run over the group's remaining nodes
-      return { kind: 'open', children: childRules(), site }
-    case 'maybe':
-    // `mine case` in the dialect marks an optional part the mint later cases on: match-wise it is a maybe
-    case 'case':
-      return { kind: 'maybe', children: childRules() }
-    case 'list':
-      return { kind: 'list', children: childRules() }
-    case 'any':
-      return { kind: 'any', children: childRules() }
-    case 'form': {
-      // `mine form, like <name>`
-      const like = group.nodes.find(
-        (n): n is GroupNode =>
-          n.kind === 'group' && headWord(n) === 'like',
-      )
-      const name = like ? wordOf(like.nodes[1]) : undefined
-
-      return name ? { kind: 'form', like: name, site } : undefined
-    }
-    default:
-      return undefined
-  }
+  return port.textOf(node as never)
 }
 
 export function readMineGrammar(tree: RootNode): MineGrammar {
-  const grammar: MineGrammar = new Map()
-
-  for (const group of groupsOf(tree.nodes)) {
-    if (headWord(group) !== 'mine') {
-      continue
-    }
-
-    const name = wordOf(group.nodes[1])
-
-    if (!name) {
-      continue
-    }
-
-    const rules: MineRule[] = []
-
-    for (const child of group.nodes.slice(2)) {
-      if (child.kind === 'group') {
-        const rule = readMineRule(child)
-
-        if (rule) {
-          rules.push(rule)
-        }
-      }
-    }
-
-    grammar.set(name, rules)
-  }
-
-  return grammar
+  return port.readMineGrammar(tree as never)
 }
 
 // The `mine` rules that carry a `mark lean` child: the constructs that take the lean surface, where a bare-head
 // argument becomes a NAMED argument in a file whose role is marked lean. Declared per rule and read here, never
 // derived from the rule's shape. The shape-derived version ("a rule with a `bind` site") was measured on
 // 2026-09-12 and refused: thirty rules have one, and at least seven must never take labels. note/term/lean.md.
-//
-// `readMineRule` never sees the marker, because it reads only `mine` children and a `mark` is not one, so the
-// rules themselves are unchanged by it.
 export function readLeanRules(tree: RootNode): Set<string> {
-  const lean = new Set<string>()
-
-  for (const group of groupsOf(tree.nodes)) {
-    if (headWord(group) !== 'mine') {
-      continue
-    }
-
-    const name = wordOf(group.nodes[1])
-
-    if (!name) {
-      continue
-    }
-
-    for (const child of group.nodes.slice(2)) {
-      if (
-        child.kind === 'group' &&
-        headWord(child) === 'mark' &&
-        wordOf(child.nodes[1]) === 'lean'
-      ) {
-        lean.add(name)
-      }
-    }
-  }
-
-  return lean
-}
-
-// ---- matching ----
-
-// run one rule sequence against a node cursor. Returns the new cursor position, or undefined on no match.
-function matchSequence(
-  grammar: MineGrammar,
-  rules: MineRule[],
-  nodes: Node[],
-  at: number,
-  into: MillMatch,
-): number | undefined {
-  let cursor = at
-
-  for (let i = 0; i < rules.length; i++) {
-    const rule = rules[i]!
-    const next = matchRule(grammar, rule, nodes, cursor, into)
-
-    if (next === undefined) {
-      // paren splice: `send back(false)` and `send back, false` are one tree in the language, but the paren
-      // nests the value under `back`. A worded term rule facing a group headed by its own word matches its
-      // child rules as a PREFIX of the group, then hands the group's leftover nodes to the REST of the sequence.
-      const node = nodes[cursor]
-
-      if (
-        rule.kind === 'term' &&
-        rule.word !== undefined &&
-        node?.kind === 'group' &&
-        headWord(node) === rule.word &&
-        node.nodes.length > 1
-      ) {
-        const inner: MillMatch = new Map()
-        const innerEnd = matchSequence(
-          grammar,
-          rule.children,
-          node.nodes,
-          1,
-          inner,
-        )
-
-        if (innerEnd !== undefined) {
-          const extras = node.nodes.slice(innerEnd)
-          const spliced = [...extras, ...nodes.slice(cursor + 1)]
-          const after: MillMatch = new Map()
-          const end = matchSequence(
-            grammar,
-            rules.slice(i + 1),
-            spliced,
-            0,
-            after,
-          )
-
-          if (end !== undefined && end >= extras.length) {
-            capture(into, rule.site, {
-              kind: 'word',
-              value: rule.word,
-              span: spanOfNode(node),
-              node,
-            })
-
-            for (const trial of [inner, after]) {
-              for (const [site, values] of trial) {
-                for (const value of values) {
-                  capture(into, site, value)
-                }
-              }
-            }
-
-            return cursor + 1 + (end - extras.length)
-          }
-        }
-      }
-
-      return undefined
-    }
-
-    cursor = next
-  }
-
-  return cursor
-}
-
-function capture(
-  into: MillMatch,
-  site: string | undefined,
-  value: MillCapture,
-): void {
-  if (!site) {
-    return
-  }
-
-  const list = into.get(site) ?? []
-  list.push(value)
-  into.set(site, list)
-}
-
-function matchRule(
-  grammar: MineGrammar,
-  rule: MineRule,
-  nodes: Node[],
-  at: number,
-  into: MillMatch,
-): number | undefined {
-  const node = nodes[at]
-
-  switch (rule.kind) {
-    case 'term': {
-      if (rule.word !== undefined) {
-        // a headed group: `mine term, term host` matches group[name(host), ...] and the children rules run
-        // over its remaining nodes; a bare word (`true`) also matches a name or a group wrapping one
-        if (node?.kind === 'group' && headWord(node) === rule.word) {
-          const inner = matchSequence(
-            grammar,
-            rule.children,
-            node.nodes,
-            1,
-            into,
-          )
-
-          if (inner === undefined || inner < node.nodes.length) {
-            return undefined
-          }
-
-          capture(into, rule.site, {
-            kind: 'word',
-            value: rule.word,
-            span: spanOfNode(node),
-            node,
-          })
-
-          return at + 1
-        }
-
-        if (node && wordOf(node) === rule.word && rule.children.length === 0) {
-          capture(into, rule.site, {
-            kind: 'word',
-            value: rule.word,
-            span: spanOfNode(node),
-            node,
-          })
-
-          return at + 1
-        }
-
-        return undefined
-      }
-
-      // a bare `mine term`: one word
-      const word = node ? wordOf(node) : undefined
-
-      if (word === undefined) {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'word',
-        value: word,
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'text': {
-      if (node?.kind !== 'text') {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'text',
-        value: textOf(node),
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'path': {
-      // a path or glob rides as a word (`@/book/**/*.tree` is one name node), and a multi-word value is a
-      // nested chain (`vitest run` is vitest > run): capture the whole phrase
-      const phrase = node ? phraseOf(node) : undefined
-
-      if (phrase === undefined) {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'word',
-        value: phrase,
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'code': {
-      if (
-        node?.kind !== 'integer' &&
-        node?.kind !== 'decimal' &&
-        node?.kind !== 'radix'
-      ) {
-        return undefined
-      }
-
-      const value =
-        node.kind === 'decimal' ? Number(node.value) : exactInteger(node.value, node.text)
-      capture(into, rule.site, {
-        kind: 'number',
-        value,
-        decimal: node.kind === 'decimal',
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'node':
-      // any ONE node, captured nowhere: the skip a mixed file needs
-      return node === undefined ? undefined : at + 1
-
-    case 'word': {
-      // A word with NOTHING under it. Distinct from a bare `mine term`, which takes a group's head and passes
-      // over whatever the group holds: `mine term` reads `head t / base or / like x` as the word "head" and
-      // throws the rest away. In value position that is never right, because a headed group WITH children is
-      // a call and only a childless one is a name. This is the matcher for the second of those.
-      if (node?.kind === 'name') {
-        capture(into, rule.site, {
-          kind: 'word',
-          value: wordOf(node) ?? '',
-          span: spanOfNode(node),
-          node,
-        })
-
-        return at + 1
-      }
-
-      if (node?.kind !== 'group' || node.nodes.length !== 1) {
-        return undefined
-      }
-
-      const only = wordOf(node)
-
-      if (only === undefined) {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'word',
-        value: only,
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'open': {
-      // a group with any head word: the head is the capture, the children rules must consume the rest
-      if (node?.kind !== 'group') {
-        return undefined
-      }
-
-      const head = headWord(node)
-
-      if (head === undefined) {
-        return undefined
-      }
-
-      const inner = matchSequence(grammar, rule.children, node.nodes, 1, into)
-
-      if (inner === undefined || inner < node.nodes.length) {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'word',
-        value: head,
-        span: spanOfNode(node),
-        node,
-      })
-
-      return at + 1
-    }
-
-    case 'maybe': {
-      const trial: MillMatch = new Map()
-      const next = matchSequence(
-        grammar,
-        rule.children,
-        nodes,
-        at,
-        trial,
-      )
-
-      if (next === undefined) {
-        return at
-      }
-
-      for (const [site, values] of trial) {
-        for (const value of values) {
-          capture(into, site, value)
-        }
-      }
-
-      return next
-    }
-
-    case 'list': {
-      let cursor = at
-
-      for (;;) {
-        const trial: MillMatch = new Map()
-        const next = matchSequence(
-          grammar,
-          rule.children,
-          nodes,
-          cursor,
-          trial,
-        )
-
-        if (next === undefined || next === cursor) {
-          return cursor
-        }
-
-        for (const [site, values] of trial) {
-          for (const value of values) {
-            capture(into, site, value)
-          }
-        }
-
-        cursor = next
-      }
-    }
-
-    case 'any': {
-      for (const alternative of rule.children) {
-        const trial: MillMatch = new Map()
-        const next = matchRule(
-          grammar,
-          alternative,
-          nodes,
-          at,
-          trial,
-        )
-
-        if (next !== undefined) {
-          for (const [site, values] of trial) {
-            for (const value of values) {
-              capture(into, site, value)
-            }
-          }
-
-          return next
-        }
-      }
-
-      return undefined
-    }
-
-    case 'form': {
-      const rules = grammar.get(rule.like)
-
-      if (!rules || node === undefined) {
-        return undefined
-      }
-
-      const inner: MillMatch = new Map()
-      // a named rule runs against the node STREAM from here: a rule like fork-test-pair is a sequence of two
-      // sibling groups (`hook test`, `hook hold`), so it may consume more than one node. Consuming none is no match.
-      const next = matchSequence(grammar, rules, nodes, at, inner)
-
-      if (next === undefined || next === at) {
-        return undefined
-      }
-
-      capture(into, rule.site, {
-        kind: 'match',
-        rule: rule.like,
-        match: inner,
-        span: spanOfNode(node),
-        node,
-      })
-
-      return next
-    }
-
-    default:
-      return undefined
-  }
+  return new Set(port.readLeanRules(tree as never))
 }
 
 // run a grammar's start rule over a whole parse tree (the root's groups)
@@ -803,158 +123,32 @@ export function runMine(
   start: string,
   tree: RootNode,
 ): { ok: true; match: MillMatch } | { ok: false; at?: Node } {
-  const rules = grammar.get(start)
+  const run = port.runMine(grammar, start, tree as never)
 
-  if (!rules) {
-    return { ok: false }
+  if (run.ok) {
+    return { ok: true, match: run.match as MillMatch }
   }
 
-  const match: MillMatch = new Map()
-  const nodes: Node[] = tree.nodes
-  const next = matchSequence(grammar, rules, nodes, 0, match)
-
-  if (next === undefined || next < nodes.length) {
-    return { ok: false, at: nodes[next ?? 0] }
-  }
-
-  return { ok: true, match }
+  return run.started ? { ok: false, at: run.at as Node | undefined } : { ok: false }
 }
 
 // ---- the mint grammar ----
 
-export type MintCase = { name: string; mint?: string; site?: string }
-export type MintBind = { name: string; read: string; nested?: MintMake }
-export type MintMake = { form: string; binds: MintBind[] }
-export type Mint = {
-  name: string
-  like?: string
-  cases: MintCase[]
-  make?: MintMake
-}
+export type MintCase = port.MintCase
+export type MintBind = port.MintBind
+export type MintMake = port.MintMake
+export type Mint = port.MintRule
 
 export type MintGrammar = Map<string, Mint>
 
 export function readMintGrammar(tree: RootNode): MintGrammar {
-  const grammar: MintGrammar = new Map()
-
-  for (const group of groupsOf(tree.nodes)) {
-    if (headWord(group) !== 'mint') {
-      continue
-    }
-
-    const name = wordOf(group.nodes[1])
-
-    if (!name) {
-      continue
-    }
-
-    const likeGroup = group.nodes.find(
-      (n, i): n is GroupNode =>
-        i >= 2 && n.kind === 'group' && headWord(n) === 'like',
-    )
-    const like = likeGroup ? wordOf(likeGroup.nodes[1]) : undefined
-    const cases: MintCase[] = []
-    let make: MintMake | undefined
-
-    for (const child of group.nodes.slice(2)) {
-      if (child.kind !== 'group') {
-        continue
-      }
-
-      const head = headWord(child)
-
-      if (head === 'case') {
-        const caseName = wordOf(child.nodes[1])
-        const mintGroup = child.nodes.find(
-          (n, i): n is GroupNode =>
-            i >= 2 && n.kind === 'group' && headWord(n) === 'mint',
-        )
-        const siteGroup = child.nodes.find(
-          (n): n is GroupNode =>
-            n.kind === 'group' && headWord(n) === 'site',
-        )
-
-        if (caseName) {
-          cases.push({
-            name: caseName,
-            mint: mintGroup ? wordOf(mintGroup.nodes[1]) : undefined,
-            site: siteGroup ? wordOf(siteGroup.nodes[1]) : undefined,
-          })
-        }
-      } else if (head === 'hook' && wordOf(child.nodes[1]) === 'make') {
-        // the hook's own `make` word rides as a bare marker group; the construction is the make group WITH content
-        const makeGroup = child.nodes.find(
-          (n): n is GroupNode =>
-            n.kind === 'group' &&
-            headWord(n) === 'make' &&
-            n.nodes.length > 1,
-        )
-
-        if (makeGroup) {
-          make = readMake(makeGroup)
-        }
-      }
-    }
-
-    grammar.set(name, { name, like, cases, make })
-  }
-
-  return grammar
-}
-
-function readMake(group: GroupNode): MintMake {
-  // `make data-entry` with indented binds parses as make > data-entry{binds...} (children nest under the last
-  // word), and a comma form puts them beside it: look in both places
-  const formGroup =
-    group.nodes[1]?.kind === 'group' ? group.nodes[1] : undefined
-  const form = wordOf(group.nodes[1]) ?? ''
-  const candidates: Node[] = [
-    ...(formGroup ? formGroup.nodes.slice(1) : []),
-    ...group.nodes.slice(2),
-  ]
-  const binds: MintBind[] = []
-
-  for (const child of candidates) {
-    if (child.kind !== 'group' || headWord(child) !== 'bind') {
-      continue
-    }
-
-    const keyGroup =
-      child.nodes[1]?.kind === 'group' ? child.nodes[1] : undefined
-    const name = wordOf(child.nodes[1]) ?? ''
-    const valueNodes: Node[] = [
-      ...(keyGroup ? keyGroup.nodes.slice(1) : []),
-      ...child.nodes.slice(2),
-    ]
-    // `bind f, read x` reads a case; `bind f / make ...` nests a construction
-    const readGroup = valueNodes.find(
-      (n): n is GroupNode =>
-        n.kind === 'group' && headWord(n) === 'read',
-    )
-    const makeGroup = valueNodes.find(
-      (n): n is GroupNode =>
-        n.kind === 'group' && headWord(n) === 'make' && n.nodes.length > 1,
-    )
-
-    if (readGroup) {
-      binds.push({ name, read: wordOf(readGroup.nodes[1]) ?? '' })
-    } else if (makeGroup) {
-      binds.push({
-        name,
-        read: '',
-        nested: readMake(makeGroup),
-      })
-    }
-  }
-
-  return { form, binds }
+  return port.readMintGrammar(tree as never)
 }
 
 // ---- minting ----
 
 // A minted value keeps the CST node it was built from (and that node's extent), so the bridge that turns these
-// into compiler AST nodes can carry an exact span onto every one of them. Minting used to drop both, which made
-// the executor's output unusable for diagnostics no matter how correct its shapes were.
+// into compiler AST nodes can carry an exact span onto every one of them.
 export type Minted =
   | { kind: 'word'; value: string; span?: Span; node?: Node }
   | { kind: 'text'; value: string; span?: Span; node?: Node }
@@ -973,106 +167,52 @@ export type Minted =
       node?: Node
     }
 
+// a minted form's fields as the `Record` the bridge reads. The port hands back the same list wherever minting was
+// remembered, so each list and form is converted once and shared as it was
+function mintedOf(values: port.Minted[], seen: WeakMap<object, unknown>): Minted[] {
+  const known = seen.get(values)
+
+  if (known) {
+    return known as Minted[]
+  }
+
+  const out = values.map(value => mintedValue(value, seen))
+  seen.set(values, out)
+
+  return out
+}
+
+function mintedValue(value: port.Minted, seen: WeakMap<object, unknown>): Minted {
+  if (value.kind !== 'form') {
+    return value as Minted
+  }
+
+  const known = seen.get(value)
+
+  if (known) {
+    return known as Minted
+  }
+
+  const fields: Record<string, Minted[]> = {}
+
+  for (const [name, list] of value.fields) {
+    fields[name] = mintedOf(list, seen)
+  }
+
+  const out: Minted = { kind: 'form', form: value.form, fields, span: value.span, node: value.node as Node | undefined }
+  seen.set(value, out)
+
+  return out
+}
+
 export function runMint(
   mints: MintGrammar,
   name: string,
   match: MillMatch,
   // the CST node this match was read from: it becomes the built form's own node, so the bridge can span it
   node?: Node,
-  // what each sub-match already minted to, per rule, for this one top-level mint. SEVERAL CASES MAY READ ONE SITE,
-  // and each used to mint that site's sub-matches again, so the work doubled at every level a construct nested:
-  // 18 nested forks took 3.4 s, all of it here, and the stdlib's generated Unicode tables
-  // (deck/base/code/hold/text/code/human.tree) never finished. Minting is a pure function of (rule, match), so
-  // the second answer is the first. Found by `pnpm term:lean-equal` hanging on that file (self-hosting, 2026-10-02).
-  memo: Map<MillMatch, Map<string, Minted[]>> = new Map(),
 ): Minted[] {
-  const known = memo.get(match)?.get(name)
+  const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
 
-  if (known) {
-    return known
-  }
-
-  const mint = mints.get(name)
-
-  if (!mint) {
-    return []
-  }
-
-  // each case pulls its site's captures, minting sub-matches through the named sub-mint
-  const byCase = new Map<string, Minted[]>()
-
-  for (const c of mint.cases) {
-    const site = c.site ?? c.name
-    const captures = match.get(site) ?? []
-    const values: Minted[] = []
-
-    for (const cap of captures) {
-      if (cap.kind === 'match') {
-        const sub = c.mint ?? cap.rule
-        values.push(...runMint(mints, sub, cap.match, cap.node, memo))
-      } else {
-        values.push(cap)
-      }
-    }
-
-    if (values.length > 0) {
-      byCase.set(c.name, values)
-    }
-  }
-
-  const remember = (value: Minted[]): Minted[] => {
-    const forMatch = memo.get(match) ?? new Map<string, Minted[]>()
-    forMatch.set(name, value)
-    memo.set(match, forMatch)
-
-    return value
-  }
-
-  if (mint.make) {
-    return remember([buildMake(mint.make, byCase, node)])
-  }
-
-  // Pass-through: the matched cases' values in case order (an alternation yields its one branch).
-  //
-  // The branch's value takes THIS rule's extent, not its own. A pass-through says "this construct is its
-  // branch", and the construct is the wider text: `mine fork` passes through to `fork-test`, which matched at
-  // the inner `test` group, while the statement it becomes covers `fork test` and every arm under it. Without
-  // this the built node's span points at one word in the middle of the construct it describes.
-  const out: Minted[] = []
-
-  for (const c of mint.cases) {
-    for (const value of byCase.get(c.name) ?? []) {
-      out.push(
-        node && value.kind === 'form'
-          ? { ...value, span: spanOfWhole(node), node }
-          : value,
-      )
-    }
-  }
-
-  return remember(out)
-}
-
-function buildMake(
-  make: MintMake,
-  byCase: Map<string, Minted[]>,
-  node?: Node,
-): Minted {
-  const fields: Record<string, Minted[]> = {}
-
-  for (const bind of make.binds) {
-    if (bind.nested) {
-      fields[bind.name] = [buildMake(bind.nested, byCase, node)]
-    } else {
-      fields[bind.name] = byCase.get(bind.read) ?? []
-    }
-  }
-
-  return {
-    kind: 'form',
-    form: make.form,
-    fields,
-    span: node ? spanOfWhole(node) : undefined,
-    node,
-  }
+  return mintedOf(port.runMint(mints, name, match as never, from), new WeakMap())
 }

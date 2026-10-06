@@ -50,14 +50,16 @@ form string, name <String>
 
   task index-of, name <indexOf>
     take search-string, like native-string
-    take position, like maybe
-      like native-number
+    take position
+      like maybe
+        like native-number
     like native-number
 
   task last-index-of, name <lastIndexOf>
     take search-string, like native-string
-    take position, like maybe
-      like native-number
+    take position
+      like maybe
+        like native-number
     like native-number
 
   task locale-compare, name <localeCompare>
@@ -104,10 +106,12 @@ form string, name <String>
     like native-number
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like native-string
 
   task split, name <split>
@@ -115,37 +119,41 @@ form string, name <String>
       like or
         like native-string
         like reg-exp
-    take limit, like maybe
-      like native-number
+    take limit
+      like maybe
+        like native-number
     like native-array
       like native-string
 
   task substring, name <substring>
     take start, like native-number
-    take end, like maybe
-      like native-number
+    take end
+      like maybe
+        like native-number
     like native-string
 
   task to-lower-case, name <toLowerCase>
     like native-string
 
   task to-locale-lower-case, name <toLocaleLowerCase>
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
+          like native-array
+            like native-string
     like native-string
 
   task to-upper-case, name <toUpperCase>
     like native-string
 
   task to-locale-upper-case, name <toLocaleUpperCase>
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
+          like native-array
+            like native-string
     like native-string
 
   task trim, name <trim>
@@ -153,8 +161,9 @@ form string, name <String>
 
   task substr, name <substr>
     take from, like native-number
-    take length, like maybe
-      like native-number
+    take length
+      like maybe
+        like native-number
     like native-string
 
   task value-of, name <valueOf>
@@ -166,11 +175,13 @@ form string, name <String>
 form string, name <String>
   task locale-compare, name <localeCompare>
     take that, like native-string
-    take locales, like maybe
-      like or
-        like native-string
-        like native-array
+    take locales
+      like maybe
+        like or
           like native-string
-    take options, like maybe
-      like intl-collator-options
+          like native-array
+            like native-string
+    take options
+      like maybe
+        like intl-collator-options
     like native-number

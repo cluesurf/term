@@ -20,7 +20,8 @@ form worklet, name <Worklet>
       like or
         like native-string
         like url
-    take options, like maybe
-      like worklet-options
+    take options
+      like maybe
+        like worklet-options
     like promise
       like native-void

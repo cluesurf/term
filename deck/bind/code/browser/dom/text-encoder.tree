@@ -15,8 +15,9 @@ form text-encoder, name <TextEncoder>
   base text-encoder-common
 
   task encode, name <encode>
-    take input, like maybe
-      like native-string
+    take input
+      like maybe
+        like native-string
     like uint8-array
 
   task encode-into, name <encodeInto>

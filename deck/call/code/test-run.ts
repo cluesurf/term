@@ -31,6 +31,8 @@ import type { Resolver } from '@term/make/code/compile/load'
 import type { RoleOf } from '@term/call/code/role-of'
 import { preprocessTests, readable, wantFailed, wantLine } from '@term/call/code/test-preprocess'
 import type { Snapshots } from '@term/call/code/test-preprocess'
+// what the runner decides beside its build and its module: `--case`, a test's label, the unproven note, `--update`
+import * as words from '@term/call/code/test-run-words'
 
 // one test: whether it held, how long it took in milliseconds, and the error it threw when it threw one
 export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string; line?: number }
@@ -197,7 +199,7 @@ export function testsOf(
   const tests = discoverTests(text, file).map(name => {
     const head = heads.get(name)
 
-    return { name, label: labels.get(name) ?? name.replace(/-/g, ' '), ...(head === undefined ? {} : { line: head + 1 }) }
+    return { name, label: labelOf(labels, name), ...(head === undefined ? {} : { line: head + 1 }) }
   })
 
   return { text, tests }
@@ -205,9 +207,14 @@ export function testsOf(
 
 // whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
 export function caseMatches(phrase: string, test: { name: string; label: string }): boolean {
-  const wanted = phrase.toLowerCase()
+  return words.caseMatches(phrase, test.name, test.label)
+}
 
-  return test.label.toLowerCase().includes(wanted) || test.name.toLowerCase().includes(wanted)
+// a test's label: its phrase, or its task's name with every dash a space
+function labelOf(labels: Map<string, string>, name: string): string {
+  const label = labels.get(name)
+
+  return words.testLabel(name, label !== undefined, label ?? '')
 }
 
 // a test file's diagnostics moved back onto the lines as written, and rendered against them: the rewritten text holds
@@ -247,7 +254,7 @@ export async function runTestFile(input: {
   // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
   const { text, labels, heads } = preprocessTests(input.source, { snapshots: input.snapshots })
   const names = discoverTests(text, input.file).filter(
-    name => !input.select || input.select({ name, label: labels.get(name) ?? name.replace(/-/g, ' ') }),
+    name => !input.select || input.select({ name, label: labelOf(labels, name) }),
   )
   const result = input.units
     ? compileUnits({ file: input.file, text }, input, input.units)
@@ -282,9 +289,7 @@ export async function runTestFile(input: {
     return {
       ok: false,
       results: [],
-      failure: `${diag}\n${unproven.length} unproven hold${
-        unproven.length === 1 ? '' : 's'
-      }`,
+      failure: words.unprovenNote(diag, unproven.length),
       diagnostics,
       text: input.source,
     }
@@ -319,7 +324,7 @@ export async function runTestFile(input: {
   const results: TestResult[] = []
 
   for (const name of names) {
-    const label = labels.get(name) ?? name.replace(/-/g, ' ')
+    const label = labelOf(labels, name)
     const head = heads.get(name)
     const line = head === undefined ? undefined : head + 1
     const started = Date.now()
@@ -346,7 +351,9 @@ export async function runTestFile(input: {
     const keys = (await mod.termSnapshotTakenKeys?.()) as unknown as string[] | undefined
     const values = (await mod.termSnapshotTakenValues?.()) as unknown as string[] | undefined
 
-    keys?.forEach((key, at) => taken.set(key, [...(taken.get(key) ?? []), values?.[at] ?? '']))
+    for (const one of words.takenOf(keys ?? [], values ?? [])) {
+      taken.set(one.phrase, one.values)
+    }
   }
 
   return { ok: results.every(r => r.held), results, ...(taken.size > 0 ? { taken } : {}) }

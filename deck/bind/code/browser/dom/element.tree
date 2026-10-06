@@ -383,8 +383,9 @@ form element, name <Element>
     like attr
 
   task request-fullscreen, name <requestFullscreen>
-    take options, like maybe
-      like fullscreen-options
+    take options
+      like maybe
+        like fullscreen-options
     like promise
       like native-void
 
@@ -392,8 +393,9 @@ form element, name <Element>
     like native-void
 
   task scroll, name <scroll>
-    take options, like maybe
-      like scroll-to-options
+    take options
+      like maybe
+        like scroll-to-options
     like native-void
 
   task scroll, name <scroll>
@@ -402,8 +404,9 @@ form element, name <Element>
     like native-void
 
   task scroll-by, name <scrollBy>
-    take options, like maybe
-      like scroll-to-options
+    take options
+      like maybe
+        like scroll-to-options
     like native-void
 
   task scroll-by, name <scrollBy>
@@ -412,15 +415,17 @@ form element, name <Element>
     like native-void
 
   task scroll-into-view, name <scrollIntoView>
-    take arg, like maybe
-      like or
-        like native-boolean
-        like scroll-into-view-options
+    take arg
+      like maybe
+        like or
+          like native-boolean
+          like scroll-into-view-options
     like native-void
 
   task scroll-to, name <scrollTo>
-    take options, like maybe
-      like scroll-to-options
+    take options
+      like maybe
+        like scroll-to-options
     like native-void
 
   task scroll-to, name <scrollTo>
@@ -460,8 +465,9 @@ form element, name <Element>
 
   task toggle-attribute, name <toggleAttribute>
     take qualified-name, like native-string
-    take force, like maybe
-      like native-boolean
+    take force
+      like maybe
+        like native-boolean
     like native-boolean
 
   task webkit-matches-selector, name <webkitMatchesSelector>
@@ -481,19 +487,21 @@ form element, name <Element>
             like element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -509,17 +517,19 @@ form element, name <Element>
             like element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

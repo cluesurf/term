@@ -162,13 +162,15 @@ form base-audio-context, name <BaseAudioContext>
     like audio-buffer-source-node
 
   task create-channel-merger, name <createChannelMerger>
-    take number-of-inputs, like maybe
-      like native-number
+    take number-of-inputs
+      like maybe
+        like native-number
     like channel-merger-node
 
   task create-channel-splitter, name <createChannelSplitter>
-    take number-of-outputs, like maybe
-      like native-number
+    take number-of-outputs
+      like maybe
+        like native-number
     like channel-splitter-node
 
   task create-constant-source, name <createConstantSource>
@@ -178,8 +180,9 @@ form base-audio-context, name <BaseAudioContext>
     like convolver-node
 
   task create-delay, name <createDelay>
-    take max-delay-time, like maybe
-      like native-number
+    take max-delay-time
+      like maybe
+        like native-number
     like delay-node
 
   task create-dynamics-compressor, name <createDynamicsCompressor>
@@ -214,17 +217,21 @@ form base-audio-context, name <BaseAudioContext>
         like native-array
           like native-number
         like float32-array
-    take constraints, like maybe
-      like periodic-wave-constraints
+    take constraints
+      like maybe
+        like periodic-wave-constraints
     like periodic-wave
 
   task create-script-processor, name <createScriptProcessor>
-    take buffer-size, like maybe
-      like native-number
-    take number-of-input-channels, like maybe
-      like native-number
-    take number-of-output-channels, like maybe
-      like native-number
+    take buffer-size
+      like maybe
+        like native-number
+    take number-of-input-channels
+      like maybe
+        like native-number
+    take number-of-output-channels
+      like maybe
+        like native-number
     like script-processor-node
 
   task create-stereo-panner, name <createStereoPanner>
@@ -235,14 +242,16 @@ form base-audio-context, name <BaseAudioContext>
 
   task decode-audio-data, name <decodeAudioData>
     take audio-data, like array-buffer
-    take success-callback, like maybe
-      like or
-        like decode-success-callback
-        like native-null
-    take error-callback, like maybe
-      like or
-        like decode-error-callback
-        like native-null
+    take success-callback
+      like maybe
+        like or
+          like decode-success-callback
+          like native-null
+    take error-callback
+      like maybe
+        like or
+          like decode-error-callback
+          like native-null
     like promise
       like audio-buffer
 
@@ -259,19 +268,21 @@ form base-audio-context, name <BaseAudioContext>
             like base-audio-context-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -287,17 +298,19 @@ form base-audio-context, name <BaseAudioContext>
             like base-audio-context-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

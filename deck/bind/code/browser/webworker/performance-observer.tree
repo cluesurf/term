@@ -16,8 +16,9 @@ form performance-observer, name <PerformanceObserver>
     like native-void
 
   task observe, name <observe>
-    take options, like maybe
-      like performance-observer-init
+    take options
+      like maybe
+        like performance-observer-init
     like native-void
 
   task take-records, name <takeRecords>

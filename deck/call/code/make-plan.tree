@@ -1,0 +1,173 @@
+# The build driver's decisions that need no disk: which folder entries the file walk passes over, the flat name a
+# module's unit is written under, and the entry shim that re-exports what the merged build's artifact exported.
+#
+# Ported from deck/call/code/make.ts (self-hosting, 2026-10-06), which stays the build driver: it reads the folders,
+# asks whether a folder holds a manifest or a draft, computes the paths, and hands the names' spellings in.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+  find char-code-at
+
+# the per-platform native trees. A build targets ONE of these, and `withNativeEnv` rewrites every abstract
+# `.../native/<name>` import to the concrete `.../native/<platform>/<name>`, so the other platforms' sources are never
+# reachable from it, and compiling them anyway reports errors for code the target never runs
+task native-platforms
+  like list, like text
+
+  save out, make list
+  push(out, <node>)
+  push(out, <browser>)
+  push(out, <cloudflare>)
+  push(out, <webview>)
+  push(out, <rust>)
+  push(out, <swift>)
+  push(out, <javascript>)
+  push(out, <kotlin>)
+  back out
+
+# Does the walk pass over this folder entry before looking at it? Generated output and dependencies (`node_modules`,
+# `host`, `.git`); a hidden folder (`.base`, `.build`, `.swiftpm`); scratch (`tmp`); the installed dependencies, `link`
+# at the root only (`deck/mill/code/code/form/link` is the grammar of the `link` head, real source); and, building for
+# one platform, another platform's native tree, `shared` being every target's. Measured on the Term root, 2026-10-05:
+# 29.6 s in `tmp/` and 7.8 s in `link/` against 0.4 s for the package's own 157 files
+task walk-skips
+  take entry, like text
+  take at-root, like boolean
+  take parent, like text
+  take platform, like text
+  like boolean
+
+  fork test, or(or(is-equal(entry, <node_modules>), is-equal(entry, <host>)), is-equal(entry, <.git>))
+    hold
+      back true
+  fork test, or(starts-with(entry, <.>), is-equal(entry, <tmp>))
+    hold
+      back true
+  fork test, and(is-equal(entry, <link>), at-root)
+    hold
+      back true
+  back and(and(is-unequal(platform, <>), is-equal(parent, <native>)), and(and(is-unequal(entry, platform), is-unequal(entry, <shared>)), contains(native-platforms(), entry)))
+
+# a module's flat artifact name under host/.unit/ from its deck's name and its path in the deck (`_term_base_code_text`),
+# the same from every project: `.tree` off the end, and every UTF-16 unit outside letters, digits, `.`, `_` and `-`
+# made `_`, as `replace(/[^A-Za-z0-9._-]/g, '_')` does, so a character past U+FFFF is two
+task unit-slug-of
+  take named, like text
+  like text
+
+  save base, named
+  fork test, ends-with(named, <.tree>)
+    hold
+      save base, substring(named, 0, subtract(char-count(named), 5))
+  save out, make list
+  walk split(base, <>)
+    take point
+    save code, char-code-at(point, 0)
+    save kept, or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), or(or(is-equal(code, 46), is-equal(code, 95)), is-equal(code, 45))))
+    fork test, kept
+      hold
+        push(out, point)
+      miss
+        push(out, <_>)
+        fork test, is-above(code, 65535)
+          hold
+            push(out, <_>)
+  back join(out, <>)
+
+# one name of the entry's closure the shim re-exports
+form shim-export
+  link name, like text
+  link exported, like text
+  link file, like text
+  link type, like boolean
+
+# the modules in the order first met, and each one's names in order
+form shim-group
+  # one group, added to where it stands on every backend
+  mark shared
+  link file, like text
+  link names, like list, like text
+
+task add-to-group
+  take groups, like list, like shim-group
+  take file, like text
+  take name, like text
+  like void
+  mark private
+
+  walk groups
+    take group
+    fork test, is-equal(group/file, file)
+      hold
+        push(group/names, name)
+        back
+  save names, make list
+  push(names, name)
+  save made
+    make shim-group
+      bind file, file
+      bind names, names
+  push(groups, made)
+
+# THE ENTRY SHIM: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every public
+# task, constant and type of the entry's closure, each from the module that defines it, so a TypeScript importer keeps
+# its import path and its names. A value is spelled camel and a type Pascal, and one exported under another name is
+# renamed back to its own
+task entry-shim-text
+  take exports, like list, like shim-export
+  take value-spelling
+    like task
+      take name, like text
+      like text
+  take type-spelling
+    like task
+      take name, like text
+      like text
+  take unit-of
+    like task
+      take file, like text
+      like text
+  like text
+
+  save values, make list
+  save types, make list
+  walk exports
+    take one
+    save local, value-spelling(one/name)
+    save remote, value-spelling(one/exported)
+    fork test, one/type
+      hold
+        save local, type-spelling(one/name)
+        save remote, type-spelling(one/exported)
+    save named, local
+    fork test, is-unequal(remote, local)
+      hold
+        save named, <{remote} as {local}>
+    fork test, one/type
+      hold
+        add-to-group(types, one/file, named)
+      miss
+        add-to-group(values, one/file, named)
+  save lines, make list
+  walk values
+    take group
+    save names, join(group/names, <, >)
+    save from, unit-of(group/file)
+    push(lines, <export \{ {names} \} from '{from}'>)
+  walk types
+    take group
+    save names, join(group/names, <, >)
+    save from, unit-of(group/file)
+    push(lines, <export type \{ {names} \} from '{from}'>)
+  save body, join(lines, <\n>)
+  back <{body}\n>

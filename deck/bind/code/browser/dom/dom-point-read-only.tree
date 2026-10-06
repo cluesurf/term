@@ -22,8 +22,9 @@ form dom-point-read-only, name <DOMPointReadOnly>
     like native-number
 
   task matrix-transform, name <matrixTransform>
-    take matrix, like maybe
-      like dom-matrix-init
+    take matrix
+      like maybe
+        like dom-matrix-init
     like dom-point
 
   task to-json, name <toJSON>

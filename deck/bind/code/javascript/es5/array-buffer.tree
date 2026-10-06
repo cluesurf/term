@@ -8,6 +8,7 @@ form array-buffer, name <ArrayBuffer>
 
   task slice, name <slice>
     take begin, like native-number
-    take end, like maybe
-      like native-number
+    take end
+      like maybe
+        like native-number
     like array-buffer

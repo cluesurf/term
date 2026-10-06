@@ -27,8 +27,9 @@ form function, name <Function>
   task apply, name <apply>
     take this, like function
     take this-arg, like native-any
-    take arg-array, like maybe
-      like native-any
+    take arg-array
+      like maybe
+        like native-any
     like native-any
 
   task call, name <call>

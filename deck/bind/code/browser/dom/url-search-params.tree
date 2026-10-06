@@ -60,6 +60,7 @@ form url-search-params, name <URLSearchParams>
         take key, like native-string
         take parent, like url-search-params
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

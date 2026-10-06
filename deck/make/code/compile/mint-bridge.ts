@@ -178,6 +178,11 @@ type Bridge = {
   // `link` names, a handler's caught exception, a `host` constant in a body. Read with `declared` by `inScope`,
   // and only to decide what a bare value word (`term`, `text`, `code`) means.
   bound: Set<string>
+  // a `save` that declared a name its own value reads (`save callee, rewrite(callee)` under `case call`): the new
+  // local is renamed `<name>__<n>` so the value reads the OUTER `callee`, and `flowOf` renames the uses after it
+  shadowed?: { from: string; to: string }
+  // the count behind those fresh names
+  shadows?: number
   // inside a task's or a closure's body, as opposed to the top level of the file
   inBody?: boolean
   // the file defines a task named `host` or imports one, so a `host` statement in a body may mean the call
@@ -1775,6 +1780,32 @@ function refuseNestedTasks(bridge: Bridge, value: Form): void {
   }
 }
 
+// A `take`, `link` or `slot` has ONE type, its first `like`. A second `like` at the same depth is read only as a
+// FUNCTION's result (`take f, like task / take x, like nat / like nat`, see withOuterTakes), so under any other type
+// it was read by nothing: `take tells / like list / like dynamic` was a list of anything with no message, and the
+// element type the author wrote went nowhere. A type argument nests under its type, or follows it on one line:
+// `take tells, like list, like dynamic`, where the comma puts the second `like` under the first. On a `take` the
+// second one lands at `like`, on a link at `result`; a link with a native `name <X>` ignores its trailing `like` by
+// design (quirk 6), so it is not refused there.
+function refuseSiblingLikes(bridge: Bridge, value: Form, declared: Type | undefined): void {
+  const extras = [...formsAt(value, 'like').slice(1), ...formsAt(value, 'result')]
+
+  if (extras.length === 0 || declared?.kind === 'function' || wordAt(value, 'nick') !== undefined) {
+    return
+  }
+
+  for (const extra of extras) {
+    bridge.diagnostics.push(
+      diagnose('unexpected-node', {
+        file: bridge.file,
+        span: spanOf(extra),
+        message: 'a second `like` beside the first is read by nothing: a parameter or field has one type',
+        hint: 'nest the type argument under its type, or write it on one line: `take x, like list, like text`',
+      }),
+    )
+  }
+}
+
 function callOf(bridge: Bridge, value: Form): Expression | undefined {
   const name = wordAt(value, 'name')
 
@@ -2001,6 +2032,7 @@ function foldBuiltin(
 
 function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
   const body: Statement[] = []
+  const renames: { at: number; from: string; to: string }[] = []
 
   for (let i = 0; i < values.length; i++) {
     const value = values[i]!
@@ -2086,6 +2118,7 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
       continue
     }
 
+    bridge.shadowed = undefined
     const built = statementOf(bridge, value)
 
     if (Array.isArray(built)) {
@@ -2093,9 +2126,22 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
     } else if (built) {
       body.push(built)
     }
+
+    // a `save` that read the name it declared took a fresh one (statementOf, `save`): every use after it is that
+    if (bridge.shadowed) {
+      renames.push({ at: body.length, ...bridge.shadowed })
+      bridge.shadowed = undefined
+    }
   }
 
-  return body
+  // each rename covers the statements after its own `save`, in order, so a later one sees the earlier one done
+  let renamed = body
+
+  for (const { at: from, from: name, to } of renames) {
+    renamed = [...renamed.slice(0, from), ...renameLocal(renamed.slice(from), name, to)]
+  }
+
+  return renamed
 }
 
 // a nested body is its own scope: a `save x` in one arm of a fork must not turn the `save x` in the other arm
@@ -2166,6 +2212,25 @@ function renameLocal<T>(value: T, from: string, to: string): T {
   }
 
   return visit(value) as T
+}
+
+// does a built expression read the variable `name` anywhere in it
+function readsVariable(expr: unknown, name: string): boolean {
+  if (expr === null || typeof expr !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(expr)) {
+    return expr.some(one => readsVariable(one, name))
+  }
+
+  const node = expr as Record<string, unknown>
+
+  if (node.form === 'variable' && node.name === name) {
+    return true
+  }
+
+  return Object.entries(node).some(([key, child]) => key !== 'span' && key !== 'type' && readsVariable(child, name))
 }
 
 // Is this name a local in scope here: a parameter, a `save`, or any other binder the bridge has passed.
@@ -2316,9 +2381,20 @@ function statementOf(
       bridge.declared.add(name)
       const declaredType = typeOf(bridge, firstAt(value, 'like'))
 
+      // A NEW local whose value reads its own name reads something OUTSIDE this scope: a `fork case` arm's field, a
+      // module constant. `save callee, rewrite(callee)` under `case call` meant the field, and declaring `callee`
+      // first made the value read the new local before it existed: a TypeError on TypeScript, and every compile of
+      // the ported simplifier stopped there (2026-10-06). The new local takes a fresh name, the value keeps reading
+      // the outer one, and `flowOf` renames the uses after it
+      const fresh = readsVariable(init, name) ? `${name}__${(bridge.shadows = (bridge.shadows ?? 0) + 1)}` : undefined
+
+      if (fresh) {
+        bridge.shadowed = { from: name, to: fresh }
+      }
+
       return {
         form: 'let',
-        name,
+        name: fresh ?? name,
         init,
         mutable: true,
         ...(declaredType ? { type: declaredType } : {}),
@@ -3313,6 +3389,7 @@ function paramOf(
     withOuterTakes(bridge, typeOf(bridge, firstAt(take, 'like')), take),
     take,
   )
+  refuseSiblingLikes(bridge, take, declared)
   // a form's method takes its own form as `self` when nothing else is written
   const type =
     declared ?? (owner && name === 'self' ? bridge.selfType : undefined)
@@ -4916,6 +4993,7 @@ function fieldOf(
     withOuterTakes(bridge, typeOf(bridge, like), link),
     link,
   )
+  refuseSiblingLikes(bridge, link, declared)
   const element = wordAt(listOf, 'form')
   const type: Type =
     declared ??

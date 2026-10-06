@@ -46,14 +46,16 @@ form html-slot-element, name <HTMLSlotElement>
     lock false
 
   task assigned-elements, name <assignedElements>
-    take options, like maybe
-      like assigned-nodes-options
+    take options
+      like maybe
+        like assigned-nodes-options
     like native-array
       like element
 
   task assigned-nodes, name <assignedNodes>
-    take options, like maybe
-      like assigned-nodes-options
+    take options
+      like maybe
+        like assigned-nodes-options
     like native-array
       like node
 
@@ -70,19 +72,21 @@ form html-slot-element, name <HTMLSlotElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -98,17 +102,19 @@ form html-slot-element, name <HTMLSlotElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

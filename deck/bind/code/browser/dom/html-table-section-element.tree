@@ -59,8 +59,9 @@ form html-table-section-element, name <HTMLTableSectionElement>
     like native-void
 
   task insert-row, name <insertRow>
-    take index, like maybe
-      like native-number
+    take index
+      like maybe
+        like native-number
     like html-table-row-element
 
   task add-event-listener, name <addEventListener>
@@ -76,19 +77,21 @@ form html-table-section-element, name <HTMLTableSectionElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task add-event-listener, name <addEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like add-event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like add-event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
@@ -104,17 +107,19 @@ form html-table-section-element, name <HTMLTableSectionElement>
             like html-element-event-map
             like k
         like native-any
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void
 
   task remove-event-listener, name <removeEventListener>
     take type, like native-string
     take listener, like event-listener-or-event-listener-object
-    take options, like maybe
-      like or
-        like native-boolean
-        like event-listener-options
+    take options
+      like maybe
+        like or
+          like native-boolean
+          like event-listener-options
     like native-void

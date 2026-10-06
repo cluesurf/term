@@ -20,8 +20,9 @@ form mutation-observer, name <MutationObserver>
 
   task observe, name <observe>
     take target, like node
-    take options, like maybe
-      like mutation-observer-init
+    take options
+      like maybe
+        like mutation-observer-init
     like native-void
 
   task take-records, name <takeRecords>

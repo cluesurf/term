@@ -1,0 +1,120 @@
+# What a project's role file may say, checked before the build trusts it. A role file that names a role the compiler
+# does not have, or flags a rule with `note` (read by nothing: a rule's flag is `mark`), STOPS THE BUILD, naming the file
+# and the line. A misspelled `role hots` over data files built them as code with no warning, and `note lean` over a lean
+# package left every file in it read long-form, the failure arriving far away as an unknown name.
+#
+# Ported from deck/call/code/role-of.ts (self-hosting, 2026-10-06), which stays as the face: it finds and reads the
+# role file, parses it with the role grammar, caches the rules per package and throws what this module answers.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load ./draft-mark
+  find is-space
+
+# the roles the compiler reads (compile/compile.ts `compileData`, the mill check, the view path, the site and call
+# readers). Any other name was read as nothing, and its files compiled as code
+task role-names
+  like list, like text
+
+  save out, make list
+  push(out, <code>)
+  push(out, <host>)
+  push(out, <view>)
+  push(out, <site>)
+  push(out, <call>)
+  push(out, <mill>)
+  push(out, <book>)
+  back out
+
+task is-blank-point
+  take point, like text
+  like boolean
+  mark private
+
+  back is-space(char-code-at(point, 0))
+
+# past a run of `\s` from `at`
+task past-space
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  save index, at
+  walk test
+    hook test, and(is-below(index, points/length), is-blank-point(get(points, index)))
+    hook hold
+      save index, add(index, 1)
+  back index
+
+# the flag a line writes as `note <word>` under a rule (`^\s+note\s+([^\s,]+)`), or the empty text
+task note-flag
+  take line, like text
+  like text
+  mark private
+
+  save points, split(line, <>)
+  save at, past-space(points, 0)
+  fork test, is-equal(at, 0)
+    hold
+      back <>
+  save word, <note>
+  save index, 0
+  walk split(word, <>)
+    take want
+    fork test, or(not(is-below(add(at, index), points/length)), is-unequal(get(points, add(at, index)), want))
+      hold
+        back <>
+    save index, add(index, 1)
+  save after, add(at, 4)
+  save start, past-space(points, after)
+  fork test, is-equal(start, after)
+    hold
+      back <>
+  save flag, make list
+  save end, start
+  walk test
+    hook test, and(is-below(end, points/length), and(not(is-blank-point(get(points, end))), is-unequal(get(points, end), <,>)))
+    hook hold
+      push(flag, get(points, end))
+      save end, add(end, 1)
+  back join(flag, <>)
+
+# the first line of a role file that flags a rule with `note`, as the message that stops the build, or the empty text
+task note-problem
+  take text, like text
+  take file, like text
+  like text
+
+  save index, 0
+  walk split(text, <\n>)
+    take line
+    save index, add(index, 1)
+    save flag, note-flag(line)
+    fork test, is-unequal(flag, <>)
+      hold
+        back <{file}:{index}: `note {flag}` in a role rule is read by nothing. A rule's flag is `mark {flag}`>
+  back <>
+
+# the first rule naming a role the compiler does not have, as the message that stops the build, or the empty text
+task role-problem
+  take names, like list, like text
+  take file, like text
+  like text
+
+  save known, role-names()
+  walk names
+    take name
+    fork test, not(contains(known, name))
+      hold
+        save listed, join(known, <, >)
+        back <{file}: `role {name}` is not a role. The roles are {listed}>
+  back <>

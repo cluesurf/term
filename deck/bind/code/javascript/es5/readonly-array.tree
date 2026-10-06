@@ -56,28 +56,33 @@ form readonly-array, name <ReadonlyArray>
       like t
 
   task join, name <join>
-    take separator, like maybe
-      like native-string
+    take separator
+      like maybe
+        like native-string
     like native-string
 
   task slice, name <slice>
-    take start, like maybe
-      like native-number
-    take end, like maybe
-      like native-number
+    take start
+      like maybe
+        like native-number
+    take end
+      like maybe
+        like native-number
     like native-array
       like t
 
   task index-of, name <indexOf>
     take search-element, like t
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task last-index-of, name <lastIndexOf>
     take search-element, like t
-    take from-index, like maybe
-      like native-number
+    take from-index
+      like maybe
+        like native-number
     like native-number
 
   task every, name <every>
@@ -92,8 +97,9 @@ form readonly-array, name <ReadonlyArray>
             like t
         like native-boolean
         rank value, like s
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task every, name <every>
@@ -105,8 +111,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task some, name <some>
@@ -118,8 +125,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-boolean
 
   task for-each, name <forEach>
@@ -131,8 +139,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   task map, name <map>
@@ -145,8 +154,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like u
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like u
 
@@ -162,8 +172,9 @@ form readonly-array, name <ReadonlyArray>
             like t
         like native-boolean
         rank value, like s
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like s
 
@@ -176,8 +187,9 @@ form readonly-array, name <ReadonlyArray>
           like native-array
             like t
         like native-unknown
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-array
       like t
 

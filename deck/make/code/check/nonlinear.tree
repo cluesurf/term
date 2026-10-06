@@ -1,0 +1,2030 @@
+# The hold prover's polynomial core: the atoms a call becomes, the expansion of an arithmetic expression into a
+# polynomial, and the nonlinear non-negativity decisions the linear prover lacks. A goal `L >= R` (or `>`, `<=`, `<`)
+# whose difference is:
+#   - structurally non-negative (a square, a sum or product of non-negative parts): `positivity-proves`
+#   - a quadratic in any number of variables, decided exactly by positive (semi)definiteness through integer minors
+#     (Sylvester), the minors by fraction-free Bareiss elimination over big integers: `quadratic-proves`
+#   - a univariate perfect square, recovered from its top coefficients and verified: `perfect-square-proves`
+#   - a multivariate sum of squares over the Newton basis, verified as an identity and PSD: `sos-proves`
+#   - univariate and positive or non-negative everywhere by Sturm: `sturm-proves`
+#   - bivariate or of three or four variables and non-negative everywhere by cylindrical algebraic decomposition:
+#     `bivariate-proves`, `nvar-proves`
+# Every certificate a search finds is replayed by the Gram checker (check/certificate.tree) before it counts.
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part one, which stays the face for the rest. The decisions:
+#   - the tables are the shared `hold-state` (check/hold-state.tree) the face builds, so an atom registered here is one
+#     the TypeScript left in holds.ts reads
+#   - a polynomial is a `hash` of monomial key to coefficient, a `Map` on TypeScript in the order its keys were set, and
+#     every coefficient is a `float`: the original's were doubles, its safety checks ask JavaScript's own
+#     `Number.isSafeInteger`, and its divisions and remainders are JavaScript's, through binds
+#   - an integer literal's value may be a big integer at run time (one past 2^53, the mill's `exact-integer`), so its
+#     reads go through binds that ask `Number` and `BigInt` as the original did
+#   - a search that finds a certificate the checker refuses calls `on-uncertified`, the face's refine.ts counter
+#   - the principal minors are tried as a set of subsets rather than in bit-mask order: each is a pure determinant, so
+#     the answer is the same
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+
+load @term/base/integer/big
+  find big-integer
+  find big-handle
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-divide
+  find big-compare
+
+load ../compile/node
+  find expression
+  find type
+
+load ./certificate
+  find gram
+  find gram-key
+  find check-gram
+  find linear
+  find inequality
+
+load ./explain
+  find print-expression
+
+load ./sturm
+  find positive-everywhere
+  find non-negative-everywhere
+
+load ./cad
+  find bivariate-non-negative
+
+load ./cad-nvar
+  find n-term
+  find n-poly
+  find non-negative-everywhere-nvar
+
+load ./eliminate
+  find utf16-order
+
+load ./hold-state
+  find hold-state
+  find hold-atom
+
+# ---- JavaScript's numbers ----
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <(if $value.fract() == 0.0 && $value.abs() \< 1e21 \{ format!("\{\}", $value as i64) \} else \{ $value.to_string() \})>
+  case swift
+    text <($value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \< 1e15 ? String(Int64($value)) : String($value))>
+  case kotlin
+    text <(if ($value % 1.0 == 0.0 && Math.abs($value) \< 1e15) $value.toLong().toString() else $value.toString())>
+
+bind safe-integer
+  take value, like float
+  like boolean
+  case node
+    text <Number.isSafeInteger($value)>
+  case browser
+    text <Number.isSafeInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0 && $value.abs() \<= 9007199254740991.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \<= 9007199254740991.0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0 && Math.abs($value) \<= 9007199254740991.0)>
+
+# an integer literal's value as a double: `Number(value)`, whatever the mill stored
+bind literal-float
+  take value, like number
+  like float
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <($value as f64)>
+  case swift
+    text <Double($value)>
+  case kotlin
+    text <($value.toDouble())>
+
+# an integer literal whose double is its value exactly: a safe integer that converts back to the literal
+bind literal-exact
+  take value, like number
+  like boolean
+  case node
+    text <(Number.isSafeInteger(Number($value)) && BigInt(Number($value)) === BigInt($value))>
+  case browser
+    text <(Number.isSafeInteger(Number($value)) && BigInt(Number($value)) === BigInt($value))>
+  case rust
+    text <(($value as i64).abs() \<= 9007199254740991)>
+  case swift
+    text <(abs(Int64($value)) \<= 9007199254740991)>
+  case kotlin
+    text <(Math.abs($value.toLong()) \<= 9007199254740991L)>
+
+# two integer literals' values, compared as the original's `===` compared them
+bind literal-same
+  take a, like number
+  take b, like number
+  like boolean
+  case node
+    text <($a === $b)>
+  case browser
+    text <($a === $b)>
+  case rust
+    text <($a == $b)>
+  case swift
+    text <($a == $b)>
+  case kotlin
+    text <($a == $b)>
+
+bind sqrt-round
+  take value, like float
+  like float
+  case node
+    text <Math.round(Math.sqrt($value))>
+  case browser
+    text <Math.round(Math.sqrt($value))>
+  case rust
+    text <(($value.sqrt() + 0.5).floor())>
+  case swift
+    text <(($value.squareRoot() + 0.5).rounded(.down))>
+  case kotlin
+    text <Math.floor(Math.sqrt($value) + 0.5)>
+
+bind js-remainder
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <($a % $b)>
+  case browser
+    text <($a % $b)>
+  case rust
+    text <($a % $b)>
+  case swift
+    text <$a.truncatingRemainder(dividingBy: $b)>
+  case kotlin
+    text <($a % $b)>
+
+bind js-divide
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <($a / $b)>
+  case browser
+    text <($a / $b)>
+  case rust
+    text <($a / $b)>
+  case swift
+    text <($a / $b)>
+  case kotlin
+    text <($a / $b)>
+
+# `BigInt(Math.round(value))`
+bind rounded-big
+  take value, like float
+  like big-handle
+  case node
+    text <BigInt(Math.round($value))>
+  case browser
+    text <BigInt(Math.round($value))>
+  case rust
+    text <std::rc::Rc::new(num_bigint::BigInt::from(($value).round() as i64)) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.fromInt(Int64(($value).rounded()))>
+  case kotlin
+    text <java.math.BigInteger.valueOf(Math.round($value))>
+
+# a whole double handed on where a number is typed: the same value on TypeScript
+bind as-number
+  take value, like float
+  like number
+  case node
+    text <$value>
+  case browser
+    text <$value>
+  case rust
+    text <($value as i64)>
+  case swift
+    text <Int64($value)>
+  case kotlin
+    text <($value.toLong())>
+
+task big-of
+  take value, like float
+  like big-integer
+  mark private
+
+  back
+    make big-integer
+      bind dock, rounded-big(value)
+
+# ---- small tables ----
+
+task poly-table
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task copy-poly
+  take poly, like hash, like text, like float
+  like hash, like text, like float
+  mark private
+
+  save out, poly-table()
+  walk poly/keys()
+    take key
+    save out/{key}, poly/get(key)
+  back out
+
+task coefficient-at
+  take poly, like hash, like text, like float
+  take key, like text
+  like float
+  mark private
+
+  fork test, poly/has(key)
+    hold
+      back poly/get(key)
+  back 0.0
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-text
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  fork test, has-text(into, one)
+    hold
+      back
+  push(into, one)
+
+task zero-row
+  take size, like number
+  like list, like float
+  mark private
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      push(out, 0.0)
+      save at, add(at, 1)
+  back out
+
+task zero-matrix
+  take size, like number
+  like list, like list, like float
+  mark private
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      push(out, zero-row(size))
+      save at, add(at, 1)
+  back out
+
+# m[i][j] += amount
+task bump
+  take matrix, like list, like list, like float
+  take i, like number
+  take j, like number
+  take amount, like float
+  mark private
+
+  save row, get(matrix, i)
+  save row/{j}, add(get(row, j), amount)
+
+# ---- monomials ----
+
+# a monomial's key: its variables sorted and joined by a space, `''` for the constant
+task monomial-key
+  take variables, like list, like text
+  like text
+
+  back join(sort(variables, utf16-order), < >)
+
+task monomial-vars
+  take key, like text
+  like list, like text
+
+  fork test, is-equal(key, <>)
+    hold
+      back make list
+  back split(key, < >)
+
+task joined-vars
+  take a, like text
+  take b, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk monomial-vars(a)
+    take one
+    push(out, one)
+  walk monomial-vars(b)
+    take one
+    push(out, one)
+  back out
+
+task multiply-monomial
+  take a, like text
+  take b, like text
+  like text
+  mark private
+
+  back monomial-key(joined-vars(a, b))
+
+# half of a monomial (each exponent halved), or none if an exponent is odd
+task half-monomial
+  take key, like text
+  like maybe, like text
+  mark private
+
+  save order, make list
+  save counts, count-table()
+  walk monomial-vars(key)
+    take v
+    fork test, not(counts/has(v))
+      hold
+        push(order, v)
+        save counts/{v}, 0
+    save counts/{v}, add(counts/get(v), 1)
+  save half, make list
+  walk order
+    take v
+    save c, counts/get(v)
+    fork test, is-unequal(modulo(c, 2), 0)
+      hold
+        back make none
+    save at, 0
+    walk test
+      hook test, is-below(multiply(at, 2), c)
+      hook hold
+        push(half, v)
+        save at, add(at, 1)
+  save key-out, monomial-key(half)
+  back make(some, key-out)
+
+task count-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# ---- the atoms ----
+
+task is-application
+  take state, like hold-state
+  take key, like text
+  like boolean
+
+  back state/applications/has(key)
+
+# the variables an application's arguments read, through nested applications
+task application-variables
+  take state, like hold-state
+  take key, like text
+  like list, like text
+
+  fork test, state/applications/has(key)
+    hold
+      back state/applications/get(key)/variables
+  back make list
+
+# a plain path (`xs`, `self/line`) as dotted text, or none when a step is computed
+task plain-path
+  take expr, like expression
+  like maybe, like text
+
+  sift expr
+    case variable
+      back make(some, name)
+    case member
+      sift index
+        case some
+          link computed
+          back make none
+        case none
+          sift plain-path(target)
+            case some
+              link inner
+              save dotted, <{inner}.{name}>
+              back make(some, dotted)
+            case none
+              back make none
+    miss
+      back make none
+
+task is-length-call
+  take name, like text
+  like boolean
+  mark private
+
+  back has-text(split(<length size count array-size list_length list_size list_count>, < >), name)
+
+task is-string-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# the atom key for a list's length, or none when the expression is not one: `@text:` for a text's, which is not state
+task length-atom
+  take state, like hold-state
+  take expr, like expression
+  like maybe, like text
+
+  sift expr
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          link computed
+          back make none
+        case none
+          save nothing, 0
+      fork test, is-unequal(member-name, <length>)
+        hold
+          back make none
+      save path-read, plain-path(member-target)
+      save text-target, false
+      sift member-target
+        case variable
+          link target-name
+          link target-span
+          link target-type
+          sift target-type
+            case some
+              link known
+              save text-target, is-string-type(target-type)
+            case none
+              save text-target, state/text-params/has(target-name)
+        miss
+          save text-target, is-string-type(expression-type(member-target))
+      sift path-read
+        case some
+          link path
+          fork test, text-target
+            hold
+              back make(some, <@text:{path}>)
+          back make(some, <@length:{path}>)
+        case none
+          back make none
+    case call
+      link callee
+      link call-args
+      sift callee
+        case variable
+          link callee-name
+          fork test, and(is-length-call(callee-name), is-equal(call-args/length, 1))
+            hold
+              sift plain-path(get(call-args, 0))
+                case some
+                  link path
+                  back make(some, <@length:{path}>)
+                case none
+                  back make none
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# an expression's own type, which every case carries
+task expression-type
+  take expr, like expression
+  like maybe, like type
+  mark private
+
+  sift expr
+    case integer
+      back type
+    case float
+      back type
+    case boolean
+      back type
+    case string
+      back type
+    case template
+      back type
+    case unit
+      back type
+    case null
+      back type
+    case variable
+      back type
+    case binary
+      back type
+    case unary
+      back type
+    case call
+      back type
+    case array
+      back type
+    case map
+      back type
+    case record
+      back type
+    case member
+      back type
+    case await
+      back type
+    case closure
+      back type
+    case conditional
+      back type
+    case hole
+      back type
+
+# the variable names an expression reads, as written, in the order first met
+task names-in
+  take e, like expression
+  like list, like text
+
+  save out, make list
+  collect-names(e, out)
+  back out
+
+task collect-names
+  take e, like expression
+  take out, like list, like text
+  mark private
+
+  sift e
+    case variable
+      add-text(out, name)
+    case binary
+      collect-names(left, out)
+      collect-names(right, out)
+    case unary
+      collect-names(operand, out)
+    case call
+      walk args
+        take arg
+        collect-names(arg, out)
+    case record
+      walk fields
+        take field
+        collect-names(field/value, out)
+    case member
+      collect-names(target, out)
+    miss
+      save nothing, 0
+
+# the key of an application, registered in the state's table, or none for any other expression or an argument outside
+# the polynomial fragment. A call of any pure task is an atom too, as is one of a quantified function or a recurrence
+task application-key
+  take state, like hold-state
+  take expr, like expression
+  like maybe, like text
+
+  sift length-atom(state, expr)
+    case some
+      link length-key
+      back make none
+    case none
+      save nothing, 0
+  sift expr
+    case call
+      link callee
+      link call-args
+      sift callee
+        case variable
+          link callee-name
+          save known, or(or(state/applied-functions/has(callee-name), state/recurrences/has(callee-name)), state/pure-tasks/has(callee-name))
+          fork test, not(known)
+            hold
+              back make none
+          save args, make list
+          save variables, make list
+          walk call-args
+            take arg
+            sift expand-polynomial(state, arg)
+              case some
+                link poly
+                save terms, make list
+                walk poly/keys()
+                  take key
+                  save c, poly/get(key)
+                  fork test, is-unequal(c, 0.0)
+                    hold
+                      push(terms, <{js-text(c)}*{join(monomial-vars(key), <.>)}>)
+                save joined, join(sort(terms, utf16-order), <+>)
+                fork test, is-equal(joined, <>)
+                  hold
+                    save joined, <0>
+                push(args, joined)
+                walk poly/keys()
+                  take monomial
+                  walk monomial-vars(monomial)
+                    take v
+                    fork test, is-application(state, v)
+                      hold
+                        walk application-variables(state, v)
+                          take inner
+                          add-text(variables, inner)
+                      miss
+                        add-text(variables, v)
+              case none
+                fork test, or(state/pure-tasks/has(callee-name), state/recurrences/has(callee-name))
+                  hold
+                    push(args, <\{{print-expression(arg, 0)}\}>)
+                    walk names-in(arg)
+                      take name
+                      add-text(variables, name)
+                  miss
+                    back make none
+          save key, <@apply:{callee-name}({join(args, <,>)})>
+          fork test, not(state/applications/has(key))
+            hold
+              save atom
+                make hold-atom
+                  bind function, callee-name
+                  bind variables, variables
+              save state/applications/{key}, atom
+          back make(some, key)
+        miss
+          back make none
+    miss
+      back make none
+
+# does the goal call a pure task (not a function mark, not a recurrence) that no fact in hand mentions
+task unconstrained-call
+  take state, like hold-state
+  take goal, like expression
+  take facts, like list, like inequality
+  like boolean
+
+  save mentioned, make list
+  walk facts
+    take fact
+    walk fact/linear/terms/keys()
+      take key
+      add-text(mentioned, key)
+      walk monomial-vars(key)
+        take v
+        add-text(mentioned, v)
+  save found
+    make found-flag
+      bind found, false
+  visit-unconstrained(state, goal, mentioned, found)
+  back found/found
+
+form found-flag
+  mark shared
+  link found, like boolean
+
+task visit-unconstrained
+  take state, like hold-state
+  take e, like expression
+  take mentioned, like list, like text
+  take found, like found-flag
+  mark private
+
+  fork test, found/found
+    hold
+      back
+  sift e
+    case call
+      link callee
+      link call-args
+      save callee-name, <>
+      sift callee
+        case variable
+          link name
+          save callee-name, name
+        miss
+          save nothing, 0
+      fork test, and(state/pure-tasks/has(callee-name), and(not(state/applied-functions/has(callee-name)), not(state/recurrences/has(callee-name))))
+        hold
+          sift application-key(state, e)
+            case some
+              link key
+              save found/found, not(has-text(mentioned, key))
+            case none
+              save found/found, true
+      walk call-args
+        take arg
+        visit-unconstrained(state, arg, mentioned, found)
+    case binary
+      visit-unconstrained(state, left, mentioned, found)
+      visit-unconstrained(state, right, mentioned, found)
+    case unary
+      visit-unconstrained(state, operand, mentioned, found)
+    miss
+      save nothing, 0
+
+# ---- expansion ----
+
+# an arithmetic expression as its polynomial, or none outside the fragment. Every coefficient stays a safe integer:
+# past 2^53 a number rounds, and a rounded coefficient is a different polynomial
+task expand-polynomial
+  take state, like hold-state
+  take expr, like expression
+  like maybe, like hash, like text, like float
+
+  sift application-key(state, expr)
+    case some
+      link applied
+      save out, poly-table()
+      save out/{applied}, 1.0
+      back make(some, out)
+    case none
+      save nothing, 0
+  sift expr
+    case integer
+      link literal
+      fork test, literal-exact(literal)
+        hold
+          save out, poly-table()
+          save constant-key, <>
+          save out/{constant-key}, literal-float(literal)
+          back make(some, out)
+      back make none
+    case variable
+      link name
+      save out, poly-table()
+      save out/{name}, 1.0
+      back make(some, out)
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      save left-read, expand-polynomial(state, left-expr)
+      save right-read, expand-polynomial(state, right-expr)
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              sift op
+                case plus
+                  back sum-of(left, right, 1.0)
+                case minus
+                  back sum-of(left, right, -1.0)
+                case times
+                  back product-of(left, right)
+                miss
+                  back make none
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+task sum-of
+  take left, like hash, like text, like float
+  take right, like hash, like text, like float
+  take sign, like float
+  like maybe, like hash, like text, like float
+  mark private
+
+  save out, copy-poly(left)
+  walk right/keys()
+    take key
+    save next, add(coefficient-at(out, key), multiply(sign, right/get(key)))
+    fork test, not(safe-integer(next))
+      hold
+        back make none
+    save out/{key}, next
+  back make(some, out)
+
+task product-of
+  take left, like hash, like text, like float
+  take right, like hash, like text, like float
+  like maybe, like hash, like text, like float
+  mark private
+
+  save out, poly-table()
+  walk left/keys()
+    take k1
+    save v1, left/get(k1)
+    walk right/keys()
+      take k2
+      save v2, right/get(k2)
+      save key, multiply-monomial(k1, k2)
+      save term, multiply(v1, v2)
+      save next, add(coefficient-at(out, key), term)
+      fork test, or(not(safe-integer(term)), not(safe-integer(next)))
+        hold
+          back make none
+      save out/{key}, next
+  back make(some, out)
+
+# the largest number of variables, with multiplicity, in any monomial with a coefficient other than zero
+task polynomial-degree
+  take poly, like hash, like text, like float
+  like number
+
+  save degree, 0
+  walk poly/keys()
+    take key
+    fork test, is-unequal(poly/get(key), 0.0)
+      hold
+        save size, monomial-vars(key)/length
+        fork test, is-above(size, degree)
+          hold
+            save degree, size
+  back degree
+
+# upper - lower
+task difference-of
+  take high, like hash, like text, like float
+  take low, like hash, like text, like float
+  like hash, like text, like float
+  mark private
+
+  save out, copy-poly(high)
+  walk low/keys()
+    take key
+    save out/{key}, subtract(coefficient-at(out, key), low/get(key))
+  back out
+
+# ---- structural positivity ----
+
+task is-zero-literal
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case integer
+      link literal
+      back is-equal(literal-float(literal), 0.0)
+    miss
+      back false
+
+# syntactic equality on the arithmetic fragment, so `a * a` is recognized as a square
+task same-expression
+  take a, like expression
+  take b, like expression
+  like boolean
+  mark private
+
+  sift a
+    case integer
+      link a-value
+      sift b
+        case integer
+          link b-value
+          back literal-same(a-value, b-value)
+        miss
+          back false
+    case variable
+      link a-name
+      sift b
+        case variable
+          link b-name
+          back is-equal(a-name, b-name)
+        miss
+          back false
+    case binary
+      link a-op
+      link a-left
+      link a-right
+      sift b
+        case binary
+          link b-op
+          link b-left
+          link b-right
+          back and(is-equal(a-op, b-op), and(same-expression(a-left, b-left), same-expression(a-right, b-right)))
+        miss
+          back false
+    miss
+      back false
+
+# is `expr` structurally >= 0: a non-negative literal, a square, or a sum or product of non-negative parts
+task non-negative-expression
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift expr
+    case integer
+      link literal
+      back is-minimum(literal-float(literal), 0.0)
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case times
+          fork test, same-expression(left, right)
+            hold
+              back true
+          back and(non-negative-expression(left), non-negative-expression(right))
+        case plus
+          back and(non-negative-expression(left), non-negative-expression(right))
+        miss
+          back false
+    miss
+      back false
+
+# is `expr` structurally > 0
+task positive-expression
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift expr
+    case integer
+      link literal
+      back is-above(literal-float(literal), 0.0)
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case plus
+          back or(and(positive-expression(left), non-negative-expression(right)), and(non-negative-expression(left), positive-expression(right)))
+        case times
+          back and(positive-expression(left), positive-expression(right))
+        miss
+          back false
+    miss
+      back false
+
+task positivity-proves
+  take expr, like expression
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case at-least
+          back and(is-zero-literal(right), non-negative-expression(left))
+        case at-most
+          back and(is-zero-literal(left), non-negative-expression(right))
+        case above
+          back and(is-zero-literal(right), positive-expression(left))
+        case below
+          back and(is-zero-literal(left), positive-expression(right))
+        miss
+          back false
+    miss
+      back false
+
+# ---- the sides of a goal ----
+
+form goal-sides
+  link upper, like expression
+  link lower, like expression
+  link strict, like boolean
+
+# the side asserted the larger, the other, and whether strictly: of `>=`, `>`, `<=` and `<` as `only` allows
+task sides-of
+  take expr, like expression
+  take strict-ok, like boolean
+  take loose-ok, like boolean
+  like maybe, like goal-sides
+  mark private
+
+  sift expr
+    case binary
+      link op
+      link left
+      link right
+      save upper, left
+      save lower, right
+      save strict, false
+      save known, false
+      sift op
+        case at-least
+          save known, loose-ok
+        case above
+          save known, strict-ok
+          save strict, true
+        case at-most
+          save known, loose-ok
+          save upper, right
+          save lower, left
+        case below
+          save known, strict-ok
+          save strict, true
+          save upper, right
+          save lower, left
+        miss
+          save nothing, 0
+      fork test, known
+        hold
+          save made
+            make goal-sides
+              bind upper, upper
+              bind lower, lower
+              bind strict, strict
+          back make(some, made)
+      back make none
+    miss
+      back make none
+
+# upper - lower of a goal, when both sides are polynomials
+task goal-difference
+  take state, like hold-state
+  take sides, like goal-sides
+  like maybe, like hash, like text, like float
+  mark private
+
+  sift expand-polynomial(state, sides/upper)
+    case some
+      link high
+      sift expand-polynomial(state, sides/lower)
+        case some
+          link low
+          save difference, difference-of(high, low)
+          back make(some, difference)
+        case none
+          back make none
+    case none
+      back make none
+
+# ---- quadratic forms ----
+
+# is every monomial manifestly non-negative: each variable to an even power, with a non-negative coefficient
+task even-monomial-non-negative
+  take poly, like hash, like text, like float
+  take strict, like boolean
+  like boolean
+  mark private
+
+  save constant, 0.0
+  walk poly/keys()
+    take key
+    save coefficient, poly/get(key)
+    fork test, is-equal(coefficient, 0.0)
+      hold
+        turn next
+    fork test, is-below(coefficient, 0.0)
+      hold
+        back false
+    save counts, count-table()
+    walk monomial-vars(key)
+      take v
+      fork test, counts/has(v)
+        hold
+          save counts/{v}, add(counts/get(v), 1)
+        miss
+          save counts/{v}, 1
+    walk counts/values()
+      take c
+      fork test, is-unequal(modulo(c, 2), 0)
+        hold
+          back false
+    fork test, is-equal(key, <>)
+      hold
+        save constant, coefficient
+  fork test, strict
+    hold
+      back is-above(constant, 0.0)
+  back true
+
+# the variables of a polynomial's keys, coefficient zero or not, sorted
+task sorted-variables
+  take poly, like hash, like text, like float
+  like list, like text
+  mark private
+
+  save out, make list
+  walk poly/keys()
+    take key
+    walk monomial-vars(key)
+      take v
+      add-text(out, v)
+  back sort(out, utf16-order)
+
+task index-of-text
+  take names, like list, like text
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# the augmented symmetric matrix of a quadratic, scaled by 2 to stay integer
+task quadratic-matrix
+  take poly, like hash, like text, like float
+  like list, like list, like float
+  mark private
+
+  save order, sorted-variables(poly)
+  save last, order/length
+  save matrix, zero-matrix(add(last, 1))
+  walk poly/keys()
+    take key
+    save coefficient, poly/get(key)
+    save vars, monomial-vars(key)
+    fork test, is-equal(vars/length, 0)
+      hold
+        bump(matrix, last, last, multiply(2.0, coefficient))
+        turn next
+    fork test, is-equal(vars/length, 1)
+      hold
+        save i, index-of-text(order, get(vars, 0))
+        bump(matrix, i, last, coefficient)
+        bump(matrix, last, i, coefficient)
+        turn next
+    save i, index-of-text(order, get(vars, 0))
+    save j, index-of-text(order, get(vars, 1))
+    fork test, is-equal(i, j)
+      hold
+        bump(matrix, i, i, multiply(2.0, coefficient))
+      miss
+        bump(matrix, i, j, coefficient)
+        bump(matrix, j, i, coefficient)
+  back matrix
+
+# the SIGN of an integer matrix's determinant, exactly, by Bareiss fraction-free elimination over big integers: 1, 0
+# or -1, and 2 when an entry is not a safe integer (refused rather than rounded)
+task determinant-sign
+  take matrix, like list, like list, like float
+  like number
+  mark private
+
+  save n, matrix/length
+  fork test, is-equal(n, 0)
+    hold
+      back 1
+  walk matrix
+    take one-row
+    walk one-row
+      take v
+      fork test, not(safe-integer(v))
+        hold
+          back 2
+  save m, make list
+  walk matrix
+    take one-row
+    save big-row, make list
+    walk one-row
+      take v
+      push(big-row, big-of(v))
+    push(m, big-row)
+  save zero, big-from-number(0)
+  save sign, 1
+  save previous, big-from-number(1)
+  save k, 0
+  walk test
+    hook test, is-below(k, subtract(n, 1))
+    hook hold
+      fork test, is-equal(big-compare(get(get(m, k), k), zero), 0)
+        hold
+          save swap, -1
+          save r, add(k, 1)
+          walk test
+            hook test, is-below(r, n)
+            hook hold
+              fork test, is-unequal(big-compare(get(get(m, r), k), zero), 0)
+                hold
+                  save swap, r
+                  halt
+              save r, add(r, 1)
+          fork test, is-below(swap, 0)
+            hold
+              back 0
+          save held, get(m, k)
+          save m/{k}, get(m, swap)
+          save m/{swap}, held
+          save sign, subtract(0, sign)
+      save i, add(k, 1)
+      walk test
+        hook test, is-below(i, n)
+        hook hold
+          save row-i, get(m, i)
+          save row-k, get(m, k)
+          save j, add(k, 1)
+          walk test
+            hook test, is-below(j, n)
+            hook hold
+              save cross, big-subtract(big-multiply(get(row-i, j), get(row-k, k)), big-multiply(get(row-i, k), get(row-k, j)))
+              save row-i/{j}, big-divide(cross, previous)
+              save j, add(j, 1)
+          save i, add(i, 1)
+      save previous, get(get(m, k), k)
+      save k, add(k, 1)
+  save last-entry, get(get(m, subtract(n, 1)), subtract(n, 1))
+  back multiply(sign, big-compare(last-entry, zero))
+
+task submatrix
+  take matrix, like list, like list, like float
+  take indices, like list, like number
+  like list, like list, like float
+  mark private
+
+  save out, make list
+  walk indices
+    take i
+    save one-row, make list
+    walk indices
+      take j
+      push(one-row, get(get(matrix, i), j))
+    push(out, one-row)
+  back out
+
+# every nonempty subset of 0 .. n-1, each in ascending order
+task subsets
+  take n, like number
+  like list, like list, like number
+  mark private
+
+  save out, make list
+  save none-chosen, make list
+  push(out, none-chosen)
+  save at, 0
+  walk test
+    hook test, is-below(at, n)
+    hook hold
+      save grown, make list
+      walk out
+        take chosen
+        push(grown, chosen)
+        save more, make list
+        walk chosen
+          take one
+          push(more, one)
+        push(more, at)
+        push(grown, more)
+      save out, grown
+      save at, add(at, 1)
+  save nonempty, make list
+  walk out
+    take chosen
+    fork test, is-above(chosen/length, 0)
+      hold
+        push(nonempty, chosen)
+  back nonempty
+
+# positive SEMIDEFINITE: every principal minor is >= 0
+task is-positive-semidefinite
+  take matrix, like list, like list, like float
+  like boolean
+  mark private
+
+  walk subsets(matrix/length)
+    take indices
+    save minor, determinant-sign(submatrix(matrix, indices))
+    fork test, or(is-equal(minor, 2), is-below(minor, 0))
+      hold
+        back false
+  back true
+
+# positive DEFINITE (Sylvester): every LEADING principal minor is > 0
+task is-positive-definite
+  take matrix, like list, like list, like float
+  like boolean
+  mark private
+
+  save k, 1
+  walk test
+    hook test, is-maximum(k, matrix/length)
+    hook hold
+      save indices, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, k)
+        hook hold
+          push(indices, at)
+          save at, add(at, 1)
+      save minor, determinant-sign(submatrix(matrix, indices))
+      fork test, or(is-equal(minor, 2), is-maximum(minor, 0))
+        hold
+          back false
+      save k, add(k, 1)
+  back true
+
+form gram-search
+  link basis, like list, like text
+  link matrix, like list, like list, like float
+
+# what a polynomial prover found, replayed by the Gram checker: a certificate that does not replay is counted and the
+# goal left unproven
+task certified
+  take search, like gram-search
+  take poly, like hash, like text, like float
+  take strict, like boolean
+  take on-uncertified
+    like task
+  like boolean
+  mark private
+
+  save target, number-table()
+  walk poly/keys()
+    take key
+    save coefficient, poly/get(key)
+    fork test, is-unequal(coefficient, 0.0)
+      hold
+        save at, gram-key(monomial-vars(key))
+        save had, 0
+        fork test, target/has(at)
+          hold
+            save had, target/get(at)
+        save target/{at}, add(had, as-number(multiply(2.0, coefficient)))
+  save basis, make list
+  walk search/basis
+    take key
+    push(basis, monomial-vars(key))
+  save matrix, make list
+  walk search/matrix
+    take one-row
+    save whole-row, make list
+    walk one-row
+      take v
+      push(whole-row, as-number(v))
+    push(matrix, whole-row)
+  save certificate
+    make gram
+      bind basis, basis
+      bind matrix, matrix
+      bind target, target
+      bind strict, strict
+  save ok, check-gram(certificate)
+  fork test, not(ok)
+    hold
+      on-uncertified()
+  back ok
+
+task number-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# the diagonal Gram matrix of a sum of even monomials: each monomial the square of its half, with weight 2c
+task diagonal-gram
+  take poly, like hash, like text, like float
+  like gram-search
+  mark private
+
+  save keys, make list
+  walk poly/keys()
+    take key
+    fork test, is-unequal(poly/get(key), 0.0)
+      hold
+        push(keys, key)
+  save basis, make list
+  walk keys
+    take key
+    sift half-monomial(key)
+      case some
+        link half
+        push(basis, half)
+      case none
+        push(basis, key)
+  save matrix, make list
+  save i, 0
+  walk keys
+    take row-key
+    save one-row, make list
+    save j, 0
+    walk keys
+      take column-key
+      fork test, is-equal(i, j)
+        hold
+          push(one-row, multiply(2.0, poly/get(column-key)))
+        miss
+          push(one-row, 0.0)
+      save j, add(j, 1)
+    push(matrix, one-row)
+    save i, add(i, 1)
+  back
+    make gram-search
+      bind basis, basis
+      bind matrix, matrix
+
+task quadratic-proves
+  take state, like hold-state
+  take expr, like expression
+  take on-uncertified
+    like task
+  like boolean
+  mark private
+
+  sift sides-of(expr, true, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          fork test, even-monomial-non-negative(difference, sides/strict)
+            hold
+              back certified(diagonal-gram(difference), difference, sides/strict, on-uncertified)
+          fork test, is-above(polynomial-degree(difference), 2)
+            hold
+              back false
+          save matrix, quadratic-matrix(difference)
+          save found, false
+          fork test, sides/strict
+            hold
+              save found, is-positive-definite(matrix)
+            miss
+              save found, is-positive-semidefinite(matrix)
+          fork test, not(found)
+            hold
+              back false
+          save basis, make list
+          walk sorted-variables(difference)
+            take v
+            push(basis, v)
+          push(basis, <>)
+          save search
+            make gram-search
+              bind basis, basis
+              bind matrix, matrix
+          back certified(search, difference, sides/strict, on-uncertified)
+        case none
+          back false
+    case none
+      back false
+
+# ---- perfect squares ----
+
+# is a univariate polynomial a perfect square q^2, recovered from its top coefficients and verified exactly
+task univariate-perfect-square
+  take poly, like hash, like text, like float
+  like boolean
+  mark private
+
+  fork test, is-unequal(sorted-variables(poly)/length, 1)
+    hold
+      back false
+  save by-degree, float-table()
+  save degree, 0
+  walk poly/keys()
+    take key
+    save d, monomial-vars(key)/length
+    save coefficient, poly/get(key)
+    save degree-key, <{d}>
+    save by-degree/{degree-key}, coefficient
+    fork test, and(is-unequal(coefficient, 0.0), is-above(d, degree))
+      hold
+        save degree, d
+  fork test, or(is-below(degree, 2), is-unequal(modulo(degree, 2), 0))
+    hold
+      back false
+  save d, divide(degree, 2)
+  save top, coefficient-of-degree(by-degree, degree)
+  save root, sqrt-round(top)
+  fork test, or(is-maximum(top, 0.0), is-unequal(multiply(root, root), top))
+    hold
+      back false
+  save q, zero-row(add(d, 1))
+  save q/{d}, root
+  save i, subtract(d, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save known, 0.0
+      save j, add(i, 1)
+      walk test
+        hook test, is-maximum(j, subtract(d, 1))
+        hook hold
+          save known, add(known, multiply(get(q, j), get(q, subtract(add(d, i), j))))
+          save j, add(j, 1)
+      save numerator, subtract(coefficient-of-degree(by-degree, add(d, i)), known)
+      fork test, is-unequal(js-remainder(numerator, multiply(2.0, root)), 0.0)
+        hold
+          back false
+      save q/{i}, js-divide(numerator, multiply(2.0, root))
+      save i, subtract(i, 1)
+  save power, 0
+  walk test
+    hook test, is-below(power, d)
+    hook hold
+      save sum, 0.0
+      save j, 0
+      walk test
+        hook test, is-maximum(j, power)
+        hook hold
+          save sum, add(sum, multiply(get(q, j), get(q, subtract(power, j))))
+          save j, add(j, 1)
+      fork test, is-unequal(sum, coefficient-of-degree(by-degree, power))
+        hold
+          back false
+      save power, add(power, 1)
+  back true
+
+task float-table
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task coefficient-of-degree
+  take by-degree, like hash, like text, like float
+  take degree, like number
+  like float
+  mark private
+
+  save key, <{degree}>
+  fork test, by-degree/has(key)
+    hold
+      back by-degree/get(key)
+  back 0.0
+
+task perfect-square-proves
+  take state, like hold-state
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift sides-of(expr, false, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          back univariate-perfect-square(difference)
+        case none
+          back false
+    case none
+      back false
+
+# ---- sums of squares ----
+
+task cartesian
+  take lists, like list, like list, like number
+  like list, like list, like number
+  mark private
+
+  save out, make list
+  save none-chosen, make list
+  push(out, none-chosen)
+  walk lists
+    take options
+    save next, make list
+    walk out
+      take prefix
+      walk options
+        take item
+        save grown, make list
+        walk prefix
+          take one
+          push(grown, one)
+        push(grown, item)
+        push(next, grown)
+    save out, next
+  back out
+
+form pair-at
+  link i, like number
+  link j, like number
+
+task multivariate-sos
+  take poly, like hash, like text, like float
+  take on-uncertified
+    like task
+  like boolean
+  mark private
+
+  save p, poly-table()
+  walk poly/keys()
+    take key
+    fork test, is-unequal(poly/get(key), 0.0)
+      hold
+        save p/{key}, poly/get(key)
+  fork test, is-equal(p/keys()/length, 0)
+    hold
+      back true
+
+  # the Newton basis: the half of each even-exponent monomial of p
+  save basis, make list
+  walk p/keys()
+    take key
+    sift half-monomial(key)
+      case some
+        link half
+        add-text(basis, half)
+      case none
+        save nothing, 0
+  save n, basis/length
+  fork test, or(is-equal(n, 0), is-above(n, 8))
+    hold
+      back false
+
+  # the basis pairs (i <= j) that produce each monomial
+  save pairs-for, pair-table()
+  save i, 0
+  walk test
+    hook test, is-below(i, n)
+    hook hold
+      save j, i
+      walk test
+        hook test, is-below(j, n)
+        hook hold
+          save product, multiply-monomial(get(basis, i), get(basis, j))
+          fork test, not(pairs-for/has(product))
+            hold
+              save none-pairs, make list
+              save pairs-for/{product}, none-pairs
+          save held, pairs-for/get(product)
+          save one-pair
+            make pair-at
+              bind i, i
+              bind j, j
+          push(held, one-pair)
+          save j, add(j, 1)
+      save i, add(i, 1)
+
+  walk p/keys()
+    take key
+    fork test, not(pairs-for/has(key))
+      hold
+        back false
+  save ambiguous, make list
+  walk p/keys()
+    take key
+    fork test, is-above(pairs-for/get(key)/length, 1)
+      hold
+        push(ambiguous, key)
+  fork test, is-above(ambiguous/length, 3)
+    hold
+      back false
+
+  save choices, make list
+  walk ambiguous
+    take key
+    save options, make list
+    save at, 0
+    walk pairs-for/get(key)
+      take one
+      push(options, at)
+      save at, add(at, 1)
+    push(choices, options)
+
+  walk cartesian(choices)
+    take combo
+    save matrix, zero-matrix(n)
+    walk p/keys()
+      take key
+      save coefficient, p/get(key)
+      save pairs, pairs-for/get(key)
+      save chosen, get(pairs, 0)
+      fork test, is-above(pairs/length, 1)
+        hold
+          save chosen, get(pairs, get(combo, index-of-text(ambiguous, key)))
+      fork test, is-equal(chosen/i, chosen/j)
+        hold
+          bump(matrix, chosen/i, chosen/i, multiply(2.0, coefficient))
+        miss
+          bump(matrix, chosen/i, chosen/j, coefficient)
+          bump(matrix, chosen/j, chosen/i, coefficient)
+
+    # VERIFY z^T M z == 2p exactly: the soundness guarantee
+    save produced, poly-table()
+    save a, 0
+    walk test
+      hook test, is-below(a, n)
+      hook hold
+        save b, a
+        walk test
+          hook test, is-below(b, n)
+          hook hold
+            save product, multiply-monomial(get(basis, a), get(basis, b))
+            save contribution, multiply(2.0, get(get(matrix, a), b))
+            fork test, is-equal(a, b)
+              hold
+                save contribution, get(get(matrix, a), a)
+            save produced/{product}, add(coefficient-at(produced, product), contribution)
+            save b, add(b, 1)
+        save a, add(a, 1)
+    save identity, true
+    save all-keys, make list
+    walk produced/keys()
+      take key
+      add-text(all-keys, key)
+    walk p/keys()
+      take key
+      add-text(all-keys, key)
+    walk all-keys
+      take key
+      fork test, is-unequal(coefficient-at(produced, key), multiply(2.0, coefficient-at(p, key)))
+        hold
+          save identity, false
+          halt
+    fork test, and(identity, is-positive-semidefinite(matrix))
+      hold
+        save search
+          make gram-search
+            bind basis, basis
+            bind matrix, matrix
+        back certified(search, p, false, on-uncertified)
+  back false
+
+task pair-table
+  like hash, like text, like list, like pair-at
+  mark private
+
+  back make hash
+
+task sos-proves
+  take state, like hold-state
+  take expr, like expression
+  take on-uncertified
+    like task
+  like boolean
+  mark private
+
+  sift sides-of(expr, false, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          back multivariate-sos(difference, on-uncertified)
+        case none
+          back false
+    case none
+      back false
+
+# ---- univariate, by Sturm ----
+
+# the single-variable coefficient list (`coefficients[power]`), or none when more than one variable appears
+task univariate-coefficients
+  take poly, like hash, like text, like float
+  like maybe, like list, like float
+  mark private
+
+  save only, <>
+  save has-only, false
+  save powers, float-table()
+  save degree, 0
+  walk poly/keys()
+    take key
+    save coefficient, poly/get(key)
+    fork test, is-equal(coefficient, 0.0)
+      hold
+        turn next
+    save vars, monomial-vars(key)
+    walk vars
+      take v
+      fork test, not(has-only)
+        hold
+          save only, v
+          save has-only, true
+        miss
+          fork test, is-unequal(only, v)
+            hold
+              back make none
+    save power, vars/length
+    save power-key, <{power}>
+    save powers/{power-key}, add(coefficient-of-degree(powers, power), coefficient)
+    fork test, is-above(power, degree)
+      hold
+        save degree, power
+  save coefficients, make list
+  save at, 0
+  walk test
+    hook test, is-maximum(at, degree)
+    hook hold
+      push(coefficients, coefficient-of-degree(powers, at))
+      save at, add(at, 1)
+  back make(some, coefficients)
+
+task sturm-proves
+  take state, like hold-state
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift sides-of(expr, true, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          sift univariate-coefficients(difference)
+            case some
+              link coefficients
+              fork test, sides/strict
+                hold
+                  back positive-everywhere(coefficients)
+              back non-negative-everywhere(coefficients)
+            case none
+              back false
+        case none
+          back false
+    case none
+      back false
+
+# ---- bivariate and n-variable, by cylindrical algebraic decomposition ----
+
+# the variables of the monomials with a coefficient, in the order first met
+task live-variables
+  take poly, like hash, like text, like float
+  like list, like text
+  mark private
+
+  save out, make list
+  walk poly/keys()
+    take key
+    fork test, is-unequal(poly/get(key), 0.0)
+      hold
+        walk monomial-vars(key)
+          take v
+          add-text(out, v)
+  back out
+
+# `table[i][j]`, the big-integer coefficient of `x^i y^j`, or none unless exactly two variables appear
+task bivariate-coefficients
+  take poly, like hash, like text, like float
+  like maybe, like list, like list, like big-integer
+  mark private
+
+  save vars, live-variables(poly)
+  fork test, is-unequal(vars/length, 2)
+    hold
+      back make none
+  save sorted-vars, sort(vars, utf16-order)
+  save v0, get(sorted-vars, 0)
+  save table, make list
+  walk poly/keys()
+    take key
+    save coefficient, poly/get(key)
+    fork test, is-equal(coefficient, 0.0)
+      hold
+        turn next
+    save i, 0
+    save j, 0
+    walk monomial-vars(key)
+      take v
+      fork test, is-equal(v, v0)
+        hold
+          save i, add(i, 1)
+        miss
+          save j, add(j, 1)
+    walk test
+      hook test, is-maximum(table/length, i)
+      hook hold
+        save fresh-row, make list
+        push(table, fresh-row)
+    save one-row, get(table, i)
+    walk test
+      hook test, is-maximum(one-row/length, j)
+      hook hold
+        push(one-row, big-from-number(0))
+    save one-row/{j}, big-add(get(one-row, j), big-of(coefficient))
+  back make(some, table)
+
+task bivariate-proves
+  take state, like hold-state
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift sides-of(expr, false, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          sift bivariate-coefficients(difference)
+            case some
+              link table
+              back bivariate-non-negative(table)
+            case none
+              back false
+        case none
+          back false
+    case none
+      back false
+
+task nvar-proves
+  take state, like hold-state
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift sides-of(expr, false, true)
+    case some
+      link sides
+      sift goal-difference(state, sides)
+        case some
+          link difference
+          save vars, live-variables(difference)
+          save total-degree, 0
+          walk difference/keys()
+            take key
+            fork test, is-unequal(difference/get(key), 0.0)
+              hold
+                save size, monomial-vars(key)/length
+                fork test, is-above(size, total-degree)
+                  hold
+                    save total-degree, size
+          # bound the work: 3 to 4 variables, total degree up to 6
+          fork test, or(or(is-below(vars/length, 3), is-above(vars/length, 4)), is-above(total-degree, 6))
+            hold
+              back false
+          save sorted-vars, sort(vars, utf16-order)
+          save terms, make list
+          walk difference/keys()
+            take key
+            save coefficient, difference/get(key)
+            fork test, is-equal(coefficient, 0.0)
+              hold
+                turn next
+            save exponents, make list
+            walk sorted-vars
+              take v
+              push(exponents, 0)
+            walk monomial-vars(key)
+              take v
+              save at, index-of-text(sorted-vars, v)
+              save exponents/{at}, add(get(exponents, at), 1)
+            save term
+              make n-term
+                bind exponents, exponents
+                bind coefficient, big-of(coefficient)
+            push(terms, term)
+          back non-negative-everywhere-nvar(n-poly(terms), sorted-vars/length)
+        case none
+          back false
+    case none
+      back false
+
+# ---- the combined decision ----
+
+task nonlinear-proves
+  take state, like hold-state
+  take expr, like expression
+  take on-uncertified
+    like task
+  like boolean
+
+  fork test, positivity-proves(expr)
+    hold
+      back true
+  fork test, quadratic-proves(state, expr, on-uncertified)
+    hold
+      back true
+  fork test, perfect-square-proves(state, expr)
+    hold
+      back true
+  fork test, sos-proves(state, expr, on-uncertified)
+    hold
+      back true
+  fork test, sturm-proves(state, expr)
+    hold
+      back true
+  fork test, bivariate-proves(state, expr)
+    hold
+      back true
+  back nvar-proves(state, expr)

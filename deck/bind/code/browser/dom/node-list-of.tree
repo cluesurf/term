@@ -33,8 +33,9 @@ form node-list-of, name <NodeListOf>
           like node-list-of
             like t-node
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void
 
   mesh index, like native-number

@@ -16,6 +16,7 @@ form rtc-stats-report, name <RTCStatsReport>
         take key, like native-string
         take parent, like rtc-stats-report
         like native-void
-    take this-arg, like maybe
-      like native-any
+    take this-arg
+      like maybe
+        like native-any
     like native-void

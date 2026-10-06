@@ -19,10 +19,11 @@ form set-constructor, name <SetConstructor>
   hook make
     head t
       back native-any
-    take values, like maybe
-      like or
-        like native-array
-          like t
-        like native-null
+    take values
+      like maybe
+        like or
+          like native-array
+            like t
+          like native-null
     like set
       like t

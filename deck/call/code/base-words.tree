@@ -1,0 +1,391 @@
+# `term base`: what its verbs decide and print, over a repository of records (note/library/base/readme.md). A commit
+# named by a prefix of its hash, the log's lines with each commit's time, a diff's lines by kind of change, a record's
+# fields as `show` lists them, what `check` prints and how it counts missing chunks, what `status` says the working
+# files would change, and a projected row's cells.
+#
+# Ported from deck/call/code/base.ts (self-hosting, 2026-10-06), which stays as the face: the repository, its stores,
+# the record files and the projector are @cluesurf/save's, and it reads and writes them and prints.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find contains
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find starts-with
+  find char-code-at
+  find pad-left
+
+load @term/make/check/eliminate
+  find utf16-order
+
+# ---- a commit by a prefix ----
+
+# The commits a prefix names, in the order the repository listed them (each branch's log, then each tag): one is the
+# commit, several are a refusal naming them all, none is a refusal. Ambiguity is an error rather than a guess
+task matching
+  take hashes, like list, like text
+  take given, like text
+  like list, like text
+
+  save seen, make hash
+  save out, make list
+  walk hashes
+    take hash
+    fork test, not(seen/has(hash))
+      hold
+        save seen/{hash}, true
+        fork test, starts-with(hash, given)
+          hold
+            push(out, hash)
+  back out
+
+# ---- time, as `toISOString` writes it ----
+
+task two
+  take value, like number
+  like text
+  mark private
+
+  back pad-left(<{value}>, 2, <0>)
+
+# whole division toward negative infinity
+task floor-divide
+  take value, like number
+  take by, like number
+  like number
+  mark private
+
+  save rest, modulo(value, by)
+  fork test, is-below(rest, 0)
+    hold
+      save rest, add(rest, by)
+  back divide(subtract(value, rest), by)
+
+# A time, in whole milliseconds since 1970, as the first nineteen characters of its ISO form with the `T` a space:
+# `2026-10-06 03:22:40`. A year outside 0 to 9999 is written as JavaScript writes it, a sign and six digits, and cut at
+# the same nineteen. The days are turned into a civil date by Howard Hinnant's algorithm, exact for every day
+task log-when
+  take time, like number
+  like text
+
+  save days, floor-divide(time, 86400000)
+  save within, subtract(time, multiply(days, 86400000))
+  save hours, floor-divide(within, 3600000)
+  save minutes, floor-divide(subtract(within, multiply(hours, 3600000)), 60000)
+  save seconds, floor-divide(subtract(subtract(within, multiply(hours, 3600000)), multiply(minutes, 60000)), 1000)
+  save z, add(days, 719468)
+  save era, floor-divide(z, 146097)
+  save of-era, subtract(z, multiply(era, 146097))
+  save year-of-era, floor-divide(subtract(subtract(add(of-era, floor-divide(of-era, 36524)), floor-divide(of-era, 1460)), floor-divide(of-era, 146096)), 365)
+  save day-of-year, subtract(of-era, subtract(add(multiply(365, year-of-era), floor-divide(year-of-era, 4)), floor-divide(year-of-era, 100)))
+  save month-index, floor-divide(add(multiply(5, day-of-year), 2), 153)
+  save day, add(subtract(day-of-year, floor-divide(add(multiply(153, month-index), 2), 5)), 1)
+  save month, add(month-index, 3)
+  fork test, is-above(month, 12)
+    hold
+      save month, subtract(month, 12)
+  save year, add(year-of-era, multiply(era, 400))
+  fork test, not(is-above(month, 2))
+    hold
+      save year, add(year, 1)
+  save shown, pad-left(<{year}>, 4, <0>)
+  fork test, or(is-below(year, 0), is-above(year, 9999))
+    hold
+      save sign, <+>
+      save magnitude, year
+      fork test, is-below(year, 0)
+        hold
+          save sign, <->
+          save magnitude, subtract(0, year)
+      save digits, pad-left(<{magnitude}>, 6, <0>)
+      save shown, <{sign}{digits}>
+  save m, two(month)
+  save d, two(day)
+  save h, two(hours)
+  save n, two(minutes)
+  save s, two(seconds)
+  save whole, <{shown}-{m}-{d} {h}:{n}:{s}.000Z>
+  save points, split(whole, <>)
+  save kept, make list
+  save at, 0
+  walk points
+    take point
+    fork test, is-below(at, 19)
+      hold
+        push(kept, point)
+    save at, add(at, 1)
+  back join(kept, <>)
+
+# the first `count` code points of a text
+task first-points
+  take value, like text
+  take count, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, 0
+  walk split(value, <>)
+    take point
+    fork test, is-below(at, count)
+      hold
+        push(kept, point)
+    save at, add(at, 1)
+  back join(kept, <>)
+
+# one commit of the log: its hash cut to 24 (a hash is ASCII, so code points and the UTF-16 units `slice` counted are
+# the same), its time, its author and its message
+task log-line
+  take hash, like text
+  take time, like number
+  take author, like text
+  take message, like text
+  like text
+
+  save short, first-points(hash, 24)
+  save when, log-when(time)
+  back <  {short}  {when}  {author}  {message}>
+
+# ---- a diff ----
+
+# one change between two commits: `+` a record added with its form, `-` one removed, `~` a field set or removed. A change
+# of another kind prints nothing (the empty text)
+task diff-line
+  take kind, like text
+  take mark, like text
+  take form, like text
+  take field, like text
+  like text
+
+  fork test, is-equal(kind, <record.add>)
+    hold
+      back <+ {mark}  {form}>
+  fork test, is-equal(kind, <record.remove>)
+    hold
+      back <- {mark}>
+  fork test, is-equal(kind, <field.set>)
+    hold
+      back <~ {mark}  {field}>
+  fork test, is-equal(kind, <field.remove>)
+    hold
+      back <~ {mark}  {field} removed>
+  back <>
+
+# ---- a record, and a projected row ----
+
+# one field of a record as the face reads it: its value's kind, the value written as text, and a reference's target
+form shown-field
+  link name, like text
+  link kind, like text
+  link value, like text
+  link target, like text
+
+# a field's value as `show` prints it
+task said-of
+  take one, like shown-field
+  like text
+  mark private
+
+  save kind, one/kind
+  fork test, or(or(or(is-equal(kind, <text>), is-equal(kind, <decimal>)), or(is-equal(kind, <date>), is-equal(kind, <integer>))), is-equal(kind, <boolean>))
+    hold
+      back one/value
+  fork test, is-equal(kind, <ref>)
+    hold
+      save target, one/target
+      back <-\> {target}>
+  fork test, is-equal(kind, <null>)
+    hold
+      back <(null)>
+  back <({kind})>
+
+# a projected cell as a person reads it: the value, `(null)`, a reference's target, `(blob)`, or the kind of a
+# collection or a record
+task cell-of
+  take one, like shown-field
+  like text
+
+  save kind, one/kind
+  fork test, is-equal(kind, <null>)
+    hold
+      back <(null)>
+  fork test, is-equal(kind, <ref>)
+    hold
+      save target, one/target
+      back <-\> {target}>
+  fork test, is-equal(kind, <blob>)
+    hold
+      back <(blob)>
+  fork test, or(is-equal(kind, <collection>), is-equal(kind, <record>))
+    hold
+      back <({kind})>
+  back one/value
+
+# a text's UTF-16 units, as `padEnd` counts them
+task units-of
+  take value, like text
+  like number
+  mark private
+
+  save count, 0
+  walk split(value, <>)
+    take point
+    save count, add(count, 1)
+    fork test, is-above(char-code-at(point, 0), 65535)
+      hold
+        save count, add(count, 1)
+  back count
+
+task pad-units
+  take value, like text
+  take width, like number
+  like text
+  mark private
+
+  save out, value
+  save size, units-of(value)
+  walk test
+    hook test, is-below(size, width)
+    hook hold
+      save out, <{out} >
+      save size, add(size, 1)
+  back out
+
+# The pairs a record's fields are, sorted as an array of `[name, value]` pairs sorts with no comparator: by each pair
+# written as text, `<name>,[object Object]`, so a name that another begins is placed by the comma
+task by-pair
+  take a, like shown-field
+  take b, like shown-field
+  like ordering
+  mark private
+
+  save x, a/name
+  save y, b/name
+  back utf16-order(<{x},[object Object]>, <{y},[object Object]>)
+
+task pair-sorted
+  take fields, like list, like shown-field
+  like list, like shown-field
+
+  back sort(fields, by-pair)
+
+# a record as `show` prints it: its mark, its form, each field padded to twenty, and the canonical bytes that are hashed
+task show-lines
+  take mark, like text
+  take form, like text
+  take fields, like list, like shown-field
+  take canonical, like text
+  like list, like text
+
+  save out, make list
+  push(out, <mark  {mark}>)
+  push(out, <form  {form}>)
+  walk pair-sorted(fields)
+    take one
+    save name, pad-units(one/name, 20)
+    save said, said-of(one)
+    push(out, <  {name} {said}>)
+  push(out, <>)
+  push(out, <canonical bytes, which are what is hashed:>)
+  push(out, canonical)
+  back out
+
+# one table of a projection: its row count, and its first row's cells in full, so a column a mapping drops shows as
+# absent
+task table-lines
+  take table, like text
+  take rows, like number
+  take first, like list, like shown-field
+  like list, like text
+
+  save out, make list
+  push(out, <{table}  {rows} row(s)>)
+  walk pair-sorted(first)
+    take one
+    save name, pad-units(one/name, 24)
+    save cell, cell-of(one)
+    push(out, <    {name} {cell}>)
+  back out
+
+# ---- check and status ----
+
+# what `check` prints: the format, the branches and the tags, `(none)` where there are none
+task check-lines
+  take versioned, like boolean
+  take format, like text
+  take branches, like list, like text
+  take tags, like list, like text
+  like list, like text
+
+  save shown-format, format
+  fork test, not(versioned)
+    hold
+      save shown-format, <(unversioned)>
+  save shown-branches, join(branches, <, >)
+  fork test, is-equal(shown-branches, <>)
+    hold
+      save shown-branches, <(none)>
+  save shown-tags, join(tags, <, >)
+  fork test, is-equal(shown-tags, <>)
+    hold
+      save shown-tags, <(none)>
+  save out, make list
+  push(out, <format      {shown-format}>)
+  push(out, <branches    {shown-branches}>)
+  push(out, <tags        {shown-tags}>)
+  back out
+
+# the missing chunks as a list shows them: ten, and a count of the rest
+task missing-message
+  take missing, like list, like text
+  like list, like text
+
+  save out, make list
+  save at, 0
+  walk missing
+    take one
+    fork test, is-below(at, 10)
+      hold
+        push(out, one)
+    save at, add(at, 1)
+  fork test, is-above(missing/length, 10)
+    hold
+      save rest, subtract(missing/length, 10)
+      push(out, <… {rest} more>)
+  back out
+
+task missing-subject
+  take count, like number
+  like text
+
+  fork test, is-equal(count, 1)
+    hold
+      back <1 chunk is missing>
+  back <{count} chunks are missing>
+
+# what the working files would change: added, changed and gone, each in JavaScript's order of texts. A record absent
+# from the working files is a REMOVAL, because the dataset is the whole state, and is said plainly
+task status-lines
+  take added, like list, like text
+  take changed, like list, like text
+  take gone, like list, like text
+  like list, like text
+
+  save out, make list
+  walk sort(added, utf16-order)
+    take mark
+    push(out, <+ {mark}>)
+  walk sort(changed, utf16-order)
+    take mark
+    push(out, <~ {mark}>)
+  walk sort(gone, utf16-order)
+    take mark
+    push(out, <- {mark}  (absent from record/, so committing would remove it)>)
+  back out

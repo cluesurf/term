@@ -42,6 +42,23 @@ import { datasetOf, type Dataset } from '@cluesurf/save/diff/change'
 import type { RecordNode } from '@cluesurf/save/base/type'
 import { closeRun, count, field, isRunOpen, location, openRun, printData, report } from '@term/call/code/output'
 import type { ItemField } from '@term/call/code/work/item/event'
+import * as words from '@term/call/code/base-words'
+
+// WHAT THE VERBS DECIDE AND PRINT is Term since 2026-10-06, call/code/base-words.tree: a commit by its prefix, the log's
+// lines and times, a diff's lines, a record's fields and a projected row's cells, `check` and `status`. This face drives
+// the repository and prints.
+
+// a value as the port reads it: its kind, the value written as text, and a reference's target. Anything that is not a
+// base Value is its text alone, with no kind
+function shownOf(name: string, value: unknown): words.ShownField {
+  if (value && typeof value === 'object' && 'kind' in value) {
+    const held = value as { kind: string; value?: unknown; target?: string }
+
+    return { name, kind: held.kind, value: String(held.value), target: String(held.target) }
+  }
+
+  return { name, kind: '', value: String(value), target: '' }
+}
 
 // THE OUTPUT (note/term/output/readme.md). Each verb opens a run with its own verb and closes it with a verdict on
 // stderr, and what the person asked to SEE (a log, a diff, a record, a listing, a commit hash) is data on stdout,
@@ -170,11 +187,11 @@ function resolve(repo: Repository, given: string): string {
     return given
   }
 
-  const seen = new Set<string>()
+  const hashes: string[] = []
 
   for (const branch of repo.branches()) {
     for (const { hash } of repo.log(branch)) {
-      seen.add(hash)
+      hashes.push(hash)
     }
   }
 
@@ -182,11 +199,11 @@ function resolve(repo: Repository, given: string): string {
     const at = repo.tag(name)
 
     if (at !== undefined) {
-      seen.add(at)
+      hashes.push(at)
     }
   }
 
-  const hit = [...seen].filter(hash => hash.startsWith(given))
+  const hit = words.matching(hashes, given)
 
   if (hit.length === 1) {
     return hit[0]!
@@ -239,9 +256,10 @@ export function callBaseLog(input: { root: string; branch?: string }): void {
     lines.push(`${branch}`)
 
     for (const { hash, commit } of repo.log(branch)) {
-      const when = new Date(commit.time).toISOString().slice(0, 19).replace('T', ' ')
-
-      lines.push(`  ${hash.slice(0, 24)}  ${when}  ${commit.author}  ${commit.message}`)
+      // a time no Date holds is refused by Date, as it always was; a fraction of a millisecond is cut toward zero, as
+      // Date cuts it
+      new Date(commit.time).toISOString()
+      lines.push(words.logLine(hash, Math.trunc(commit.time), commit.author, commit.message))
       commits++
     }
   }
@@ -264,21 +282,11 @@ export function callBaseDiff(input: {
   const lines: string[] = []
 
   for (const change of changes) {
-    switch (change.type) {
-      case 'record.add':
-        lines.push(`+ ${change.mark}  ${change.value.type}`)
-        break
-      case 'record.remove':
-        lines.push(`- ${change.mark}`)
-        break
-      case 'field.set':
-        lines.push(`~ ${change.mark}  ${change.field}`)
-        break
-      case 'field.remove':
-        lines.push(`~ ${change.mark}  ${change.field} removed`)
-        break
-      default:
-        break
+    const held = change as { type: string; mark: string; value?: { type?: string }; field?: string }
+    const line = words.diffLine(held.type, held.mark, held.type === 'record.add' ? String(held.value!.type) : '', String(held.field))
+
+    if (line !== '') {
+      lines.push(line)
     }
   }
 
@@ -305,25 +313,7 @@ export function callBaseShow(input: {
   // model, which is what a read verb is for. The canonical half is what is HASHED, and
   // showing only a pretty print would leave the one thing a person cannot otherwise check
   // invisible: whether the bytes about to be trusted are the bytes they think.
-  const lines = [`mark  ${input.mark}`, `form  ${found.type}`]
-
-  for (const [field, value] of [...found.fields].sort()) {
-    const said =
-      value.kind === 'text' || value.kind === 'decimal' || value.kind === 'date'
-        ? String(value.value)
-        : value.kind === 'integer' || value.kind === 'boolean'
-          ? String(value.value)
-          : value.kind === 'ref'
-            ? `-> ${value.target}`
-            : value.kind === 'null'
-              ? '(null)'
-              : `(${value.kind})`
-
-    lines.push(`  ${field.padEnd(20)} ${said}`)
-  }
-
-  lines.push('', 'canonical bytes, which are what is hashed:', canonicalizeRecord(found))
-  printLines(lines)
+  printLines(words.showLines(input.mark, found.type, [...found.fields].map(([field, value]) => shownOf(field, value)), canonicalizeRecord(found)))
   closeRun({ verdict: 'Record shown', counts: [count(found.fields.size, 'fields', 'field')] })
 }
 
@@ -337,19 +327,17 @@ export function callBaseCheck(input: { root: string }): void {
   // `meta/format` looks for `branch/meta/format` and always answers undefined, which made
   // this print "(unversioned)" on a repository that was correctly versioned. The gate was
   // working; only the display was wrong.
-  printLines([
-    `format      ${refs.get(FORMAT_REF) ?? '(unversioned)'}`,
-    `branches    ${repo.branches().join(', ') || '(none)'}`,
-    `tags        ${repo.tags().join(', ') || '(none)'}`,
-  ])
+  const format = refs.get(FORMAT_REF)
+
+  printLines(words.checkLines(format !== undefined, format ?? '', repo.branches(), repo.tags()))
 
   if (fsck.missing.length) {
     // a list shows 10 entries and counts the rest (section 14)
     report({
       glyph: 'failed',
       kind: 'problem',
-      subject: `${fsck.missing.length} chunk${fsck.missing.length === 1 ? ' is' : 's are'} missing`,
-      message: [...fsck.missing.slice(0, 10), ...(fsck.missing.length > 10 ? [`… ${fsck.missing.length - 10} more`] : [])],
+      subject: words.missingSubject(fsck.missing.length),
+      message: words.missingMessage(fsck.missing),
     })
     closeRun({ verdict: 'The repository is not coherent', counts: [count(fsck.missing.length, 'missing')] })
 
@@ -486,23 +474,9 @@ export function callBaseStatus(input: { root: string; branch: string }): void {
       canonicalizeRecord(now.get(mark)!) !== canonicalizeRecord(before.get(mark)!),
   )
 
-  const lines: string[] = []
-
-  for (const mark of added.sort()) {
-    lines.push(`+ ${mark}`)
-  }
-
-  for (const mark of changed.sort()) {
-    lines.push(`~ ${mark}`)
-  }
-
   // A record absent from the working files is a REMOVAL, because the dataset is the whole
   // state. Said plainly, because the surprising way to lose a record is to move its file.
-  for (const mark of gone.sort()) {
-    lines.push(`- ${mark}  (absent from ${WORK}/, so committing would remove it)`)
-  }
-
-  printLines(lines)
+  printLines(words.statusLines(added, changed, gone))
   closeRun({
     verdict: `${now.size} record${now.size === 1 ? '' : 's'} in ${WORK}/`,
     counts: [count(added.length, 'new'), count(changed.length, 'changed'), count(gone.length, 'removed')],
@@ -653,25 +627,7 @@ export function callBaseTag(input: {
  * a mapping produces.
  */
 function cell(value: unknown): string {
-  if (value && typeof value === 'object' && 'kind' in value) {
-    const held = value as { kind: string; value?: unknown; target?: string }
-
-    switch (held.kind) {
-      case 'null':
-        return '(null)'
-      case 'ref':
-        return `-> ${held.target}`
-      case 'blob':
-        return '(blob)'
-      case 'collection':
-      case 'record':
-        return `(${held.kind})`
-      default:
-        return String(held.value)
-    }
-  }
-
-  return String(value)
+  return words.cellOf(shownOf('', value))
 }
 
 /**
@@ -797,16 +753,11 @@ export async function callBaseProject(input: {
   for (const table of [...rows.keys()].sort()) {
     const held = rows.get(table)!
 
-    lines.push(`${table}  ${held.length} row(s)`)
     total += held.length
 
     const first = held[0]
 
-    if (first) {
-      for (const [column, value] of [...first].sort()) {
-        lines.push(`    ${column.padEnd(24)} ${cell(value)}`)
-      }
-    }
+    lines.push(...words.tableLines(table, held.length, first ? [...first].map(([column, value]) => shownOf(column, value)) : []))
   }
 
   printLines(lines)

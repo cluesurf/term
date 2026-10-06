@@ -11,17 +11,19 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { readDataText, writeLong } from '@term/make/code/compile/host'
 import type { Data } from '@term/make/code/compile/host'
+import * as port from '@term/call/code/snapshot-keep'
 
-const SUFFIX = '.snapshot.tree'
+// THE STORE'S NAME AND WHAT A RUN WRITES BACK are Term since 2026-10-06, call/code/snapshot-keep.tree. This face reads
+// and writes the store through the data reader and writer.
 
 // whether a file is a snapshot store, never a test file of its own
 export function isSnapshotFile(file: string): boolean {
-  return file.endsWith(SUFFIX)
+  return port.isSnapshotFile(file)
 }
 
 // where a test file's snapshots are kept
 export function snapshotFileOf(testFile: string): string {
-  return testFile.replace(/\.tree$/, SUFFIX)
+  return port.snapshotFileOf(testFile)
 }
 
 // a test file's stored snapshots by phrase, empty when it has none, or why the store could not be read
@@ -65,11 +67,7 @@ export function writeSnapshots(input: {
   // every test phrase the file holds now, in source order
   phrases: string[]
 }): { written: number } {
-  const kept = input.phrases.flatMap(phrase => {
-    const texts = input.taken.get(phrase) ?? input.stored.get(phrase)
-
-    return texts && texts.length > 0 ? [{ phrase, texts }] : []
-  })
+  const kept = port.keptSnapshots(input.phrases, input.taken, input.stored)
   const file = snapshotFileOf(input.testFile)
 
   if (kept.length === 0) {

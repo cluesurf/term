@@ -52,7 +52,7 @@ task is-known-kind
   take kind, like text
   take declared
     like list
-    like unknown
+      like unknown
 
   like boolean
 
@@ -128,9 +128,10 @@ task roll
 
 # the note of the tell that covers one exception, or `private` when none does
 task tell-for
+  # the roll's tells, as the docked `roll-module` answered them: host values (D1)
   take tells
     like list
-    like unknown
+      like dynamic
   take full, like text
 
   like text

@@ -1,0 +1,69 @@
+# A test file's snapshots (decisions-2026-10.md, D11): `<test>.snapshot.tree` beside it, a hash from each test's phrase
+# to the texts its `want snapshot`s hold, in order. This module names the store and decides what a run writes back:
+# those taken this run replace the test's stored ones whole, a test that took none keeps what it had, and a phrase the
+# file no longer holds is dropped.
+#
+# Ported from deck/call/code/test-snapshot.ts (self-hosting, 2026-10-06), which stays as the face: it reads and writes
+# the store through the data reader and writer every data file goes through (compile/host.ts).
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find ends-with
+  find substring
+  find char-count
+
+# whether a file is a snapshot store, never a test file of its own
+task is-snapshot-file
+  take file, like text
+  like boolean
+
+  back ends-with(file, <.snapshot.tree>)
+
+# where a test file's snapshots are kept: `.tree` at the end made `.snapshot.tree`, any other name given the suffix
+# unchanged, as `replace(/\.tree$/, ...)` leaves a name without one
+task snapshot-file-of
+  take test-file, like text
+  like text
+
+  fork test, ends-with(test-file, <.tree>)
+    hold
+      save stem, substring(test-file, 0, subtract(char-count(test-file), 5))
+      back <{stem}.snapshot.tree>
+  back test-file
+
+form kept-snapshot
+  link phrase, like text
+  link texts, like list, like text
+
+# what a run writes: every phrase the file holds now, in source order, with the texts taken this run, else those
+# stored, and a phrase with none left out
+task kept-snapshots
+  take phrases, like list, like text
+  take taken, like hash, like text, like list, like text
+  take stored, like hash, like text, like list, like text
+  like list, like kept-snapshot
+
+  save out, make list
+  walk phrases
+    take phrase
+    save found, false
+    save texts, make list
+    fork test, taken/has(phrase)
+      hold
+        save texts, taken/get(phrase)
+        save found, true
+      miss
+        fork test, stored/has(phrase)
+          hold
+            save texts, stored/get(phrase)
+            save found, true
+    fork test, and(found, is-above(texts/length, 0))
+      hold
+        save one
+          make kept-snapshot
+            bind phrase, phrase
+            bind texts, texts
+        push(out, one)
+  back out

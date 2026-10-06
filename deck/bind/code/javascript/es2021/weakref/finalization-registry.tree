@@ -15,8 +15,9 @@ form finalization-registry, name <FinalizationRegistry>
   task register, name <register>
     take target, like native-object
     take held-value, like t
-    take unregister-token, like maybe
-      like native-object
+    take unregister-token
+      like maybe
+        like native-object
     like native-void
 
   task unregister, name <unregister>

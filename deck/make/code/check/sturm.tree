@@ -558,7 +558,9 @@ task sort-spans
   like list, like root-span
   mark private
 
-  save sorted, make list
+  # typed where it is made: its element is read (`/low`) before the first push, where inference has not met it
+  save sorted, like list, like root-span
+    make list
   walk spans
     take one
     save at, sorted/length

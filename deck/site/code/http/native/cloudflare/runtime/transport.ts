@@ -74,6 +74,23 @@ const BINARY_TYPES = new Set([
   'wasm',
 ])
 
+// tree/code (note/term/host/10-code.md): bytes on the wire, base64 inside the program, as a binary asset travels. The
+// edge compresses a response for the client by itself. A request body packed with `Content-Encoding: zstd` is refused
+// (415): a Worker has no Zstandard decoder it can count on, and reading it as plain bytes would hand the handler noise
+const TREE_CODE = 'application/tree+code'
+
+function isTreeCode(type: string | null | undefined): boolean {
+  return (type ?? '').toLowerCase().split(';')[0]?.trim() === TREE_CODE
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
+
 // decode a base64 string into a byte array (Workers have `atob`, but not node's Buffer by default)
 function base64ToBytes(text: string): Uint8Array {
   const binary = atob(text)
@@ -117,8 +134,19 @@ export const transport = {
         // with GET, but health checks / crawlers may HEAD), so dispatch it as GET. The full body is
         // kept so the content-type is computed correctly; the Workers runtime strips it for a HEAD.
         const method = request.method === 'HEAD' ? 'GET' : request.method
-        const body =
-          method === 'GET' || method === 'HEAD' ? '' : await request.text()
+        let body = ''
+
+        if (method !== 'GET' && method !== 'HEAD') {
+          if (isTreeCode(request.headers.get('content-type'))) {
+            if ((request.headers.get('content-encoding') ?? '').toLowerCase().trim() === 'zstd') {
+              return new Response('', { status: 415 })
+            }
+
+            body = bytesToBase64(new Uint8Array(await request.arrayBuffer()))
+          } else {
+            body = await request.text()
+          }
+        }
 
         // the request's headers by lower-case name and its query string decoded, as the `request` form declares them
         const headers = new Map<string, string>()
@@ -132,6 +160,12 @@ export const transport = {
 
         for (const [name, value] of response.headers ?? []) {
           given[name] = value
+        }
+
+        const givenType = Object.entries(given).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+
+        if (isTreeCode(givenType) && code !== 1 && !(code >= 300 && code < 400)) {
+          return new Response(base64ToBytes(out), { status: code, headers: { ...given, Vary: 'Accept-Encoding' } })
         }
 
         if (Object.keys(given).some(name => name.toLowerCase() === 'content-type') && code !== 1 && !(code >= 300 && code < 400 && out)) {

@@ -17,15 +17,18 @@ form big-int, name <BigInt>
     read true
 
   task to-string, name <toString>
-    take radix, like maybe
-      like native-number
+    take radix
+      like maybe
+        like native-number
     like native-string
 
   task to-locale-string, name <toLocaleString>
-    take locales, like maybe
-      like native-string
-    take options, like maybe
-      like big-int-to-locale-string-options
+    take locales
+      like maybe
+        like native-string
+    take options
+      like maybe
+        like big-int-to-locale-string-options
     like native-string
 
   task value-of, name <valueOf>
