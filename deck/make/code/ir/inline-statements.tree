@@ -51,6 +51,7 @@ load ../compile/node-walk
   find statements-in
 
 load ../compile/node-rewrite
+  find arm-fields
   find copy-expression
   find copy-program
   find copy-statement
@@ -1235,8 +1236,7 @@ task expand
           case match
             walk cases
               take arm
-              save none-yet, make list
-              save fields, get-or-default(round/fields-of, arm/label, none-yet)
+              save fields, arm-fields(round/fields-of, subject, arm/label)
               save chosen, fields
               save given-binds, arm/binds
               fork test, and(is-above(given-binds/length, 0), not(all-in(given-binds, fields)))

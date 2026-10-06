@@ -483,6 +483,52 @@ task outer
   'outer',
 )
 
+// an inlined arm reads the fields of its SUBJECT's form when another form names a case alike: `plate` is declared
+// after `stack` and has a `disk` too, with other fields. Keyed by the case alone, the arm bound `label` renamed, the
+// emitter read that as a rename of `size`, and the inlined read of `size` named nothing (check/substitution's port,
+// 2026-10-05, over node.tree's `type` and `expression`, which both have a `variable`)
+const owned = inlineStatements(
+  checked(`${STACK}
+form plate
+  case disk
+    link label, like text
+  case bare
+
+task size-of
+  take s, like stack
+  like number
+  mark private
+  fork case, read s
+    case disk
+      send back, read size
+    case empty
+      send back, code 0
+
+task outer
+  take s, like stack
+  like number
+  host n, call size-of(read(s))
+  send back, read n
+`),
+)
+const arms = nodes(owned.program, 'outer', 'match').flatMap(n => n.cases as { label: string; binds?: string[]; body: unknown }[])
+const diskArm = arms.find(arm => arm.label === 'disk')
+const readInArm: string[] = []
+const visitArm = (value: unknown): void => {
+  if (typeof value !== 'object' || value === null) return
+  if (Array.isArray(value)) return value.forEach(visitArm)
+  const node = value as Record<string, unknown>
+  if (node.form === 'variable') readInArm.push(node.name as string)
+  for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visitArm(child)
+}
+visitArm(diskArm?.body)
+ok('owned case: size-of inlined into outer', owned.inlined.includes('size-of'), [...owned.inlined].join(', '))
+ok(
+  "owned case: the arm binds stack's fields, and its first is the name the body reads",
+  diskArm?.binds?.length === 2 && readInArm.includes(diskArm.binds[0]!),
+  `binds ${JSON.stringify(diskArm?.binds)}, read ${readInArm.join(', ')}`,
+)
+
 // 4. the definitions after `simplify`: dropped when no root, kept when a root, all kept when no roots are named
 const towersText = `${STACK}\n${PUSH}\n${POP}\n${MOVE}`
 const dropAll = simplify(checked(towersText), new Set(['move-top']))

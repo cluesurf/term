@@ -5,6 +5,7 @@
 
 import type { Expression, Type } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
+import { freshType, resolveType } from '@term/make/code/check/substitution'
 
 export type Signature = {
   // the ids of this signature's generic type variables
@@ -61,7 +62,7 @@ export function instantiate(
   const map = new Map<number, Type>()
 
   for (const id of signature.generics) {
-    map.set(id, sub.fresh())
+    map.set(id, freshType(sub))
   }
 
   const subst = (type: Type): Type => {
@@ -76,14 +77,14 @@ export function instantiate(
     // yet (a module-level `host` is checked before every function), it takes a fresh variable of this call's own.
     // Shared, the first call to bind it decided it for the whole program (native-dom-0044, 0046)
     if (type.kind === 'variable' && signature.holes?.has(type.id)) {
-      const r = sub.resolve(type)
+      const r = resolveType(sub,type)
 
       if (r.kind === 'variable') {
         if (map.has(r.id)) {
           return map.get(r.id)!
         }
 
-        const fresh = sub.fresh()
+        const fresh = freshType(sub)
         map.set(r.id, fresh)
 
         return fresh
@@ -92,7 +93,7 @@ export function instantiate(
       return subst(r)
     }
 
-    const r = sub.resolve(type)
+    const r = resolveType(sub,type)
 
     if (r.kind === 'variable') {
       return map.get(r.id) ?? r

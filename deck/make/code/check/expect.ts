@@ -67,7 +67,9 @@ export function makeExpect(deps: {
           file: getFile(),
           span,
           message: `${what}: an unknown value where ${/^[aeiou]/.test(shown) ? 'an' : 'a'} ${shown} is wanted. An unknown can hold any value, so it is narrowed first, by a \`sift\` over its type`,
-          hint: `test what it holds: \`sift value\` with a \`case ${shown}\` arm, inside which it is ${/^[aeiou]/.test(shown) ? 'an' : 'a'} ${shown}, and a \`miss\``,
+          hint: ['number', 'float', 'text', 'boolean'].includes(shown)
+            ? `test what it holds: \`sift value\` with a \`case ${shown}\` arm, inside which it is ${/^[aeiou]/.test(shown) ? 'an' : 'a'} ${shown}, and a \`miss\``
+            : `a ${shown} cannot be told apart inside an unknown on every backend: take \`like ${shown}\` where the value is made, or give it a form with a case per kind it can be`,
         }),
       )
 

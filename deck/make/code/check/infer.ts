@@ -12,7 +12,7 @@ import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
 import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
-import { Substitution } from '@term/make/code/check/substitution'
+import { freshType, newSubstitution, occursIn, resolveType, unifyTypes, unifyTypesAt } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
 import { overloadGroups } from '@term/make/code/check/overload'
 import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
@@ -105,12 +105,12 @@ export function check(
 
   // the unification substitution, the atomic core of inference (code/check/substitution.ts). The local aliases keep
   // the rest of this pass reading naturally (`fresh()`, `resolve(t)`, `unify(a, b)`); the state and algorithms live in
-  // the reusable class, the first extracted component of the modular checker.
-  const sub = new Substitution()
-  const fresh = (): Type => sub.fresh()
-  const resolve = (type: Type): Type => sub.resolve(type)
+  // the reusable component, the first extracted from the modular checker.
+  const sub = newSubstitution()
+  const fresh = (): Type => freshType(sub)
+  const resolve = (type: Type): Type => resolveType(sub, type)
   const occurs = (id: number, type: Type): boolean =>
-    sub.occurs(id, type)
+    occursIn(sub, id, type)
 
   // record-type field maps, for member-access typing
   const records = new Map<string, Map<string, Type>>()
@@ -309,7 +309,7 @@ export function check(
   // unify two types. returns true on success. `unknown` (gradual) is consistent with anything. Transparent aliases are
   // unfolded to their base first. The core algorithm lives in the Substitution component.
   const unify = (a: Type, b: Type, span?: Span): boolean =>
-    sub.unify(unfoldAlias(a), unfoldAlias(b), span)
+    span ? unifyTypesAt(sub, unfoldAlias(a), unfoldAlias(b), span) : unifyTypes(sub, unfoldAlias(a), unfoldAlias(b))
 
   // unify-or-diagnose (component: code/check/expect.ts). `getFile` reads the live current file (mutated by the run loops).
   const expect = makeExpect({

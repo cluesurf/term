@@ -23,7 +23,7 @@ export function makeSeedType(
 ): SeedType {
   const seed: SeedType = (type, generics) => {
     if (!type) {
-      return sub.fresh()
+      return freshType(sub)
     }
 
     if (type.kind === 'named') {
@@ -42,7 +42,7 @@ export function makeSeedType(
           kind: 'array',
           element: type.args?.[0]
             ? seed(type.args[0], generics)
-            : sub.fresh(),
+            : freshType(sub),
         }
       }
 
@@ -51,10 +51,10 @@ export function makeSeedType(
       if (type.name === 'hash') {
         return {
           kind: 'map',
-          key: type.args?.[0] ? seed(type.args[0], generics) : sub.fresh(),
+          key: type.args?.[0] ? seed(type.args[0], generics) : freshType(sub),
           value: type.args?.[1]
             ? seed(type.args[1], generics)
-            : sub.fresh(),
+            : freshType(sub),
         }
       }
 
@@ -90,7 +90,7 @@ export function makeSeedType(
         return { kind: 'named', name: 'type' }
       }
 
-      return sub.fresh() // an unrecognized name: infer it from usage rather than forcing a mismatch
+      return freshType(sub) // an unrecognized name: infer it from usage rather than forcing a mismatch
     }
 
     if (type.kind === 'array') {
@@ -100,7 +100,7 @@ export function makeSeedType(
     // a slot the source left empty (`free`): a fresh variable, filled from usage; a spelled `like unknown` stays
     // the gradual type
     if (type.kind === 'unknown' && type.free) {
-      return sub.fresh()
+      return freshType(sub)
     }
 
     if (type.kind === 'map') {
