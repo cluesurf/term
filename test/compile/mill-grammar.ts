@@ -1,4 +1,4 @@
-// The mill grammar files (`deck/mill/code/<role>/{base,mine,mint}.tree`) are declarative: the compiler reads every
+// The mill grammar files (`deck/mill/code/tree/<role>/{base,mine,mint}.tree`) are declarative: the compiler reads every
 // dialect through its own passes today, so nothing executes them. This holds them correct anyway. Every file must
 // parse, every `load` it makes must resolve to a file, every `find` must name something that file declares, and every
 // `mint <x>, like <form>` must name a form a loaded stdlib module declares. The `host` and `mill` roles are the ones
@@ -67,7 +67,7 @@ function topLevel(file: string, text: string, head: string): string[] {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const MILL = join(TERM, 'deck/mill/code')
+const MILL = join(TERM, 'deck/mill/code/tree')
 
 // the roles held to zero problems
 const HELD = new Set(['host', 'mill', 'deck', 'note', 'code', 'test', 'view'])

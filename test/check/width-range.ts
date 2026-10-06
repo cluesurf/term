@@ -311,6 +311,122 @@ task run
   { total: 0, proven: 0 },
 )
 
+// A FIELD carries its width as a parameter does: a value put in it owes the range, and one read from it is known to
+// fit. gzip's `file/os` passed to a `u8` writer is the shape the census found unproven
+const HEADER = `form header
+  link os, like u8
+  link size, like number
+`
+
+expect(
+  'off: a computed value put in a `u8` field owes nothing',
+  `${HEADER}
+task make-header
+  take x, like number
+  like header
+  save made
+    make header
+      bind os, read x
+      bind size, read x
+  send back, read made
+`,
+  { total: 0, proven: 0 },
+  false,
+)
+
+expect(
+  'on: an unbounded value put in a `u8` field is owed and not proven',
+  `${HEADER}
+task make-header
+  take x, like number
+  like header
+  save made
+    make header
+      bind os, read x
+      bind size, read x
+  send back, read made
+`,
+  { total: 1, proven: 0 },
+)
+
+expect(
+  'on: a value the path bounds, put in a `u8` field, is proven',
+  `${HEADER}
+task make-header
+  take x, like number
+  like header
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read x
+          code 0
+        call is-maximum
+          read x
+          code 255
+    hook hold
+      save made
+        make header
+          bind os, read x
+          bind size, read x
+      send back, read made
+  save other
+    make header
+      bind os, code 0
+      bind size, read x
+  send back, read other
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a `u8` field read and passed to a `u8` parameter is proven, by the width every construction owed',
+  `${HEADER}
+${PAINT}
+task write-os
+  take h, like header
+  like number
+  save os, read h/os
+  send back
+    call paint
+      read os
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a plain `number` field passed to a `u8` parameter is not proven',
+  `${HEADER}
+${PAINT}
+task write-size
+  take h, like header
+  like number
+  save size, read h/size
+  send back
+    call paint
+      read size
+`,
+  { total: 1, proven: 0 },
+)
+
+expect(
+  "on: a case's `u8` field is owed where the case is made",
+  `form packet
+  case ping
+    link level, like u8
+  case done
+
+task make-ping
+  take x, like number
+  like packet
+  save made
+    make ping
+      bind level, read x
+  send back, read made
+`,
+  { total: 1, proven: 0 },
+)
+
 for (const ranges of [false, true]) {
   expectRefused(
     `${ranges ? 'on' : 'off'}: a literal outside the width is refused`,
@@ -324,6 +440,36 @@ task run
     ranges,
   )
 }
+
+for (const ranges of [false, true]) {
+  expectRefused(
+    `${ranges ? 'on' : 'off'}: a literal outside the width of a field is refused`,
+    `${HEADER}
+task run
+  like header
+  save made
+    make header
+      bind os, code 300
+      bind size, code 300
+  send back, read made
+`,
+    ranges,
+  )
+}
+
+expect(
+  'on: a literal inside the width of a field owes nothing, the literal check holds it',
+  `${HEADER}
+task run
+  like header
+  save made
+    make header
+      bind os, code 3
+      bind size, code 300
+  send back, read made
+`,
+  { total: 0, proven: 0 },
+)
 
 console.log(`\nwidth-range: ${pass} pass, ${fail} fail`)
 

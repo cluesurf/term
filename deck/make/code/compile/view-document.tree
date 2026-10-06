@@ -1117,7 +1117,9 @@ task read-find
   save size, make none
   save slot, make none
   save holds, make list
-  save sorts, make list
+  # typed where it is made: its element is read (`/road`) before the first push, where inference has not met it
+  save sorts, like list, like view-sort
+    make list
 
   walk after-key(group)
     take child

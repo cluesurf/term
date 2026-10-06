@@ -1,0 +1,89 @@
+load @term/mill/tree/code/form/link/mine
+  find link
+
+load @term/mill/tree/code/take/mine
+  find take
+
+load @term/mill/tree/code/seed/mine
+  find seed-text
+
+load @term/mill/tree/code/drop/mine
+  find drop
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+load @term/mill/tree/code/need/mine
+  find need
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/fall/mine
+  find fall
+
+# `head <name>` is a type parameter, `head <name>, like <type>` a value INDEX, and a bare `head` with a value
+# under it (`head / make zero`) is the index's argument. The name is a childless word, so the value form does
+# not lose its argument to it.
+mine head
+  mine term, term head
+    mine maybe
+      mine word
+        site name
+    mine maybe
+      mine form, like like
+        site like
+    mine maybe
+      mine form, like need
+        site need
+    mine maybe
+      mine form, like fall
+        site fall
+    mine maybe
+      mine term, term base
+        mine any
+          # a bare word first: a `base` is usually one, and `mine seed` would wrap it in a form the reader
+          # never asked for. The value alternative stays for a `base` that carries one.
+          mine word
+            site base
+          mine form, like seed
+            site base
+        # `head k / base link-read / like svg-element-event-map`: the bound the type parameter ranges over.
+        # The reader treats a `head` with no `like` or `link` of its own as a plain type parameter and reads
+        # none of this, so it is dropped. See drop/mine.tree.
+        mine list
+          mine any
+            mine form, like like
+              site drop
+            mine form, like take
+              site drop
+            mine form, like drop
+              site drop
+    # `head a / link x, like text`: an ANONYMOUS record as the type argument, its fields written inline. A head
+    # that carries a `like` or a `link` is a NAMED type argument, which is what makes a `like` an extension of
+    # its base rather than an alias for it.
+    mine list
+      mine form, like link
+        site link
+    mine list
+      mine any
+        mine form, like drop
+          site drop
+        # `head make / back native-any`: a constructor's result type in the binding files. It lives HERE
+        # rather than in the shared ignored vocabulary because `back n` is also the RETIRED spelling of a
+        # return, and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like head-back
+          site drop
+        # `head d / base native-number / text <1>`: a default for the type parameter. The reader takes a
+        # `head`'s name and its `like`, and reads nothing else.
+        mine form, like seed-text
+          site drop
+        # LAST: the VALUE INDEX (`head / read count`, `head / make succ ...`), and the value alternation ends
+        # in a fallback that takes any headed group
+        mine form, like seed
+          site seed
+
+mine head-back
+  mine term, term back
+    mine list
+      mine node

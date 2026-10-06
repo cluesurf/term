@@ -1,0 +1,395 @@
+load @term/mill/tree/code/fall/mine
+  find fall
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/seed/mine
+  find seed-text
+
+load @term/mill/tree/code/drop/mine
+  find drop
+
+load @term/mill/tree/code/call/mine
+  find call
+
+load @term/mill/tree/code/hide/mine
+  find hide
+
+load @term/mill/tree/code/task/mine
+  find task
+
+load @term/mill/tree/code/note/mine
+  find note
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+load @term/mill/tree/code/tag/mine
+  find tag
+
+mine link
+  mine term, term link
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
+    mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
+      mine term, term mark
+        mine term, term private
+          site hide
+    mine maybe
+      mine term, term need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
+    mine list
+      mine form, like tag
+        site tag
+    mine list
+      mine form, like link-take
+        site take
+    mine list
+      mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
+        mine form, like like
+          site result
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall
+
+# `lock false` beside a field, and a `like` that arrives after the field's native `name <X>`.
+#
+# THE READER IGNORES BOTH, and this rule exists to say so out loud. `compile/mill.ts` takes a field's type from
+# the SECOND child of the `link` and no other, so once a `name <X>` sits there the `like` under it never reaches
+# the type. That is how every one of the 3,091 interfaces `@term/bind` emits has `any` for every field. The
+# site is called `drop` because that is what happens to it: the mint reads it so the grammar's own health check
+# can see it is accounted for, and the bridge builds nothing from it.
+#
+# Reproduced rather than fixed, so the switch stays mechanical. See quirk 6 in note/term/mint-bridge/quirks.md.
+mine link-lock
+  mine term, term lock
+    mine any
+      mine term, term true
+        site value
+      mine term, term false
+        site value
+
+# One `take` beside a `link`: a parameter of the function type the link is declared `like task`. It may carry
+# its own `like <type>`, which used to be unmatched, so the whole link failed and `form hive-ear` stopped
+# parsing the moment the `like` rule stopped swallowing the take (mint-bridge-0002).
+mine link-take
+  mine term, term take
+    mine any
+      mine term
+        site term
+      mine text
+        site text
+      mine form, like link-take-mark
+        site mark
+    mine maybe
+      mine form, like like
+        site like
+    # `take pf, like lt / head / read m`: the type's index, written beside the `like` the way a task
+    # parameter's is, and folded into the declared type the same way
+    mine list
+      mine form, like head
+        site head
+
+mine link-take-mark
+  mine term, term mark
+    mine term
+      site value
+
+# `link bind, list code-bind`: a list-of-form field. `link host, form term` a typed field. `link head, void
+# node, like t` a nullable typed field. `link deck, hash deck, link name` a hash keyed by a field of the form.
+mine link-list
+  mine term, term list
+    mine term
+      site form
+
+mine link-form
+  mine term, term form
+    mine term
+      site form
+
+mine link-void
+  mine term, term void
+    mine term
+      site form
+  mine maybe
+    mine form, like like
+      site like
+
+mine link-hash
+  mine term, term hash
+    mine term
+      site form
+  mine maybe
+    mine term, term link
+      mine term
+        site key
+
+mine link-mesh
+  mine term, term mesh
+    mine term
+      site form
+  mine maybe
+    mine term, term link
+      mine term
+        site key
+
+# `link second` typed by a call: a dependent field (`call b / bind value, read first`)
+mine link-call
+  mine form, like call
+    site call
+
+# `link 1, name <$1>`: a field whose NAME is a number, which is how `RegExp.$1` is declared. The reader takes a
+# field's name from a group head, a number is not one, and a field with no name is not pushed at all, so the
+# whole line vanishes. Matched here so the file still reads, and built into nothing. See quirk 6.
+mine link-number
+  mine term, term link
+    mine code
+      site value
+    mine list
+      mine node
+
+mine link-read
+  mine term, term read
+    mine list
+      mine node
+
+# `slot x, like number`: a POSITIONAL field. A form with slots takes bare values in order, and a task with slot
+# parameters refuses a named argument.
+#
+# The body mirrors `mine link` because `compile/mill.ts` runs ONE field reader over all three heads: whatever a
+# `link` may carry, a `slot` may carry. It is a rule of its own rather than an alternation on the head,
+# because `mine term, term <word>` consumes the group it matches, so the head cannot be chosen apart from the
+# body it opens.
+mine link-slot
+  mine term, term slot
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
+    mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
+      mine term, term mark
+        mine term, term private
+          site hide
+    mine maybe
+      mine term, term need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
+    mine list
+      mine form, like tag
+        site tag
+    mine list
+      mine form, like link-take
+        site take
+    mine list
+      mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
+        mine form, like like
+          site result
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall
+
+# `free x`: a field whose name is released. The reader builds it exactly as a `link`.
+#
+# The body mirrors `mine link` because `compile/mill.ts` runs ONE field reader over all three heads: whatever a
+# `link` may carry, a `free` may carry. It is a rule of its own rather than an alternation on the head,
+# because `mine term, term <word>` consumes the group it matches, so the head cannot be chosen apart from the
+# body it opens.
+mine link-free
+  mine term, term free
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
+    mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
+      mine term, term mark
+        mine term, term private
+          site hide
+    mine maybe
+      mine term, term need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
+    mine list
+      mine form, like tag
+        site tag
+    mine list
+      mine form, like link-take
+        site take
+    mine list
+      mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
+        mine form, like like
+          site result
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall

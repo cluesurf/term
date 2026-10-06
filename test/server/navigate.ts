@@ -103,9 +103,9 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
   const native = await definition(time.uri, at(time.text, '{platform}/time', '{platform}', 2))
   ok('path: a `{platform}` path opens the node implementation', ends(native, 'deck/base/code/native/node/time.tree'), JSON.stringify(native))
 
-  const risk = await openFile('deck/mill/code/code/task/mine.tree')
+  const risk = await openFile('deck/mill/code/tree/code/task/mine.tree')
   const relative = await definition(risk.uri, at(risk.text, 'load ./risk/mine', './risk'))
-  ok('path: a relative path opens the file beside it', ends(relative, 'deck/mill/code/code/task/risk/mine.tree') && relative!.range.start.line === 0, JSON.stringify(relative))
+  ok('path: a relative path opens the file beside it', ends(relative, 'deck/mill/code/tree/code/task/risk/mine.tree') && relative!.range.start.line === 0, JSON.stringify(relative))
 }
 
 // ---- 3. a `find` under a load ----
@@ -137,10 +137,10 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 
 // ---- 5. mill definitions and manifests ----
 {
-  const mine = await openFile('deck/mill/code/code/fork/mine.tree')
+  const mine = await openFile('deck/mill/code/tree/code/fork/mine.tree')
   // the short form: `@term/mill/<path>` resolves in the mill's code root, deck/mill/code, first
-  const path = await definition(mine.uri, at(mine.text, 'load @term/mill/code/form/link/mine', 'form/link'))
-  ok('mill: a grammar `load` path opens the grammar file', ends(path, 'deck/mill/code/code/form/link/mine.tree') && path!.range.start.line === 0, JSON.stringify(path))
+  const path = await definition(mine.uri, at(mine.text, 'load @term/mill/tree/code/form/link/mine', 'form/link'))
+  ok('mill: a grammar `load` path opens the grammar file', ends(path, 'deck/mill/code/tree/code/form/link/mine.tree') && path!.range.start.line === 0, JSON.stringify(path))
 
   const find = await definition(mine.uri, at(mine.text, '  find link', 'link'))
   ok('mill: a `find` goes to the rule in that grammar file', ends(find, 'form/link/mine.tree') && lineAt(find).split(' ').slice(0, 2).join(' ') === 'mine link', JSON.stringify(find))
@@ -151,7 +151,7 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
   const seed = await definition(mine.uri, at(mine.text, 'mine form, like seed', 'seed'))
   ok('mill: a rule a loaded grammar file declares goes there', ends(seed, 'code/seed/mine.tree') && lineAt(seed).split(' ').slice(0, 2).join(' ') === 'mine seed', JSON.stringify(seed))
 
-  const base = await openFile('deck/mill/code/code/fork/base.tree')
+  const base = await openFile('deck/mill/code/tree/code/fork/base.tree')
   const nested = await definition(base.uri, at(base.text, 'bind mine, load ./mine', './mine'))
   ok('mill: the nested `load ./mine` of a dialect\'s base.tree opens its mine.tree', ends(nested, 'code/fork/mine.tree'), JSON.stringify(nested))
 

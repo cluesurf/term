@@ -196,6 +196,38 @@ task translated
         send back, read thing
       hook miss
         send back, text <another exception>
+
+# a division and a remainder by zero, guarded. TypeScript and Kotlin raise the \`defect\` the guard catches. Swift traps
+# and Rust panics, which no guard reaches (decisions-2026-10.md D15), so those two build this and do not run it
+task share
+  take total, like number
+  take parts, like number
+  like text
+  fork
+    mark unsafe
+    save got
+      call divide
+        read total
+        read parts
+    send back, text <{got}>
+  halt take
+    take problem
+    send back, text <caught {problem/form}>
+
+task rest
+  take total, like number
+  take parts, like number
+  like text
+  fork
+    mark unsafe
+    save got
+      call modulo
+        read total
+        read parts
+    send back, text <{got}>
+  halt take
+    take problem
+    send back, text <caught {problem/form}>
 `
 
 function frontEnd(env: Env): Program {
@@ -235,7 +267,7 @@ function frontEnd(env: Env): Program {
 
   resolveAsync(program)
 
-  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked', 'translated']))
+  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked', 'translated', 'share', 'rest']))
 }
 
 const dir = runDir('term-guard-native-')
@@ -293,7 +325,7 @@ function runKotlin(): void {
   writeFileSync(
     file,
     hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); println(translated("zed")); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); println(translated("zed")); println(share(6, 3)); println(share(6, 0)); println(rest(7, 0)); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
     ),
   )
   const jar = join(dir, 'main.jar')
@@ -310,6 +342,11 @@ function runKotlin(): void {
   const built = spawnSync('java', ['-jar', jar], { encoding: 'utf8' })
   const uncaught = spawnSync('java', ['-jar', jar, 'raise'], { encoding: 'utf8' })
   judge('kotlin', built, uncaught)
+  // the JVM's own ArithmeticException reached the guard as `failure`, where TypeScript raises `defect`
+  const lines = built.stdout.split('\n')
+  ok('kotlin: a division by a nonzero divisor answers', lines[5] === '2', JSON.stringify(lines[5]))
+  ok('kotlin: a division by zero raises the defect TypeScript raises', lines[6] === 'caught defect', JSON.stringify(lines[6]))
+  ok('kotlin: a remainder by zero raises the same defect', lines[7] === 'caught defect', JSON.stringify(lines[7]))
 }
 
 // the stdlib's exception module docks crates (uuid for the occurrence code, base64 for its tone shape), so the Rust

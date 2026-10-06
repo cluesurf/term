@@ -1,0 +1,50 @@
+load @term/mill/tree/code/take/mint
+  find take
+
+load @term/mill/tree/code/task/mint
+  find task
+
+load @term/mill/tree/code/tool/flow/mint
+  find flow
+
+load @term/base/lang
+  find code-tree
+  find code-tree-take
+  find code-tree-body
+
+mint tree, like code-tree
+  case name
+    site name
+  case take
+    site take
+  case hook, mint tree-hook
+    site hook
+  case task
+    site task
+  case flow
+    site flow
+  hook make
+    make tree
+      bind name, read name
+      bind take, read take
+      bind hook, read hook
+      bind task, read task
+      bind flow, read flow
+
+mint tree-take, like code-tree-take
+  case name
+    site name
+  hook make
+    make code-tree-take
+      bind name, read name
+
+mint tree-body, like code-tree-body
+  case node
+    site node
+  hook make
+    make code-tree-body
+      bind node, read node
+
+mint tree-hook
+  hook make
+    make tree-hook

@@ -1,0 +1,39 @@
+load @term/mill/tree/code/call/mine
+  find call-link
+
+
+load @term/mill/tree/code/bind/mine
+  find bind
+
+load @term/mill/tree/code/save/mine
+  find save
+  find save-key
+
+load @term/mill/tree/code/turn/mine
+  find turn
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+# `make <form>` with `bind` children. The name is OPTIONAL because the reader's value case for a `make` head
+# fires whether or not one followed: a bare `make` is a record with an empty name.
+# `mark lean`: opted in to the lean surface, so `make x / foo true / bar <baz>` fills the fields `foo` and
+# `bar`. See `mine seed-call-open` in ../seed/mine.tree.
+mine make
+  mark lean
+  mine term, term make
+    mine maybe
+      mine term
+        site name
+    mine list
+      mine any
+        mine form, like bind
+          site bind
+        mine form, like save
+          site save
+        mine form, like save-key
+          site save
+        mine form, like call-link
+          site link
+        mine form, like seed
+          site seed

@@ -1,0 +1,33 @@
+load @term/mill/tree/code/tool/flow/mine
+  find flow
+
+load @term/mill/tree/code/task/mine
+  find task
+
+load @term/mill/tree/code/take/mine
+  find take
+
+mine tree
+  mine term, term tree
+    mine term
+      site name
+    mine list
+      mine form, like take
+        site take
+    mine list
+      mine any
+        mine form, like tree-hook
+          site hook
+        mine form, like task
+          site task
+        mine form, like flow
+          site flow
+
+# a template body: `hook bind` or `hook fuse` over any nodes
+mine tree-hook
+  mine term, term hook
+    mine any
+      mine term, term bind
+      mine term, term fuse
+    mine list
+      mine node

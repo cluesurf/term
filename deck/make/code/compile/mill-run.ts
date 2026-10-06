@@ -3,7 +3,7 @@
 // file instead of a hand-written reader. Proven on the host role against compile/host.ts on every fixture
 // (test/compile/mill-run.ts).
 //
-// The mine dialect (deck/mill/code/mill/mine.tree is its own grammar):
+// The mine dialect (deck/mill/code/tree/mill/mine.tree is its own grammar):
 //   mine term, term <w>   match a group headed <w>; inner rules consume its remaining nodes in order
 //   mine term / site s    consume one word (a bare name, or a group wrapping one) into site s
 //   mine text / site s    consume a text literal

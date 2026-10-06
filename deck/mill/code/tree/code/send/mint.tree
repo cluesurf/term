@@ -1,0 +1,43 @@
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/mill/tree/code/fork/mint
+  find fork-arm
+  find fork-arm-hook
+  find fork-arm-bare
+
+mint send
+  case seed
+    site seed
+  hook make
+    make send
+      bind seed, read seed
+
+mint send-kind
+  case kind
+    site kind
+  case seed
+    site seed
+  hook make
+    make send-kind
+      bind kind, read kind
+      bind seed, read seed
+
+mint back
+  case seed
+    site seed
+  hook make
+    make back
+      bind seed, read seed
+
+# the match under `back`, minted as the `fork-case` form a `sift` mints, under its own name so the bridge returns from
+# each arm
+mint back-match
+  case seed
+    site seed
+  case arm
+    site arm
+  hook make
+    make back-match
+      bind seed, read seed
+      bind arm, read arm

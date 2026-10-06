@@ -1,0 +1,501 @@
+
+# Quantities: a number in a REGISTERED unit, the value the `note` grammar writes `9.81m/s^2`, `20MB/s` and `$20` as
+# (note/term/mill/03-note-grammar.md).
+#
+# A unit is registered, never guessed. `unit-table` is the registry: every unit the note grammar will read after a
+# number, with its scale to the coherent base of its dimension and that dimension as base units and powers. A symbol
+# is ONE unit everywhere, and its casing is part of it: `MB` is megabytes, `Mb` megabits, and `mb` is no unit, so
+# `20mb` is an error rather than a guess. `m` is the meter and `min` the minute.
+#
+# A quantity carries what the compiler worked out from the registry when it read the literal: the value as written,
+# the unit as written, the scale of that unit to its base, and its dimension. So nothing here reads a unit's spelling
+# back at run time. Arithmetic works on the dimensions: a sum needs two of one dimension and is given in the left
+# one's unit, a product and a quotient combine them.
+#
+# What is not here yet: a unit with an offset (degrees Celsius and Fahrenheit, which no scale alone converts), and a
+# project's own units, which the registry has no way to take in yet.
+
+mark unstable
+
+load @term/base/hash
+  find hash
+
+# one base unit of a dimension, to a power: `s` to -2 in an acceleration
+form dimension-power
+  slot base, like text
+  slot power, like number
+
+# one registered unit. `scale` is a decimal LITERAL, so the compiler can write it into a program exactly as the
+# registry states it. `prefix` is a currency's sign, written before the amount (`$20`), empty for any other unit
+form unit-entry
+  slot symbol, like text
+  slot name, like text
+  slot scale, like text
+  slot dimension
+    like list
+      like dimension-power
+  slot prefix, like text
+
+form quantity
+  # the number as written, in `unit`
+  link value, like float
+  # the unit as written: `m/s^2`, `MB/s`, `USD`
+  link unit, like text
+  # what one `unit` is in the base units of its dimension: 8000000.0 for `MB`, in bits
+  link scale, like float
+  # the base units and their powers: `m` 1 and `s` -2 for `m/s^2`
+  link dimension
+    like hash
+      like text
+      like number
+
+  # the value in the base units of its dimension
+  task in-base
+    take self
+    like float
+    send back
+      call multiply
+        read self/value
+        read self/scale
+
+# A quantity from what the compiler read: the literal `9.81m/s^2` is
+# `quantity-of(9.81, <m/s^2>, 1.0, make(list, make(dimension-power, <m>, 1), make(dimension-power, <s>, -2)))`
+task quantity-of
+  take value, like float
+  take unit, like text
+  take scale, like float
+  take dimension
+    like list
+      like dimension-power
+  like quantity
+  save powers
+    make hash
+  walk list, read dimension
+    hook next
+      take site, name one
+      call powers/set, read(one/base), read(one/power)
+  send back
+    make quantity
+      bind value, read value
+      bind unit, read unit
+      bind scale, read scale
+      bind dimension, read powers
+
+# ---- the registry ----
+
+task unit-of
+  take symbol, like text
+  take name, like text
+  take scale, like text
+  take dimension
+    like list
+      like dimension-power
+  take prefix, like text
+  like unit-entry
+  mark private
+  send back
+    make unit-entry
+      bind symbol, read symbol
+      bind name, read name
+      bind scale, read scale
+      bind dimension, read dimension
+      bind prefix, read prefix
+
+# a unit whose dimension is one base unit to the first power
+task scaled
+  take symbol, like text
+  take name, like text
+  take scale, like text
+  take base, like text
+  like unit-entry
+  mark private
+  save dimension
+    make list
+  call dimension/push
+    make dimension-power
+      bind base, read base
+      bind power, code 1
+  send back
+    call unit-of
+      read symbol
+      read name
+      read scale
+      read dimension
+      text <>
+
+# a currency: its own dimension, written after the amount by its code or before it by its sign
+task currency
+  take code, like text
+  take name, like text
+  take sign, like text
+  like unit-entry
+  mark private
+  save dimension
+    make list
+  call dimension/push
+    make dimension-power
+      bind base, read code
+      bind power, code 1
+  send back
+    call unit-of
+      read code
+      read name
+      text <1.0>
+      read dimension
+      read sign
+
+task power-of
+  take base, like text
+  take power, like number
+  like dimension-power
+  mark private
+  send back
+    make dimension-power
+      bind base, read base
+      bind power, read power
+
+# Every registered unit. The coherent base of each dimension is its scale 1.0 unit: the meter, the kilogram, the
+# second, the ampere, the kelvin, the mole, the candela, the bit (a byte is 8), the radian, and for the units of a
+# page the CSS pixel and the em. A currency is a dimension of its own, so no sum mixes two.
+task unit-table
+  like list
+    like unit-entry
+  save out
+    make list
+
+  # length
+  call out/push, call(scaled, text(<m>), text(<meter>), text(<1.0>), text(<m>))
+  call out/push, call(scaled, text(<km>), text(<kilometer>), text(<1000.0>), text(<m>))
+  call out/push, call(scaled, text(<cm>), text(<centimeter>), text(<0.01>), text(<m>))
+  call out/push, call(scaled, text(<mm>), text(<millimeter>), text(<0.001>), text(<m>))
+  call out/push, call(scaled, text(<um>), text(<micrometer>), text(<0.000001>), text(<m>))
+  call out/push, call(scaled, text(<µm>), text(<micrometer>), text(<0.000001>), text(<m>))
+  call out/push, call(scaled, text(<nm>), text(<nanometer>), text(<0.000000001>), text(<m>))
+  call out/push, call(scaled, text(<mi>), text(<mile>), text(<1609.344>), text(<m>))
+  call out/push, call(scaled, text(<yd>), text(<yard>), text(<0.9144>), text(<m>))
+  call out/push, call(scaled, text(<ft>), text(<foot>), text(<0.3048>), text(<m>))
+  call out/push, call(scaled, text(<inch>), text(<inch>), text(<0.0254>), text(<m>))
+
+  # mass
+  call out/push, call(scaled, text(<kg>), text(<kilogram>), text(<1.0>), text(<kg>))
+  call out/push, call(scaled, text(<g>), text(<gram>), text(<0.001>), text(<kg>))
+  call out/push, call(scaled, text(<mg>), text(<milligram>), text(<0.000001>), text(<kg>))
+  call out/push, call(scaled, text(<t>), text(<tonne>), text(<1000.0>), text(<kg>))
+  call out/push, call(scaled, text(<lb>), text(<pound>), text(<0.45359237>), text(<kg>))
+  call out/push, call(scaled, text(<oz>), text(<ounce>), text(<0.028349523125>), text(<kg>))
+
+  # time
+  call out/push, call(scaled, text(<s>), text(<second>), text(<1.0>), text(<s>))
+  call out/push, call(scaled, text(<ms>), text(<millisecond>), text(<0.001>), text(<s>))
+  call out/push, call(scaled, text(<us>), text(<microsecond>), text(<0.000001>), text(<s>))
+  call out/push, call(scaled, text(<µs>), text(<microsecond>), text(<0.000001>), text(<s>))
+  call out/push, call(scaled, text(<ns>), text(<nanosecond>), text(<0.000000001>), text(<s>))
+  call out/push, call(scaled, text(<min>), text(<minute>), text(<60.0>), text(<s>))
+  call out/push, call(scaled, text(<h>), text(<hour>), text(<3600.0>), text(<s>))
+  call out/push, call(scaled, text(<d>), text(<day>), text(<86400.0>), text(<s>))
+
+  # the other base units
+  call out/push, call(scaled, text(<A>), text(<ampere>), text(<1.0>), text(<A>))
+  call out/push, call(scaled, text(<K>), text(<kelvin>), text(<1.0>), text(<K>))
+  call out/push, call(scaled, text(<mol>), text(<mole>), text(<1.0>), text(<mol>))
+  call out/push, call(scaled, text(<cd>), text(<candela>), text(<1.0>), text(<cd>))
+
+  # angle
+  call out/push, call(scaled, text(<rad>), text(<radian>), text(<1.0>), text(<rad>))
+  call out/push, call(scaled, text(<deg>), text(<degree>), text(<0.017453292519943295>), text(<rad>))
+  call out/push, call(scaled, text(<°>), text(<degree>), text(<0.017453292519943295>), text(<rad>))
+
+  # information: the bit is the base, so a byte is 8 of them, and casing tells them apart (`MB`, `Mb`)
+  call out/push, call(scaled, text(<bit>), text(<bit>), text(<1.0>), text(<bit>))
+  call out/push, call(scaled, text(<b>), text(<bit>), text(<1.0>), text(<bit>))
+  call out/push, call(scaled, text(<kb>), text(<kilobit>), text(<1000.0>), text(<bit>))
+  call out/push, call(scaled, text(<Mb>), text(<megabit>), text(<1000000.0>), text(<bit>))
+  call out/push, call(scaled, text(<Gb>), text(<gigabit>), text(<1000000000.0>), text(<bit>))
+  call out/push, call(scaled, text(<B>), text(<byte>), text(<8.0>), text(<bit>))
+  call out/push, call(scaled, text(<kB>), text(<kilobyte>), text(<8000.0>), text(<bit>))
+  call out/push, call(scaled, text(<MB>), text(<megabyte>), text(<8000000.0>), text(<bit>))
+  call out/push, call(scaled, text(<GB>), text(<gigabyte>), text(<8000000000.0>), text(<bit>))
+  call out/push, call(scaled, text(<TB>), text(<terabyte>), text(<8000000000000.0>), text(<bit>))
+  call out/push, call(scaled, text(<KiB>), text(<kibibyte>), text(<8192.0>), text(<bit>))
+  call out/push, call(scaled, text(<MiB>), text(<mebibyte>), text(<8388608.0>), text(<bit>))
+  call out/push, call(scaled, text(<GiB>), text(<gibibyte>), text(<8589934592.0>), text(<bit>))
+
+  # counts, so a rate reads as one: `100req/s`, `60fps`
+  call out/push, call(scaled, text(<req>), text(<request>), text(<1.0>), text(<req>))
+  call out/push, call(scaled, text(<frame>), text(<frame>), text(<1.0>), text(<frame>))
+
+  # a page: the CSS pixel, the point (a 72nd of an inch, so 4/3 of a pixel), the em of the element and of the root,
+  # and a hundredth of the viewport each way
+  call out/push, call(scaled, text(<px>), text(<pixel>), text(<1.0>), text(<px>))
+  call out/push, call(scaled, text(<pt>), text(<point>), text(<1.3333333333333333>), text(<px>))
+  call out/push, call(scaled, text(<em>), text(<em>), text(<1.0>), text(<em>))
+  call out/push, call(scaled, text(<rem>), text(<root em>), text(<1.0>), text(<rem>))
+  call out/push, call(scaled, text(<vw>), text(<viewport width>), text(<1.0>), text(<vw>))
+  call out/push, call(scaled, text(<vh>), text(<viewport height>), text(<1.0>), text(<vh>))
+
+  # a hundredth of one, of no dimension
+  call out/push, call(unit-of, text(<%>), text(<percent>), text(<0.01>), make(list), text(<>))
+
+  # derived: frequency, a frame rate, force, energy, power, pressure
+  save hertz
+    make list
+  call hertz/push, call(power-of, text(<s>), code(-1))
+  call out/push, call(unit-of, text(<Hz>), text(<hertz>), text(<1.0>), read(hertz), text(<>))
+  call out/push, call(unit-of, text(<kHz>), text(<kilohertz>), text(<1000.0>), read(hertz), text(<>))
+  call out/push, call(unit-of, text(<MHz>), text(<megahertz>), text(<1000000.0>), read(hertz), text(<>))
+  call out/push, call(unit-of, text(<GHz>), text(<gigahertz>), text(<1000000000.0>), read(hertz), text(<>))
+
+  save rate
+    make list
+  call rate/push, call(power-of, text(<frame>), code(1))
+  call rate/push, call(power-of, text(<s>), code(-1))
+  call out/push, call(unit-of, text(<fps>), text(<frames per second>), text(<1.0>), read(rate), text(<>))
+
+  save force
+    make list
+  call force/push, call(power-of, text(<kg>), code(1))
+  call force/push, call(power-of, text(<m>), code(1))
+  call force/push, call(power-of, text(<s>), code(-2))
+  call out/push, call(unit-of, text(<N>), text(<newton>), text(<1.0>), read(force), text(<>))
+
+  save energy
+    make list
+  call energy/push, call(power-of, text(<kg>), code(1))
+  call energy/push, call(power-of, text(<m>), code(2))
+  call energy/push, call(power-of, text(<s>), code(-2))
+  call out/push, call(unit-of, text(<J>), text(<joule>), text(<1.0>), read(energy), text(<>))
+
+  save watt
+    make list
+  call watt/push, call(power-of, text(<kg>), code(1))
+  call watt/push, call(power-of, text(<m>), code(2))
+  call watt/push, call(power-of, text(<s>), code(-3))
+  call out/push, call(unit-of, text(<W>), text(<watt>), text(<1.0>), read(watt), text(<>))
+
+  save pressure
+    make list
+  call pressure/push, call(power-of, text(<kg>), code(1))
+  call pressure/push, call(power-of, text(<m>), code(-1))
+  call pressure/push, call(power-of, text(<s>), code(-2))
+  call out/push, call(unit-of, text(<Pa>), text(<pascal>), text(<1.0>), read(pressure), text(<>))
+
+  # currencies, each its own dimension
+  call out/push, call(currency, text(<USD>), text(<United States dollar>), text(<$>))
+  call out/push, call(currency, text(<EUR>), text(<euro>), text(<€>))
+  call out/push, call(currency, text(<GBP>), text(<pound sterling>), text(<£>))
+  call out/push, call(currency, text(<JPY>), text(<yen>), text(<¥>))
+
+  send back, read out
+
+# ---- arithmetic ----
+
+# a quantity's dimension as the base unit each power is of, from both sides: what `same-dimension` and the products
+# compare
+task power-at
+  take dimension
+    like hash
+      like text
+      like number
+  take base, like text
+  like number
+  mark private
+  send back
+    call dimension/get-or-default
+      read base
+      code 0
+
+# whether two quantities measure the same thing: every base unit to the same power, on either side
+task same-dimension
+  take a, like quantity
+  take b, like quantity
+  like boolean
+  walk list, call(a/dimension/keys)
+    hook next
+      take site, name base
+      fork test
+        hook test
+          call is-unequal
+            call power-at, read(a/dimension), read(base)
+            call power-at, read(b/dimension), read(base)
+        hook hold
+          send back, false
+  walk list, call(b/dimension/keys)
+    hook next
+      take site, name base
+      fork test
+        hook test
+          call is-unequal
+            call power-at, read(a/dimension), read(base)
+            call power-at, read(b/dimension), read(base)
+        hook hold
+          send back, false
+  send back, true
+
+# the dimension of a product, `sign` 1, or of a quotient, `sign` -1: each base unit's powers added or taken away, and
+# a base whose power comes to zero dropped
+task combine
+  take a
+    like hash
+      like text
+      like number
+  take b
+    like hash
+      like text
+      like number
+  take sign, like number
+  like hash
+    like text
+    like number
+  mark private
+  save out
+    make hash
+  walk list, call(a/keys)
+    hook next
+      take site, name base
+      call out/set, read(base), call(power-at, read(a), read(base))
+  walk list, call(b/keys)
+    hook next
+      take site, name base
+      save sum
+        call add
+          call power-at, read(out), read(base)
+          call multiply, read(sign), call(power-at, read(b), read(base))
+      fork test
+        hook test
+          call is-equal, read(sum), code(0)
+        hook hold
+          call out/remove, read(base)
+        hook miss
+          call out/set, read(base), read(sum)
+  send back, read out
+
+# `b` in the unit `a` is written in, which must measure the same thing
+task in-unit-of
+  take a, like quantity
+  take b, like quantity
+  like float
+  mark private
+  fork test
+    hook test
+      call not
+        call same-dimension, read(a), read(b)
+    hook hold
+      halt <the quantities {a/unit} and {b/unit} measure different things, so neither is in the other's unit>
+  send back
+    call divide
+      call b/in-base
+      read a/scale
+
+task with-value
+  take q, like quantity
+  take value, like float
+  like quantity
+  mark private
+  send back
+    make quantity
+      bind value, read value
+      bind unit, read q/unit
+      bind scale, read q/scale
+      bind dimension, read q/dimension
+
+# a sum, in the left one's unit: `1km + 500m` is `1.5km`
+task quantity-add
+  take a, like quantity
+  take b, like quantity
+  like quantity
+  send back
+    call with-value
+      read a
+      call add, read(a/value), call(in-unit-of, read(a), read(b))
+
+task quantity-subtract
+  take a, like quantity
+  take b, like quantity
+  like quantity
+  send back
+    call with-value
+      read a
+      call subtract, read(a/value), call(in-unit-of, read(a), read(b))
+
+# a product: `3m * 4m` is `12m*m`, of length squared
+task quantity-multiply
+  take a, like quantity
+  take b, like quantity
+  like quantity
+  send back
+    make quantity
+      bind value, call(multiply, read(a/value), read(b/value))
+      bind unit, text <{a/unit}*{b/unit}>
+      bind scale, call(multiply, read(a/scale), read(b/scale))
+      bind dimension, call(combine, read(a/dimension), read(b/dimension), code(1))
+
+# scaled by a number: `2 * 3m` is `6m`
+task quantity-multiply
+  take a, like quantity
+  take b, like float
+  like quantity
+  send back
+    call with-value, read(a), call(multiply, read(a/value), read(b))
+
+task quantity-multiply
+  take a, like float
+  take b, like quantity
+  like quantity
+  send back
+    call with-value, read(b), call(multiply, read(a), read(b/value))
+
+# a quotient: `100m / 10s` is `10m/s`
+task quantity-divide
+  take a, like quantity
+  take b, like quantity
+  like quantity
+  send back
+    make quantity
+      bind value, call(divide, read(a/value), read(b/value))
+      bind unit, text <{a/unit}/{b/unit}>
+      bind scale, call(divide, read(a/scale), read(b/scale))
+      bind dimension, call(combine, read(a/dimension), read(b/dimension), code(-1))
+
+task quantity-divide
+  take a, like quantity
+  take b, like float
+  like quantity
+  send back
+    call with-value, read(a), call(divide, read(a/value), read(b))
+
+# -1, 0 or 1 as `a` is below, equal to or above `b`, which must measure the same thing: `5m < 2km`
+task quantity-compare
+  take a, like quantity
+  take b, like quantity
+  like number
+  fork test
+    hook test
+      call not
+        call same-dimension, read(a), read(b)
+    hook hold
+      halt <the quantities {a/unit} and {b/unit} measure different things, so neither is above the other>
+  save left, call(a/in-base)
+  save right, call(b/in-base)
+  fork test
+    hook test
+      call is-below, read(left), read(right)
+    hook hold
+      send back, code -1
+  fork test
+    hook test
+      call is-above, read(left), read(right)
+    hook hold
+      send back, code 1
+  send back, code 0
+
+# `q` in another unit, given as a quantity of it: `convert(20MB, 1KiB)` is `19531.25KiB`. Only the other's unit is read
+task convert
+  take q, like quantity
+  take unit, like quantity
+  like quantity
+  send back
+    make quantity
+      bind value, call(in-unit-of, read(unit), read(q))
+      bind unit, read unit/unit
+      bind scale, read unit/scale
+      bind dimension, read unit/dimension

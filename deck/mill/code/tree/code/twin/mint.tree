@@ -1,0 +1,105 @@
+load @term/mill/tree/code/take/mint
+  find take
+
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/mill/tree/code/note/mint
+  find note
+
+load @term/mill/tree/code/must/mint
+  find task-have
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/mill/tree/code/tool/flow/mint
+  find flow
+
+# The binds for a twin's sites. A site with a `mine` half and no `mint` bind parses and then vanishes with no error,
+# so the two land together. See mine.tree beside this file.
+
+mint twin
+  case name
+    site name
+  case label, mint twin-label
+    site label
+  case take
+    site take
+  case have, mint task-have
+    site have
+  case test, mint twin-test
+    site test
+  case ease, mint twin-ease
+    site ease
+  case cost, mint twin-cost
+    site cost
+  case knob, mint twin-knob
+    site knob
+  case mark, mint twin-mark
+    site mark
+  case note
+    site note
+  case flow
+    site flow
+  hook make
+    make twin
+      bind name, read name
+      bind label, read label
+      bind take, read take
+      bind have, read have
+      bind test, read test
+      bind ease, read ease
+      bind cost, read cost
+      bind knob, read knob
+      bind mark, read mark
+      bind note, read note
+      bind flow, read flow
+
+mint twin-label
+  case name
+    site name
+  hook make
+    make twin-label
+      bind name, read name
+
+mint twin-test
+  case seed
+    site seed
+  hook make
+    make twin-test
+      bind seed, read seed
+
+mint twin-ease
+  case name
+    site name
+  hook make
+    make twin-ease
+      bind name, read name
+
+mint twin-cost
+  case seed
+    site seed
+  hook make
+    make twin-cost
+      bind seed, read seed
+
+mint twin-knob
+  case name
+    site name
+  case like
+    site like
+  hook make
+    make twin-knob
+      bind name, read name
+      bind like, read like
+
+mint twin-mark
+  case kind
+    site kind
+  case name, mint twin-label
+    site name
+  hook make
+    make twin-mark
+      bind kind, read kind
+      bind name, read name

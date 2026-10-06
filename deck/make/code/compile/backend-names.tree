@@ -1,0 +1,1293 @@
+# What the emitters ask of names and simple shapes: whether a name is assigned, every name read, whether a list is
+# written, the names a body declares and rebinds, the tasks a backend may change the signature of, a text append and
+# the one-character one, a map's counting update, the tasks that only fill a list and a call of one, the empty text,
+# the text locals only ever built by appending, and a local declared before its value.
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), which stays as the face and turns the answers into the
+# `Set`s and `Map`s its callers hold. The walks by reflection (`Object.entries` past `type` and `span`) are
+# compile/node-children.tree's step: each port writes the cases its original wrote and descends through the rest. A
+# value the original took as `unknown` (a body, a statement or an expression) is handed in as node handles. Every answer
+# here is a test or a set read for membership, so the order a walk meets children in changes no answer.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load ./node
+  find type
+  find expression
+  find statement
+  find binding
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-shapes
+  find collection-call
+  find string-call
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-name
+  take found, like list, like text
+  take name, like text
+  mark private
+
+  fork test, not(has-text(found, name))
+    hold
+      push(found, name)
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task type-kind
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case unit
+          back <unit>
+        case unknown
+          back <unknown>
+        case dynamic
+          back <dynamic>
+        case bytes
+          back <bytes>
+        case array
+          back <array>
+        case map
+          back <map>
+        case named
+          back <named>
+        case function
+          back <function>
+        case variable
+          back <variable>
+    case none
+      back <>
+
+# ---- whether a name is assigned ----
+
+# whether anything here assigns the variable itself (`save x, ...`), closures and nested blocks included. A write to a
+# slot or field of it (`save x/f, ...`) does not count
+task assigns-name
+  take roots, like list, like node-handle
+  take name, like text
+  like boolean
+
+  walk roots
+    take handle
+    fork test, assigns-in(handle, name)
+      hold
+        back true
+  back false
+
+task assigns-in
+  take handle, like node-handle
+  take name, like text
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          fork test, is-equal(variable-name-of(target), name)
+            hold
+              back true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back assigns-name(node-children(handle, type-and-span()), name)
+
+# ---- every name read ----
+
+# every variable name these read, closures and nested blocks included, each once
+task names-in
+  take roots, like list, like node-handle
+  like list, like text
+
+  save found, make list
+  walk roots
+    take handle
+    names-into(handle, found)
+  back found
+
+task names-into
+  take handle, like node-handle
+  take found, like list, like text
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          add-name(found, name)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    names-into(child, found)
+
+# ---- whether a list is written ----
+
+task is-named
+  take node, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  back is-equal(variable-name-of(node), name)
+
+task argument-at
+  take args, like list, like expression
+  take at, like number
+  like maybe, like expression
+  mark private
+
+  fork test, is-below(at, args/length)
+    hold
+      save found, get(args, at)
+      back make(some, found)
+  back make none
+
+task named-at
+  take args, like list, like expression
+  take at, like number
+  take name, like text
+  like boolean
+  mark private
+
+  sift argument-at(args, at)
+    case some
+      link found
+      back is-named(found, name)
+    case none
+      back false
+
+# does anything in these statements write the owned list `name`: a push onto it, a slot write, or a lend for writing
+task writes-to
+  take body, like list, like statement
+  take name, like text
+  take lend, like hash, like text, like hash, like number, like text
+  like boolean
+
+  walk block-handles(body)
+    take handle
+    fork test, writes-in(handle, name, lend)
+      hold
+        back true
+  back false
+
+task changes-list
+  take op, like text
+  like boolean
+  mark private
+
+  walk split(<at get length includes indexOf join>, < >)
+    take kept
+    fork test, is-equal(op, kept)
+      hold
+        back false
+  back true
+
+task writes-in
+  take handle, like node-handle
+  take list-name, like text
+  take lend, like hash, like text, like hash, like number, like text
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          sift assign-target
+            case member
+              link member-target
+              fork test, is-named(member-target, list-name)
+                hold
+                  back true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          link call-args
+          sift call-callee
+            case variable
+              link callee-name
+              fork test, and(is-equal(callee-name, <list_push>), named-at(call-args, 0, list-name))
+                hold
+                  back true
+            miss
+              save nothing, 0
+          # the collection operation `list_push` inlines to, or any other that changes the list (`pop`, `splice`)
+          sift collection-call(call-callee)
+            case some
+              link op
+              fork test, and(and(is-equal(op/kind, <array>), is-named(op/target, list-name)), changes-list(op/op))
+                hold
+                  back true
+            case none
+              save nothing, 0
+          sift call-callee
+            case variable
+              link callee-name
+              fork test, lend/has(callee-name)
+                hold
+                  save lent, lend/get(callee-name)
+                  save at, 0
+                  walk call-args
+                    take arg
+                    fork test, and(is-named(arg, list-name), and(lent/has(at), is-equal(lent/get(at), <write>)))
+                      hold
+                        back true
+                    save at, add(at, 1)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    fork test, writes-in(child, list-name, lend)
+      hold
+        back true
+  back false
+
+# ---- the names a body declares ----
+
+task let-names-into
+  take body, like list, like statement
+  take found, like list, like text
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        add-name(found, name)
+      case if
+        walk branches
+          take branch
+          let-names-into(branch/body, found)
+        sift otherwise
+          case some
+            link known
+            let-names-into(known, found)
+          case none
+            save nothing, 0
+      case while
+        let-names-into(body, found)
+      case for-each
+        add-name(found, item)
+        let-names-into(body, found)
+      case match
+        walk cases
+          take arm
+          let-names-into(arm/body, found)
+        sift otherwise
+          case some
+            link known
+            let-names-into(known, found)
+          case none
+            save nothing, 0
+      case guard
+        let-names-into(body, found)
+        sift catch
+          case some
+            link caught
+            let-names-into(caught/body, found)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# every name a body's `let`s and walks declare, nested blocks included, closures not
+task let-names
+  take body, like list, like statement
+  like list, like text
+
+  save found, make list
+  let-names-into(body, found)
+  back found
+
+# ---- the tasks a backend may change ----
+
+task as-value-into
+  take handle, like node-handle
+  take found, like list, like text
+  mark private
+
+  save skip-callee, false
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          save local, false
+          sift binding
+            case some
+              link known
+              sift known
+                case local
+                  save local, true
+                case parameter
+                  save local, true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, not(local)
+            hold
+              add-name(found, name)
+        case call
+          # the callee of a call is the one use of a task's name that is not a value
+          sift callee
+            case variable
+              save skip-callee, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save children, node-children(handle, type-and-span())
+  save at, 0
+  walk children
+    take child
+    fork test, not(and(skip-callee, is-equal(at, 0)))
+      hold
+        as-value-into(child, found)
+    save at, add(at, 1)
+
+# The tasks a backend may change the signature of: top-level, synchronous, with a body, defined once, no trait method
+# (`refuse` names the trait methods), and never used as a value
+task gated-tasks
+  take program, like list, like statement
+  take refuse, like list, like text
+  like list, like statement
+
+  save defined, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        save count, 0
+        fork test, defined/has(fn-name)
+          hold
+            save count, defined/get(fn-name)
+        save defined/{fn-name}, add(count, 1)
+      miss
+        save nothing, 0
+  save as-value, make list
+  walk block-handles(program)
+    take handle
+    as-value-into(handle, as-value)
+  # a method that implements a mask's method: its signature is the trait's, shared with every other instance
+  save mask-methods, make hash
+  walk program
+    take one
+    sift one
+      case mask
+        link mask-name
+        save listed, make list
+        walk methods
+          take m
+          push(listed, m)
+        save mask-methods/{mask-name}, listed
+      miss
+        save nothing, 0
+  save trait-bound, make list
+  walk program
+    take one
+    sift one
+      case instance
+        fork test, mask-methods/has(mask)
+          hold
+            walk mask-methods/get(mask)
+              take m
+              push(trait-bound, <{target}:{m}>)
+      miss
+        save nothing, 0
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save is-async, read(async)
+        save is-trait, false
+        sift method
+          case some
+            link of
+            save is-trait, has-text(trait-bound, <{of/form}:{of/name}>)
+          case none
+            save nothing, 0
+        fork test, and(and(not(is-async), is-above(fn-body/length, 0)), and(not(is-trait), not(has-text(refuse, fn-name))))
+          hold
+            fork test, and(is-equal(defined/get(fn-name), 1), not(has-text(as-value, fn-name)))
+              hold
+                push(out, one)
+      miss
+        save nothing, 0
+  back out
+
+# ---- the names a body rebinds ----
+
+# every name a body binds: a `let` (when `lets`), a walk's item and index, a closure's parameters, and the fields or
+# `link` names an arm of a `fork case` binds (`fields`, each variant's field names, for an arm without `link` lines)
+task rebinds
+  take roots, like list, like node-handle
+  take fields, like hash, like text, like list, like text
+  take lets, like boolean
+  like list, like text
+
+  save found, make list
+  walk roots
+    take handle
+    rebinds-into(handle, fields, lets, found)
+  back found
+
+task rebinds-into
+  take handle, like node-handle
+  take fields, like hash, like text, like list, like text
+  take lets, like boolean
+  take found, like list, like text
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          fork test, lets
+            hold
+              add-name(found, name)
+        case for-each
+          add-name(found, item)
+          fork test, is-unequal(index, <>)
+            hold
+              add-name(found, index)
+        case match
+          walk cases
+            take arm
+            save binds, make list
+            walk arm/binds
+              take one
+              push(binds, one)
+            fork test, is-above(binds/length, 0)
+              hold
+                walk binds
+                  take one
+                  add-name(found, one)
+              miss
+                fork test, fields/has(arm/label)
+                  hold
+                    walk fields/get(arm/label)
+                      take one
+                      add-name(found, one)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          walk params
+            take param
+            add-name(found, param/name)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    rebinds-into(child, fields, lets, found)
+
+# ---- appends ----
+
+form text-append
+  link name, like text
+  link rest, like expression
+
+# An APPEND to a text variable: `save s, text <{s}...>`, the variable itself the template's first part. Answers the
+# variable and the template of what is appended
+task text-append-of
+  take given, like statement
+  like maybe, like text-append
+
+  sift given
+    case assign
+      fork test, is-unequal(to-text(op), <=>)
+        hold
+          back make none
+      save name, variable-name-of(target)
+      fork test, or(is-equal(name, <>), not(is-variable(target)))
+        hold
+          back make none
+      sift value
+        case template
+          link value-parts
+          link value-span
+          fork test, is-equal(value-parts/length, 0)
+            hold
+              back make none
+          save first-part, get(value-parts, 0)
+          save first, make none
+          sift first-part
+            case value
+              save first, make(some, value)
+            miss
+              save nothing, 0
+          save rest, make list
+          save at, 1
+          walk test
+            hook test, is-below(at, value-parts/length)
+            hook hold
+              push(rest, get(value-parts, at))
+              save at, add(at, 1)
+          sift first
+            case some
+              link first-node
+              fork test, and(and(is-equal(variable-name-of(first-node), name), is-above(rest/length, 0)), is-equal(type-kind(expression-type(first-node)), <string>))
+                hold
+                  save text-type, make type/string
+                  save appended
+                    make expression/template
+                      bind parts, rest
+                      bind span, value-span
+                      bind type, make(some, text-type)
+                  save made
+                    make text-append
+                      bind name, name
+                      bind rest, appended
+                  back make(some, made)
+            case none
+              save nothing, 0
+          back make none
+        miss
+          back make none
+    miss
+      back make none
+
+task is-variable
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back true
+    miss
+      back false
+
+form char-append
+  link text, like expression
+  link index, like expression
+
+# what an append adds when it is one character read out of an ASCII text: the text and the index, so a backend appends
+# the one unit in place. `ascii` answers whether an expression is a text proven ASCII
+task ascii-char-append
+  take rest, like expression
+  take ascii
+    like task
+      take node, like expression
+      like boolean
+  like maybe, like char-append
+
+  sift rest
+    case template
+      fork test, is-unequal(parts/length, 1)
+        hold
+          back make none
+      save part, get(parts, 0)
+      sift part
+        case value
+          sift value
+            case call
+              link only-callee
+              link only-args
+              sift only-callee
+                case member
+                  sift string-call(only-callee)
+                    case some
+                      link text
+                      fork test, and(and(ascii(text/target), or(is-equal(text/op, <charAt>), is-equal(text/op, <at>))), is-above(only-args/length, 0))
+                        hold
+                          save made
+                            make char-append
+                              bind text, text/target
+                              bind index, get(only-args, 0)
+                          back make(some, made)
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# ---- a map's counting update ----
+
+form map-update
+  link map, like expression
+  link key, like expression
+  link fallback, like expression
+  link step, like expression
+
+task is-plain
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back true
+    case integer
+      back true
+    case float
+      back true
+    miss
+      back false
+
+task same-name
+  take given, like maybe, like expression
+  take of, like expression
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      save a, variable-name-of(known)
+      back and(is-unequal(a, <>), is-equal(a, variable-name-of(of)))
+    case none
+      back false
+
+# the map read inside the update: `hash_get-or-default(m, k, d)` or `maybe_unwrap-or(hash_get(m, k), d)`, its fallback
+task update-read
+  take node, like expression
+  take map, like expression
+  take key, like expression
+  like maybe, like expression
+  mark private
+
+  sift node
+    case call
+      link read-callee
+      link read-args
+      save called, variable-name-of(read-callee)
+      fork test, not(is-variable(read-callee))
+        hold
+          back make none
+      fork test, is-equal(called, <hash_get-or-default>)
+        hold
+          sift argument-at(read-args, 2)
+            case some
+              link fallback
+              fork test, and(and(same-name(argument-at(read-args, 0), map), same-name(argument-at(read-args, 1), key)), is-plain(fallback))
+                hold
+                  back make(some, fallback)
+            case none
+              save nothing, 0
+      fork test, is-equal(called, <maybe_unwrap-or>)
+        hold
+          sift argument-at(read-args, 0)
+            case some
+              link inner
+              sift inner
+                case call
+                  link inner-callee
+                  link inner-args
+                  fork test, and(is-variable(inner-callee), is-equal(variable-name-of(inner-callee), <hash_get>))
+                    hold
+                      sift argument-at(read-args, 1)
+                        case some
+                          link fallback
+                          fork test, and(and(same-name(argument-at(inner-args, 0), map), same-name(argument-at(inner-args, 1), key)), is-plain(fallback))
+                            hold
+                              back make(some, fallback)
+                        case none
+                          save nothing, 0
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# A map entry updated from its own value, `set(m, k, get-or-default(m, k, d) + x)`: the map and the key are names, the
+# step a literal or a name, the read either spelling the simplifier leaves
+task map-update-of
+  take given, like statement
+  like maybe, like map-update
+
+  sift given
+    case expression
+      sift expr
+        case call
+          link set-callee
+          link set-args
+          fork test, not(and(is-equal(variable-name-of(set-callee), <hash_set>), is-equal(set-args/length, 3)))
+            hold
+              back make none
+          save map, get(set-args, 0)
+          save key, get(set-args, 1)
+          save value, get(set-args, 2)
+          fork test, not(and(is-variable(map), is-variable(key)))
+            hold
+              back make none
+          sift value
+            case binary
+              fork test, is-unequal(to-text(op), <+>)
+                hold
+                  back make none
+              save left-read, update-read(left, map, key)
+              save right-read, update-read(right, map, key)
+              save fallback, left-read
+              save step, left
+              sift left-read
+                case some
+                  link known
+                  save step, right
+                case none
+                  save fallback, right-read
+              sift fallback
+                case some
+                  link found
+                  fork test, or(not(is-plain(step)), same-name(make(some, step), map))
+                    hold
+                      back make none
+                  save made
+                    make map-update
+                      bind map, map
+                      bind key, key
+                      bind fallback, found
+                      bind step, step
+                  back make(some, made)
+                case none
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# ---- the tasks that only fill a list ----
+
+# a fill task: the parameter positions of its size and item, or the item itself when it is a literal (`item-at` -1)
+form fill
+  link size, like number
+  link item-at, like number
+  link item
+    like maybe, like expression
+    need false
+
+task param-index
+  take params, like list, like text
+  take node, like maybe, like expression
+  like number
+  mark private
+
+  sift node
+    case some
+      link known
+      save name, variable-name-of(known)
+      fork test, is-equal(name, <>)
+        hold
+          back -1
+      save at, 0
+      walk params
+        take one
+        fork test, is-equal(one, name)
+          hold
+            back at
+        save at, add(at, 1)
+      back -1
+    case none
+      back -1
+
+task is-integer-value
+  take node, like expression
+  take wanted, like number
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back is-equal(value, wanted)
+    miss
+      back false
+
+task is-literal
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    miss
+      back false
+
+# The tasks that only FILL a list: an empty list, a counter from 0 up to a size parameter, one push of the same item each
+# turn, and the list handed back
+task fill-tasks
+  take program, like list, like statement
+  like hash, like text, like fill
+
+  save out, fill-table()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save is-async, read(async)
+        fork test, or(is-async, is-unequal(fn-body/length, 4))
+          hold
+            turn next
+        save names, make list
+        walk fn-params
+          take param
+          push(names, param/name)
+        sift fill-of(names, fn-body)
+          case some
+            link found
+            save out/{fn-name}, found
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task fill-table
+  like hash, like text, like fill
+  mark private
+
+  back make hash
+
+task fill-of
+  take params, like list, like text
+  take body, like list, like statement
+  like maybe, like fill
+  mark private
+
+  save made, get(body, 0)
+  save counter, get(body, 1)
+  save loop, get(body, 2)
+  save back-statement, get(body, 3)
+  save made-name, <>
+  sift made
+    case let
+      sift init
+        case array
+          fork test, is-above(items/length, 0)
+            hold
+              back make none
+        miss
+          back make none
+      save made-name, name
+    miss
+      back make none
+  save counter-name, <>
+  sift counter
+    case let
+      fork test, not(is-integer-value(init, 0))
+        hold
+          back make none
+      save counter-name, name
+    miss
+      back make none
+  sift back-statement
+    case return
+      sift value
+        case some
+          link returned
+          fork test, not(is-equal(variable-name-of(returned), made-name))
+            hold
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+  sift loop
+    case while
+      link loop-cond
+      link loop-body
+      save size, -1
+      sift loop-cond
+        case binary
+          fork test, and(is-equal(to-text(op), <\<>), is-equal(variable-name-of(left), counter-name))
+            hold
+              save size, param-index(params, make(some, right))
+        miss
+          save nothing, 0
+      fork test, or(is-below(size, 0), is-unequal(loop-body/length, 2))
+        hold
+          back make none
+      save push-statement, get(loop-body, 0)
+      save step-statement, get(loop-body, 1)
+      save pushed, make none
+      sift push-statement
+        case expression
+          sift expr
+            case call
+              sift callee
+                case member
+                  fork test, and(is-equal(name, <push>), is-equal(variable-name-of(target), made-name))
+                    hold
+                      save pushed, argument-at(args, 0)
+                case variable
+                  fork test, and(is-equal(name, <list_push>), named-at(args, 0, made-name))
+                    hold
+                      save pushed, argument-at(args, 1)
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          back make none
+      save counted, false
+      sift step-statement
+        case assign
+          fork test, is-equal(variable-name-of(target), counter-name)
+            hold
+              sift value
+                case binary
+                  save counted, and(and(is-equal(to-text(op), <+>), is-equal(variable-name-of(left), counter-name)), is-integer-value(right, 1))
+                miss
+                  save nothing, 0
+        miss
+          back make none
+      sift pushed
+        case some
+          link item-node
+          fork test, not(counted)
+            hold
+              back make none
+          fork test, is-literal(item-node)
+            hold
+              save found
+                make fill
+                  bind size, size
+                  bind item-at, -1
+                  bind item, make(some, item-node)
+              back make(some, found)
+          save item-at, param-index(params, pushed)
+          fork test, or(is-equal(item-at, -1), is-equal(item-at, size))
+            hold
+              back make none
+          save found
+            make fill
+              bind size, size
+              bind item-at, item-at
+              bind item, make none
+          back make(some, found)
+        case none
+          back make none
+    miss
+      back make none
+
+form fill-call
+  link size, like expression
+  link item, like expression
+
+# a call to a fill task: the size and the item, as arguments of this call
+task fill-call-of
+  take node, like expression
+  take fills, like hash, like text, like fill
+  like maybe, like fill-call
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      save name, variable-name-of(call-callee)
+      fork test, or(not(is-variable(call-callee)), not(fills/has(name)))
+        hold
+          back make none
+      save fill, fills/get(name)
+      sift argument-at(call-args, fill/size)
+        case some
+          link size
+          save item, make none
+          fork test, is-equal(fill/item-at, -1)
+            hold
+              save item, fill/item
+            miss
+              save item, argument-at(call-args, fill/item-at)
+          sift item
+            case some
+              link known-item
+              save made
+                make fill-call
+                  bind size, size
+                  bind item, known-item
+              back make(some, made)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+# ---- text builders ----
+
+# the empty text, as a literal or a template with no parts or only empty chunks
+task empty-text
+  take given, like maybe, like expression
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back is-equal(value, <>)
+        case template
+          walk parts
+            take part
+            sift part
+              case chunk
+                fork test, is-unequal(value, <>)
+                  hold
+                    back false
+              miss
+                back false
+          back true
+        miss
+          back false
+    case none
+      back false
+
+form builder-state
+  mark shared
+  link lets, like hash, like text, like number
+  link plain-writes, like list, like text
+  link appended, like list, like text
+  link captured, like list, like text
+
+task let-type-kind
+  take given, like statement
+  like text
+  mark private
+
+  sift given
+    case let
+      sift type
+        case some
+          link known
+          back type-kind(type)
+        case none
+          back type-kind(expression-type(init))
+    miss
+      back <>
+
+task builders-into
+  take handle, like node-handle
+  take in-closure, like boolean
+  take state, like builder-state
+  mark private
+
+  save closure, in-closure
+  sift handle
+    case statement-handle
+      link node
+      fork test, is-equal(let-type-kind(node), <string>)
+        hold
+          sift node
+            case let
+              link let-name
+              save count, 0
+              fork test, state/lets/has(let-name)
+                hold
+                  save count, state/lets/get(let-name)
+              save state/lets/{let-name}, add(count, 1)
+            miss
+              save nothing, 0
+      # an append, or a reset to the empty text (the builder's `setLength(0)`); any other write is a plain one
+      sift node
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          fork test, is-variable(assign-target)
+            hold
+              save written, variable-name-of(assign-target)
+              sift text-append-of(node)
+                case some
+                  link found
+                  add-name(state/appended, written)
+                case none
+                  fork test, not(empty-text(make(some, assign-value)))
+                    hold
+                      add-name(state/plain-writes, written)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case variable
+          fork test, in-closure
+            hold
+              add-name(state/captured, name)
+        case closure
+          save closure, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    builders-into(child, closure, state)
+
+# The text locals of a task that are only ever BUILT by appending (and reset to the empty text between builds): declared
+# once, every write an append, never mentioned inside a closure, and no parameter
+task text-builders
+  take fn, like statement
+  like list, like text
+
+  save out, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      save state
+        make builder-state
+          bind lets, make hash
+          bind plain-writes, make list
+          bind appended, make list
+          bind captured, make list
+      walk block-handles(fn-body)
+        take handle
+        builders-into(handle, false, state)
+      save params, make list
+      walk fn-params
+        take param
+        push(params, param/name)
+      walk state/appended
+        take name
+        fork test, and(and(state/lets/has(name), is-equal(state/lets/get(name), 1)), and(and(not(has-text(state/plain-writes, name)), not(has-text(state/captured, name))), not(has-text(params, name))))
+          hold
+            push(out, name)
+    miss
+      save nothing, 0
+  back out
+
+# ---- a local declared before its value ----
+
+# a local declared by a bare `save x` and given its value by a later assignment: mutable, the unit placeholder as its
+# initializer, and a type the checker filled from that assignment, not a named, variable, unknown or dynamic one
+task declared-later
+  take given, like statement
+  like boolean
+
+  sift given
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      fork test, not(let-mutable)
+        hold
+          back false
+      sift let-init
+        case unit
+          save nothing, 0
+        miss
+          back false
+      save kind, type-kind(type)
+      fork test, is-equal(kind, <>)
+        hold
+          back false
+      back not(or(or(is-equal(kind, <unit>), is-equal(kind, <named>)), or(or(is-equal(kind, <variable>), is-equal(kind, <unknown>)), is-equal(kind, <dynamic>))))
+    miss
+      back false

@@ -46,6 +46,9 @@ load @term/base/integer/big
   find big-divide
   find big-compare
 
+load @term/base/rune
+  find rune-to-text
+
 load ../compile/node
   find expression
   find type
@@ -332,12 +335,18 @@ task bump
 
 # ---- monomials ----
 
-# a monomial's key: its variables sorted and joined by a space, `''` for the constant
+# what joins a monomial's variables: NUL, which no name holds, and what check/products.tree splits a key by
+task monomial-separator
+  like text
+
+  back rune-to-text(0)
+
+# a monomial's key: its variables sorted and joined by NUL, `''` for the constant
 task monomial-key
   take variables, like list, like text
   like text
 
-  back join(sort(variables, utf16-order), < >)
+  back join(sort(variables, utf16-order), monomial-separator())
 
 task monomial-vars
   take key, like text
@@ -346,7 +355,7 @@ task monomial-vars
   fork test, is-equal(key, <>)
     hold
       back make list
-  back split(key, < >)
+  back split(key, monomial-separator())
 
 task joined-vars
   take a, like text

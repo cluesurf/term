@@ -755,6 +755,8 @@ form diagnostic-name
   case keyword-import, text <keyword-import>
   case look-tint, text <look-tint>
   case typed-hole, text <typed-hole>
+  case unknown-grammar, text <unknown-grammar>
+  case scope-refused, text <scope-refused>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -927,6 +929,14 @@ task entry-of
     # so a program with a hole never builds, and a fix per fitting name, so an editor or an agent can fill it
     case typed-hole
       back error-entry(0x36, <this hole is a value still to be written>, <write a value of the type named in its place. Each name in scope of that type is offered as a fix>)
+    # A grammar scope (`role <name>`, or a name a load imports as a grammar) naming a grammar the compiler does not
+    # have. It would otherwise be read as code, and fail somewhere unrelated (note/term/mill/02-role-scopes.md)
+    case unknown-grammar
+      back error-entry(0x37, <this scope names no grammar the compiler has>, <the grammars are `note` (@term/mill/text/note). Check the spelling, or write the text as code>)
+    # A grammar scope whose text its grammar refuses, or reads to something nothing lowers: a unit that is not
+    # registered, an operator Term gives no meaning yet. The message names the place in the scope's text
+    case scope-refused
+      back error-entry(0x38, <this scope's text is not what its grammar reads>, <correct it at the place named. note/term/mill/03-note-grammar.md is what the note grammar reads>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -988,3 +998,5 @@ task diagnostic-names
       make keyword-import
       make look-tint
       make typed-hole
+      make unknown-grammar
+      make scope-refused

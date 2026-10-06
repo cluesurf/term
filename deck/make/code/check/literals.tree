@@ -147,9 +147,28 @@ task check-widths
 
   # every task with a width-typed parameter, the last of a name winning, as a map keyed by name kept it
   save tasks, make list
+  # and every width-typed field, `<form>/<field>` to its width, a case's under the case's name, which is the name its
+  # construction carries. `bind os, code 300` into a `u8` field was taken with no message, as an argument once was
+  # (NOT `fields`: a `record-type` arm binds its own `fields`, which would hide it)
+  save field-table, like hash, like text, like text
+    make hash
+  save any-field, false
   walk program
     take one
     sift one
+      case record-type
+        walk fields
+          take field
+          fork test, note-field-width(field-table, <{name}/{field/name}>, field/width)
+            hold
+              save any-field, true
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            fork test, note-field-width(field-table, <{variant/name}/{field/name}>, field/width)
+              hold
+                save any-field, true
       case function
         save names, make list
         save widths, make list
@@ -173,7 +192,7 @@ task check-widths
         turn next
 
   save out, make list
-  fork test, is-equal(tasks/length, 0)
+  fork test, and(is-equal(tasks/length, 0), not(any-field))
     hold
       back out
 
@@ -200,11 +219,75 @@ task check-widths
                   check-call(tasks, ranges, called, args, arg-names, file, out)
                 miss
                   turn next
+            case record
+              walk fields
+                take field
+                check-field(field-table, ranges, <{name}/{field/name}>, field/name, field/value, file, out)
             miss
               turn next
       miss
         turn next
   back out
+
+# one key of the field table, answering whether the width is one. Two definitions that give one key different widths
+# leave it the empty text, which checks nothing, the rule check/contracts.tree keeps
+task note-field-width
+  take table, like hash, like text, like text
+  take key, like text
+  take width, like text
+  like boolean
+  mark private
+
+  save known, false
+  walk width-ranges()
+    take range
+    fork test, is-equal(range/name, width)
+      hold
+        save known, true
+  fork test, known
+    hold
+      fork test, table/has(key)
+        hold
+          fork test, is-unequal(table/get(key), width)
+            hold
+              save table/{key}, <>
+        miss
+          save table/{key}, width
+  back known
+
+# a literal put in a width-typed field is inside the width
+task check-field
+  take table, like hash, like text, like text
+  take ranges, like list, like width-range
+  take key, like text
+  take field-name, like text
+  take given, like expression
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  save width, <>
+  fork test, table/has(key)
+    hold
+      save width, table/get(key)
+  fork test, is-unequal(width, <>)
+    hold
+      sift given
+        case integer
+          save exact, exact-of(value, digits)
+          walk ranges
+            take range
+            fork test, is-equal(range/name, width)
+              hold
+                save low, make-big-integer(range/low)
+                save high, make-big-integer(range/high)
+                fork test, or(is-below(big-compare(exact, low), 0), is-above(big-compare(exact, high), 0))
+                  hold
+                    save shown, exact/text()
+                    push(out, mismatch(file, span, <{shown} is outside `{width}` ({range/low} to {range/high}), the width of "{field-name}">, <>))
+        miss
+          save nothing, 0
 
 task check-call
   take tasks, like list, like width-task

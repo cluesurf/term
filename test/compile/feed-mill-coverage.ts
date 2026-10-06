@@ -5,7 +5,7 @@
 // That is the failure mode this whole compiler keeps producing, and at 99 grammars it is not something anybody
 // finds by reading.
 //
-// Measured 2026-08-31, across every `mine.tree` under deck/feed/code:
+// Measured 2026-08-31, across every `mine.tree` under deck/mill/code:
 //
 //   99 grammars   79 parse   30 read to rules (584 rule objects)   30 generate and mill
 //   0 of those 30 are missing a rule they declare
@@ -57,7 +57,13 @@ import {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const CODE = join(TERM, 'deck/feed/code')
+// the format grammars: text/ and blob/ under the mill's code root (@term/feed's code/ until 2026-10-06). Not the
+// root itself, whose tree/ holds the tree dialects, which are mill grammars and never feed ones
+const CODE = join(TERM, 'deck/mill/code')
+const FORMATS = [join(CODE, 'text'), join(CODE, 'blob')]
+
+// a grammar's name as it was measured: its path under its format folder, so `image/webp/mine.tree` stays that
+const nameOf = (file: string): string => relative(CODE, file).replace(/^(text|blob)\//, '')
 
 // WHAT THE 20 THAT DO NOT PARSE ACTUALLY ARE, checked one by one on 2026-08-31 rather than assumed. None is a
 // parser defect and none is a grammar with a small mistake in it. They are unfinished files in three states:
@@ -182,7 +188,7 @@ function countRules(list: readonly unknown[]): number {
 // grammar that passes here is one a build can actually compile.
 const PACKS: Record<string, string> = {
   base: join(TERM, 'deck/base'),
-  feed: join(TERM, 'deck/feed'),
+  mill: join(TERM, 'deck/mill'),
 }
 
 const resolver = (path: string, from: string): Source | undefined => {
@@ -286,7 +292,7 @@ function mines(dir: string, out: string[] = []): string[] {
   return out
 }
 
-const files = mines(CODE)
+const files = FORMATS.flatMap(dir => mines(dir))
 
 let parses = 0
 let reads = 0
@@ -333,14 +339,14 @@ for (const file of files) {
   const missing = feedMineUnknownRefs(grammar)
 
   if (missing.length > 0) {
-    dangling.push({ file: relative(CODE, file), names: missing })
+    dangling.push({ file: nameOf(file), names: missing })
   }
 
   const drops = feedMineDrops(parsed.tree)
 
   if (drops.length > 0) {
     dropping.push({
-      file: relative(CODE, file),
+      file: nameOf(file),
       dropped: drops,
       declared: grammar.size + drops.length,
     })
@@ -352,7 +358,7 @@ for (const file of files) {
     const source = compileFeedMine(
       grammar,
       substrate ?? 'text',
-      '@term/feed/code/base',
+      '@term/mill/feed',
       feedMineLoads(file, readFileSync(file, 'utf8')),
     )
     const generated = parse({ file: 'generated.tree', text: source })
@@ -495,7 +501,7 @@ const counted = readFeedMineGrammar(
     ].join('\n'),
   }).tree,
 )
-const countedSource = compileFeedMine(counted, 'byte', '@term/feed/code/base')
+const countedSource = compileFeedMine(counted, 'byte', '@term/mill/feed')
 
 ok(
   'a count-directed list stops at its count',
@@ -520,7 +526,7 @@ const uncounted = readFeedMineGrammar(
 
 ok(
   'a list with no count reads to the end and asks about no count',
-  !compileFeedMine(uncounted, 'byte', '@term/feed/code/base').includes('is-below'),
+  !compileFeedMine(uncounted, 'byte', '@term/mill/feed').includes('is-below'),
 )
 
 console.log(

@@ -472,7 +472,7 @@ mine digits
     const parsed = parse({ file: '/gate/code/mine.tree', text: grammar(char) })
 
     return parsed.ok
-      ? compileFeedMine(readFeedMineGrammar(parsed.tree), 'text', '@term/feed/code/base')
+      ? compileFeedMine(readFeedMineGrammar(parsed.tree), 'text', '@term/mill/feed')
       : 'PARSE FAILED'
   }
 

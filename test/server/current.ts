@@ -119,7 +119,7 @@ const term = process.cwd()
   // @term/mill's role.tree names `role mill` for code/**: these files DEFINE the fork dialect, and were milled as
   // code ("the name "mill" is not defined", over a thousand errors across the grammar files they load)
   const server = new LanguageServer()
-  const fork = join(term, 'deck/mill/code/code/fork')
+  const fork = join(term, 'deck/mill/code/tree/code/fork')
 
   for (const name of ['base', 'mine', 'mint']) {
     const file = join(fork, `${name}.tree`)
@@ -159,8 +159,8 @@ const term = process.cwd()
   ok('roles: and no code-reading error with it', !found.some(d => /is not defined/.test(d.message)))
 
   const unloadable = readFileSync(mine, 'utf8').replace(
-    'load @term/mill/code/seed/mine',
-    'load @term/mill/code/no-such-dialect/mine',
+    'load @term/mill/tree/code/seed/mine',
+    'load @term/mill/tree/code/no-such-dialect/mine',
   )
   const outLoad = await open(server, mineUri, unloadable, 3)
   const loadFound = published(outLoad, mineUri) ?? []

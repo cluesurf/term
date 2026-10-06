@@ -88,11 +88,12 @@ function isPackageManifest(file: string): boolean {
   return existsSync(file) && manifestNameOf(file) !== undefined
 }
 
-// The cursor library a generated reader reads through. Every dialect grammar in the tree is a FEED dialect and
-// reads a `@term/feed` cursor, so this is where `make-text-cursor`, `read-byte` and the rest come from. A grammar
+// The cursor library a generated reader reads through. Every format grammar (deck/mill/code/text and blob) reads a
+// cursor from `@term/mill/feed` (deck/mill/code/feed.tree, `@term/feed`'s code/base until 2026-10-06), so this is
+// where `make-text-cursor`, `read-byte` and the rest come from. A grammar
 // that one day needs another cursor library will say so in the grammar, which is where a fact about a dialect
 // belongs. Until one does, inventing the syntax for it would be inventing a requirement.
-const FEED_CURSOR = '@term/feed/code/base'
+const FEED_CURSOR = '@term/mill/feed'
 
 // Is this file a feed GRAMMAR (a `mine.tree` that reads to rules), as opposed to Term code? Parsed, never matched
 // on its name, for the same reason `deck.tree` is: a filename is a guess about content and this codebase has been
@@ -136,7 +137,7 @@ function feedGrammarOf(
 // it. Which is the whole point of feed-mill: the two cannot disagree if there is only one.
 //
 // The SUBSTRATE is inferred, never asked for. `byte`, `int` and `bytes` can only read a byte cursor and `char`,
-// `text`, `range` and `span` can only read a text one, and across @term/feed's readable grammars six are
+// `text`, `range` and `span` can only read a text one, and across the format grammars that read (deck/mill/code/text, blob) six are
 // byte-only, eight text-only, and none use both. A grammar with no leaf to infer from is REPORTED rather than
 // guessed at: guessing would emit a reader that compiles and reads the wrong cursor.
 //

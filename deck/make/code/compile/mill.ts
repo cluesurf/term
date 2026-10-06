@@ -2,7 +2,7 @@
 //
 // THE CODE ROLE IS READ BY ITS OWN GRAMMAR, like every other dialect.
 //
-// `deck/mill/code/code/` holds the `mine` and `mint` files that define the code role. `compile/mill-run.ts` runs
+// `deck/mill/code/tree/code/` holds the `mine` and `mint` files that define the code role. `compile/mill-run.ts` runs
 // them and `compile/mint-bridge.ts` turns what they build into the compiler's nodes. Nothing here reads `.tree`
 // syntax by hand any more, which is the rule every other dialect in the tree already obeyed. See
 // note/term/one-parser.md.
@@ -22,8 +22,10 @@
 // a time to zero before the line moved. The account is in note/term/mint-bridge/readme.md.
 
 import type { RootNode } from '@term/make/code/parser/narrow'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { millByGrammar } from '@term/make/code/compile/mint-bridge'
 import type { MillResult } from '@term/make/code/compile/mint-bridge'
+import { expandScopes } from '@term/make/code/compile/scope'
 
 export type { MillResult } from '@term/make/code/compile/mint-bridge'
 
@@ -36,5 +38,14 @@ export function mill(
   // spellings apart. See note/term/lean.md.
   lean?: boolean,
 ): MillResult {
-  return millByGrammar(tree, file, role, undefined, lean)
+  // GRAMMAR SCOPES FIRST (compile/scope.tree, note/term/mill/02-role-scopes.md): every `role note, x + y`, and every
+  // name the file imports as a grammar, is read by its grammar and lowered to the code it means, so the code grammar
+  // below only ever sees code. A file with no scope comes back as it went in
+  const expanded = expandScopes(tree as never, file)
+
+  if (expanded.diagnostics.length > 0) {
+    return { ok: false, diagnostics: expanded.diagnostics as Diagnostic[] }
+  }
+
+  return millByGrammar(expanded.tree as RootNode, file, role, undefined, lean)
 }

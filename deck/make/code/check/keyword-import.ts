@@ -3,7 +3,7 @@
 // `load @term/base/file` / `find read` imports the file module's `read`, and `read(path)` then reads the VARIABLE
 // `path`: the grammar takes `read` as its own word before any name is bound, so the build calls nothing in the file
 // module, on all four backends, with no message (guides: applications/targets, 2026-10-03). The same holds for every
-// word `mine seed` matches ahead of a bare call (mill/code/code/seed/mine.tree): a `find move` from the file module
+// word `mine seed` matches ahead of a bare call (mill/code/tree/code/seed/mine.tree): a `find move` from the file module
 // meets the `move` construct. A `name` alias is the way through, `find read, name read-file`, so the warning is on a
 // `find` of one of these words that carries none.
 //

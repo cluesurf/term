@@ -1,0 +1,40 @@
+load @term/mill/tree/code/form/link/mint
+  find link
+
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/base/lang
+  find seed-item
+
+mint host, like seed-item
+  case name
+    site name
+  case like
+    site like
+  case seed
+    site seed
+  case item, mint host-item
+    site item
+  case host
+    site host
+  hook make
+    make host
+      bind name, read name
+      bind like, read like
+      bind seed, read seed
+      bind item, read item
+      bind host, read host
+
+mint host-item
+  case term
+    site term
+  case link
+    site link
+  hook make
+    make host-item
+      bind term, read term
+      bind link, read link

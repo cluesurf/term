@@ -5,7 +5,7 @@
 // resolves before rendering, and `view` defines the document. `tree` and `fuse` never arrive: the expander
 // removes them on the parse tree before any mill runs.
 //
-// This produces the forms `@term/base/code/view-file` declares, and `deck/mill/code/view/` is the grammar that
+// This produces the forms `@term/base/code/view-file` declares, and `deck/mill/code/tree/view/` is the grammar that
 // says the same thing declaratively. The two are held against each other by test/compile/view-grammar.ts.
 //
 // The body reuses the component AST rather than restating it, so a document lowers through view-lower.ts and

@@ -1,0 +1,1134 @@
+# What the hold walk knows across a loop's turns and across a write: the facts a walk keeps from before it
+# (`keep-across-turns`), the relations no turn changes (`relational-invariants`), a counter's ceiling
+# (`bound-invariant`), the fixed step each name and list moves by per turn (`exact-deltas`, through nested counted
+# walks), and the equations a binding or a write states (`defining-equalities`, `field-write-equalities`,
+# `shift-facts`).
+#
+#   - A WALK THAT ONLY COUNTS UP keeps a lower bound on its counter, and one that only counts down an upper bound: a
+#     fact keeps only if every written name in it moves the way that preserves it. A body that only pushes keeps a
+#     lower bound on a length; any other change to state keeps none
+#   - RELATIONS THAT NO TURN CHANGES: when every turn runs the whole body and two names move by fixed amounts,
+#     `dy*x - dx*y` is the same at the top of every turn, read off the facts at entry
+#   - THE COUNTER'S CEILING: `while x < e` moving x by exactly +1 a turn, with e unchanged, keeps `x <= e`
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part four. Every translation into a linear form here makes
+# fresh atoms as the original's did, in the same order and only where it did, since an atom's name is a counter
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+
+load ../compile/node
+  find expression
+  find statement
+  find expression-type
+  find field-value
+
+load ../compile/node-children
+  find node-handle
+  find block-handles
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find at-least
+  find at-most
+
+load ./inequality
+  find to-linear
+  find atom-linear
+  find constant-linear
+  find add-linear
+  find scale-linear
+  find binding-equalities
+  find field-atom
+
+load ./nonlinear
+  find plain-path
+
+load ./universal
+  find hold-calls
+
+load ./hold-state
+  find hold-state
+
+load ./hold-facts
+  find forget
+  find literal-length
+  find drop-element-paths
+  find alias-facts
+  find exact-value
+  find key-root
+  find is-state-atom
+  find has-text
+  find add-text
+  find length-prefix
+  find field-prefix
+  find after-prefix
+  find text-prefix
+
+load ./hold-reach
+  find hold-walk
+  find handles
+  find statement-handle-of
+  find block-parts
+  find statement-parts
+  find expression-parts
+  find impure-in
+  find written-in-block
+  find root-of
+  find kind-of
+  find is-array-typed
+  find pushed-path
+  find body-only-pushes
+  find writes-through-member
+  find exits-early
+  find only-keeps-lengths
+  find push-targets
+  find direction-of
+  find step-of
+  find flags
+
+load ./purity
+  find written-names
+  find read-names
+  find reads-any
+  find everything
+
+bind whole-float
+  take value, like float
+  like boolean
+  case node
+    text <Number.isInteger($value)>
+  case browser
+    text <Number.isInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0)>
+
+# ---- makers ----
+
+task facts
+  like list, like inequality
+  mark private
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task number-terms
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task step-table
+  like hash, like text, like float
+
+  back make hash
+
+task both-facts
+  take a, like list, like inequality
+  take b, like list, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+# `[atMost(atom, v), atLeast(atom, v)]`
+task equal-facts
+  take atom, like linear
+  take value, like linear
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  push(out, at-most(atom, value))
+  push(out, at-least(atom, value))
+  back out
+
+# does a value read one of the walk's volatile names
+task reads-volatile
+  take value, like expression
+  take walk, like hold-walk
+  like boolean
+
+  save wanted
+    task
+      take name, like text
+      like boolean
+      back walk/volatile/has(name)
+  back reads-any(expression-parts(value), wanted)
+
+task reads-name
+  take value, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  back has-text(read-names(expression-parts(value)), name)
+
+# ---- constants ----
+
+# the integer an expression always is, when it reads nothing (`code 0`, `call add(code 2, code 2)`)
+task constant-of-expression
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  like maybe, like float
+
+  save side, facts()
+  sift to-linear(state, calls, expr, side)
+    case some
+      link value
+      fork test, and(and(is-equal(side/length, 0), is-equal(value/terms/keys()/length, 0)), whole-float(value/constant))
+        hold
+          save constant, value/constant
+          back make(some, constant)
+      back make none
+    case none
+      back make none
+
+# ---- fixed steps ----
+
+form counted
+  link counter, like text
+  link turns, like float
+  link deltas, like hash, like text, like float
+  link pushes, like number
+
+task add-step
+  take deltas, like hash, like text, like float
+  take key, like text
+  take step, like float
+  mark private
+
+  save had, 0.0
+  fork test, deltas/has(key)
+    hold
+      save had, deltas/get(key)
+  save deltas/{key}, add(had, step)
+
+# the fixed per-turn change of every name the body writes ONLY at its top level by a constant step, and of every list
+# it grows ONLY by top-level pushes. A name or list touched anywhere else gets no entry
+task exact-deltas
+  take state, like hold-state
+  take calls, like hold-calls
+  take body, like list, like statement
+  take walk, like hold-walk
+  like hash, like text, like float
+
+  save deltas, step-table()
+  save disqualified, texts()
+  # names the body has just set to a constant, at its top level, with nothing writing them since
+  save reset, step-table()
+  # pushes made inside nested counted walks whose growth is already in `deltas`
+  save counted-pushes, 0
+  walk body
+    take statement
+    sift statement
+      case assign
+        link target
+        link op
+        link value
+        sift target
+          case variable
+            link name
+            save step-read, step-of(state, calls, name, statement)
+            save constant-read, make none
+            sift op
+              case set
+                save constant-read, constant-of-expression(state, calls, value)
+              miss
+                save nothing, 0
+            reset/remove(name)
+            sift constant-read
+              case some
+                link constant
+                fork test, not(walk/volatile/has(name))
+                  hold
+                    save reset/{name}, constant
+              case none
+                save nothing, 0
+            sift step-read
+              case some
+                link step
+                fork test, walk/volatile/has(name)
+                  hold
+                    add-text(disqualified, name)
+                  miss
+                    add-step(deltas, name, step)
+              case none
+                add-text(disqualified, name)
+            turn next
+          miss
+            save nothing, 0
+      # a binding made afresh each turn is no step, but a constant one is a reset a nested walk can count from
+      case let
+        link name
+        link init
+        save constant-read, constant-of-expression(state, calls, init)
+        add-text(disqualified, name)
+        reset/remove(name)
+        sift constant-read
+          case some
+            link constant
+            fork test, not(walk/volatile/has(name))
+              hold
+                save reset/{name}, constant
+          case none
+            save nothing, 0
+        turn next
+      miss
+        save nothing, 0
+    sift pushed-path(state, statement, walk, state/list-pushes)
+      case some
+        link pushed
+        add-step(deltas, <{length-prefix()}{pushed}>, 1.0)
+        turn next
+      case none
+        save nothing, 0
+    # A NESTED COUNTED WALK: it runs K - r0 turns every time, so whatever moves by a fixed step per inner turn moves by
+    # that step times K - r0 per outer turn
+    save nested-read, make none
+    sift statement
+      case while
+        save nested-read, counted-turns(state, calls, statement, reset, walk)
+      miss
+        save nothing, 0
+    sift nested-read
+      case some
+        link nested
+        walk nested/deltas/keys()
+          take key
+          fork test, is-equal(key, nested/counter)
+            hold
+              turn next
+          add-step(deltas, key, multiply(nested/deltas/get(key), nested/turns))
+        save counted-pushes, add(counted-pushes, nested/pushes)
+        # the counter ends at K, which is a reset, not a step
+        add-text(disqualified, nested/counter)
+        save reset/{nested/counter}, add(nested/turns, reset/get(nested/counter))
+        walk written-names(statement-parts(statement))
+          take name
+          fork test, not(nested/deltas/has(name))
+            hold
+              add-text(disqualified, name)
+              reset/remove(name)
+        turn next
+      case none
+        save nothing, 0
+    save written, written-names(statement-parts(statement))
+    walk written
+      take name
+      reset/remove(name)
+    # any other statement: whatever it writes, nested, is not a fixed step
+    walk written
+      take name
+      add-text(disqualified, name)
+  # a list touched by anything but those pushes (a nested push, an impure call, a member write) has no fixed step
+  save all-pushes, body-only-pushes(state, body, walk, state/list-pushes)
+  save other-state, or(is-below(all-pushes, 0), writes-through-member(body))
+  save top-pushes, counted-pushes
+  walk body
+    take s
+    sift pushed-path(state, s, walk, state/list-pushes)
+      case some
+        link found
+        save top-pushes, add(top-pushes, 1)
+      case none
+        save nothing, 0
+  # a push somewhere below the top level runs on some turns and not others
+  save nested-pushes, and(is-minimum(all-pushes, 0), is-unequal(all-pushes, top-pushes))
+  save keys, texts()
+  walk deltas/keys()
+    take key
+    push(keys, key)
+  walk keys
+    take key
+    fork test, has-text(disqualified, key)
+      hold
+        deltas/remove(key)
+      miss
+        fork test, and(starts-with(key, <@>), or(other-state, nested-pushes))
+          hold
+            deltas/remove(key)
+  back deltas
+
+# how many turns a walk `while r < K` (or `r <= K`) takes when r was just reset to a constant, K is a constant, r moves
+# by exactly +1 a turn and no turn ends early, with the fixed per-turn steps of its body and the pushes they account for
+task counted-turns
+  take state, like hold-state
+  take calls, like hold-calls
+  take statement, like statement
+  take reset, like hash, like text, like float
+  take walk, like hold-walk
+  like maybe, like counted
+
+  sift statement
+    case while
+      link cond
+      link body
+      sift cond
+        case binary
+          link op
+          link left
+          link right
+          save strict, false
+          sift op
+            case below
+              save strict, true
+            case at-most
+              save strict, false
+            miss
+              back make none
+          sift left
+            case variable
+              link counter
+              fork test, exits-early(body)
+                hold
+                  back make none
+              fork test, impure-in(expression-parts(cond), walk)
+                hold
+                  back make none
+              save start-read, make none
+              fork test, reset/has(counter)
+                hold
+                  save start-value, reset/get(counter)
+                  save start-read, make(some, start-value)
+              save limit-read, constant-of-expression(state, calls, right)
+              sift start-read
+                case some
+                  link start
+                  sift limit-read
+                    case some
+                      link limit
+                      fork test, walk/volatile/has(counter)
+                        hold
+                          back make none
+                      save deltas, exact-deltas(state, calls, body, walk)
+                      fork test, or(not(deltas/has(counter)), is-unequal(deltas/get(counter), 1.0))
+                        hold
+                          back make none
+                      save pushes, body-only-pushes(state, body, walk, state/list-pushes)
+                      fork test, is-below(pushes, 0)
+                        hold
+                          back make none
+                      # every push in the body must be a fixed step, or the lengths it grows are not known
+                      fork test, is-above(pushes, 0)
+                        hold
+                          save stepped, false
+                          walk deltas/keys()
+                            take key
+                            fork test, starts-with(key, <@>)
+                              hold
+                                save stepped, true
+                                halt
+                          fork test, not(stepped)
+                            hold
+                              back make none
+                      save end, limit
+                      fork test, not(strict)
+                        hold
+                          save end, add(limit, 1.0)
+                      save turns, subtract(end, start)
+                      fork test, is-below(turns, 0.0)
+                        hold
+                          save turns, 0.0
+                      save found
+                        make counted
+                          bind counter, counter
+                          bind turns, turns
+                          bind deltas, deltas
+                          bind pushes, pushes
+                      back make(some, found)
+                    case none
+                      back make none
+                case none
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# ---- across turns ----
+
+# RELATIONS THAT NO TURN CHANGES: two names that move by fixed amounts keep `dy*x - dx*y`, read off the facts at entry
+task relational-invariants
+  take state, like hold-state
+  take calls, like hold-calls
+  take current, like list, like inequality
+  take body, like list, like statement
+  take walk, like hold-walk
+  like list, like inequality
+
+  fork test, exits-early(body)
+    hold
+      back facts()
+  save deltas, exact-deltas(state, calls, body, walk)
+  fork test, is-below(deltas/keys()/length, 2)
+    hold
+      back facts()
+  save keys, texts()
+  save known, step-table()
+  walk deltas/keys()
+    take key
+    sift exact-value(calls, current, key)
+      case some
+        link value
+        push(keys, key)
+        save known/{key}, value
+      case none
+        save nothing, 0
+  save out, facts()
+  save a, 0
+  walk test
+    hook test, is-below(a, keys/length)
+    hook hold
+      save b, add(a, 1)
+      walk test
+        hook test, is-below(b, keys/length)
+        hook hold
+          save x, get(keys, a)
+          save y, get(keys, b)
+          save dx, deltas/get(x)
+          save dy, deltas/get(y)
+          save b, add(b, 1)
+          fork test, and(is-equal(dx, 0.0), is-equal(dy, 0.0))
+            hold
+              turn next
+          # dy*x - dx*y never changes, and at entry it is dy*x0 - dx*y0
+          save terms, number-terms()
+          save terms/{x}, dy
+          save terms/{y}, multiply(-1.0, dx)
+          save combination
+            make linear
+              bind terms, terms
+              bind constant, 0.0
+          save value, constant-linear(subtract(multiply(dy, known/get(x)), multiply(dx, known/get(y))))
+          push(out, at-most(combination, value))
+          push(out, at-least(combination, value))
+      save a, add(a, 1)
+  back out
+
+# THE COUNTER'S CEILING: `while x < e` (or `x <= e`) moving x by exactly +1 a turn, with nothing e reads changed, keeps
+# `x <= e` (`x <= e + 1`) when it held on entry
+task bound-invariant
+  take state, like hold-state
+  take calls, like hold-calls
+  take current, like list, like inequality
+  take statement, like statement
+  take walk, like hold-walk
+  like list, like inequality
+
+  sift statement
+    case while
+      link cond
+      link body
+      sift cond
+        case binary
+          link op
+          link left-expr
+          link right-expr
+          save strict, false
+          sift op
+            case below
+              save strict, true
+            case at-most
+              save strict, false
+            miss
+              back facts()
+          fork test, exits-early(body)
+            hold
+              back facts()
+          save left-read, to-linear(state, calls, left-expr, facts())
+          save right-read, to-linear(state, calls, right-expr, facts())
+          sift left-read
+            case some
+              link left
+              sift right-read
+                case some
+                  link right
+                  fork test, is-unequal(left/terms/keys()/length, 1)
+                    hold
+                      back facts()
+                  save name, get(left/terms/keys(), 0)
+                  fork test, is-unequal(left/terms/get(name), 1.0)
+                    hold
+                      back facts()
+                  save deltas, exact-deltas(state, calls, body, walk)
+                  fork test, or(not(deltas/has(name)), is-unequal(deltas/get(name), 1.0))
+                    hold
+                      back facts()
+                  # e must not move: nothing the body writes appears in it
+                  save written, written-in-block(body)
+                  walk right/terms/keys()
+                    take key
+                    fork test, or(has-text(written, key-root(key)), is-state-atom(key))
+                      hold
+                        back facts()
+                  save ceiling, right
+                  fork test, not(strict)
+                    hold
+                      save ceiling, add-linear(right, constant-linear(1.0))
+                  save fact, at-most(left, ceiling)
+                  fork test, calls/proves(current, fact)
+                    hold
+                      save out, facts()
+                      push(out, fact)
+                      back out
+                  back facts()
+                case none
+                  back facts()
+            case none
+              back facts()
+        miss
+          back facts()
+    miss
+      back facts()
+
+# a length's list is provably not one the body pushes to: every target a fresh list of the task, and the other a fresh
+# list, a parameter never rebound, or a module binding nothing can rebind
+task untouched-length
+  take key, like text
+  take pushed-to, like list, like text
+  take walk, like hold-walk
+  like boolean
+  mark private
+
+  sift after-prefix(key, length-prefix())
+    case some
+      link other
+      fork test, is-unequal(split(other, <.>)/length, 1)
+        hold
+          back false
+      walk pushed-to
+        take target
+        fork test, is-equal(target, other)
+          hold
+            back false
+        fork test, not(walk/fresh/has(target))
+          hold
+            back false
+        fork test, not(or(or(walk/fresh/has(other), walk/params/has(other)), and(walk/constants/has(other), not(walk/local/has(other)))))
+          hold
+            back false
+      back true
+    case none
+      back false
+
+# A WALK THAT ONLY COUNTS UP keeps a lower bound on its counter (and one that counts down an upper bound). State across
+# turns: a body that only pushes keeps a lower bound on a length, and any other change to state keeps none
+task keep-monotone
+  take state, like hold-state
+  take calls, like hold-calls
+  take current, like list, like inequality
+  take body, like list, like statement
+  take walk, like hold-walk
+  like list, like inequality
+
+  save written, written-in-block(body)
+  fork test, has-text(written, everything())
+    hold
+      back facts()
+  save direction, direction-table()
+  walk written
+    take name
+    fork test, walk/volatile/has(name)
+      hold
+        save direction/{name}, <any>
+      miss
+        save direction/{name}, direction-of(state, calls, name, body)
+  save start, block-handles(body)
+  save pushes, body-only-pushes(state, body, walk, state/list-pushes)
+  save changes-state, false
+  save keeps-only, only-keeps-lengths(start, walk, false)
+  save keeps-and-reads, false
+  fork test, keeps-only
+    hold
+      save keeps-and-reads, not(writes-through-member(body))
+  fork test, not(keeps-and-reads)
+    hold
+      save changes-state, true
+      fork test, not(is-below(pushes, 0))
+        hold
+          fork test, not(is-above(pushes, 0))
+            hold
+              save changes-state, writes-through-member(body)
+  save known, current
+  save impure, impure-in(block-parts(body), walk)
+  # a `set` anywhere in the body may change what a list position holds
+  fork test, impure
+    hold
+      save known, drop-element-paths(known)
+  # any impure call at all may change a list that is not local to this task, unless every one changes no length or
+  # pushes onto a list this task made
+  fork test, impure
+    hold
+      fork test, not(only-keeps-lengths(start, walk, true))
+        hold
+          save kept, facts()
+          walk known
+            take q
+            save keep, true
+            walk q/linear/terms/keys()
+              take key
+              fork test, and(and(is-state-atom(key), starts-with(key, <@>)), not(walk/local/has(key-root(key))))
+                hold
+                  save keep, false
+                  halt
+            fork test, keep
+              hold
+                push(kept, q)
+          save known, kept
+  fork test, changes-state
+    hold
+      save has-targets, false
+      save pushed-to, texts()
+      fork test, and(not(is-below(pushes, 0)), not(writes-through-member(body)))
+        hold
+          save has-targets, true
+          save pushed-to, push-targets(state, body, walk, state/list-pushes)
+      save kept, facts()
+      walk known
+        take q
+        save keep, true
+        walk q/linear/terms/keys()
+          take key
+          fork test, or(not(starts-with(key, <@>)), starts-with(key, text-prefix()))
+            hold
+              turn next
+          fork test, and(has-targets, untouched-length(key, pushed-to, walk))
+            hold
+              turn next
+          # a push changes a length and no field: a field fact goes only when something else changes state
+          fork test, starts-with(key, field-prefix())
+            hold
+              fork test, or(is-below(pushes, 0), writes-through-member(body))
+                hold
+                  save keep, false
+                  halt
+              turn next
+          fork test, or(or(is-below(pushes, 0), writes-through-member(body)), is-minimum(q/linear/terms/get(key), 0.0))
+            hold
+              save keep, false
+              halt
+        fork test, keep
+          hold
+            push(kept, q)
+      save known, kept
+  save out, facts()
+  walk known
+    take q
+    save keep, true
+    walk q/linear/terms/keys()
+      take key
+      save root, key-root(key)
+      fork test, not(direction/has(root))
+        hold
+          turn next
+      save way, direction/get(root)
+      save coefficient, q/linear/terms/get(key)
+      # a length atom moves with whatever the body does to its list, which this does not track
+      fork test, starts-with(key, <@>)
+        hold
+          save keep, false
+          halt
+      fork test, is-equal(way, <any>)
+        hold
+          save keep, false
+          halt
+      fork test, and(is-equal(way, <up>), is-minimum(coefficient, 0.0))
+        hold
+          save keep, false
+          halt
+      fork test, and(is-equal(way, <down>), is-maximum(coefficient, 0.0))
+        hold
+          save keep, false
+          halt
+    fork test, keep
+      hold
+        push(out, q)
+  back out
+
+task direction-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+# before a loop: what survives a later turn, which sees values an earlier turn wrote
+task keep-across-turns
+  take state, like hold-state
+  take calls, like hold-calls
+  take current, like list, like inequality
+  take body, like list, like statement
+  take walk, like hold-walk
+  like list, like inequality
+
+  save monotone, keep-monotone(state, calls, current, body, walk)
+  back both-facts(monotone, relational-invariants(state, calls, current, body, walk))
+
+# ---- writes ----
+
+# the facts after `x = x + d` (or `x += d`, `x -= d`) where d is linear and does not read x: the old x is the new x less
+# d. None when the assignment is not such a shift, and the caller forgets x instead
+task shift-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take current, like list, like inequality
+  take name, like text
+  take statement, like statement
+  take walk, like hold-walk
+  like maybe, like list, like inequality
+
+  sift statement
+    case assign
+      link target
+      link op
+      link value
+      fork test, or(walk/volatile/has(name), reads-volatile(value, walk))
+        hold
+          back make none
+      save side, facts()
+      sift to-linear(state, calls, value, side)
+        case some
+          link v
+          fork test, is-above(side/length, 0)
+            hold
+              back make none
+          save delta, v
+          sift op
+            case set
+              save own, 0.0
+              fork test, v/terms/has(name)
+                hold
+                  save own, v/terms/get(name)
+              fork test, is-unequal(own, 1.0)
+                hold
+                  back make none
+              save terms, number-terms()
+              walk v/terms/keys()
+                take key
+                fork test, is-unequal(key, name)
+                  hold
+                    save terms/{key}, v/terms/get(key)
+              save delta
+                make linear
+                  bind terms, terms
+                  bind constant, v/constant
+            case add
+              fork test, v/terms/has(name)
+                hold
+                  back make none
+            case subtract
+              fork test, v/terms/has(name)
+                hold
+                  back make none
+              save delta, scale-linear(v, -1.0)
+            miss
+              back make none
+          save out, facts()
+          walk current
+            take q
+            save a, 0.0
+            fork test, q/linear/terms/has(name)
+              hold
+                save a, q/linear/terms/get(name)
+            fork test, is-equal(a, 0.0)
+              hold
+                push(out, q)
+              miss
+                save moved
+                  make inequality
+                    bind linear, add-linear(q/linear, scale-linear(delta, multiply(-1.0, a)))
+                    bind strict, q/strict
+                push(out, moved)
+          back make(some, out)
+        case none
+          back make none
+    miss
+      back make none
+
+# `x = y` with y a record: every fact through y is a fact through x too
+task binding-aliases
+  take current, like list, like inequality
+  take name, like text
+  take value, like expression
+  take walk, like hold-walk
+  like list, like inequality
+
+  sift value
+    case variable
+      link from
+      fork test, or(is-equal(from, name), walk/volatile/has(name))
+        hold
+          back facts()
+      fork test, is-unequal(kind-of(expression-type(value)), <named>)
+        hold
+          back facts()
+      back alias-facts(current, name, from)
+    miss
+      back facts()
+
+task mentions-root
+  take q, like inequality
+  take name, like text
+  like boolean
+  mark private
+
+  walk q/linear/terms/keys()
+    take key
+    fork test, is-equal(key-root(key), name)
+      hold
+        back true
+  back false
+
+# `@length:a == @length:b`
+task same-length
+  take a, like text
+  take b, like text
+  like list, like inequality
+  mark private
+
+  save terms, number-terms()
+  save key-a, <{length-prefix()}{a}>
+  save key-b, <{length-prefix()}{b}>
+  save terms/{key-a}, 1.0
+  save terms/{key-b}, -1.0
+  save same
+    make linear
+      bind terms, terms
+      bind constant, 0.0
+  back equal-facts(same, constant-linear(0.0))
+
+# the equality a binding or an assignment `x = e` contributes, or nothing when it is not a stable fact
+task defining-equalities
+  take state, like hold-state
+  take calls, like hold-calls
+  take name, like text
+  take value, like expression
+  take walk, like hold-walk
+  like list, like inequality
+
+  fork test, or(walk/volatile/has(name), reads-volatile(value, walk))
+    hold
+      back facts()
+  # `x = e` where e reads the OLD x: the new x is e's linear form when that does not mention x, and every side fact
+  # that mentions the old x is dropped
+  fork test, reads-name(value, name)
+    hold
+      save side, facts()
+      sift to-linear(state, calls, value, side)
+        case some
+          link v
+          walk v/terms/keys()
+            take key
+            fork test, is-equal(key-root(key), name)
+              hold
+                back facts()
+          save out, facts()
+          walk side
+            take q
+            fork test, not(mentions-root(q, name))
+              hold
+                push(out, q)
+          save atom, atom-linear(name)
+          push(out, at-most(atom, v))
+          push(out, at-least(atom, v))
+          back out
+        case none
+          back facts()
+  sift value
+    # a list literal: its length is the number of items written
+    case array
+      link items
+      back literal-length(name, items/length)
+    # a record built in place: each number field is its value, and each list field written as a literal has that
+    # literal's length
+    case record
+      link record-name
+      link fields
+      save out, facts()
+      save has-numbers, state/number-fields/has(record-name)
+      walk fields
+        take field
+        save field-value, field/value
+        sift field-value
+          case array
+            link items
+            walk literal-length(<{name}.{field/name}>, items/length)
+              take q
+              push(out, q)
+            turn next
+          case variable
+            link list-name
+            fork test, is-array-typed(field-value)
+              hold
+                walk same-length(<{name}.{field/name}>, list-name)
+                  take q
+                  push(out, q)
+                turn next
+          miss
+            save nothing, 0
+        fork test, not(has-numbers)
+          hold
+            turn next
+        fork test, not(has-text(state/number-fields/get(record-name), field/name))
+          hold
+            turn next
+        fork test, reads-volatile(field-value, walk)
+          hold
+            turn next
+        save side, facts()
+        sift to-linear(state, calls, field-value, side)
+          case some
+            link v
+            walk side
+              take q
+              push(out, q)
+            walk equal-facts(atom-linear(<{field-prefix()}{name}.{field/name}>), v)
+              take q
+              push(out, q)
+          case none
+            save nothing, 0
+      back out
+    # `x = y` with y a list: the two names hold ONE list, so their lengths are equal
+    case variable
+      link list-name
+      fork test, is-array-typed(value)
+        hold
+          back same-length(name, list-name)
+    miss
+      save nothing, 0
+  save side, facts()
+  save equalities, binding-equalities(state, calls, name, value, side)
+  back both-facts(side, equalities)
+
+# the steps of a dotted path after its root
+task after-root
+  take path, like text
+  like list, like text
+  mark private
+
+  save steps, split(path, <.>)
+  save out, texts()
+  save at, 1
+  walk test
+    hook test, is-below(at, steps/length)
+    hook hold
+      push(out, get(steps, at))
+      save at, add(at, 1)
+  back out
+
+# what a write into a field through a plain path states, after the facts through that field were dropped: a number
+# field equals its new value, and a list field holds the same list as the plain path it was given
+task field-write-equalities
+  take state, like hold-state
+  take calls, like hold-calls
+  take target, like expression
+  take value, like expression
+  take walk, like hold-walk
+  like list, like inequality
+
+  sift target
+    case member
+      link member-target
+      link member-name
+      sift plain-path(target)
+        case some
+          link path
+          sift root-of(target)
+            case some
+              link root
+              fork test, or(or(is-equal(member-name, <length>), digits-name(member-name)), or(walk/volatile/has(root), reads-volatile(value, walk)))
+                hold
+                  back facts()
+              sift field-atom(state, target)
+                case some
+                  link field
+                  save side, facts()
+                  sift to-linear(state, calls, value, side)
+                    case some
+                      link v
+                      walk v/terms/keys()
+                        take key
+                        fork test, has-text(after-root(key), member-name)
+                          hold
+                            back facts()
+                      walk side
+                        take q
+                        walk q/linear/terms/keys()
+                          take key
+                          fork test, has-text(after-root(key), member-name)
+                            hold
+                              back facts()
+                      back both-facts(side, equal-facts(atom-linear(field), v))
+                    case none
+                      back facts()
+                case none
+                  save nothing, 0
+              save from-read, make none
+              sift value
+                case variable
+                  save from-read, plain-path(value)
+                case member
+                  save from-read, plain-path(value)
+                miss
+                  save nothing, 0
+              sift from-read
+                case some
+                  link from
+                  fork test, and(is-array-typed(value), not(has-text(after-root(from), member-name)))
+                    hold
+                      back equal-facts(atom-linear(<{length-prefix()}{path}>), atom-linear(<{length-prefix()}{from}>))
+                case none
+                  save nothing, 0
+              back facts()
+            case none
+              back facts()
+        case none
+          back facts()
+    miss
+      back facts()
+
+# `/^[0-9]+$/`
+bind digits-name
+  take value, like text
+  like boolean
+  case node
+    text </^[0-9]+$/.test($value)>
+  case browser
+    text </^[0-9]+$/.test($value)>
+  case rust
+    text <(!$value.is_empty() && $value.chars().all(|c| c.is_ascii_digit()))>
+  case swift
+    text <(!$value.isEmpty && $value.allSatisfy(\{ $0.isASCII && $0.isNumber \}))>
+  case kotlin
+    text <($value.isNotEmpty() && $value.all \{ it in '0'..'9' \})>

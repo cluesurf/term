@@ -23,8 +23,8 @@ deck/bind/code/raspberry/
 deck/bind/code/swift/
 deck/bind/code/windows/
 deck/face/link/
-deck/feed/code/http/base.note/
-deck/feed/code/tree/lace/
+deck/mill/code/text/http/base.note/
+deck/mill/code/text/tree/lace/
 deck/mill/test/
 deck/site/code/dom/native/webview/
 

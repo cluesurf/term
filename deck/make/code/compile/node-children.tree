@@ -723,9 +723,14 @@ task statement-children
       fork test, enters(at, <extend>)
         hold
           add-maybe-extend(at, extend)
+      # a `need false` list, copied where it is read: handed to a call it would be written into the node
       fork test, enters(at, <pins>)
         hold
-          add-field-values(at, pins)
+          save given-pins, make list
+          walk pins
+            take one
+            push(given-pins, one)
+          add-field-values(at, given-pins)
     case mask
       fork test, enters(at, <tasks>)
         hold

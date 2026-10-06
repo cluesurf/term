@@ -91,3 +91,15 @@ form range
             read at
             read self/step
     send back, read out
+
+# the whole numbers from `start` up to and not including `end`, by ones: what the note grammar writes `0..<10` and
+# `[0, 10)` as (note/term/mill/03-note-grammar.md)
+task make-range
+  take start, like number
+  take end, like number
+  like range
+  send back
+    make range
+      bind start, read start
+      bind end, read end
+      bind step, code 1

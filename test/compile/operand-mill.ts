@@ -2,7 +2,7 @@
 //
 // `deck/bind/code/linux/operand.tree` is 11,489 lines describing 1,270 x86 instructions in its own dialect
 // (`force adc` / `start 1, share al` / `write 0x14`). The house rule is that a custom `.tree` dialect is integrated
-// by defining a MILL, never by teaching the core compiler its heads, so `deck/mill/code/operand/mine.tree` is that
+// by defining a MILL, never by teaching the core compiler its heads, so `deck/mill/code/tree/operand/mine.tree` is that
 // grammar and this is what holds it to the data.
 //
 // WHOLE-FILE AND PER-INSTRUCTION, both. The whole-file run proves the grammar describes the document; the
@@ -24,7 +24,7 @@ import type { GroupNode } from '@term/make/code/parser/narrow'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const GRAMMAR = join(TERM, 'deck/mill/code/operand/mine.tree')
+const GRAMMAR = join(TERM, 'deck/mill/code/tree/operand/mine.tree')
 const TABLE = join(TERM, 'deck/bind/code/linux/operand.tree')
 
 // the table on 2026-08-30. A count that changes is a table that changed, which is worth noticing either way.

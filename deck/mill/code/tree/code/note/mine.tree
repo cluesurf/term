@@ -1,0 +1,100 @@
+load @term/mill/tree/code/tool/flow/mine
+  find flow
+
+
+# `note <word>` is metadata. `note unsafe` is the one that carries a BODY: the statements under it are the
+# guarded block, and the `halt take` beside it is the handler.
+mine note
+  mine term, term note
+    mine any
+      mine term
+        site text
+      mine text
+        site text
+    mine list
+      mine form, like flow
+        site flow
+
+# `mark <word>` is METADATA, and the word is one of the metadata words below: `mark async`, `mark native`,
+# `mark unsafe` (over statements, the guarded block), `mark draft`, `mark stable`, `mark unstable`,
+# `mark deprecated`, `mark keep`, `mark open`, `mark roam`. It is minted as the `note` it replaces, so every
+# reader after the mill sees one form whichever word was written. `note <word>` is the old spelling: still read,
+# warned as `note-metadata`, and rewritten by `term lint --fix` (note/term/plan/await-by-default-and-mark-
+# metadata.md, section 4).
+#
+# TOLD APART FROM THE OTHER `mark`s BY FORM. The word list is closed, so `mark private` (privacy, read by
+# `mine mark`), `mark tag, name kind`, `mark <uuid>` (a text literal, a record's identity) and a twin's knob
+# `mark tile, like number` never reach it. This rule takes nothing under the word, so a `like` child fails it.
+# A rule's binder is a `seat` (2026-10-05), and its old spelling `mark a, like tone` falls past this rule to
+# `rule-mark`, which the bridge refuses by name.
+# `mark feature, name x` and `mark platform, name x` keep their `name` and are read by `mine mark`.
+mine mark-note
+  mine term, term mark
+    mine any
+      mine term, term async
+        site text
+      mine term, term native
+        site text
+      mine term, term unsafe
+        site text
+      mine term, term draft
+        site text
+      mine term, term stable
+        site text
+      mine term, term unstable
+        site text
+      mine term, term deprecated
+        site text
+      mine term, term keep
+        site text
+      mine term, term open
+        site text
+      mine term, term roam
+        site text
+
+# `mark unsafe` OVER STATEMENTS: the guarded block, the same as `note-guard` below. A rule of its own because
+# `mine mark-note` takes nothing under the word, which is what keeps a knob's `like` out of it
+mine mark-guard
+  mine term, term mark
+    mine term, term unsafe
+      site text
+    mine form, like flow
+      site flow
+    mine list
+      mine form, like flow
+        site flow
+
+# THE GUARDED BLOCK IS A `fork`, and `mark unsafe` is metadata ON it, its first line (2026-10-06):
+#
+#   fork
+#     mark unsafe
+#     save answer, fetch(url)
+#   halt take
+#     take problem
+#
+# A block is a fork, and a metadata word never opens one. The statements after the mark are tried, and the `halt
+# take` after the fork is the handler, as it was. It mints the `note` the older spellings did, with `opener`, the
+# word `fork`, so the bridge refuses a `mark unsafe` or `note unsafe` that holds statements of its own and names this
+mine fork-guard
+  mine term, term fork
+    site opener
+    mine term, term mark
+      mine term, term unsafe
+        site text
+    mine list
+      mine form, like flow
+        site flow
+
+# `note unsafe` OVER STATEMENTS is a guarded block, not an annotation: the statements under it are tried and
+# the `halt take` beside it is the handler. It is a rule of its own so it can be matched in the STATEMENT
+# position rather than lifted out with the other metadata, because the pairing needs the two to stay adjacent
+# in the same list. A task with two guards in it has two, and only the list knows which handler is whose.
+mine note-guard
+  mine term, term note
+    mine term, term unsafe
+      site text
+    mine form, like flow
+      site flow
+    mine list
+      mine form, like flow
+        site flow

@@ -1,0 +1,174 @@
+load @term/mill/tree/code/tell/mint
+  find tell-def
+
+load @term/mill/tree/code/proof/mint
+  find hold-claim
+
+load @term/mill/tree/code/bear/mint
+  find bear
+  find deck-def
+
+load @term/mill/tree/code/bind/mint
+  find bind-def
+
+load @term/mill/tree/code/book/mint
+  find book
+
+load @term/mill/tree/code/call/mint
+  find call
+
+load @term/mill/tree/code/cast/mint
+  find cast
+
+load @term/mill/tree/code/dock/mint
+  find dock
+  find dock-bind
+
+load @term/mill/tree/code/form/mint
+  find form
+
+load @term/mill/tree/code/fuse/mint
+  find fuse
+
+load @term/mill/tree/code/halt/mint
+  find halt
+
+load @term/mill/tree/code/hold/mint
+  find hold
+
+load @term/mill/tree/code/hook/mint
+  find hook
+
+load @term/mill/tree/code/kink/mint
+  find kink
+
+load @term/mill/tree/code/lace/mint
+  find lace
+
+load @term/mill/tree/code/load/mint
+  find load
+
+load @term/mill/tree/code/mask/mint
+  find mask
+
+load @term/mill/tree/code/note/mint
+  find note
+
+load @term/mill/tree/code/rule/def/mint
+  find roll-def
+  find rule-def
+
+load @term/mill/tree/code/save/mint
+  find save
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/mill/tree/code/seed/seed/mint
+  find host
+
+load @term/mill/tree/code/suit/mint
+  find suit
+
+load @term/mill/tree/code/task/mint
+  find task
+
+load @term/mill/tree/code/test/mint
+  find test
+
+load @term/mill/tree/code/tree/beam/mint
+  find beam
+
+load @term/mill/tree/code/tree/mint
+  find tree
+
+load @term/mill/tree/code/tree/slot/mint
+  find slot
+
+load @term/mill/tree/code/tune/mint
+  find tune
+
+load @term/mill/tree/code/twin/mint
+  find twin
+
+load @term/mill/tree/code/view/mint
+  find view-def
+
+load @term/mill/tree/code/wear/mint
+  find wear
+
+
+# The code role's mint dispatcher. This load block mirrors `mine.tree`'s: one sibling mint per statement head,
+# named for the rule whose captures it mints. It was MISSING until 2026-08-31, which meant the merged mint
+# grammar held exactly one rule (`mint code`) and every `case x, mint y` below dangled. Nothing reported it
+# because nothing ran the mint side (mint-bridge-0001).
+#
+# Four heads have no mint yet and so are not loaded: `book`, `kink`, `cast` and `zone`. `pnpm term:mint-parity`
+# names them, and they close as part of mint-bridge-0003.
+
+
+mint code
+  case form
+    site form
+  case task
+    site task
+  case call
+    site call
+  case hook
+    site hook
+  case host
+    site host
+  case load
+    site load
+  case dock-bind
+    site dock-bind
+  case bind-def
+    site bind-def
+  case rule, mint rule-def
+    site rule
+  case roll, mint roll-def
+    site roll
+  case dock, mint dock-def
+    site dock
+  case hold-claim, mint hold-claim
+    site hold-claim
+  case hold
+    site hold
+  case suit
+    site suit
+  case mask
+    site mask
+  case wear
+    site wear
+  case bear
+    site bear
+  case deck, mint deck-def
+    site deck
+  case book
+    site book
+  case kink
+    site kink
+  case beam
+    site beam
+  case slot
+    site slot
+  case tell, mint tell-def
+    site tell
+  case note
+    site note
+  case halt
+    site halt
+  case save
+    site save
+  case seed
+    site seed
+  case lace
+    site lace
+  case cast
+    site cast
+  case tune
+    site tune
+  case twin
+    site twin
+  case view, mint view-def
+    site view

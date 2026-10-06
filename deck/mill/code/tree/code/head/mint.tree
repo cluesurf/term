@@ -1,0 +1,50 @@
+load @term/mill/tree/code/form/link/mint
+  find link
+
+load @term/mill/tree/code/drop/mint
+  find drop
+
+load @term/mill/tree/code/fall/mint
+  find fall
+
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/mill/tree/code/need/mint
+  find need
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+mint head
+  case name
+    site name
+  case like
+    site like
+  case need
+    site need
+  case fall
+    site fall
+  case base, mint seed
+    site base
+  case drop
+    site drop
+  case link
+    site link
+  case seed
+    site seed
+  hook make
+    make head
+      bind name, read name
+      bind like, read like
+      bind need, read need
+      bind fall, read fall
+      bind base, read base
+      bind drop, read drop
+      bind link, read link
+      bind seed, read seed
+
+# a constructor's result type beside a head, matched so the file reads and built into nothing
+mint head-back
+  hook make
+    make head-back

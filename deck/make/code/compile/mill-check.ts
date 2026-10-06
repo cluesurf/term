@@ -1,4 +1,4 @@
-// The `mill` role: a file that DEFINES a dialect (`deck/mill/code/<dialect>/{base,mine,mint}.tree`), read as one.
+// The `mill` role: a file that DEFINES a dialect (`deck/mill/code/tree/<dialect>/{base,mine,mint}.tree`), read as one.
 //
 // A mill definition is not a program. Its heads are `mill`, `mine` and `mint`, its `load` lines bring in other
 // grammar files and the stdlib forms a `mint ..., like <form>` builds, and nothing executes it: the toolchain reads
@@ -13,7 +13,7 @@
 // form a load of the file brings in. test/compile/mill-grammar.ts holds every file under deck/mill/code to the
 // same four checks through this function, so the editor and the gate cannot disagree about a grammar file.
 //
-// The `mill` mill itself (deck/mill/code/mill, `mill mill`) is not the reader here: on 2026-10-02 it read 3 of the
+// The `mill` mill itself (deck/mill/code/tree/mill, `mill mill`) is not the reader here: on 2026-10-02 it read 3 of the
 // 344 files under deck/mill/code (its `bind mine, load ./mine` rule wants a text path, every base.tree writes a
 // name), so holding a file to it would report a defect in the meta-grammar on every file.
 

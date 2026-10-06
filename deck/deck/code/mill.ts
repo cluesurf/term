@@ -1,5 +1,5 @@
 // The manifest and lockfile, read THROUGH THE MILL (mill-self-hosting-0005): the deck grammar in
-// `deck/mill/code/deck` (inlined at build time by `pnpm run make:grammar`) is run by the executor
+// `deck/mill/code/tree/deck` (inlined at build time by `pnpm run make:grammar`) is run by the executor
 // (@term/make/code/compile/mill-run) over the parsed file, and the manifest is extracted from the captures. No
 // hand-rolled extraction: when a reader and the mill disagree, the mill is right. Every diagnostic carries the
 // SPAN of the node it is about, so an error names the line in deck.tree.
@@ -315,8 +315,8 @@ export function parseManifestMill(input: {
 
 // A role file read THROUGH THE MILL, the same way the manifest is (mill-self-hosting-0005).
 //
-// The role grammar has existed at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it
-// in (`load @term/mill/code/deck/role/mine` / `find role`), but `parseRoleFile` never ran it: it parsed with the
+// The role grammar has existed at deck/mill/code/tree/deck/role/mine.tree all along and the deck grammar composes it
+// in (`load @term/mill/tree/deck/role/mine` / `find role`), but `parseRoleFile` never ran it: it parsed with the
 // real parser and then walked the flattened forms by hand, which is exactly the shape `parseManifestByHand` had
 // before the manifest moved onto its grammar. Two readers of one dialect disagree eventually, and the
 // disagreement is silent.

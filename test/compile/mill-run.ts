@@ -42,7 +42,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
-const HOST_ROLE = join(TERM, 'deck/mill/code/host')
+const HOST_ROLE = join(TERM, 'deck/mill/code/tree/host')
 
 const mineTree = parse({
   file: 'mine.tree',
@@ -278,7 +278,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const roleGrammar = readMineGrammar(
     parse({
       file: 'role-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/deck/role/mine.tree'), 'utf8'),
+      text: readFileSync(join(TERM, 'deck/mill/code/tree/deck/role/mine.tree'), 'utf8'),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any).tree!,
   )
@@ -306,13 +306,13 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const testGrammar = readMineGrammar(
     parse({
       file: 'test-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/test/mine.tree'), 'utf8'),
+      text: readFileSync(join(TERM, 'deck/mill/code/tree/test/mine.tree'), 'utf8'),
     }).tree!,
   )
   const testMints = readMintGrammar(
     parse({
       file: 'test-mint.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/test/mint.tree'), 'utf8'),
+      text: readFileSync(join(TERM, 'deck/mill/code/tree/test/mint.tree'), 'utf8'),
     }).tree!,
   )
 
@@ -357,7 +357,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const { readdirSync } = await import('node:fs')
 
   // the deck grammar with its load closure inlined (the executor takes one grammar map)
-  const MILL = join(TERM, 'deck/mill/code')
+  const MILL = join(TERM, 'deck/mill/code/tree')
   const collected = new Set<string>()
   const parts: string[] = []
   const collect = (file: string): void => {
@@ -529,7 +529,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const lockGrammar = readMineGrammar(
     parse({
       file: 'lock-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/deck/lock/mine.tree'), 'utf8'),
+      text: readFileSync(join(TERM, 'deck/mill/code/tree/deck/lock/mine.tree'), 'utf8'),
     }).tree!,
   )
   const parsed = parse({ file: 'lock.tree', text: fixture })
@@ -596,8 +596,8 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
 // ---- the ROLE FILE, mill against hand ----
 //
-// The role grammar has been at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it in
-// (`load @term/mill/code/deck/role/mine`), but `parseRoleFile` never ran it: it parsed with the real parser and
+// The role grammar has been at deck/mill/code/tree/deck/role/mine.tree all along and the deck grammar composes it in
+// (`load @term/mill/tree/deck/role/mine`), but `parseRoleFile` never ran it: it parsed with the real parser and
 // then walked the flattened forms by hand, the same shape `parseManifestByHand` had. It reads through the mill
 // now, and this is what holds the two together.
 //

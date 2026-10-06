@@ -244,3 +244,23 @@ form set
       call is-subset
         read other
         read self
+
+# a set of the items, each once, in the order first given: what the note grammar writes `{x, y, z}` as
+# (note/term/mill/03-note-grammar.md)
+task make-set
+  head t
+  take items
+    like list
+      like t
+  like set
+    like t
+  save result
+    make set
+      bind items
+        make hash
+  walk list, read items
+    hook next
+      take site, name item
+      call result/insert
+        read item
+  send back, read result

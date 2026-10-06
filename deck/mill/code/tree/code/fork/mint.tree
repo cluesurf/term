@@ -1,0 +1,163 @@
+load @term/mill/tree/code/form/link/mint
+  find link
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/mill/tree/code/tool/flow/mint
+  find flow
+
+load @term/base/lang
+  find fork-test
+  find fork-test-pair
+  find fork-miss
+  find fork-case
+  find fork-arm
+  find fork-tree
+
+mint fork
+  case lack, mint fork-lack
+    site lack
+  case test, mint fork-test
+    site test
+  case case, mint fork-case
+    site case
+  case tree, mint fork-tree
+    site tree
+  case roll, mint fork-roll
+    site roll
+
+mint fork-test, like fork-test
+  case condition, mint seed
+    site condition
+  case name, mint fork-name
+    site name
+  case arm, mint fork-arm-hook
+    site arm
+  case arm, mint fork-arm-bare
+    site arm
+  case drop, mint fork-arm-other
+    site drop
+  hook make
+    make fork-test
+      bind condition, read condition
+      bind name, read name
+      bind arm, read arm
+      bind drop, read drop
+
+mint fork-test-pair, like fork-test-pair
+  case test, mint flow
+    site test
+  case hold, mint flow
+    site hold
+  hook make
+    make fork-test-pair
+      bind test, read test
+      bind hold, read hold
+
+mint fork-miss, like fork-miss
+  case flow
+    site flow
+  hook make
+    make fork-miss
+      bind flow, read flow
+
+mint fork-case, like fork-case
+  case seed
+    site seed
+  # each arm through the mint of the rule it matched: `case <name>`, or the `hook miss` / `miss` catch-all
+  case arm
+    site arm
+  hook make
+    make fork-case
+      bind seed, read seed
+      bind arm, read arm
+
+# `sift <value>` mints the very form `fork case, <value>` does
+mint sift, like fork-case
+  case seed
+    site seed
+  # each arm through the mint of the rule it matched: `case <name>`, or the `hook miss` / `miss` catch-all
+  case arm
+    site arm
+  hook make
+    make fork-case
+      bind seed, read seed
+      bind arm, read arm
+
+mint fork-arm, like fork-arm
+  case name
+    site name
+  case base
+    site base
+  case link
+    site link
+  case flow
+    site flow
+  hook make
+    make fork-arm
+      bind name, read name
+      bind base, read base
+      bind link, read link
+      bind flow, read flow
+
+mint fork-tree, like fork-tree
+  case flow
+    site flow
+  hook make
+    make fork-tree
+      bind flow, read flow
+
+mint fork-roll
+  case arm, mint fork-arm-hook
+    site arm
+  hook make
+    make fork-roll
+      bind arm, read arm
+
+mint fork-name
+  case name
+    site name
+  hook make
+    make fork-name
+      bind name, read name
+
+mint fork-arm-hook
+  case kind
+    site kind
+  # a nested arm: `fork roll` puts the body of a `hook test` under a `hook hold` INSIDE it
+  case arm, mint fork-arm-hook
+    site arm
+  case flow
+    site flow
+  hook make
+    make fork-arm-hook
+      bind kind, read kind
+      bind arm, read arm
+      bind flow, read flow
+
+# A bare arm mints the SAME form a `hook` arm does, so the bridge reads one shape.
+mint fork-arm-bare
+  case kind
+    site kind
+  case flow
+    site flow
+  hook make
+    make fork-arm-hook
+      bind kind, read kind
+      bind flow, read flow
+
+mint fork-lack
+  case seed
+    site seed
+  hook make
+    make fork-lack
+      bind seed, read seed
+
+# an arm the fork does not know, matched so the file reads and built into nothing
+mint fork-arm-other
+  case kind
+    site kind
+  hook make
+    make fork-arm-other
+      bind kind, read kind

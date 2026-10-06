@@ -1,6 +1,6 @@
-# The feed mill compiler: reads a @term/feed dialect's mine.tree grammar and GENERATES real Term (.tree) source text
+# The feed mill compiler: reads a format grammar's mine.tree (deck/mill/code/text, blob) and GENERATES real Term (.tree) source text
 # implementing the reader, compiled ahead of time through the ordinary parse/mill/check/emit pipeline onto every
-# backend. It reads raw BYTES or CHARACTERS of an arbitrary format against `@term/feed/code/base.tree`'s
+# backend. It reads raw BYTES or CHARACTERS of an arbitrary format against `@term/mill/feed.tree`'s
 # `feed-cursor` / `text-cursor` primitives. See note/term/project/feed-compiler.md, and compile/feed-mill.ts for why
 # each construct is read and emitted the way it is.
 #

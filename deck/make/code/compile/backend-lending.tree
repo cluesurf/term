@@ -1,0 +1,2292 @@
+# F1, the lending family (note/term/codegen/shared.md): the list parameters a task may take lent, the list locals a task
+# owns outright, whether a local is only read, the forms whose values cross into native code, the variant and record
+# fields that own their lists, the tasks that answer a fresh list, the tasks that reach a list only through their
+# arguments, and the program-wide fixpoint that settles all of them together.
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), which stays as the face and turns the answers into the
+# `Set`s and `Map`s its callers hold. The walks by reflection (`Object.entries` past `type` and `span`) are
+# compile/node-children.tree's step. A set the original held is a table of flags here, and a `WeakSet` of nodes the
+# original consulted (`moves`) is a test handed in as a task. Every answer is a membership or a count, so the order a
+# walk meets children in changes no answer.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find char-count
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-shapes
+  find collection-call
+  find collection-read
+
+load ./backend-names
+  find rebinds
+  find let-names
+
+load ./lowered-members
+  find list-length-tasks
+
+load ../ir/facts/guards
+  find native-call
+  find scalar-tasks
+  find list-freedom
+  find list-freedom-of
+  find is-list-free
+
+load ../check/arm
+  find arm-locals
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task index-modes
+  like hash, like number, like text
+
+  back make hash
+
+task name-indexes
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+task lend-table
+  like hash, like text, like hash, like number, like text
+
+  back make hash
+
+task text-lists
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task text-statements
+  like hash, like text, like statement
+  mark private
+
+  back make hash
+
+task owned-memo
+  like hash, like number, like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task type-kind
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back bare-kind(known)
+    case none
+      back <>
+
+task bare-kind
+  take known, like type
+  like text
+  mark private
+
+  sift known
+    case number
+      back <number>
+    case float
+      back <float>
+    case boolean
+      back <boolean>
+    case string
+      back <string>
+    case unit
+      back <unit>
+    case unknown
+      back <unknown>
+    case dynamic
+      back <dynamic>
+    case bytes
+      back <bytes>
+    case array
+      back <array>
+    case map
+      back <map>
+    case named
+      back <named>
+    case function
+      back <function>
+    case variable
+      back <variable>
+
+# the form a type names, `''` for any other type
+task form-name-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          back type-name
+        miss
+          back <>
+    case none
+      back <>
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-maximum(48, code), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task has-index
+  take index, like maybe, like expression
+  like boolean
+  mark private
+
+  sift index
+    case some
+      back true
+    case none
+      back false
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+# is the expression a call
+task is-call
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      back true
+    miss
+      back false
+
+# the target of a member, or the expression itself
+task member-target-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case member
+      back target
+    miss
+      back node
+
+# a member whose target is a member too
+task deeper-member
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case member
+      sift target
+        case member
+          back true
+        miss
+          back false
+    miss
+      back false
+
+# the name a variable reads, when it is one of the names in the table
+task name-in-indexes
+  take node, like expression
+  take names, like hash, like text, like number
+  like text
+  mark private
+
+  sift node
+    case variable
+      fork test, names/has(name)
+        hold
+          back name
+    miss
+      save nothing, 0
+  back <>
+
+task name-in-flags
+  take node, like expression
+  take names, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift node
+    case variable
+      fork test, names/has(name)
+        hold
+          back name
+    miss
+      save nothing, 0
+  back <>
+
+# a slot of one of the names: `xs/{i}` or `xs/0`
+task slot-in-indexes
+  take node, like expression
+  take names, like hash, like text, like number
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      fork test, or(has-index(member-index), is-digits(member-name))
+        hold
+          back name-in-indexes(member-target, names)
+    miss
+      save nothing, 0
+  back <>
+
+task slot-in-flags
+  take node, like expression
+  take names, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      fork test, or(has-index(member-index), is-digits(member-name))
+        hold
+          back name-in-flags(member-target, names)
+    miss
+      save nothing, 0
+  back <>
+
+# no variable is ever moved: the test `ownedLocals` is given when no list owns its element lists
+task never-moved
+  take node, like expression
+  like boolean
+
+  back false
+
+# ---- the list parameters a task may take lent ----
+
+form lend-state
+  mark shared
+  link refused-all, like boolean
+  link refused, like hash, like text, like boolean
+  link written, like hash, like text, like boolean
+
+form lend-scope
+  link names, like hash, like text, like number
+  link locals, like hash, like text, like boolean
+  link tasks, like hash, like text, like boolean
+  link lend, like hash, like text, like hash, like number, like text
+  link pure, like hash, like text, like boolean
+
+# a list local of the task's own: a parameter reaches a local only through a mention, which refuses it
+task own-list
+  take node, like expression
+  take scope, like lend-scope
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      link var-name
+      fork test, and(scope/locals/has(var-name), not(scope/names/has(var-name)))
+        hold
+          back is-equal(type-kind(expression-type(node)), <array>)
+      back false
+    miss
+      back false
+
+task lend-visit-all
+  take values, like list, like expression
+  take st, like lend-state
+  take scope, like lend-scope
+  take is-free
+    like task
+      take given, like maybe, like type
+      like boolean
+  mark private
+
+  walk values
+    take one
+    lend-visit(expression-handle-of(one), st, scope, is-free)
+
+task lend-visit-maybe
+  take value, like maybe, like expression
+  take st, like lend-state
+  take scope, like lend-scope
+  take is-free
+    like task
+      take given, like maybe, like type
+      like boolean
+  mark private
+
+  sift value
+    case some
+      link known
+      lend-visit(expression-handle-of(known), st, scope, is-free)
+    case none
+      save nothing, 0
+
+task lend-visit
+  take handle, like node-handle
+  take st, like lend-state
+  take scope, like lend-scope
+  take is-free
+    like task
+      take given, like maybe, like type
+      like boolean
+  mark private
+
+  fork test, st/refused-all
+    hold
+      back
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          save st/refused-all, true
+          back
+        case await
+          save st/refused-all, true
+          back
+        case variable
+          link var-name
+          # one of the lent lists anywhere but the places handled below; or a collection from outside the task. A name
+          # whose type holds no list cannot reach one, however it was bound
+          fork test, scope/names/has(var-name)
+            hold
+              save st/refused/{var-name}, true
+            miss
+              fork test, and(and(not(scope/locals/has(var-name)), not(is-free(expression-type(node)))), not(scope/tasks/has(var-name)))
+                hold
+                  save st/refused-all, true
+          back
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          save named, is-unequal(callee-name, <>)
+          # a task that takes lists lent: one of ours passed at a position it takes lent stays lent here, written if it
+          # writes it there. A local of the task's own is passed freely
+          fork test, and(and(named, scope/lend/has(callee-name)), not(scope/locals/has(callee-name)))
+            hold
+              save target, scope/lend/get(callee-name)
+              save at, 0
+              walk call-args
+                take arg
+                save mine, name-in-indexes(arg, scope/names)
+                fork test, is-equal(mine, <>)
+                  hold
+                    lend-visit(expression-handle-of(arg), st, scope, is-free)
+                  miss
+                    fork test, not(target/has(at))
+                      hold
+                        save st/refused/{mine}, true
+                      miss
+                        fork test, is-equal(target/get(at), <write>)
+                          hold
+                            save st/written/{mine}, true
+                save at, add(at, 1)
+              back
+          sift call-callee
+            case member
+              link member-target
+              # a collection operation on one of the lent lists: a slot read is a slot read; anything else on it could
+              # change its length, so refuses it
+              sift collection-call(call-callee)
+                case some
+                  link op
+                  save mine, <>
+                  fork test, is-unequal(op/kind, <map>)
+                    hold
+                      save mine, name-in-indexes(op/target, scope/names)
+                  # any operation on a list local of this task's own, which no parameter can reach
+                  fork test, and(and(is-unequal(op/kind, <map>), is-equal(mine, <>)), own-list(op/target, scope))
+                    hold
+                      lend-visit-all(call-args, st, scope, is-free)
+                      back
+                  fork test, is-unequal(mine, <>)
+                    hold
+                      fork test, or(is-equal(op/op, <at>), is-equal(op/op, <get>))
+                        hold
+                          lend-visit-all(call-args, st, scope, is-free)
+                        miss
+                          save st/refused/{mine}, true
+                      back
+                case none
+                  save nothing, 0
+              # a method of a text reaches no list
+              fork test, is-equal(type-kind(expression-type(member-target)), <string>)
+                hold
+                  lend-visit(expression-handle-of(member-target), st, scope, is-free)
+                  lend-visit-all(call-args, st, scope, is-free)
+                  back
+            miss
+              save nothing, 0
+          # a task that cannot reach a list, or a native call, with list-free arguments, or a list local of this task's
+          # own. A nested call's value is judged by that call, visited below
+          save callable, native-call(call-callee)
+          fork test, and(named, not(scope/locals/has(callee-name)))
+            hold
+              fork test, or(scope/pure/has(callee-name), not(scope/tasks/has(callee-name)))
+                hold
+                  save callable, true
+          save harmless, callable
+          fork test, harmless
+            hold
+              walk call-args
+                take arg
+                fork test, not(or(or(is-free(expression-type(arg)), own-list(arg, scope)), is-call(arg)))
+                  hold
+                    save harmless, false
+          fork test, not(harmless)
+            hold
+              save st/refused-all, true
+              back
+          lend-visit-all(call-args, st, scope, is-free)
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          fork test, is-unequal(slot-in-indexes(node, scope/names), <>)
+            hold
+              lend-visit-maybe(member-index, st, scope, is-free)
+              back
+          sift collection-read(node)
+            case some
+              link read
+              fork test, is-unequal(name-in-indexes(read/target, scope/names), <>)
+                hold
+                  back
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          save mine, slot-in-indexes(assign-target, scope/names)
+          fork test, is-unequal(mine, <>)
+            hold
+              save st/written/{mine}, true
+              sift assign-target
+                case member
+                  link slot-target
+                  link slot-name
+                  link slot-index
+                  lend-visit-maybe(slot-index, st, scope, is-free)
+                miss
+                  save nothing, 0
+              lend-visit(expression-handle-of(assign-value), st, scope, is-free)
+              back
+          # a write deeper through one of its slots (`save ps/{k}/xs/{i}, v`) writes the list too
+          save inner, assign-target
+          save moved, false
+          walk test
+            hook test, deeper-member(inner)
+            hook hold
+              save inner, member-target-of(inner)
+              save moved, true
+          save through, slot-in-indexes(inner, scope/names)
+          fork test, and(is-unequal(through, <>), moved)
+            hold
+              save st/written/{through}, true
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          fork test, is-equal(name-in-indexes(each-iterable, scope/names), <>)
+            hold
+              lend-visit(expression-handle-of(each-iterable), st, scope, is-free)
+          walk block-handles(each-body)
+            take child
+            lend-visit(child, st, scope, is-free)
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    lend-visit(child, st, scope, is-free)
+
+# F1, the first and narrowest slice: the list PARAMETERS a task may take LENT, as `&mut [T]` ('write') or `&[T]`
+# ('read'). Refused unless nothing else in the task CAN reach a list (compile/backend.ts says each rule)
+task lendable-params
+  take fn, like statement
+  take tasks, like hash, like text, like boolean
+  take lend, like hash, like text, like hash, like number, like text
+  take pure, like hash, like text, like boolean
+  take is-free
+    like task
+      take given, like maybe, like type
+      like boolean
+  like hash, like number, like text
+
+  save lent, index-modes()
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      save candidates, make list
+      save names, name-indexes()
+      save at, 0
+      walk fn-params
+        take param
+        fork test, is-equal(type-kind(param/type), <array>)
+          hold
+            push(candidates, at)
+            save names/{param/name}, at
+        save at, add(at, 1)
+      fork test, is-equal(candidates/length, 0)
+        hold
+          back lent
+      # every other parameter list-free: a map, or a record that holds a list, could hold one that aliases a list
+      # lent here
+      save at, 0
+      walk fn-params
+        take param
+        fork test, and(not(has-number(candidates, at)), not(is-free(param/type)))
+          hold
+            back lent
+        save at, add(at, 1)
+      # by name, so a parameter the body binds again is refused rather than confused with its shadow
+      save bound, rebinds(block-handles(fn-body), text-lists(), true)
+      walk names/keys()
+        take name
+        fork test, has-text(bound, name)
+          hold
+            back lent
+      save locals, text-flags()
+      walk fn-params
+        take param
+        save locals/{param/name}, true
+      walk let-names(fn-body)
+        take name
+        save locals/{name}, true
+      save st
+        make lend-state
+          bind refused-all, false
+          bind refused, text-flags()
+          bind written, text-flags()
+      save scope
+        make lend-scope
+          bind names, names
+          bind locals, locals
+          bind tasks, tasks
+          bind lend, lend
+          bind pure, pure
+      walk block-handles(fn-body)
+        take handle
+        lend-visit(handle, st, scope, is-free)
+      fork test, st/refused-all
+        hold
+          back lent
+      walk names/keys()
+        take name
+        fork test, not(st/refused/has(name))
+          hold
+            save at, names/get(name)
+            fork test, st/written/has(name)
+              hold
+                save lent/{at}, <write>
+              miss
+                save lent/{at}, <read>
+      # a list not lent is a second collection parameter that could alias a lent one: all or none
+      fork test, is-equal(lent/keys()/length, names/keys()/length)
+        hold
+          back lent
+      back index-modes()
+    miss
+      back lent
+
+# ---- the list locals a task owns ----
+
+form owned-state
+  mark shared
+  link refused, like hash, like text, like boolean
+  link written, like hash, like text, like boolean
+
+form owned-scope
+  link candidates, like hash, like text, like boolean
+  link lend, like hash, like text, like hash, like number, like text
+  link stores, like hash, like text, like boolean
+  link has-stores, like boolean
+
+# a list made fresh: `make list`, an empty literal, or a call to a task that answers a fresh list
+task made-fresh
+  take init, like expression
+  take fresh, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift init
+    case array
+      back is-equal(items/length, 0)
+    case record
+      back and(is-equal(name, <list>), is-equal(fields/length, 0))
+    case call
+      sift callee
+        case variable
+          back fresh/has(name)
+        miss
+          back false
+    miss
+      back false
+
+task owned-collect
+  take handle, like node-handle
+  take fresh, like hash, like text, like boolean
+  take declared, like hash, like text, like number
+  take candidates, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          link let-init
+          link let-mutable
+          link let-span
+          link let-type
+          save count, 0
+          fork test, declared/has(let-name)
+            hold
+              save count, declared/get(let-name)
+          save declared/{let-name}, add(count, 1)
+          fork test, and(is-equal(type-kind(let-type), <array>), made-fresh(let-init, fresh))
+            hold
+              save candidates/{let-name}, false
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    owned-collect(child, fresh, declared, candidates)
+
+task owned-visit-all
+  take values, like list, like expression
+  take in-closure, like boolean
+  take st, like owned-state
+  take scope, like owned-scope
+  take is-move
+    like task
+      take node, like expression
+      like boolean
+  mark private
+
+  walk values
+    take one
+    owned-visit(expression-handle-of(one), in-closure, st, scope, is-move)
+
+task owned-visit-maybe
+  take value, like maybe, like expression
+  take in-closure, like boolean
+  take st, like owned-state
+  take scope, like owned-scope
+  take is-move
+    like task
+      take node, like expression
+      like boolean
+  mark private
+
+  sift value
+    case some
+      link known
+      owned-visit(expression-handle-of(known), in-closure, st, scope, is-move)
+    case none
+      save nothing, 0
+
+task owned-visit
+  take handle, like node-handle
+  take in-closure, like boolean
+  take st, like owned-state
+  take scope, like owned-scope
+  take is-move
+    like task
+      take node, like expression
+      like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          link closure-body
+          walk block-handles(closure-body)
+            take child
+            owned-visit(child, true, st, scope, is-move)
+          back
+        case variable
+          save mine, name-in-flags(node, scope/candidates)
+          # handed whole into a list that owns its element lists, at its last mention: it leaves, as by `send back`
+          fork test, and(is-unequal(mine, <>), not(and(is-move(node), not(in-closure))))
+            hold
+              save st/refused/{mine}, true
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          fork test, and(is-unequal(slot-in-flags(node, scope/candidates), <>), not(in-closure))
+            hold
+              owned-visit-maybe(member-index, in-closure, st, scope, is-move)
+              back
+          sift collection-read(node)
+            case some
+              link read
+              fork test, and(is-unequal(name-in-flags(read/target, scope/candidates), <>), not(in-closure))
+                hold
+                  back
+            case none
+              save nothing, 0
+        case call
+          link call-callee
+          link call-args
+          save first, <>
+          fork test, is-above(call-args/length, 0)
+            hold
+              save first, name-in-flags(get(call-args, 0), scope/candidates)
+          save callee-name, variable-name-of(call-callee)
+          # a push onto, or the size of, an owned list
+          fork test, and(and(not(in-closure), is-unequal(first, <>)), is-unequal(callee-name, <>))
+            hold
+              fork test, or(is-equal(callee-name, <list_push>), has-text(list-length-tasks(), callee-name))
+                hold
+                  fork test, is-equal(callee-name, <list_push>)
+                    hold
+                      save st/written/{first}, true
+                  save at, 0
+                  walk call-args
+                    take arg
+                    fork test, is-above(at, 0)
+                      hold
+                        owned-visit(expression-handle-of(arg), in-closure, st, scope, is-move)
+                    save at, add(at, 1)
+                  back
+          # a slot read or a push through the collection operation the stdlib's `get` and `push` inline to
+          fork test, not(in-closure)
+            hold
+              sift collection-call(call-callee)
+                case some
+                  link op
+                  fork test, and(is-unequal(op/kind, <map>), or(or(is-equal(op/op, <at>), is-equal(op/op, <get>)), is-equal(op/op, <push>)))
+                    hold
+                      save which, name-in-flags(op/target, scope/candidates)
+                      fork test, is-unequal(which, <>)
+                        hold
+                          fork test, is-equal(op/op, <push>)
+                            hold
+                              save st/written/{which}, true
+                          owned-visit-all(call-args, in-closure, st, scope, is-move)
+                          back
+                case none
+                  save nothing, 0
+          # an argument the callee takes lent
+          save has-lent, and(is-unequal(callee-name, <>), scope/lend/has(callee-name))
+          save at, 0
+          walk call-args
+            take arg
+            save which, name-in-flags(arg, scope/candidates)
+            save how, <>
+            fork test, has-lent
+              hold
+                save lent, scope/lend/get(callee-name)
+                fork test, lent/has(at)
+                  hold
+                    save how, lent/get(at)
+            fork test, and(and(is-unequal(which, <>), is-unequal(how, <>)), not(in-closure))
+              hold
+                fork test, is-equal(how, <write>)
+                  hold
+                    save st/written/{which}, true
+              miss
+                owned-visit(expression-handle-of(arg), in-closure, st, scope, is-move)
+            save at, add(at, 1)
+          owned-visit(expression-handle-of(call-callee), in-closure, st, scope, is-move)
+          back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          link let-init
+          # the declaration of an owned local: its init is fresh by construction, so only the init's own arguments.
+          # Any other `let` is visited whole, so `let y = xs` refuses `xs`
+          fork test, scope/candidates/has(let-name)
+            hold
+              sift let-init
+                case call
+                  link init-callee
+                  link init-args
+                  owned-visit-all(init-args, in-closure, st, scope, is-move)
+                miss
+                  save nothing, 0
+            miss
+              owned-visit(expression-handle-of(let-init), in-closure, st, scope, is-move)
+          back
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          save mine, slot-in-flags(assign-target, scope/candidates)
+          fork test, and(is-unequal(mine, <>), not(in-closure))
+            hold
+              save st/written/{mine}, true
+              sift assign-target
+                case member
+                  link slot-target
+                  link slot-name
+                  link slot-index
+                  owned-visit-maybe(slot-index, in-closure, st, scope, is-move)
+                miss
+                  save nothing, 0
+              owned-visit(expression-handle-of(assign-value), in-closure, st, scope, is-move)
+              back
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          save mine, name-in-flags(each-iterable, scope/candidates)
+          fork test, or(is-equal(mine, <>), in-closure)
+            hold
+              owned-visit(expression-handle-of(each-iterable), in-closure, st, scope, is-move)
+          walk block-handles(each-body)
+            take child
+            owned-visit(child, in-closure, st, scope, is-move)
+          back
+        case return
+          link return-value
+          sift return-value
+            case some
+              link value-node
+              save mine, name-in-flags(value-node, scope/candidates)
+              # a node answered whole, an owned local handed into a field that owns its list: the local leaves with the
+              # node, as it would leave by itself
+              fork test, and(not(in-closure), scope/has-stores)
+                hold
+                  sift value-node
+                    case record
+                      link record-name
+                      link record-fields
+                      walk record-fields
+                        take field
+                        save key, <{record-name}/{field/name}>
+                        fork test, not(and(scope/stores/has(key), is-unequal(name-in-flags(field/value, scope/candidates), <>)))
+                          hold
+                            owned-visit(expression-handle-of(field/value), in-closure, st, scope, is-move)
+                      back
+                    miss
+                      save nothing, 0
+              fork test, or(is-equal(mine, <>), in-closure)
+                hold
+                  owned-visit(expression-handle-of(value-node), in-closure, st, scope, is-move)
+            case none
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    owned-visit(child, in-closure, st, scope, is-move)
+
+# F1, the second slice: the list LOCALS a task owns outright, held as a plain `Vec<T>`, each with whether anything
+# writes it (for `let mut`). compile/backend.ts says each rule
+task owned-locals
+  take fn, like statement
+  take fresh, like hash, like text, like boolean
+  take lend, like hash, like text, like hash, like number, like text
+  # the variant fields that own their lists (`ownedFields`, `variant/field`), which an owned local may be answered into
+  take stores, like hash, like text, like boolean
+  # whether a read hands an owned local into a list that owns its element lists, at its last mention (`ownedElements`)
+  take is-move
+    like task
+      take node, like expression
+      like boolean
+  like hash, like text, like boolean
+
+  save out, text-flags()
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      save candidates, text-flags()
+      save declared, text-number-table()
+      walk block-handles(fn-body)
+        take handle
+        owned-collect(handle, fresh, declared, candidates)
+      # a name declared twice, or bound again any other way, is refused: the analysis is by name
+      save bound, rebinds(block-handles(fn-body), text-lists(), false)
+      save param-names, make list
+      walk fn-params
+        take param
+        push(param-names, param/name)
+      walk candidates/keys()
+        take name
+        fork test, or(or(is-unequal(declared/get(name), 1), has-text(param-names, name)), has-text(bound, name))
+          hold
+            candidates/delete(name)
+      save st
+        make owned-state
+          bind refused, text-flags()
+          bind written, text-flags()
+      save scope
+        make owned-scope
+          bind candidates, candidates
+          bind lend, lend
+          bind stores, stores
+          bind has-stores, is-above(stores/keys()/length, 0)
+      # refusing one name can only refuse, never admit, so one pass sees every disqualifying mention
+      walk block-handles(fn-body)
+        take handle
+        owned-visit(handle, false, st, scope, is-move)
+      walk candidates/keys()
+        take name
+        fork test, not(st/refused/has(name))
+          hold
+            save out/{name}, st/written/has(name)
+      back out
+    miss
+      back out
+
+task text-number-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# ---- whether a local is only read ----
+
+form reads-state
+  mark shared
+  link fine, like boolean
+
+task reads-visit-all
+  take values, like list, like expression
+  take local, like text
+  take lend, like hash, like text, like hash, like number, like text
+  take in-closure, like boolean
+  take st, like reads-state
+  mark private
+
+  walk values
+    take one
+    reads-visit(expression-handle-of(one), local, lend, in-closure, st)
+
+task reads-visit
+  take handle, like node-handle
+  take local, like text
+  take lend, like hash, like text, like hash, like number, like text
+  take in-closure, like boolean
+  take st, like reads-state
+  mark private
+
+  fork test, not(st/fine)
+    hold
+      back
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          link closure-body
+          walk block-handles(closure-body)
+            take child
+            reads-visit(child, local, lend, true, st)
+          back
+        case variable
+          link var-name
+          fork test, is-equal(var-name, local)
+            hold
+              save st/fine, false
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          # a slot `xs/{i}` or `xs/0`, or a collection read (`size`)
+          fork test, and(not(in-closure), is-equal(variable-name-of(member-target), local))
+            hold
+              save counted, false
+              sift collection-read(node)
+                case some
+                  save counted, true
+                case none
+                  save nothing, 0
+              fork test, or(or(has-index(member-index), is-digits(member-name)), counted)
+                hold
+                  sift member-index
+                    case some
+                      link index-node
+                      reads-visit(expression-handle-of(index-node), local, lend, in-closure, st)
+                    case none
+                      save nothing, 0
+                  back
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          fork test, and(and(not(in-closure), is-equal(callee-name, <list_size>)), is-above(call-args/length, 0))
+            hold
+              fork test, is-equal(variable-name-of(get(call-args, 0)), local)
+                hold
+                  back
+          fork test, not(in-closure)
+            hold
+              sift collection-call(call-callee)
+                case some
+                  link op
+                  fork test, and(and(is-unequal(op/kind, <map>), or(is-equal(op/op, <at>), is-equal(op/op, <get>))), is-equal(variable-name-of(op/target), local))
+                    hold
+                      reads-visit-all(call-args, local, lend, in-closure, st)
+                      back
+                case none
+                  save nothing, 0
+          fork test, and(and(not(in-closure), is-unequal(callee-name, <>)), lend/has(callee-name))
+            hold
+              save taken, lend/get(callee-name)
+              save at, 0
+              walk call-args
+                take arg
+                save read-lent, false
+                fork test, and(is-equal(variable-name-of(arg), local), taken/has(at))
+                  hold
+                    save read-lent, is-equal(taken/get(at), <read>)
+                fork test, not(read-lent)
+                  hold
+                    reads-visit(expression-handle-of(arg), local, lend, in-closure, st)
+                save at, add(at, 1)
+              reads-visit(expression-handle-of(call-callee), local, lend, in-closure, st)
+              back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          fork test, and(not(in-closure), is-equal(variable-name-of(each-iterable), local))
+            hold
+              walk block-handles(each-body)
+                take child
+                reads-visit(child, local, lend, in-closure, st)
+              back
+        case assign
+          link assign-target
+          save written, is-equal(variable-name-of(assign-target), local)
+          sift assign-target
+            case member
+              link slot-target
+              fork test, is-equal(variable-name-of(slot-target), local)
+                hold
+                  save written, true
+            miss
+              save nothing, 0
+          fork test, written
+            hold
+              save st/fine, false
+              back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    reads-visit(child, local, lend, in-closure, st)
+
+# whether every mention of `local` in `body` only reads the list it names: its size, a slot, a walk over it, or an
+# argument a task takes lent for reading. Never written, pushed, stored, answered, captured or bound again. `bound`:
+# the caller has checked the name is bound once, by a `let` inside `body` itself
+task only-reads
+  take body, like list, like statement
+  take local, like text
+  take lend, like hash, like text, like hash, like number, like text
+  take bound, like boolean
+  like boolean
+
+  fork test, not(bound)
+    hold
+      fork test, has-text(rebinds(block-handles(body), text-lists(), true), local)
+        hold
+          back false
+  save st
+    make reads-state
+      bind fine, true
+  walk block-handles(body)
+    take handle
+    reads-visit(handle, local, lend, false, st)
+  back st/fine
+
+# ---- the forms whose values cross into native code ----
+
+task reach-type
+  take given, like type
+  take records, like hash, like text, like statement
+  take out, like hash, like text, like boolean
+  mark private
+
+  sift given
+    case named
+      link type-name
+      link type-args
+      fork test, out/has(type-name)
+        hold
+          back
+      fork test, records/has(type-name)
+        hold
+          save out/{type-name}, true
+          save record, records/get(type-name)
+          sift record
+            case record-type
+              link record-name
+              link record-params
+              link record-indices
+              link record-fields
+              link record-variants
+              walk record-fields
+                take field
+                reach-type(field/type, records, out)
+              walk record-variants
+                take variant
+                walk variant/fields
+                  take field
+                  reach-type(field/type, records, out)
+            miss
+              save nothing, 0
+      walk type-args
+        take arg
+        reach-type(arg, records, out)
+    case array
+      reach-type(element, records, out)
+    case map
+      reach-type(key, records, out)
+      reach-type(value, records, out)
+    case function
+      link fn-params
+      link fn-result
+      walk fn-params
+        take param
+        reach-type(param, records, out)
+      reach-type(fn-result, records, out)
+    miss
+      save nothing, 0
+
+task reach-maybe
+  take given, like maybe, like type
+  take records, like hash, like text, like statement
+  take out, like hash, like text, like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      reach-type(known, records, out)
+    case none
+      save nothing, 0
+
+task native-visit
+  take handle, like node-handle
+  take records, like hash, like text, like statement
+  take out, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          link call-args
+          fork test, native-call(call-callee)
+            hold
+              walk call-args
+                take arg
+                reach-maybe(expression-type(arg), records, out)
+              reach-maybe(expression-type(node), records, out)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    native-visit(child, records, out)
+
+# The forms whose values cross into native code: an argument or the result of a native call, or a parameter or the
+# result of a task with no body, and every form those hold through their fields
+task native-forms
+  take program, like list, like statement
+  like list, like text
+
+  save records, text-statements()
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        save records/{record-name}, one
+      miss
+        save nothing, 0
+  save out, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        link fn-result
+        fork test, is-equal(fn-body/length, 0)
+          hold
+            walk fn-params
+              take param
+              reach-maybe(param/type, records, out)
+            reach-maybe(fn-result, records, out)
+      miss
+        save nothing, 0
+  walk block-handles(program)
+    take handle
+    native-visit(handle, records, out)
+  back out/keys()
+
+# ---- the fields that own their lists ----
+
+# the forms a record of which is ever HELD whole by a name or read whole out of a slot: a local, a walk's item, a
+# parameter, or a slot read that is not the start of a field path. `path-start`: the handle is the target of a member
+# read with no index
+task holds-visit
+  take handle, like node-handle
+  take path-start, like boolean
+  take held, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      save form-name, form-name-of(expression-type(node))
+      sift node
+        case variable
+          fork test, is-unequal(form-name, <>)
+            hold
+              save held/{form-name}, true
+        case member
+          link member-target
+          link member-name
+          link member-index
+          fork test, and(and(is-unequal(form-name, <>), or(has-index(member-index), is-digits(member-name))), not(path-start))
+            hold
+              save held/{form-name}, true
+          holds-visit(expression-handle-of(member-target), not(has-index(member-index)), held)
+          sift member-index
+            case some
+              link index-node
+              holds-visit(expression-handle-of(index-node), false, held)
+            case none
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case function
+          link fn-name
+          link fn-params
+          walk fn-params
+            take param
+            save form-name, form-name-of(param/type)
+            fork test, is-unequal(form-name, <>)
+              hold
+                save held/{form-name}, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    holds-visit(child, false, held)
+
+form field-store
+  link fn-at, like number
+  link key, like text
+  link name, like text
+
+form fields-state
+  mark shared
+  link keys, like hash, like text, like boolean
+  link walkers, like boolean
+  link stores, like list, like field-store
+  link fns, like list, like statement
+
+form fields-scope
+  link fields-of, like hash, like text, like list, like text
+  link variants-of, like hash, like text, like list, like text
+  link held, like hash, like text, like boolean
+  link slot-private, like hash, like text, like boolean
+  link fresh, like hash, like text, like boolean
+  link lend, like hash, like text, like hash, like number, like text
+
+# the key a path `r/field` names, when it reads a plain record's list field
+task path-key
+  take node, like expression
+  take st, like fields-state
+  take scope, like fields-scope
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      fork test, has-index(member-index)
+        hold
+          back <>
+      save form-name, form-name-of(expression-type(member-target))
+      fork test, is-equal(form-name, <>)
+        hold
+          back <>
+      # a form the program does not define reads as a variant form (`?? ['x']`)
+      fork test, not(scope/variants-of/has(form-name))
+        hold
+          back <>
+      fork test, is-above(scope/variants-of/get(form-name)/length, 0)
+        hold
+          back <>
+      save key, <{form-name}/{member-name}>
+      fork test, st/keys/has(key)
+        hold
+          back key
+      back <>
+    miss
+      back <>
+
+# a list made fresh, as a construction gives a field one
+task fresh-value
+  take value, like expression
+  take fresh, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  back made-fresh(value, fresh)
+
+task fields-visit-expression
+  take value, like expression
+  take fn-at, like number
+  take st, like fields-state
+  take scope, like fields-scope
+  mark private
+
+  fields-visit(expression-handle-of(value), fn-at, st, scope)
+
+task fields-visit
+  take handle, like node-handle
+  take fn-at, like number
+  take st, like fields-state
+  take scope, like fields-scope
+  mark private
+
+  save inner-at, fn-at
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
+            hold
+              save st/walkers, true
+          # a list field read through its path at a position that only reads it: the record under the path is visited
+          fork test, is-unequal(callee-name, <>)
+            hold
+              save any-reads, false
+              save at, 0
+              walk call-args
+                take arg
+                fork test, fields-read-arg(arg, at, callee-name, st, scope)
+                  hold
+                    save any-reads, true
+                save at, add(at, 1)
+              fork test, any-reads
+                hold
+                  save at, 0
+                  walk call-args
+                    take arg
+                    fork test, fields-read-arg(arg, at, callee-name, st, scope)
+                      hold
+                        fields-visit-expression(member-target-of(arg), fn-at, st, scope)
+                      miss
+                        fields-visit-expression(arg, fn-at, st, scope)
+                    save at, add(at, 1)
+                  back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          fork test, and(or(has-index(member-index), is-digits(member-name)), is-unequal(path-key(member-target, st, scope), <>))
+            hold
+              fields-visit-expression(member-target-of(member-target), fn-at, st, scope)
+              sift member-index
+                case some
+                  link index-node
+                  fields-visit-expression(index-node, fn-at, st, scope)
+                case none
+                  save nothing, 0
+              back
+          # a plain record's list field read anywhere else through its path: refused
+          save at-key, path-key(node, st, scope)
+          fork test, is-unequal(at-key, <>)
+            hold
+              st/keys/delete(at-key)
+          # a path read of a list field off a value of the form: not handled
+          fork test, not(has-index(member-index))
+            hold
+              save form-name, form-name-of(expression-type(member-target))
+              fork test, and(is-unequal(form-name, <>), scope/variants-of/has(form-name))
+                hold
+                  walk scope/variants-of/get(form-name)
+                    take variant
+                    st/keys/delete(<{variant}/{member-name}>)
+        case record
+          link record-name
+          link record-fields
+          # a construction: each list field given a fresh list, or a variable the task must own
+          fork test, scope/fields-of/has(record-name)
+            hold
+              walk record-fields
+                take field
+                save key, <{record-name}/{field/name}>
+                fork test, and(st/keys/has(key), not(fresh-value(field/value, scope/fresh)))
+                  hold
+                    save stored-name, variable-name-of(field/value)
+                    fork test, and(is-unequal(stored-name, <>), is-minimum(fn-at, 0))
+                      hold
+                        save store
+                          make field-store
+                            bind fn-at, fn-at
+                            bind key, key
+                            bind name, stored-name
+                        push(st/stores, store)
+                      miss
+                        st/keys/delete(key)
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          save at-key, path-key(assign-target, st, scope)
+          fork test, is-equal(at-key, <>)
+            hold
+              sift assign-target
+                case member
+                  link through-target
+                  save at-key, path-key(through-target, st, scope)
+                miss
+                  save nothing, 0
+          # a slot written through the path of a SLOT-PRIVATE form: no second name ever holds a record of it, so the
+          # record's own list takes it in place. Anything else written through the path refuses the field
+          save is-set, false
+          sift assign-op
+            case set
+              save is-set, true
+            miss
+              save nothing, 0
+          sift assign-target
+            case member
+              link slot-target
+              link slot-name
+              link slot-index
+              fork test, and(or(has-index(slot-index), is-digits(slot-name)), is-unequal(path-key(slot-target, st, scope), <>))
+                hold
+                  save record-node, member-target-of(slot-target)
+                  save form-name, form-name-of(expression-type(record-node))
+                  fork test, and(and(is-unequal(form-name, <>), scope/slot-private/has(form-name)), and(not(scope/held/has(form-name)), is-set))
+                    hold
+                      fields-visit-expression(record-node, fn-at, st, scope)
+                      sift slot-index
+                        case some
+                          link index-node
+                          fields-visit-expression(index-node, fn-at, st, scope)
+                        case none
+                          save nothing, 0
+                      fields-visit-expression(assign-value, fn-at, st, scope)
+                      back
+            miss
+              save nothing, 0
+          fork test, is-unequal(at-key, <>)
+            hold
+              st/keys/delete(at-key)
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          fork test, is-unequal(path-key(each-iterable, st, scope), <>)
+            hold
+              fields-visit-expression(member-target-of(each-iterable), fn-at, st, scope)
+              walk block-handles(each-body)
+                take child
+                fields-visit(child, fn-at, st, scope)
+              back
+        case match
+          link match-subject
+          link match-cases
+          # an arm binding a list field: its local only read
+          walk match-cases
+            take arm
+            fork test, scope/fields-of/has(arm/label)
+              hold
+                save binds, make list
+                walk arm/binds
+                  take one
+                  push(binds, one)
+                walk arm-locals(scope/fields-of/get(arm/label), binds)
+                  take pair
+                  save key, <{arm/label}/{pair/field}>
+                  fork test, and(st/keys/has(key), not(only-reads(arm/body, pair/local, scope/lend, false)))
+                    hold
+                      st/keys/delete(key)
+        case function
+          push(st/fns, node)
+          save inner-at, subtract(st/fns/length, 1)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    fields-visit(child, inner-at, st, scope)
+
+# is this argument a list field read through its path, at a position that only reads it
+task fields-read-arg
+  take arg, like expression
+  take at, like number
+  take callee-name, like text
+  take st, like fields-state
+  take scope, like fields-scope
+  like boolean
+  mark private
+
+  fork test, is-equal(path-key(arg, st, scope), <>)
+    hold
+      back false
+  fork test, and(is-equal(callee-name, <list_size>), is-equal(at, 0))
+    hold
+      back true
+  fork test, scope/lend/has(callee-name)
+    hold
+      save taken, scope/lend/get(callee-name)
+      fork test, taken/has(at)
+        hold
+          back is-equal(taken/get(at), <read>)
+  back false
+
+# F1 for lists held in a variant: the variant fields of list type that OWN their list, keyed `variant/field`, and the
+# plain record fields read through their path, keyed `form/field`. compile/backend.ts says each rule
+task owned-fields
+  take program, like list, like statement
+  take fresh, like hash, like text, like boolean
+  take lend, like hash, like text, like hash, like number, like text
+  # the forms whose records only ever live in one place (compile/place.ts, `privateForms`)
+  take slot-private, like hash, like text, like boolean
+  like list, like text
+
+  save keys, text-flags()
+  save fields-of, text-lists()
+  save variants-of, text-lists()
+  # the forms a shim builds or reads keep the shared list
+  save native, text-flags()
+  walk native-forms(program)
+    take name
+    save native/{name}, true
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        link record-params
+        link record-indices
+        link record-fields
+        link record-variants
+        save variant-names, make list
+        walk record-variants
+          take variant
+          push(variant-names, variant/name)
+        save variants-of/{record-name}, variant-names
+        fork test, native/has(record-name)
+          hold
+            walk record-variants
+              take variant
+              save names, make list
+              walk variant/fields
+                take field
+                push(names, field/name)
+              save fields-of/{variant/name}, names
+          miss
+            # a plain record's list fields, read through their path (`p/points`), keyed `form/field`
+            fork test, is-equal(record-variants/length, 0)
+              hold
+                save names, make list
+                walk record-fields
+                  take field
+                  push(names, field/name)
+                save fields-of/{record-name}, names
+                walk record-fields
+                  take field
+                  fork test, is-equal(bare-kind(field/type), <array>)
+                    hold
+                      save key, <{record-name}/{field/name}>
+                      save keys/{key}, true
+            walk record-variants
+              take variant
+              save names, make list
+              walk variant/fields
+                take field
+                push(names, field/name)
+              save fields-of/{variant/name}, names
+              walk variant/fields
+                take field
+                fork test, is-equal(bare-kind(field/type), <array>)
+                  hold
+                    save key, <{variant/name}/{field/name}>
+                    save keys/{key}, true
+      miss
+        save nothing, 0
+  fork test, is-equal(keys/keys()/length, 0)
+    hold
+      back keys/keys()
+  save held, text-flags()
+  walk block-handles(program)
+    take handle
+    holds-visit(handle, false, held)
+  save st
+    make fields-state
+      bind keys, keys
+      bind walkers, false
+      bind stores, make list
+      bind fns, make list
+  save scope
+    make fields-scope
+      bind fields-of, fields-of
+      bind variants-of, variants-of
+      bind held, held
+      bind slot-private, slot-private
+      bind fresh, fresh
+      bind lend, lend
+  walk block-handles(program)
+    take handle
+    fields-visit(handle, -1, st, scope)
+  fork test, st/walkers
+    hold
+      back make list
+  # a stored variable must be a local its task owns, given the fields still standing; dropping a field can only drop
+  # more locals, so this settles
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save owned, owned-memo()
+      walk st/stores
+        take store
+        fork test, st/keys/has(store/key)
+          hold
+            fork test, not(owned/has(store/fn-at))
+              hold
+                save owned/{store/fn-at}, owned-locals(get(st/fns, store/fn-at), fresh, lend, st/keys, never-moved)
+            save locals, owned/get(store/fn-at)
+            fork test, not(locals/has(store/name))
+              hold
+                st/keys/delete(store/key)
+                save changed, true
+  back st/keys/keys()
+
+# ---- the tasks that answer a fresh list ----
+
+# every value a `send back` answers, a closure's own not counted
+task returns-into
+  take handle, like node-handle
+  take values, like list, like maybe, like expression
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case return
+          link return-value
+          push(values, return-value)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    returns-into(child, values)
+
+# The tasks that answer a FRESH list: every `send back` hands back a list the task owns. A fixpoint from every
+# candidate whose result is a list, dropping one each round until none drops
+task fresh-tasks
+  take candidates, like list, like statement
+  take lend, like hash, like text, like hash, like number, like text
+  like list, like text
+
+  save fresh, text-flags()
+  walk candidates
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        link fn-result
+        fork test, is-equal(type-kind(fn-result), <array>)
+          hold
+            save fresh/{fn-name}, true
+      miss
+        save nothing, 0
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk candidates
+        take one
+        sift one
+          case function
+            link fn-name
+            link fn-params
+            link fn-body
+            fork test, fresh/has(fn-name)
+              hold
+                save owned, owned-locals(one, fresh, lend, text-flags(), never-moved)
+                save values, make list
+                walk block-handles(fn-body)
+                  take handle
+                  returns-into(handle, values)
+                save all-owned, is-above(values/length, 0)
+                walk values
+                  take value
+                  sift value
+                    case some
+                      link known
+                      sift known
+                        case variable
+                          link var-name
+                          fork test, not(owned/has(var-name))
+                            hold
+                              save all-owned, false
+                        miss
+                          save all-owned, false
+                    case none
+                      save all-owned, false
+                fork test, not(all-owned)
+                  hold
+                    fresh/delete(fn-name)
+                    save changed, true
+          miss
+            save nothing, 0
+  back fresh/keys()
+
+# ---- the tasks that reach a list only through their arguments ----
+
+form isolated-state
+  mark shared
+  link fine, like boolean
+
+task isolated-visit
+  take handle, like node-handle
+  take own, like hash, like text, like boolean
+  take globals, like hash, like text, like boolean
+  take tasks, like hash, like text, like boolean
+  take out, like hash, like text, like boolean
+  take scalar, like hash, like text, like boolean
+  take st, like isolated-state
+  mark private
+
+  fork test, not(st/fine)
+    hold
+      back
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          fork test, and(globals/has(var-name), not(own/has(var-name)))
+            hold
+              save st/fine, false
+              back
+        case call
+          link call-callee
+          save callee-name, variable-name-of(call-callee)
+          fork test, is-unequal(callee-name, <>)
+            hold
+              # a call to a task outside the set, or to a function value whose body is unknown
+              fork test, and(and(tasks/has(callee-name), not(own/has(callee-name))), and(not(out/has(callee-name)), not(scalar/has(callee-name))))
+                hold
+                  save st/fine, false
+                  back
+              fork test, own/has(callee-name)
+                hold
+                  save st/fine, false
+                  back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    isolated-visit(child, own, globals, tasks, out, scalar, st)
+
+# The tasks that reach a list only through their arguments, though they may make and use lists of their own. Solved
+# optimistically and dropped until stable
+task isolated-tasks
+  take program, like list, like statement
+  take is-free
+    like task
+      take given, like maybe, like type
+      like boolean
+  like list, like text
+
+  save fns, make list
+  save tasks, text-flags()
+  save out, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        push(fns, one)
+        save tasks/{fn-name}, true
+        save out/{fn-name}, true
+      miss
+        save nothing, 0
+  # module-level names a list could be reached through
+  save globals, text-flags()
+  walk program
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        link let-mutable
+        link let-span
+        link let-type
+        fork test, not(is-free(let-type))
+          hold
+            save globals/{let-name}, true
+      miss
+        save nothing, 0
+  save scalar, text-flags()
+  walk scalar-tasks(program)
+    take name
+    save scalar/{name}, true
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk fns
+        take one
+        sift one
+          case function
+            link fn-name
+            link fn-params
+            link fn-body
+            fork test, out/has(fn-name)
+              hold
+                save own, text-flags()
+                walk fn-params
+                  take param
+                  save own/{param/name}, true
+                walk let-names(fn-body)
+                  take name
+                  save own/{name}, true
+                save st
+                  make isolated-state
+                    bind fine, true
+                walk block-handles(fn-body)
+                  take handle
+                  isolated-visit(handle, own, globals, tasks, out, scalar, st)
+                fork test, not(st/fine)
+                  hold
+                    out/delete(fn-name)
+                    save changed, true
+          miss
+            save nothing, 0
+  back out/keys()
+
+# ---- the program-wide facts ----
+
+form list-facts
+  link lend, like hash, like text, like hash, like number, like text
+  link fresh, like list, like text
+
+task text-flags-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, text-flags()
+  walk names
+    take name
+    save out/{name}, true
+  back out
+
+task refusals-visit
+  take handle, like node-handle
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  take owned, like hash, like text, like boolean
+  take lent-here, like hash, like text, like boolean
+  take bad, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          fork test, and(is-unequal(callee-name, <>), lend/has(callee-name))
+            hold
+              save lent, lend/get(callee-name)
+              save writes, false
+              walk lent/keys()
+                take at
+                fork test, is-equal(lent/get(at), <write>)
+                  hold
+                    save writes, true
+              fork test, and(writes, is-above(lent/keys()/length, 1))
+                hold
+                  save named, make list
+                  save cells, 0
+                  walk lent/keys()
+                    take at
+                    fork test, is-below(at, call-args/length)
+                      hold
+                        save arg, get(call-args, at)
+                        save arg-name, variable-name-of(arg)
+                        fork test, is-unequal(arg-name, <>)
+                          hold
+                            push(named, arg-name)
+                        fork test, not(refusals-plain(arg, fresh, owned, lent-here))
+                          hold
+                            save cells, add(cells, 1)
+                  save distinct, text-flags-of(named)
+                  fork test, or(is-unequal(distinct/keys()/length, named/length), is-above(cells, 1))
+                    hold
+                      save bad/{callee-name}, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    refusals-visit(child, lend, fresh, owned, lent-here, bad)
+
+# an argument that is its own storage: an owned local, a lent parameter, or a call to a fresh task
+task refusals-plain
+  take arg, like expression
+  take fresh, like hash, like text, like boolean
+  take owned, like hash, like text, like boolean
+  take lent-here, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift arg
+    case variable
+      link var-name
+      back or(owned/has(var-name), lent-here/has(var-name))
+    case call
+      back fresh/has(variable-name-of(callee))
+    miss
+      back false
+
+# The tasks some call to which cannot lend its lists safely, so must take them shared. A call that lends with any
+# position WRITTEN must pass lists that cannot be one list. Lends that only read may alias freely
+task lend-refusals
+  take program, like list, like statement
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  like list, like text
+
+  save bad, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save owned, text-flags()
+        fork test, not(read(async))
+          hold
+            save owned, owned-locals(one, fresh, lend, text-flags(), never-moved)
+        save lent-here, text-flags()
+        fork test, lend/has(fn-name)
+          hold
+            save mine, lend/get(fn-name)
+            save at, 0
+            walk fn-params
+              take param
+              fork test, mine/has(at)
+                hold
+                  save lent-here/{param/name}, true
+              save at, add(at, 1)
+        walk block-handles(fn-body)
+          take handle
+          refusals-visit(handle, lend, fresh, owned, lent-here, bad)
+      miss
+        save nothing, 0
+  back bad/keys()
+
+# whether two answers for one task lend the same positions the same way
+task same-modes
+  take was, like hash, like number, like text
+  take now, like hash, like number, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(was/keys()/length, now/keys()/length)
+    hold
+      back false
+  walk now/keys()
+    take at
+    fork test, not(was/has(at))
+      hold
+        back false
+    fork test, is-unequal(was/get(at), now/get(at))
+      hold
+        back false
+  back true
+
+# F1's program-wide facts, the same on every backend that reads them: which list parameter each gated task takes
+# lent, and which tasks answer a fresh list
+task list-facts-of
+  take program, like list, like statement
+  take gated, like list, like statement
+  like list-facts
+
+  save tasks, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        save tasks/{fn-name}, true
+      miss
+        save nothing, 0
+  save freedom, list-freedom-of(program)
+  save is-free
+    task
+      take given, like maybe, like type
+      like boolean
+      back is-list-free(freedom, given)
+  save pure, text-flags-of(scalar-tasks(program))
+  walk isolated-tasks(program, is-free)
+    take name
+    save pure/{name}, true
+  # optimistic start: every gated task's list parameters, read only. Each round recomputes every task against the
+  # others' current answer, so a task passing a list on stays lent while its callee does, and a mode only strengthens
+  save lend, lend-table()
+  walk gated
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        save modes, index-modes()
+        save at, 0
+        walk fn-params
+          take param
+          fork test, is-equal(type-kind(param/type), <array>)
+            hold
+              save modes/{at}, <read>
+          save at, add(at, 1)
+        fork test, is-above(modes/keys()/length, 0)
+          hold
+            save lend/{fn-name}, modes
+      miss
+        save nothing, 0
+  save refused, text-flags()
+  walk test
+    hook test, true
+    hook hold
+      save changed, true
+      walk test
+        hook test, changed
+        hook hold
+          save changed, false
+          walk gated
+            take one
+            sift one
+              case function
+                link fn-name
+                fork test, not(refused/has(fn-name))
+                  hold
+                    save now, lendable-params(one, tasks, lend, pure, is-free)
+                    save had, lend/has(fn-name)
+                    save same, false
+                    fork test, had
+                      hold
+                        save same, same-modes(lend/get(fn-name), now)
+                    save sized, is-above(now/keys()/length, 0)
+                    fork test, and(not(same), or(sized, had))
+                      hold
+                        fork test, sized
+                          hold
+                            save lend/{fn-name}, now
+                          miss
+                            lend/delete(fn-name)
+                        save changed, true
+              miss
+                save nothing, 0
+      save fresh, fresh-tasks(gated, lend)
+      save bad, lend-refusals(program, lend, text-flags-of(fresh))
+      fork test, is-equal(bad/length, 0)
+        hold
+          back
+            make list-facts
+              bind lend, lend
+              bind fresh, fresh
+      walk bad
+        take name
+        save refused/{name}, true
+        lend/delete(name)
+  back
+    make list-facts
+      bind lend, lend
+      bind fresh, make list

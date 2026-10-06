@@ -1,0 +1,186 @@
+load @term/mill/tree/code/tell/mine
+  find tell-def
+
+load @term/mill/tree/code/proof/mine
+  find hold-claim
+
+
+load @term/mill/tree/code/form/mine
+  find form
+
+load @term/mill/tree/code/task/mine
+  find task
+
+load @term/mill/tree/code/call/mine
+  find call
+
+load @term/mill/tree/code/hook/mine
+  find hook
+
+load @term/mill/tree/code/seed/seed/mine
+  find host
+
+load @term/mill/tree/code/load/mine
+  find load
+
+load @term/mill/tree/code/dock/mine
+  find dock
+
+load @term/mill/tree/code/test/mine
+  find test
+
+load @term/mill/tree/code/hold/mine
+  find hold
+
+load @term/mill/tree/code/suit/mine
+  find suit
+
+load @term/mill/tree/code/mask/mine
+  find mask
+
+load @term/mill/tree/code/wear/mine
+  find wear
+
+load @term/mill/tree/code/bear/mine
+  find bear
+  find deck-def
+
+load @term/mill/tree/code/book/mine
+  find book
+
+load @term/mill/tree/code/tree/mine
+  find tree
+
+load @term/mill/tree/code/kink/mine
+  find kink
+
+load @term/mill/tree/code/fuse/mine
+  find fuse
+
+load @term/mill/tree/code/tree/beam/mine
+  find beam
+
+load @term/mill/tree/code/tree/slot/mine
+  find slot
+
+load @term/mill/tree/code/note/mine
+  find note
+  find mark-note
+
+load @term/mill/tree/code/halt/mine
+  find halt
+
+load @term/mill/tree/code/save/mine
+  find save
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+load @term/mill/tree/code/lace/mine
+  find lace
+
+load @term/mill/tree/code/cast/mine
+  find cast
+
+load @term/mill/tree/code/tune/mine
+  find tune
+
+load @term/mill/tree/code/twin/mine
+  find twin
+
+load @term/mill/tree/code/view/mine
+  find view-def
+
+load @term/mill/tree/code/bind/mine
+  find bind-def
+
+load @term/mill/tree/code/rule/def/mine
+  find rule-def
+  find roll-def
+
+# A TOP-LEVEL `tree`, `fuse` or `test` is NOT listed here on purpose.
+#
+# `tree` and `fuse` are template definitions and uses, and `compile.ts` expands them BEFORE the mill, so the
+# real compile path never hands one over. A caller that skips expansion does, and the reader lowers what
+# survives through its generic "an unknown head is a call" fallback into a call that references nothing. That
+# is not a program either way, and reproducing it means letting these fall through to the value alternation
+# rather than reading them as statements they are not.
+#
+# `test` is the same: the reader has no lowering for a top-level one and its fallback makes a call.
+mine code
+  mine list
+    mine any
+      mine form, like form
+        site form
+      mine form, like task
+        site task
+      mine form, like call
+        site call
+      mine form, like hook
+        site hook
+      mine form, like host
+        site host
+      mine form, like load
+        site load
+      mine form, like dock-bind
+        site dock-bind
+      mine form, like bind-def
+        site bind-def
+      mine form, like rule-def
+        site rule
+      mine form, like roll-def
+        site roll
+      # `dock-def` directly, not the `dock` list wrapper: at the top level this matches ONE dock, and the
+      # wrapper would look for docks among its children instead
+      mine form, like dock-def
+        site dock
+      # the kernel's proof `hold` FIRST: `mine hold` is the lock, a different construct that happens to share
+      # the word, and it would take the claim as the lock's name and then fail on the proof steps
+      mine form, like hold-claim
+        site hold-claim
+      mine form, like hold
+        site hold
+      mine form, like suit
+        site suit
+      mine form, like mask
+        site mask
+      mine form, like wear
+        site wear
+      mine form, like bear
+        site bear
+      mine form, like deck-def
+        site deck
+      mine form, like book
+        site book
+      mine form, like kink
+        site kink
+      mine form, like beam
+        site beam
+      mine form, like slot
+        site slot
+      mine form, like tell-def
+        site tell
+      # `mark stable` / `mark draft` at the top of a file: metadata, minted as the `note` it replaces
+      mine form, like mark-note
+        site note
+      mine form, like note
+        site note
+      mine form, like halt
+        site halt
+      mine form, like save
+        site save
+      mine form, like lace
+        site lace
+      mine form, like cast
+        site cast
+      mine form, like tune
+        site tune
+      # another implementation of a named task (note/term/optimize/words.md)
+      mine form, like twin
+        site twin
+      mine form, like view-def
+        site view
+      # LAST. `mine seed` ends in a fallback that takes any headed group, so a `lace`, a `cast`, a `tune` or a
+      # `view` listed after it would never be tried.
+      mine form, like seed
+        site seed

@@ -1,0 +1,8 @@
+
+load @term/mill/tree/code/rule/hold/mine
+  find hold
+
+mine rule
+  mine list
+    mine form, like hold
+      site hold

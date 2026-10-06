@@ -1,0 +1,17 @@
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/seed/seed/mine
+  find host
+
+mine tune
+  mine term, term tune
+    mine term
+      site name
+    mine list
+      mine form, like head
+        site head
+    mine list
+      mine form, like host
+        site host

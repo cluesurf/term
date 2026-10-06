@@ -26,8 +26,9 @@
 //   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
 //                            first holds alike (note/term/plan/term-versions.md, "Disk")
 //   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`)
-//   term/deck/feed/          `@term/feed`, the format readers, its deck.tree and code/, reached by name beside the
-//                            stdlib (resolve.ts `siblingResolver`)
+//   term/deck/mill/          `@term/mill`, every grammar: the format readers (code/text, code/blob, the cursors in
+//                            code/feed.tree) and the tree dialects (code/tree), its deck.tree and code/, reached by
+//                            name beside the stdlib (resolve.ts `siblingResolver`). `@term/feed` until 2026-10-06
 //   term/node_modules/       esbuild + @esbuild/<platform> (native, run by boot, test, walk, cast),
 //                            hono + @hono/node-server (linked into every `term boot` app, which imports them)
 //
@@ -283,9 +284,10 @@ function copyStdlib(into: string): void {
 }
 
 // the packages that ship beside the stdlib, each with its manifest so the sibling resolver (resolve.ts
-// `siblingResolver`) reaches it by name from an installed `term`, as it does in this repository. `@term/feed` is the
-// format readers (JSON, hex, gzip, PDF and OpenType). Its tests and shelved drafts stay here: a draft builds nothing
-const SHIPPED_PACKAGES = ['feed']
+// `siblingResolver`) reaches it by name from an installed `term`, as it does in this repository. `@term/mill` holds the
+// format readers (JSON, hex, gzip, PDF and OpenType), which were `@term/feed` until 2026-10-06
+// (note/term/plan/mill-merge-and-role-scopes.md). Its tests stay here, and a shelved draft builds nothing
+const SHIPPED_PACKAGES = ['mill']
 
 function copyShippedPackages(into: string): void {
   for (const name of SHIPPED_PACKAGES) {

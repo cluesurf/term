@@ -1,0 +1,30 @@
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/form/link/mine
+  find link
+
+load @term/mill/tree/code/bind/mine
+  find bind
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+# `mark lean`: opted in to the lean surface. See `mine seed-call-open` in ../seed/mine.tree.
+mine mold
+  mark lean
+  mine term, term mold
+    mine term
+      site name
+    mine form, like like
+      site like
+    mine list
+      mine form, like head
+        site head
+    mine list
+      mine form, like bind
+        site bind

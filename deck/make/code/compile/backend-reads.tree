@@ -1,0 +1,1352 @@
+# Which read of a name is its LAST (a move on last use), a list slot taken at its last read (`std::mem::replace` with a
+# field-less case), and the tasks whose every call to themselves is a tail call (a loop).
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), which stays as the face and builds the `WeakSet`s and
+# `WeakMap`s its callers look nodes up in: every answer here is the nodes themselves, the same objects on TypeScript.
+# The `last` set the original took is a test handed in as a task. Two of the original's checks read a node's PARENT
+# (`parent.subject === node`, `parent.target === node`); here the parent's own case visits that child with a flag.
+# `tailTasks` asked whether `JSON.stringify(node)` holds `"name":"<task>"`; here a walk reads every `name` field the
+# node holds, types included.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find char-count
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-names
+  find names-in
+  find assigns-name
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-maximum(48, code), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task statement-handle-of
+  take node, like statement
+  like node-handle
+  mark private
+
+  back
+    make node-handle/statement-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task statement-handles
+  take body, like list, like statement
+  like list, like node-handle
+  mark private
+
+  back block-handles(body)
+
+task expression-handles
+  take values, like list, like expression
+  like list, like node-handle
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, expression-handle-of(one))
+  back out
+
+# ---- the last read of each name ----
+
+form mention
+  link nodes, like list, like expression
+  link held, like boolean
+
+form mentions-state
+  mark shared
+  link found, like hash, like text, like mention
+
+task mentions-of
+  take roots, like list, like node-handle
+  like hash, like text, like mention
+  mark private
+
+  save st
+    make mentions-state
+      bind found, mention-table()
+  walk roots
+    take handle
+    mentions-into(handle, false, st)
+  back st/found
+
+task mention-table
+  like hash, like text, like mention
+  mark private
+
+  back make hash
+
+# every variable node naming each name, and whether any sits inside a loop, closure or guard
+task mentions-into
+  take handle, like node-handle
+  take held, like boolean
+  take st, like mentions-state
+  mark private
+
+  save inner, held
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          save seen
+            make mention
+              bind nodes, make list
+              bind held, false
+          fork test, st/found/has(var-name)
+            hold
+              save seen, st/found/get(var-name)
+          push(seen/nodes, node)
+          fork test, held
+            hold
+              save seen/held, true
+          save st/found/{var-name}, seen
+        case closure
+          save inner, true
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      # a closure is a `Fn` (a move out of a capture is refused), and a loop or a guard's closure re-runs its reads
+      sift node
+        case while
+          save inner, true
+        case for-each
+          save inner, true
+        case guard
+          save inner, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    mentions-into(child, inner, st)
+
+task count-lets
+  take handle, like node-handle
+  take declared, like hash, like text, like number
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          save count, 0
+          fork test, declared/has(let-name)
+            hold
+              save count, declared/get(let-name)
+          save declared/{let-name}, add(count, 1)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    count-lets(child, declared)
+
+# the names a loop's body alone declares, once in the task, closures not entered
+task collect-own
+  take handle, like node-handle
+  take declared, like hash, like text, like number
+  take own, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          fork test, and(declared/has(let-name), is-equal(declared/get(let-name), 1))
+            hold
+              save own/{let-name}, true
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    collect-own(child, declared, own)
+
+form reads-out
+  mark shared
+  link last, like list, like expression
+  link many, like list, like expression
+
+task copy-flags
+  take given, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save out, text-flags()
+  walk given/keys()
+    take name
+    save out/{name}, true
+  back out
+
+task last-block
+  take stmts, like list, like statement
+  take later, like hash, like text, like boolean
+  take declared, like hash, like text, like number
+  take want-many, like boolean
+  take out, like reads-out
+  mark private
+
+  save after, copy-flags(later)
+  save k, subtract(stmts/length, 1)
+  walk test
+    hook test, is-minimum(k, 0)
+    hook hold
+      save s, get(stmts, k)
+      save here, mentions-of(statement-handles(one-statement(s)))
+      # a loop's body is a block of its own for the names it alone declares, each a new binding every turn
+      sift s
+        case while
+          link while-cond
+          link while-body
+          loop-block(while-body, here, after, declared, want-many, out)
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          loop-block(each-body, here, after, declared, want-many, out)
+        miss
+          save nothing, 0
+      sift s
+        case if
+          link if-branches
+          link if-otherwise
+          save conditions, make list
+          walk if-branches
+            take branch
+            push(conditions, branch/cond)
+          save front, mentions-of(expression-handles(conditions))
+          save arms, make list
+          walk if-branches
+            take branch
+            push(arms, branch/body)
+          sift if-otherwise
+            case some
+              link other
+              push(arms, other)
+            case none
+              save nothing, 0
+          arms-block(arms, front, false, after, declared, want-many, out)
+        case match
+          link match-subject
+          link match-cases
+          link match-otherwise
+          save subjects, make list
+          push(subjects, match-subject)
+          save front, mentions-of(expression-handles(subjects))
+          save arms, make list
+          walk match-cases
+            take arm
+            push(arms, arm/body)
+          sift match-otherwise
+            case some
+              link other
+              push(arms, other)
+            case none
+              save nothing, 0
+          arms-block(arms, front, true, after, declared, want-many, out)
+          # a subject no arm mentions is read last as the subject: matched by value, its fields move out
+          save arm-roots, make list
+          walk arms
+            take arm
+            walk statement-handles(arm)
+              take handle
+              push(arm-roots, handle)
+          save in-arms, mentions-of(arm-roots)
+          sift match-subject
+            case variable
+              link subject-name
+              fork test, and(and(not(after/has(subject-name)), not(in-arms/has(subject-name))), front/has(subject-name))
+                hold
+                  save seen, front/get(subject-name)
+                  fork test, is-equal(seen/nodes/length, 1)
+                    hold
+                      push(out/last, match-subject)
+            miss
+              save nothing, 0
+        case let
+          plain-last(here, mention-table(), after, want-many, out)
+        case assign
+          link assign-target
+          # an assignment's target is written, never moved: no name in it moves here
+          save targets, make list
+          push(targets, assign-target)
+          plain-last(here, mentions-of(expression-handles(targets)), after, want-many, out)
+        case expression
+          plain-last(here, mention-table(), after, want-many, out)
+        case return
+          plain-last(here, mention-table(), after, want-many, out)
+        miss
+          save nothing, 0
+      walk here/keys()
+        take name
+        save after/{name}, true
+      save k, subtract(k, 1)
+
+task one-statement
+  take s, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  push(out, s)
+  back out
+
+task loop-block
+  take body, like list, like statement
+  take here, like hash, like text, like mention
+  take after, like hash, like text, like boolean
+  take declared, like hash, like text, like number
+  take want-many, like boolean
+  take out, like reads-out
+  mark private
+
+  save own, text-flags()
+  walk statement-handles(body)
+    take handle
+    collect-own(handle, declared, own)
+  save later, copy-flags(after)
+  walk here/keys()
+    take name
+    fork test, not(own/has(name))
+      hold
+        save later/{name}, true
+  last-block(body, later, declared, want-many, out)
+
+# each arm a block of its own: what is read after an arm is nothing past the statement when the arm ends in a `return`
+# or a raise, since the task has left; a match's subject names besides
+task arms-block
+  take arms, like list, like list, like statement
+  take front, like hash, like text, like mention
+  take is-match, like boolean
+  take after, like hash, like text, like boolean
+  take declared, like hash, like text, like number
+  take want-many, like boolean
+  take out, like reads-out
+  mark private
+
+  save subject-names, text-flags()
+  fork test, is-match
+    hold
+      walk front/keys()
+        take name
+        save subject-names/{name}, true
+  walk arms
+    take arm
+    save later, copy-flags(subject-names)
+    save leaves, false
+    fork test, is-above(arm/length, 0)
+      hold
+        save end, get(arm, subtract(arm/length, 1))
+        sift end
+          case return
+            save leaves, true
+          case throw
+            save leaves, true
+          miss
+            save nothing, 0
+    fork test, not(leaves)
+      hold
+        walk after/keys()
+          take name
+          save later/{name}, true
+    last-block(arm, later, declared, want-many, out)
+
+task plain-last
+  take here, like hash, like text, like mention
+  take written, like hash, like text, like mention
+  take after, like hash, like text, like boolean
+  take want-many, like boolean
+  take out, like reads-out
+  mark private
+
+  walk here/keys()
+    take name
+    save seen, here/get(name)
+    fork test, and(and(not(after/has(name)), not(written/has(name))), not(seen/held))
+      hold
+        fork test, is-equal(seen/nodes/length, 1)
+          hold
+            push(out/last, get(seen/nodes, 0))
+          miss
+            fork test, and(want-many, is-above(seen/nodes/length, 1))
+              hold
+                push(out/many, get(seen/nodes, subtract(seen/nodes/length, 1)))
+
+form last-reads
+  link last, like list, like expression
+  link many, like list, like expression
+
+# MOVE ON LAST USE, by node: the read that is the only mention of its name in the last statement of a block to mention
+# it, outside any loop, closure or guard inside that statement, with nothing after the block mentioning it either.
+# `many`, when asked for, is each read that is the LAST of several of its name inside one statement
+task last-reads-of
+  take body, like list, like statement
+  take want-many, like boolean
+  like last-reads
+
+  save declared, text-number-table()
+  walk statement-handles(body)
+    take handle
+    count-lets(handle, declared)
+  save out
+    make reads-out
+      bind last, make list
+      bind many, make list
+  last-block(body, text-flags(), declared, want-many, out)
+  back
+    make last-reads
+      bind last, out/last
+      bind many, out/many
+
+task text-number-table
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# ---- a slot taken at its last read ----
+
+form slot-at
+  link list, like text
+  link index, like expression
+
+form placeholder
+  link form, like text
+  link empty, like text
+
+form slot-take
+  link list, like text
+  link index, like expression
+  link form, like text
+  link empty, like text
+
+form let-take
+  link node, like statement
+  link take, like slot-take
+  link kept, like boolean
+
+form read-take
+  link node, like expression
+  link take, like slot-take
+
+form slot-takes
+  link lets, like list, like let-take
+  link takes, like list, like read-take
+
+form takes-scope
+  link body, like list, like statement
+  link held, like hash, like text, like boolean
+
+# a read of a name, and whether a reference serves it: a match's subject, or the target of a field read
+form name-read
+  link node, like expression
+  link served, like boolean
+
+form name-reads
+  mark shared
+  link found, like list, like name-read
+
+task reads-into
+  take handle, like node-handle
+  take name, like text
+  take served, like boolean
+  take st, like name-reads
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          fork test, is-equal(var-name, name)
+            hold
+              save found
+                make name-read
+                  bind node, node
+                  bind served, served
+              push(st/found, found)
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          save plain-read, true
+          sift member-index
+            case some
+              save plain-read, false
+            case none
+              save nothing, 0
+          reads-into(expression-handle-of(member-target), name, plain-read, st)
+          sift member-index
+            case some
+              link index-node
+              reads-into(expression-handle-of(index-node), name, false, st)
+            case none
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case match
+          link match-subject
+          reads-into(expression-handle-of(match-subject), name, true, st)
+          # the subject, read above with its own flag, is the one expression a match holds directly
+          walk node-children(handle, type-and-span())
+            take child
+            sift child
+              case expression-handle
+                save nothing, 0
+              miss
+                reads-into(child, name, false, st)
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    reads-into(child, name, false, st)
+
+task reads-of
+  take roots, like list, like node-handle
+  take name, like text
+  like list, like name-read
+  mark private
+
+  save st
+    make name-reads
+      bind found, make list
+  walk roots
+    take handle
+    reads-into(handle, name, false, st)
+  back st/found
+
+task has-form-into
+  take handle, like node-handle
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          fork test, is-equal(wanted, <call>)
+            hold
+              back true
+        case await
+          fork test, is-equal(wanted, <await>)
+            hold
+              back true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    fork test, has-form-into(child, wanted)
+      hold
+        back true
+  back false
+
+task same-index
+  take a, like expression
+  take b, like expression
+  like boolean
+  mark private
+
+  sift a
+    case variable
+      link a-name
+      sift b
+        case variable
+          link b-name
+          back is-equal(a-name, b-name)
+        miss
+          back false
+    case integer
+      link a-value
+      sift b
+        case integer
+          link b-value
+          back is-equal(a-value, b-value)
+        miss
+          back false
+    miss
+      back false
+
+# a list slot `xs/{i}` or `xs/0` off one of the lists, as its list and index
+task slot-of
+  take node, like expression
+  take lists
+    like task
+      take name, like text
+      like boolean
+  like maybe, like slot-at
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-target
+        case variable
+          link list-name
+          link list-span
+          link list-type
+          sift list-type
+            case some
+              link known
+              sift known
+                case array
+                  save nothing, 0
+                miss
+                  back make none
+            case none
+              back make none
+          fork test, not(lists(list-name))
+            hold
+              back make none
+          sift member-index
+            case some
+              link index-node
+              sift index-node
+                case variable
+                  save found
+                    make slot-at
+                      bind list, list-name
+                      bind index, index-node
+                  back make(some, found)
+                case integer
+                  save found
+                    make slot-at
+                      bind list, list-name
+                      bind index, index-node
+                  back make(some, found)
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, is-digits(member-name)
+            hold
+              save number-known, number-type()
+              save literal-type, make(some, number-known)
+              save literal
+                make expression/integer
+                  bind value, to-number(member-name)
+                  bind span, span
+                  bind type, literal-type
+              save found
+                make slot-at
+                  bind list, list-name
+                  bind index, literal
+              back make(some, found)
+          back make none
+        miss
+          back make none
+    miss
+      back make none
+
+task number-type
+  like type
+  mark private
+
+  back make type/number
+
+task to-number
+  take digits, like text
+  like number
+  mark private
+
+  save value, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(digits))
+    hook hold
+      save value, add(multiply(value, 10), subtract(char-code-at(digits, at), 48))
+      save at, add(at, 1)
+  back value
+
+# the first statement of an arm writing the slot back, with nothing in its value that could raise
+task writes-back
+  take s, like maybe, like statement
+  take at, like slot-at
+  take lists
+    like task
+      take name, like text
+      like boolean
+  like boolean
+  mark private
+
+  sift s
+    case some
+      link one
+      sift one
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          sift assign-op
+            case set
+              save nothing, 0
+            miss
+              back false
+          sift slot-of(assign-target, lists)
+            case some
+              link target
+              fork test, or(is-unequal(target/list, at/list), not(same-index(target/index, at/index)))
+                hold
+                  back false
+              save value-handle, expression-handle-of(assign-value)
+              fork test, or(has-form-into(value-handle, <call>), has-form-into(value-handle, <await>))
+                hold
+                  back false
+              save roots, make list
+              push(roots, value-handle)
+              back not(has-text(names-in(roots), at/list))
+            case none
+              back false
+        miss
+          back false
+    case none
+      back false
+
+form takes-state
+  mark shared
+  link lets, like list, like let-take
+  link takes, like list, like read-take
+
+task takes-block
+  take stmts, like list, like statement
+  take scope, like takes-scope
+  take lists
+    like task
+      take name, like text
+      like boolean
+  take last
+    like task
+      take node, like expression
+      like boolean
+  take placeholder-of
+    like task
+      take given, like maybe, like type
+      like maybe, like placeholder
+  take st, like takes-state
+  mark private
+
+  save a, 0
+  walk stmts
+    take s
+    sift s
+      case let
+        link let-name
+        link let-init
+        link let-mutable
+        link let-span
+        link let-type
+        sift slot-of(let-init, lists)
+          case some
+            link at
+            sift placeholder-of(let-type)
+              case some
+                link fill
+                save index-fine, true
+                sift at/index
+                  case variable
+                    link index-name
+                    save index-fine, and(is-unequal(index-name, let-name), not(assigns-name(statement-handles(scope/body), index-name)))
+                  miss
+                    save nothing, 0
+                fork test, and(and(not(scope/held/has(let-name)), not(assigns-name(statement-handles(scope/body), let-name))), index-fine)
+                  hold
+                    take-check(stmts, a, s, let-name, at, fill, lists, last, st)
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+    # the arms of a branch are blocks of their own, and so is a loop's body for the names it declares
+    sift s
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          takes-block(branch/body, scope, lists, last, placeholder-of, st)
+        sift if-otherwise
+          case some
+            link other
+            takes-block(other, scope, lists, last, placeholder-of, st)
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        walk match-cases
+          take arm
+          takes-block(arm/body, scope, lists, last, placeholder-of, st)
+        sift match-otherwise
+          case some
+            link other
+            takes-block(other, scope, lists, last, placeholder-of, st)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        takes-block(while-body, scope, lists, last, placeholder-of, st)
+      case for-each
+        link each-item
+        link each-index
+        link each-iterable
+        link each-body
+        takes-block(each-body, scope, lists, last, placeholder-of, st)
+      miss
+        save nothing, 0
+    save a, add(a, 1)
+
+task take-check
+  take stmts, like list, like statement
+  take a, like number
+  take s, like statement
+  take name, like text
+  take at, like slot-at
+  take fill, like placeholder
+  take lists
+    like task
+      take name, like text
+      like boolean
+  take last
+    like task
+      take node, like expression
+      like boolean
+  take st, like takes-state
+  mark private
+
+  save rest, make list
+  save k, add(a, 1)
+  walk test
+    hook test, is-below(k, stmts/length)
+    hook hold
+      push(rest, get(stmts, k))
+      save k, add(k, 1)
+  # the statement holding the last read: found by the node `lastReads` chose, at this block's level
+  save b, -1
+  save k, 0
+  walk rest
+    take t
+    fork test, is-equal(b, -1)
+      hold
+        walk reads-of(statement-handles(one-statement(t)), name)
+          take found
+          fork test, last(found/node)
+            hold
+              save b, k
+    save k, add(k, 1)
+  fork test, is-below(b, 0)
+    hold
+      back
+  save end, get(rest, b)
+  save between, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, b)
+    hook hold
+      push(between, get(rest, k))
+      save k, add(k, 1)
+  # nothing between the let and the last read touches the list, so the slot still holds the value
+  walk between
+    take t
+    fork test, has-text(names-in(statement-handles(one-statement(t))), at/list)
+      hold
+        back
+  # every earlier read is a match subject or a field read, which a reference serves
+  save earlier, reads-of(statement-handles(between), name)
+  walk earlier
+    take found
+    fork test, not(found/served)
+      hold
+        back
+  save take
+    make slot-take
+      bind list, at/list
+      bind index, at/index
+      bind form, fill/form
+      bind empty, fill/empty
+  save kept, is-above(earlier/length, 0)
+  # the value written back to the slot holds the last read
+  sift end
+    case assign
+      link end-target
+      link end-op
+      link end-value
+      fork test, writes-back(make(some, end), at, lists)
+        hold
+          save found, reads-of(expression-handles(one-expression(end-value)), name)
+          fork test, is-equal(found/length, 1)
+            hold
+              save only, get(found, 0)
+              fork test, last(only/node)
+                hold
+                  save let-taken
+                    make let-take
+                      bind node, s
+                      bind take, take
+                      bind kept, kept
+                  push(st/lets, let-taken)
+                  save read-taken
+                    make read-take
+                      bind node, only/node
+                      bind take, take
+                  push(st/takes, read-taken)
+          back
+    miss
+      save nothing, 0
+  # the last read is a match's subject, and every arm is the placeholder's case or writes the slot first
+  sift end
+    case match
+      link end-subject
+      link end-cases
+      link end-otherwise
+      sift end-subject
+        case variable
+          link subject-name
+          fork test, and(is-equal(subject-name, name), last(end-subject))
+            hold
+              save fine, true
+              sift end-otherwise
+                case some
+                  save fine, false
+                case none
+                  save nothing, 0
+              walk end-cases
+                take arm
+                fork test, is-unequal(arm/label, fill/empty)
+                  hold
+                    save first, make none
+                    fork test, is-above(arm/body/length, 0)
+                      hold
+                        save opening, get(arm/body, 0)
+                        save first, make(some, opening)
+                    fork test, not(writes-back(first, at, lists))
+                      hold
+                        save fine, false
+              fork test, fine
+                hold
+                  save let-taken
+                    make let-take
+                      bind node, s
+                      bind take, take
+                      bind kept, kept
+                  push(st/lets, let-taken)
+                  save read-taken
+                    make read-take
+                      bind node, end-subject
+                      bind take, take
+                  push(st/takes, read-taken)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task one-expression
+  take e, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, e)
+  back out
+
+# A SLOT TAKEN AT ITS LAST READ: the local is the slot itself until its last read, which takes it. compile/backend.ts
+# says each rule
+task slot-takes-of
+  take body, like list, like statement
+  take lists
+    like task
+      take name, like text
+      like boolean
+  take last
+    like task
+      take node, like expression
+      like boolean
+  take placeholder-of
+    like task
+      take given, like maybe, like type
+      like maybe, like placeholder
+  take held, like hash, like text, like boolean
+  like slot-takes
+
+  save scope
+    make takes-scope
+      bind body, body
+      bind held, held
+  save st
+    make takes-state
+      bind lets, make list
+      bind takes, make list
+  takes-block(body, scope, lists, last, placeholder-of, st)
+  back
+    make slot-takes
+      bind lets, st/lets
+      bind takes, st/takes
+
+# ---- the tasks that loop by tail calls ----
+
+form tail-state
+  mark shared
+  link ok, like boolean
+  link found, like number
+  link tails, like list, like statement
+
+# whether a node holds a `name` field equal to `name` anywhere, types included: the original's
+# `JSON.stringify(node).includes('"name":"<name>"')`
+task holds-name
+  take handle, like node-handle
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          fork test, is-equal(var-name, wanted)
+            hold
+              back true
+        case member
+          link member-target
+          link member-name
+          fork test, is-equal(member-name, wanted)
+            hold
+              back true
+        case record
+          link record-name
+          link record-fields
+          fork test, is-equal(record-name, wanted)
+            hold
+              back true
+          walk record-fields
+            take field
+            fork test, is-equal(field/name, wanted)
+              hold
+                back true
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            fork test, is-equal(param/name, wanted)
+              hold
+                back true
+        case hole
+          link hole-name
+          fork test, is-equal(hole-name, wanted)
+            hold
+              back true
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          fork test, is-equal(let-name, wanted)
+            hold
+              back true
+        case hold
+          link name
+          fork test, is-equal(name, wanted)
+            hold
+              back true
+        case guard
+          link guard-body
+          link guard-catch
+          sift guard-catch
+            case some
+              link clause
+              fork test, is-equal(clause/name, wanted)
+                hold
+                  back true
+            case none
+              save nothing, 0
+        case function
+          link fn-name
+          link fn-params
+          fork test, is-equal(fn-name, wanted)
+            hold
+              back true
+          walk fn-params
+            take param
+            fork test, is-equal(param/name, wanted)
+              hold
+                back true
+        miss
+          save nothing, 0
+    case type-handle
+      link node
+      sift node
+        case named
+          link type-name
+          fork test, is-equal(type-name, wanted)
+            hold
+              back true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, make list)
+    take child
+    fork test, holds-name(child, wanted)
+      hold
+        back true
+  back false
+
+# a call of the task to itself, with all its arguments
+task self-call
+  take value, like maybe, like expression
+  take fn-name, like text
+  take arity, like number
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link known
+      sift known
+        case call
+          link call-callee
+          link call-args
+          back and(is-equal(variable-name-of(call-callee), fn-name), is-equal(call-args/length, arity))
+        miss
+          back false
+    case none
+      back false
+
+task tail-visit
+  take handle, like node-handle
+  take in-loop, like boolean
+  take fn-name, like text
+  take arity, like number
+  take st, like tail-state
+  mark private
+
+  fork test, not(st/ok)
+    hold
+      back
+  save loop, in-loop
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        # a self call in a closure is not one this can loop; elsewhere in one nothing matters
+        case closure
+          fork test, holds-name(handle, fn-name)
+            hold
+              save st/ok, false
+          back
+        case await
+          fork test, holds-name(handle, fn-name)
+            hold
+              save st/ok, false
+          back
+        # any other mention of the task: a call not in tail position, or the task taken as a value
+        case variable
+          link var-name
+          fork test, is-equal(var-name, fn-name)
+            hold
+              save st/ok, false
+              back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case guard
+          fork test, holds-name(handle, fn-name)
+            hold
+              save st/ok, false
+          back
+        case return
+          link return-value
+          fork test, and(self-call(return-value, fn-name, arity), not(in-loop))
+            hold
+              push(st/tails, node)
+              save st/found, add(st/found, 1)
+              # the arguments may not call the task again
+              sift return-value
+                case some
+                  link known
+                  sift known
+                    case call
+                      link call-callee
+                      link call-args
+                      walk call-args
+                        take arg
+                        tail-visit(expression-handle-of(arg), in-loop, fn-name, arity, st)
+                    miss
+                      save nothing, 0
+                case none
+                  save nothing, 0
+              back
+        case while
+          save loop, true
+        case for-each
+          save loop, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    tail-visit(child, loop, fn-name, arity, st)
+
+form tail-task
+  link name, like text
+  link returns, like list, like statement
+
+# The tasks whose every call to themselves is a TAIL call, `send back, call <self>(..)`, each to the `return`s that make
+# one: such a task is a loop. Only where that is plain: not async, every self call in a `return` that sits in no loop,
+# no closure and no guard mentioning the task
+task tail-tasks-of
+  take program, like list, like statement
+  like list, like tail-task
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, and(not(read(async)), is-above(fn-body/length, 0))
+          hold
+            save st
+              make tail-state
+                bind ok, true
+                bind found, 0
+                bind tails, make list
+            walk statement-handles(fn-body)
+              take handle
+              tail-visit(handle, false, fn-name, fn-params/length, st)
+            fork test, and(st/ok, is-above(st/found, 0))
+              hold
+                save found
+                  make tail-task
+                    bind name, fn-name
+                    bind returns, st/tails
+                push(out, found)
+      miss
+        save nothing, 0
+  back out

@@ -1,0 +1,18 @@
+mark draft
+
+form probe-calls
+  link double
+    like task
+      take n, like number
+      like number
+  link note
+    like task
+
+task use-calls
+  take calls, like probe-calls
+  take n, like number
+  like number
+
+  calls/note()
+  save twice, calls/double(n)
+  back add(twice, 1)

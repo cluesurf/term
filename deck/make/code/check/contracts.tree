@@ -769,6 +769,10 @@ form contract-tasks
   link fresh, like number
   # the width switch (check/width-range.ts), read by the face
   link widths, like boolean
+  # each width-typed field, `<form>/<field>` to its width, and a positional one as `<form>#<n>`, the nth `slot`. A
+  # case's fields are keyed by the case's name, which is the name its construction carries. Two definitions that
+  # give one key different widths leave it the empty text, which owes nothing (D12)
+  link field-widths, like hash, like text, like text
 
 form contract-context
   link tasks, like contract-tasks
@@ -1156,6 +1160,9 @@ task obligations-in
       walk positional
         take one
         obligations-in(one, guards, out, tasks)
+      fork test, tasks/widths
+        hold
+          record-owed(node, guards, out, tasks)
     case await
       obligations-in(expr, guards, out, tasks)
     case call
@@ -1248,6 +1255,115 @@ task width-owed
         save at, add(at, 1)
     miss
       save nothing, 0
+
+# one key of the field-width table. A second definition that disagrees leaves the key the empty text, so a name two
+# forms share with two widths owes nothing rather than the wrong range
+task note-width
+  take table, like hash, like text, like text
+  take key, like text
+  take width, like text
+  like void
+  mark private
+
+  fork test, table/has(key)
+    hold
+      fork test, is-unequal(table/get(key), width)
+        hold
+          save table/{key}, <>
+    miss
+      save table/{key}, width
+
+# a form's width-typed fields, by name and, for a `slot`, by position
+task note-field-widths
+  take table, like hash, like text, like text
+  take form, like text
+  take fields, like list, like form-field
+  like void
+  mark private
+
+  save slot, 0
+  walk fields
+    take field
+    # `width` is absent on a field written without one: `width-range-of` answers none for that and for any name
+    # that is no width
+    sift width-range-of(field/width)
+      case some
+        note-width(table, <{form}/{field/name}>, field/width)
+        fork test, field/positional
+          hold
+            note-width(table, <{form}#{slot}>, field/width)
+      case none
+        save nothing, 0
+    fork test, field/positional
+      hold
+        save slot, add(slot, 1)
+
+# a case's width-typed fields, keyed by the case's name, which is what its construction carries
+task note-variant-widths
+  take table, like hash, like text, like text
+  take variant, like text
+  take fields, like list, like variant-field
+  like void
+  mark private
+
+  save slot, 0
+  walk fields
+    take field
+    sift width-range-of(field/width)
+      case some
+        note-width(table, <{variant}/{field/name}>, field/width)
+        fork test, field/positional
+          hold
+            note-width(table, <{variant}#{slot}>, field/width)
+      case none
+        save nothing, 0
+    fork test, field/positional
+      hold
+        save slot, add(slot, 1)
+
+# a value put in a width-typed field is inside the width, as one passed to a width-typed parameter is (width-owed). A
+# literal is refused outright by check/literals.ts and owes nothing here
+task record-owed
+  take node, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  take tasks, like contract-tasks
+  like void
+  mark private
+
+  sift node
+    case record
+      walk fields
+        take field
+        field-owed(tasks, <{name}/{field/name}>, field/value, guards, out)
+      save slot, 0
+      walk positional
+        take one
+        field-owed(tasks, <{name}#{slot}>, one, guards, out)
+        save slot, add(slot, 1)
+    miss
+      save nothing, 0
+
+task field-owed
+  take tasks, like contract-tasks
+  take key, like text
+  take value, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  fork test, and(tasks/field-widths/has(key), not(is-integer-literal(value)))
+    hold
+      save width, tasks/field-widths/get(key)
+      fork test, is-unequal(width, <>)
+        hold
+          sift width-hold(value, width, guards, expression-span(value))
+            case some
+              link owed
+              push(out, owed)
+            case none
+              save nothing, 0
 
 task is-integer-literal
   take e, like expression
@@ -2192,6 +2308,8 @@ task lower-contracts
   # ONLY THIS FILE'S OWN TASKS are copied and lowered. Every other task is shared with the real program untouched
   save copy, make list
   save functions, make hash
+  save field-widths, like hash, like text, like text
+    make hash
   save at, 0
   walk program
     take s
@@ -2203,6 +2321,13 @@ task lower-contracts
     sift s
       case function
         save functions/{name}, at
+      case record-type
+        fork test, widths
+          hold
+            note-field-widths(field-widths, name, fields)
+            walk variants
+              take variant
+              note-variant-widths(field-widths, variant/name, variant/fields)
       miss
         save nothing, 0
     save at, add(at, 1)
@@ -2213,6 +2338,7 @@ task lower-contracts
       bind lifted, make hash
       bind fresh, 0
       bind widths, widths
+      bind field-widths, field-widths
   save lowered, make list
   save out, make list
   save at, 0

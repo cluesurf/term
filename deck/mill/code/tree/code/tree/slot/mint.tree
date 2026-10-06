@@ -1,0 +1,15 @@
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/base/lang
+  find code-slot
+
+mint slot, like code-slot
+  case name
+    site name
+  case like
+    site like
+  hook make
+    make slot
+      bind name, read name
+      bind like, read like

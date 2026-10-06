@@ -1,0 +1,138 @@
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/take/mine
+  find take
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/note/mine
+  find note
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+mine host-def
+  mine list
+    mine any
+      mine form, like host-form
+        site form
+      mine form, like host-task
+        site task
+      mine form, like host-hook
+        site hook
+      mine form, like host-bind
+        site bind
+      mine form, like host
+        site host
+
+mine host-form
+  mine term, term form
+    mine term
+      site name
+    mine list
+      mine form, like head
+        site head
+    mine list
+      mine form, like host-form-link
+        site link
+    mine maybe
+      mine form, like note
+        site note
+
+mine host-form-link
+  mine term, term link
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+
+mine host-task
+  mine term, term task
+    mine term
+      site name
+    mine list
+      mine form, like head
+        site head
+    mine list
+      mine form, like take
+        site take
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like host-task-flow
+        site flow
+    mine maybe
+      mine form, like note
+        site note
+
+mine host-task-flow
+  mine any
+    mine form, like host-task-call
+      site call
+    mine form, like host-task-save
+      site save
+    mine form, like host-task-fork
+      site fork
+    mine form, like host-task-back
+      site back
+
+mine host-task-call
+  mine term, term call
+    mine term
+      site name
+    mine list
+      mine form, like host-task-bind
+        site bind
+
+mine host-task-save
+  mine term, term save
+    mine term
+      site name
+    mine form, like seed
+      site seed
+
+mine host-task-fork
+  mine term, term fork
+    mine term, term test
+    mine list
+      mine form, like host-task-flow
+        site flow
+
+mine host-task-back
+  mine term, term send
+    mine term, term back
+    mine form, like seed
+      site seed
+
+mine host-task-bind
+  mine term, term bind
+    mine term
+      site name
+    mine form, like seed
+      site seed
+
+mine host-hook
+  mine term, term hook
+    mine term
+      site name
+    mine list
+      mine form, like take
+        site take
+    mine list
+      mine form, like host-task-flow
+        site flow
+    mine maybe
+      mine form, like note
+        site note
+
+mine host-bind
+  mine term, term bind
+    mine term
+      site name
+    mine form, like seed
+      site seed

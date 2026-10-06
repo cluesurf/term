@@ -1,9 +1,0 @@
-load @term/mill/code/seed/mint
-  find seed
-
-mint fall
-  case seed
-    site seed
-  hook make
-    make fall
-      bind seed, read seed

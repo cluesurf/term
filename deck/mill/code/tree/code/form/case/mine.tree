@@ -1,0 +1,134 @@
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+load @term/mill/tree/code/form/link/mine
+  find link
+  find link-slot
+
+
+mine base
+  mine term, term base
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like case-list
+          site list
+        mine form, like draw
+          site draw
+        mine form, like form
+          site form
+        mine form, like take
+          site take
+    mine maybe
+      mine form, like case-free
+        site free
+    mine maybe
+      mine form, like fall
+        site fall
+
+mine case-head
+  mine term, term head
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like case-list
+          site list
+        mine form, like draw
+          site draw
+        mine form, like form
+          site form
+        mine form, like take
+          site take
+    mine maybe
+      mine form, like case-free
+        site free
+    mine maybe
+      mine form, like fall
+        site fall
+
+mine base-host
+  mine term, term host
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like case-list
+          site list
+        mine form, like draw
+          site draw
+        mine form, like form
+          site form
+    mine maybe
+      mine form, like fall
+        site fall
+
+mine case-list
+  mine term, term list
+    mine term
+      site form
+
+mine draw
+  mine term, term draw
+    mine term
+      site form
+
+mine case-free
+  mine term, term free
+    mine term
+      site term
+
+# `case <name>` with `link` fields under it, or `case <name>, <payload>` with the payload written inline. A field
+# headed `slot` is positional: `make <case>(a, b)` fills the slots in order. Its site is `slot-field`, because a
+# site named `slot` is minted by `mint slot`, the view dialect's slot, and built into nothing a field reader reads.
+#
+# THE FIELDS ARE MATCHED TWICE, before the payload and after it, for the same reason `mine fork-test` matches
+# its arms twice: a field is always headed `link` or `slot` and a payload never is, but the value alternation ends
+# in a fallback that takes any headed group at all, so written payload-first it swallows the first `link` as the
+# payload and the variant loses a field.
+mine case
+  mine term, term case
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine any
+        mine form, like link
+          site link
+        mine form, like link-slot
+          site slot-field
+        mine form, like case-hold
+          site hold
+        mine form, like head
+          site head
+    mine maybe
+      mine form, like seed
+        site seed
+    mine list
+      mine any
+        mine form, like link
+          site link
+        mine form, like link-slot
+          site slot-field
+        mine form, like case-hold
+          site hold
+        mine form, like head
+          site head
+
+# `hold same` inside a proof case: a named witness with its type
+mine case-hold
+  mine term, term hold
+    mine term
+      site name
+    mine list
+      mine form, like like
+        site like

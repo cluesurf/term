@@ -1,0 +1,123 @@
+load @term/mill/tree/code/mark/mine
+  find mark
+
+load @term/mill/tree/code/drop/mine
+  find drop
+
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/take/mine
+  find take
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/tool/flow/mine
+  find flow
+
+load @term/mill/tree/code/fold/mine
+  find fold
+
+load @term/mill/tree/code/note/mine
+  find note
+  find note-guard
+  find mark-note
+  find mark-guard
+
+load @term/mill/tree/code/tag/mine
+  find tag
+
+load ./risk/mine
+  find risk
+
+load @term/mill/tree/code/wait/mine
+  find wait
+
+load @term/mill/tree/code/hide/mine
+  find hide
+
+load @term/mill/tree/code/form/link/mine
+  find link
+
+load @term/mill/tree/code/tree/slot/mine
+  find slot
+
+load @term/mill/tree/code/form/mine
+  find form-nick
+
+load @term/mill/tree/code/must/mine
+  find task-have
+  find must
+  find down
+
+# a task's parts come in ANY order in real source (`note async` before the takes, `like` between takes and
+# body), so the rule is one list of alternatives, not a fixed sequence
+# The NAME is optional. The reader's value case for a `task` head builds a closure whether or not a name
+# followed, so a bare `task` in the generic fallback is a closure with no parameters and an empty body; and a
+# top-level `task` with no name builds nothing at all rather than failing.
+mine task
+  mine term, term task
+    # `mine word`, not `mine term`. A bare `mine term` takes a group's HEAD, so for an ANONYMOUS task in value
+    # position (`call f / task / take one, like x / ...`) it took the first `take` line as the name "take" and
+    # dropped that parameter on the floor: the closure came out with `params: []` and its body read a name
+    # bound to nothing (lean-0014, probed 2026-09-12). Only a word with nothing under it is a name.
+    mine maybe
+      mine word
+        site name
+    mine list
+      mine any
+        mine form, like head
+          site head
+        mine form, like take
+          site take
+        mine form, like like
+          site like
+        # a guarded block goes into the STATEMENT stream, where its handler sits; a bare `mark` / `note` is
+        # metadata. `mark` is the spelling, and minted as the same `note` form (note/mine.tree)
+        mine form, like mark-guard
+          site flow
+        mine form, like note-guard
+          site flow
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
+        mine form, like wait
+          site wait
+        mine form, like risk
+          site risk
+        mine form, like hide
+          site hide
+        mine form, like fold
+          site fold
+        mine form, like tag
+          site tag
+        mine form, like task
+          site task
+        mine form, like link
+          site link
+        mine form, like slot
+          site slot
+        # `mark private`, `mark tag, name kind`, `mark feature, name x`: the marks that are not one of the
+        # metadata words `mine mark-note` takes above.
+        mine form, like mark
+          site mark
+        mine form, like form-nick
+          site nick
+        mine form, like drop
+          site drop
+        # the contract: `have` (precondition), `must` (postcondition), `down` (measure, for a recursive task).
+        # Before `flow`, whose value fallback would read each as a call to a task of that name.
+        mine form, like task-have
+          site have
+        mine form, like must
+          site must
+        mine form, like down
+          site down
+        # LAST. `mine flow` ends in the generic value fallback, which takes any headed group, so anything
+        # listed after it is unreachable: a `name <getRandomValues>` read as a call to `name`, a `head t` read
+        # as a call to `head`.
+        mine form, like flow
+          site flow

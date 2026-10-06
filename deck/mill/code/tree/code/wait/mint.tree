@@ -1,0 +1,9 @@
+load @term/mill/tree/code/seed/mint
+  find seed
+
+mint wait
+  case seed
+    site seed
+  hook make
+    make wait
+      bind seed, read seed

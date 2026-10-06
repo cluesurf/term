@@ -1,0 +1,55 @@
+load @term/mill/tree/code/bind/mint
+  find bind
+
+load @term/mill/tree/code/wait/mint
+  find wait
+
+load @term/base/lang
+  find code-hold
+  find hold-hook
+
+mint hold, like code-hold
+  case name
+    site name
+  case wait
+    site wait
+  case bind
+    site bind
+  hook make
+    make hold
+      bind name, read name
+      bind wait, read wait
+      bind bind, read bind
+
+mint hold-hook, like hold-hook
+  case name
+    site name
+  case line
+    site line
+  case base, mint base
+    site base
+  case flow, mint flow
+    site flow
+  case task, mint task
+    site task
+  hook make
+    make hold-hook
+      bind name, read name
+      bind line, read line
+      bind base, read base
+      bind flow, read flow
+      bind task, read task
+
+mint hold-save
+  case road
+    site road
+  hook make
+    make save
+      bind road, read road
+
+mint hold-turn
+  case term
+    site term
+  hook make
+    make turn
+      bind term, read term

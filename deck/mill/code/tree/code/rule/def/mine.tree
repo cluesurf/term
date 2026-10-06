@@ -1,0 +1,168 @@
+load @term/mill/tree/code/proof/mine
+  find rule-step
+
+# The stdlib theorem form (`rule absurd` / `head a` / `take proof, like void` / `like a`, and form.tree's
+# `rule x` / `seat a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
+
+load @term/mill/tree/code/head/mine
+  find head
+
+load @term/mill/tree/code/take/mine
+  find take
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/call/mine
+  find call
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+load @term/mill/tree/code/note/mine
+  find note
+  find mark-note
+
+# A `rule` is a named THEOREM or AXIOM, and it desugars to a function whose parameters are its universal
+# binders and whose body holds its goal. See note/term/law-and-proof.md.
+#
+#   rule reorder            the name, a word or a readable phrase in a text
+#     seat a, like integer  a universal binder, which becomes a parameter
+#     have h, <prop>        a hypothesis, which becomes a guard around the goal
+#     find x, like t        an existential witness, bound before the goal
+#     show hold <claim>     the goal; `show miss` proves it false
+#     base true             an AXIOM: postulated rather than proved
+#     melt both             a proof step, the same vocabulary `hold` takes
+#
+# A rule with NO `show` is the other shape: a CLAIM, a name declared at a type and owing a proof, which a
+# `task` of the same name fills. `head` / `take` / `like` are its generics, parameters and result there,
+# and `note open` leaves it deliberately open. See note/term/project/law-proof-gate.md.
+mine rule-def
+  mine term, term rule
+    mine any
+      mine text
+        site name
+      mine word
+        site name
+    mine list
+      mine any
+        # `note open` on a SIGNATURE-shaped rule leaves the claim deliberately open: counted and reported
+        # by check/claim.ts rather than refused. Without this site it fell to the seed fallback unseen.
+        # `mark open` is the same metadata.
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
+        mine form, like head
+          site head
+        mine form, like rule-seat
+          site seat
+        # `mark a, like t`, the OLD spelling of a binder (renamed `seat` 2026-10-05). Read only so the bridge can
+        # refuse it by name: without this site it fell to the seed fallback, and the theorem lost its variable
+        mine form, like rule-mark
+          site mark
+        mine form, like rule-have
+          site have
+        mine form, like rule-find
+          site find
+        mine form, like rule-show
+          site show
+        mine form, like rule-base
+          site base
+        mine form, like take
+          site take
+        mine form, like like
+          site like
+        mine form, like call
+          site call
+        mine form, like rule-step
+          site step
+        # LAST: the value fallback takes any head word
+        mine form, like seed
+          site seed
+
+# `have h, <proposition>`, and `take` as its alias: an antecedent the goal is proved under. The name is a
+# label, not a universal variable, and the proposition is what follows it: one nested child is an expression,
+# several parts on a line are a relation applied to terms. A `seat` inside a `have` binds a variable of the
+# hypothesis alone: `have regular / seat m, like integer / <proposition>` assumes the proposition FOR EVERY m,
+# and the prover uses it at the terms the goal needs.
+mine rule-have
+  mine term, term have
+    mine word
+      site name
+    mine list
+      mine any
+        mine form, like rule-seat
+          site seat
+        mine form, like rule-mark
+          site mark
+        mine form, like seed
+          site seed
+
+# `find x, like t` with a witness: binds x to it, so the goal is checked at that concrete value. This is the
+# existential to `seat`'s universal.
+mine rule-find
+  mine term, term find
+    mine word
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like seed
+        site seed
+
+# `show hold <claim>` proves the claim, `show miss <claim>` proves its negation, and a bare `show <claim>`
+# proves it as written.
+mine rule-show
+  mine term, term show
+    mine maybe
+      mine any
+        mine term, term hold
+          site mode
+        mine term, term miss
+          site mode
+    mine list
+      mine form, like seed
+        site seed
+
+# `base true` marks the rule an AXIOM: postulated, with its hypotheses and claim kept in code and type checked
+# rather than proved.
+mine rule-base
+  mine term, term base
+    mine term, term true
+      site flag
+
+# `seat s, like stack / head nat`: a universal binder, and the `head` beside its `like` is the type's argument,
+# written as a sibling the way a `take`'s is. Without it the binder does not read, and the theorem loses the
+# variable it quantifies over. A seat is a place in the law that every value of its type may fill.
+mine rule-seat
+  mine term, term seat
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like head
+        site head
+
+# the old spelling, the same shape, refused by the bridge (mint-bridge.ts `refuseMarkBinders`)
+mine rule-mark
+  mine term, term mark
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like head
+        site head
+
+mine roll-def
+  mine term, term roll
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like

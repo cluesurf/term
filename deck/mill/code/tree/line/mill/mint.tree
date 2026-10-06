@@ -1,0 +1,13 @@
+
+load @term/mill/tree/code/bind/mint
+  find bind
+
+mint dock-mill
+  case name
+    site name
+  case bind, mint bind
+    site bind
+  hook make
+    make dock-mill
+      bind name, read name
+      bind bind, read bind

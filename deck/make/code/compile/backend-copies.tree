@@ -1,0 +1,1329 @@
+# Where a value may be shared rather than copied, and where it must be copied: the record parameters and aliasing
+# `let`s a write would reach through a second name (D1, on the object backends), the text parameters a task only reads
+# as text (borrowed as `&str` on Rust), the record parameters a task only reads (`&R`), and the texts read by position
+# in a loop, each given a cursor (F4 `walked`).
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), which stays as the face and turns the answers into the
+# `Set`s and `Map`s its callers hold. The walks by reflection are compile/node-children.tree's step. An answer keyed by
+# a node (an aliasing `let`, a read through a cursor) comes back as the node itself, the same object on TypeScript, and
+# the ASCII test the original took as a `WeakSet` is a task.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find char-count
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-shapes
+  find is-text
+  find string-call
+  find string-read
+
+load ./backend-names
+  find rebinds
+  find names-in
+
+load ./text-methods
+  find is-string-method
+  find host-method
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task index-flags
+  like hash, like number, like boolean
+
+  back make hash
+
+task index-table
+  like hash, like text, like hash, like number, like boolean
+
+  back make hash
+
+task text-lists
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task text-statements
+  like hash, like text, like statement
+  mark private
+
+  back make hash
+
+task text-types
+  like hash, like text, like type
+  mark private
+
+  back make hash
+
+task field-types
+  like hash, like text, like hash, like text, like type
+  mark private
+
+  back make hash
+
+task index-lists
+  like hash, like text, like list, like number
+
+  back make hash
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-maximum(48, code), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task has-index
+  take index, like maybe, like expression
+  like boolean
+  mark private
+
+  sift index
+    case some
+      back true
+    case none
+      back false
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case array
+          back <array>
+        case named
+          back <named>
+        miss
+          back <other>
+    case none
+      back <>
+
+# the form a type names, `''` for any other type
+task form-name-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          back type-name
+        miss
+          back <>
+    case none
+      back <>
+
+# a `let`'s type: its own, else its value's
+task let-type-of
+  take declared, like maybe, like type
+  take init, like expression
+  like maybe, like type
+  mark private
+
+  sift declared
+    case some
+      back declared
+    case none
+      back expression-type(init)
+
+# ---- the copies a write through a second name would see ----
+
+form let-copy
+  link node, like statement
+  link deep, like boolean
+
+form record-copies
+  link params, like hash, like text, like hash, like number, like boolean
+  link lets, like list, like let-copy
+  link plain, like list, like text
+
+# the name and depth of a field write: `save t/a/b, v` is `t` at 2; a slot anywhere on the way is none
+task field-write-into
+  take handle, like node-handle
+  take plain, like hash, like text, like boolean
+  take found, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          sift assign-target
+            case member
+              save at, assign-target
+              save depth, 0
+              save going, true
+              walk test
+                hook test, going
+                hook hold
+                  sift at
+                    case member
+                      link member-target
+                      link member-name
+                      link member-index
+                      # a slot of a list is not a field: the list's own facts hold it
+                      fork test, or(has-index(member-index), is-digits(member-name))
+                        hold
+                          save depth, -1
+                          save going, false
+                        miss
+                          save depth, add(depth, 1)
+                          save at, member-target
+                    miss
+                      save going, false
+              fork test, is-above(depth, 0)
+                hold
+                  sift at
+                    case variable
+                      link var-name
+                      fork test, plain/has(form-name-of(expression-type(at)))
+                        hold
+                          save was, false
+                          fork test, found/has(var-name)
+                            hold
+                              save was, found/get(var-name)
+                          save found/{var-name}, or(was, is-above(depth, 1))
+                    miss
+                      save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    field-write-into(child, plain, found)
+
+task field-writes
+  take body, like list, like statement
+  take plain, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save found, text-flags()
+  walk block-handles(body)
+    take handle
+    field-write-into(handle, plain, found)
+  back found
+
+# a variable passed at a position its callee writes is written here
+task pass-on-into
+  take handle, like node-handle
+  take params, like hash, like text, like hash, like number, like boolean
+  take written, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          fork test, and(is-unequal(callee-name, <>), params/has(callee-name))
+            hold
+              save target, params/get(callee-name)
+              save at, 0
+              walk call-args
+                take arg
+                save arg-name, variable-name-of(arg)
+                fork test, and(target/has(at), is-unequal(arg-name, <>))
+                  hold
+                    save was, false
+                    fork test, written/has(arg-name)
+                      hold
+                        save was, written/get(arg-name)
+                    save written/{arg-name}, or(was, target/get(at))
+                save at, add(at, 1)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    pass-on-into(child, params, written)
+
+task pass-on
+  take body, like list, like statement
+  take params, like hash, like text, like hash, like number, like boolean
+  take written, like hash, like text, like boolean
+  mark private
+
+  walk block-handles(body)
+    take handle
+    pass-on-into(handle, params, written)
+
+# the `let`s that alias a record (`save b, read a`) where either name is written through
+task aliases-into
+  take handle, like node-handle
+  take plain, like hash, like text, like boolean
+  take written, like hash, like text, like boolean
+  take lets, like list, like let-copy
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          link let-init
+          link let-mutable
+          link let-span
+          link let-type
+          sift let-init
+            case variable
+              link from
+              fork test, plain/has(form-name-of(let-type-of(let-type, let-init)))
+                hold
+                  fork test, or(written/has(from), written/has(let-name))
+                    hold
+                      save deep, false
+                      fork test, written/has(from)
+                        hold
+                          save deep, written/get(from)
+                      fork test, and(not(deep), written/has(let-name))
+                        hold
+                          save deep, written/get(let-name)
+                      save found
+                        make let-copy
+                          bind node, node
+                          bind deep, deep
+                      push(lets, found)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    aliases-into(child, plain, written, lets)
+
+# D1 for RECORDS on the backends whose records are objects: where a copy must be made so a write through one name
+# cannot reach another. `context` is what a unit of the separate build imports
+task record-copies-of
+  take program, like list, like statement
+  take context, like list, like statement
+  like record-copies
+
+  save plain, text-flags()
+  save plain-order, make list
+  save everything, make list
+  walk context
+    take one
+    push(everything, one)
+  walk program
+    take one
+    push(everything, one)
+  walk everything
+    take one
+    sift one
+      case record-type
+        link record-name
+        link record-params
+        link record-indices
+        link record-fields
+        link record-variants
+        fork test, and(and(not(read(shared)), is-above(record-fields/length, 0)), is-equal(record-variants/length, 0))
+          hold
+            fork test, not(plain/has(record-name))
+              hold
+                push(plain-order, record-name)
+            save plain/{record-name}, true
+      miss
+        save nothing, 0
+  save fns, make list
+  walk program
+    take one
+    sift one
+      case function
+        push(fns, one)
+      miss
+        save nothing, 0
+  save params, index-table()
+  # the parameters, to a fixpoint: one passed on at a written position is written here
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk fns
+        take one
+        sift one
+          case function
+            link fn-name
+            link fn-params
+            link fn-body
+            save written, field-writes(fn-body, plain)
+            pass-on(fn-body, params, written)
+            save mine, index-flags()
+            fork test, params/has(fn-name)
+              hold
+                save mine, params/get(fn-name)
+            save at, 0
+            walk fn-params
+              take param
+              fork test, and(plain/has(form-name-of(param/type)), written/has(param/name))
+                hold
+                  save now, written/get(param/name)
+                  save differs, true
+                  fork test, mine/has(at)
+                    hold
+                      save differs, is-unequal(mine/get(at), now)
+                  fork test, differs
+                    hold
+                      save was, false
+                      fork test, mine/has(at)
+                        hold
+                          save was, mine/get(at)
+                      save mine/{at}, or(was, now)
+                      save changed, true
+              save at, add(at, 1)
+            fork test, is-above(mine/keys()/length, 0)
+              hold
+                save params/{fn-name}, mine
+          miss
+            save nothing, 0
+  # the aliasing `let`s, per task: every name written through, by a field write or a callee, then each alias of one
+  save lets, make list
+  walk fns
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save written, field-writes(fn-body, plain)
+        pass-on(fn-body, params, written)
+        walk block-handles(fn-body)
+          take handle
+          aliases-into(handle, plain, written, lets)
+      miss
+        save nothing, 0
+  back
+    make record-copies
+      bind params, params
+      bind lets, lets
+      bind plain, plain-order
+
+# ---- the text parameters a task only reads as text ----
+
+form texts-state
+  mark shared
+  link fine, like boolean
+
+# the string operations that take their receiver by value on Rust
+task owning-method
+  take op, like text
+  like boolean
+  mark private
+
+  back or(is-equal(op, <padStart>), is-equal(op, <padEnd>))
+
+task text-read-visit
+  take handle, like node-handle
+  take local, like text
+  # the value stands where a text is only read: a string method's receiver, a length read, or a template's part
+  take allowed, like boolean
+  take in-closure, like boolean
+  take st, like texts-state
+  mark private
+
+  fork test, not(st/fine)
+    hold
+      back
+  save below-closure, in-closure
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          fork test, is-equal(var-name, local)
+            hold
+              fork test, or(in-closure, not(allowed))
+                hold
+                  save st/fine, false
+              back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          save op, host-method(member-name)
+          save receiver, and(is-string-method(op), not(owning-method(op)))
+          sift string-read(node)
+            case some
+              save receiver, true
+            case none
+              save nothing, 0
+          text-read-visit(expression-handle-of(member-target), local, receiver, in-closure, st)
+          sift member-index
+            case some
+              link index-node
+              text-read-visit(expression-handle-of(index-node), local, false, in-closure, st)
+            case none
+              save nothing, 0
+          back
+        case template
+          link template-parts
+          walk template-parts
+            take part
+            sift part
+              case value
+                link inner
+                text-read-visit(expression-handle-of(inner), local, true, in-closure, st)
+              miss
+                save nothing, 0
+          back
+        case closure
+          save below-closure, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    text-read-visit(child, local, false, below-closure, st)
+
+task calls-into
+  take handle, like node-handle
+  take called, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link call-callee
+          sift call-callee
+            case variable
+              link callee-name
+              save called/{callee-name}, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    calls-into(child, called)
+
+# The text parameters a task only READS AS TEXT: every mention a string method's receiver, a length read, or a part of
+# a template, never rebound, never seen by a closure. Only a task the program itself calls
+task borrowed-texts
+  take program, like list, like statement
+  take gated, like list, like statement
+  like hash, like text, like list, like number
+
+  save called, text-flags()
+  walk block-handles(program)
+    take handle
+    calls-into(handle, called)
+  save found, index-lists()
+  walk gated
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, called/has(fn-name)
+          hold
+            save bound, rebinds(block-handles(fn-body), text-lists(), true)
+            save at, make list
+            save i, 0
+            walk fn-params
+              take param
+              fork test, and(is-equal(kind-of(param/type), <string>), not(has-text(bound, param/name)))
+                hold
+                  save st
+                    make texts-state
+                      bind fine, true
+                  walk block-handles(fn-body)
+                    take handle
+                    text-read-visit(handle, param/name, false, false, st)
+                  fork test, st/fine
+                    hold
+                      push(at, i)
+              save i, add(i, 1)
+            fork test, is-above(at/length, 0)
+              hold
+                save found/{fn-name}, at
+      miss
+        save nothing, 0
+  back found
+
+# ---- the record parameters a task only reads ----
+
+form records-state
+  mark shared
+  link fine, like boolean
+  link borrowed, like hash, like text, like boolean
+
+form records-scope
+  link records, like hash, like text, like statement
+  link variant-types, like hash, like text, like hash, like text, like type
+  link current, like hash, like text, like list, like number
+  link by-name, like hash, like text, like statement
+  # the parameter, the one borrowed name that may be matched
+  link start, like text
+
+# the record form a type names, `''` when it names none of the program's
+task record-type-of
+  take given, like maybe, like type
+  take records, like hash, like text, like statement
+  like text
+  mark private
+
+  save name, form-name-of(given)
+  fork test, and(is-unequal(name, <>), records/has(name))
+    hold
+      back name
+  back <>
+
+task is-scalar
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  save kind, kind-of(given)
+  back or(or(is-equal(kind, <number>), is-equal(kind, <float>)), is-equal(kind, <boolean>))
+
+task borrowed-name
+  take node, like expression
+  take st, like records-state
+  like text
+  mark private
+
+  sift node
+    case variable
+      link var-name
+      fork test, st/borrowed/has(var-name)
+        hold
+          back var-name
+    miss
+      save nothing, 0
+  back <>
+
+# a list field read through a borrowed record (`b/items`), which a walk or a lent read only reads
+task field-list
+  take node, like expression
+  take st, like records-state
+  like boolean
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      fork test, has-index(member-index)
+        hold
+          back false
+      fork test, is-equal(borrowed-name(member-target, st), <>)
+        hold
+          back false
+      back is-equal(kind-of(expression-type(node)), <array>)
+    miss
+      back false
+
+# the type of a task's parameter at a position, none past its end
+task param-type-at
+  take fn, like statement
+  take at, like number
+  like maybe, like type
+  mark private
+
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      fork test, is-below(at, fn-params/length)
+        hold
+          save param, get(fn-params, at)
+          back param/type
+    miss
+      save nothing, 0
+  back make none
+
+task records-visit-all
+  take values, like list, like statement
+  take st, like records-state
+  take scope, like records-scope
+  mark private
+
+  walk block-handles(values)
+    take handle
+    records-visit(handle, st, scope)
+
+task records-visit-expression
+  take value, like expression
+  take st, like records-state
+  take scope, like records-scope
+  mark private
+
+  records-visit(expression-handle-of(value), st, scope)
+
+task records-visit
+  take handle, like node-handle
+  take st, like records-state
+  take scope, like records-scope
+  mark private
+
+  fork test, not(st/fine)
+    hold
+      back
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          link closure-body
+          # a capture of a borrowed name would outlive nothing here, but keep the first slice plain
+          save mentioned, names-in(block-handles(closure-body))
+          walk st/borrowed/keys()
+            take one
+            fork test, has-text(mentioned, one)
+              hold
+                save st/fine, false
+                back
+          records-visit-all(closure-body, st, scope)
+          back
+        case variable
+          fork test, is-unequal(borrowed-name(node, st), <>)
+            hold
+              save st/fine, false
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          save scalar-here, is-scalar(expression-type(node))
+          fork test, and(and(is-unequal(borrowed-name(member-target, st), <>), not(has-index(member-index))), scalar-here)
+            hold
+              back
+          # a slot of a list field read through the borrowed record (`p/points/{i}`), a scalar out of it
+          fork test, and(or(has-index(member-index), is-digits(member-name)), scalar-here)
+            hold
+              sift member-target
+                case member
+                  link field-target
+                  link field-name
+                  link field-index
+                  fork test, and(and(not(has-index(field-index)), is-unequal(borrowed-name(field-target, st), <>)), is-equal(kind-of(expression-type(member-target)), <array>))
+                    hold
+                      sift member-index
+                        case some
+                          link index-node
+                          records-visit-expression(index-node, st, scope)
+                        case none
+                          save nothing, 0
+                      back
+                miss
+                  save nothing, 0
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          # the size of a list field of a borrowed record
+          fork test, and(is-equal(callee-name, <list_size>), is-above(call-args/length, 0))
+            hold
+              fork test, field-list(get(call-args, 0), st)
+                hold
+                  back
+          save at, 0
+          walk call-args
+            take arg
+            save passed, borrowed-name(arg, st)
+            fork test, is-unequal(passed, <>)
+              hold
+                # a borrowed name passed on: only where the callee borrows it too, at the same record type
+                save lent, false
+                fork test, and(is-unequal(callee-name, <>), scope/current/has(callee-name))
+                  hold
+                    save lent, has-number(scope/current/get(callee-name), at)
+                save there, <>
+                fork test, and(is-unequal(callee-name, <>), scope/by-name/has(callee-name))
+                  hold
+                    save there, record-type-of(param-type-at(scope/by-name/get(callee-name), at), scope/records)
+                fork test, or(not(lent), is-unequal(there, record-type-of(expression-type(arg), scope/records)))
+                  hold
+                    save st/fine, false
+                    back
+              miss
+                records-visit-expression(arg, st, scope)
+            save at, add(at, 1)
+          records-visit-expression(call-callee, st, scope)
+          back
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          # a walk over a list field of a borrowed record reads it in place; any other walk is visited whole
+          fork test, not(field-list(each-iterable, st))
+            hold
+              records-visit-expression(each-iterable, st, scope)
+          records-visit-all(each-body, st, scope)
+          back
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          # a write anywhere into a borrowed record needs it owned
+          save root, assign-target
+          save going, true
+          walk test
+            hook test, going
+            hook hold
+              sift root
+                case member
+                  link root-target
+                  save root, root-target
+                miss
+                  save going, false
+          fork test, is-unequal(borrowed-name(root, st), <>)
+            hold
+              save st/fine, false
+              back
+          records-visit-expression(assign-target, st, scope)
+          records-visit-expression(assign-value, st, scope)
+          back
+        case match
+          link match-subject
+          link match-cases
+          link match-otherwise
+          save subject-name, borrowed-name(match-subject, st)
+          fork test, and(is-unequal(subject-name, <>), is-unequal(subject-name, scope/start))
+            hold
+              save st/fine, false
+              back
+          fork test, is-equal(subject-name, <>)
+            hold
+              records-visit-expression(match-subject, st, scope)
+          walk match-cases
+            take arm
+            save added, make list
+            fork test, is-unequal(subject-name, <>)
+              hold
+                save binds, make list
+                walk arm/binds
+                  take one
+                  push(binds, one)
+                save fields, text-types()
+                fork test, scope/variant-types/has(arm/label)
+                  hold
+                    save fields, scope/variant-types/get(arm/label)
+                save order, fields/keys()
+                # an arm's `link` lines select fields by name, or rename them in declaration order (check/arm.ts)
+                save renames, false
+                walk binds
+                  take one
+                  fork test, not(fields/has(one))
+                    hold
+                      save renames, true
+                save locals, binds
+                fork test, is-equal(binds/length, 0)
+                  hold
+                    save locals, order
+                save i, 0
+                walk locals
+                  take local
+                  save field, local
+                  fork test, renames
+                    hold
+                      save field, <>
+                      fork test, is-below(i, order/length)
+                        hold
+                          save field, get(order, i)
+                  save field-type, make none
+                  fork test, and(is-unequal(field, <>), fields/has(field))
+                    hold
+                      save known, fields/get(field)
+                      save field-type, make(some, known)
+                  fork test, and(is-unequal(record-type-of(field-type, scope/records), <>), not(st/borrowed/has(local)))
+                    hold
+                      save st/borrowed/{local}, true
+                      push(added, local)
+                  save i, add(i, 1)
+            records-visit-all(arm/body, st, scope)
+            walk added
+              take local
+              st/borrowed/delete(local)
+          sift match-otherwise
+            case some
+              link other
+              records-visit-all(other, st, scope)
+            case none
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    records-visit(child, st, scope)
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# does this task read the borrowed name `start` only in the allowed ways, given the current candidates
+task conforms
+  take fn, like statement
+  take start, like text
+  take field-names, like hash, like text, like list, like text
+  take scope, like records-scope
+  like boolean
+  mark private
+
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      # the analysis goes by name, so a parameter something in the body binds again is refused
+      fork test, has-text(rebinds(block-handles(fn-body), field-names, true), start)
+        hold
+          back false
+      save borrowed, text-flags()
+      save borrowed/{start}, true
+      save st
+        make records-state
+          bind fine, true
+          bind borrowed, borrowed
+      records-visit-all(fn-body, st, scope)
+      back st/fine
+    miss
+      back false
+
+# The record parameters a gated task only READS, taken as `&R` on Rust. A fixpoint: a parameter stays borrowed while
+# every task it is passed to still borrows it there
+task borrowed-records
+  take program, like list, like statement
+  take gated, like list, like statement
+  like hash, like text, like list, like number
+
+  save records, text-statements()
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        fork test, not(read(shared))
+          hold
+            save records/{record-name}, one
+      miss
+        save nothing, 0
+  # each variant's field types, for what an arm binds
+  save variant-types, field-types()
+  save field-names, text-lists()
+  walk records/keys()
+    take name
+    save record, records/get(name)
+    sift record
+      case record-type
+        link record-name
+        link record-params
+        link record-indices
+        link record-fields
+        link record-variants
+        walk record-variants
+          take variant
+          save types, text-types()
+          walk variant/fields
+            take field
+            save types/{field/name}, field/type
+          save variant-types/{variant/name}, types
+          save field-names/{variant/name}, types/keys()
+      miss
+        save nothing, 0
+  save candidates, index-lists()
+  save by-name, text-statements()
+  walk gated
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        save at, make list
+        save i, 0
+        walk fn-params
+          take param
+          fork test, is-unequal(record-type-of(param/type, records), <>)
+            hold
+              push(at, i)
+          save i, add(i, 1)
+        fork test, is-above(at/length, 0)
+          hold
+            save candidates/{fn-name}, at
+        save by-name/{fn-name}, one
+      miss
+        save nothing, 0
+  save current, candidates
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save next-round, index-lists()
+      save scope
+        make records-scope
+          bind records, records
+          bind variant-types, variant-types
+          bind current, current
+          bind by-name, by-name
+          bind start, <>
+      walk current/keys()
+        take name
+        save fn, by-name/get(name)
+        save kept, make list
+        walk current/get(name)
+          take at
+          save param-name, <>
+          sift fn
+            case function
+              link fn-name
+              link fn-params
+              save param, get(fn-params, at)
+              save param-name, param/name
+            miss
+              save nothing, 0
+          save scope/start, param-name
+          fork test, conforms(fn, param-name, field-names, scope)
+            hold
+              push(kept, at)
+        fork test, is-unequal(kept/length, current/get(name)/length)
+          hold
+            save changed, true
+        fork test, is-above(kept/length, 0)
+          hold
+            save next-round/{name}, kept
+      save current, next-round
+  back current
+
+# ---- the texts read by position in a loop ----
+
+form cursor-read
+  link call, like expression
+  link name, like text
+
+form text-cursors
+  link names, like list, like text
+  link reads, like list, like cursor-read
+
+form cursor-state
+  mark shared
+  link binds, like hash, like text, like number
+  link written, like hash, like text, like boolean
+  link looped, like list, like text
+  link looped-seen, like hash, like text, like boolean
+  link closed, like hash, like text, like boolean
+  link reads, like list, like cursor-read
+
+task cursor-bind
+  take st, like cursor-state
+  take name, like text
+  mark private
+
+  save count, 0
+  fork test, st/binds/has(name)
+    hold
+      save count, st/binds/get(name)
+  save st/binds/{name}, add(count, 1)
+
+# the reads a cursor serves: `charAt`, `at`, `charCodeAt`, `substring`, `slice`
+task cursor-op
+  take op, like text
+  like boolean
+  mark private
+
+  back or(or(or(is-equal(op, <charAt>), is-equal(op, <at>)), or(is-equal(op, <charCodeAt>), is-equal(op, <substring>))), is-equal(op, <slice>))
+
+task cursor-visit
+  take handle, like node-handle
+  take loop, like boolean
+  take closure, like boolean
+  take candidates, like hash, like text, like boolean
+  take is-ascii
+    like task
+      take node, like expression
+      like boolean
+  take st, like cursor-state
+  mark private
+
+  save in-loop, loop
+  save in-closure, closure
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          cursor-bind(st, let-name)
+        case for-each
+          link each-item
+          cursor-bind(st, each-item)
+          save in-loop, true
+        case while
+          save in-loop, true
+        case match
+          link match-subject
+          link match-cases
+          walk match-cases
+            take arm
+            walk arm/binds
+              take one
+              cursor-bind(st, one)
+        case assign
+          link assign-target
+          sift assign-target
+            case variable
+              link target-name
+              save st/written/{target-name}, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            cursor-bind(st, param/name)
+          save in-closure, true
+        case call
+          link call-callee
+          sift string-call(call-callee)
+            case some
+              link string-op
+              save receiver, string-op/target
+              fork test, cursor-op(string-op/op)
+                hold
+                  sift receiver
+                    case variable
+                      link target-name
+                      fork test, and(candidates/has(target-name), not(is-ascii(receiver)))
+                        hold
+                          save found-read
+                            make cursor-read
+                              bind call, node
+                              bind name, target-name
+                          push(st/reads, found-read)
+                          fork test, closure
+                            hold
+                              save st/closed/{target-name}, true
+                            miss
+                              fork test, and(loop, not(st/looped-seen/has(target-name)))
+                                hold
+                                  save st/looped-seen/{target-name}, true
+                                  push(st/looped, target-name)
+                    miss
+                      save nothing, 0
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    cursor-visit(child, in-loop, in-closure, candidates, is-ascii, st)
+
+# F4 `walked`: the texts a task reads by position in a loop, each given a cursor, and each read through one to its
+# text's name. compile/backend.ts says each rule
+task text-cursors-of
+  take fn, like statement
+  take is-ascii
+    like task
+      take node, like expression
+      like boolean
+  like text-cursors
+
+  save names, make list
+  save reads, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      save candidates, text-flags()
+      save binds, text-number-table()
+      walk fn-params
+        take param
+        fork test, is-text(param/type)
+          hold
+            save candidates/{param/name}, true
+        save binds/{param/name}, 1
+      walk fn-body
+        take one
+        sift one
+          case let
+            link let-name
+            link let-init
+            link let-mutable
+            link let-span
+            link let-type
+            fork test, is-text(let-type-of(let-type, let-init))
+              hold
+                save candidates/{let-name}, true
+          miss
+            save nothing, 0
+      save st
+        make cursor-state
+          bind binds, binds
+          bind written, text-flags()
+          bind looped, make list
+          bind looped-seen, text-flags()
+          bind closed, text-flags()
+          bind reads, make list
+      walk block-handles(fn-body)
+        take handle
+        cursor-visit(handle, false, false, candidates, is-ascii, st)
+      save kept, text-flags()
+      walk st/looped
+        take name
+        save once, false
+        fork test, st/binds/has(name)
+          hold
+            save once, is-equal(st/binds/get(name), 1)
+        fork test, and(and(once, not(st/written/has(name))), not(st/closed/has(name)))
+          hold
+            push(names, name)
+            save kept/{name}, true
+      walk st/reads
+        take one-read
+        fork test, kept/has(one-read/name)
+          hold
+            push(reads, one-read)
+    miss
+      save nothing, 0
+  back
+    make text-cursors
+      bind names, names
+      bind reads, reads
+
+task text-number-table
+  like hash, like text, like number
+  mark private
+
+  back make hash

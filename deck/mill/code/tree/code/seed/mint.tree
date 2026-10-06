@@ -1,0 +1,170 @@
+load @term/mill/tree/code/call/mint
+  find call-link
+
+load @term/mill/tree/code/call/mint
+  find call
+
+load @term/mill/tree/code/fork/mint
+  find fork
+
+load @term/mill/tree/code/make/mint
+  find make
+
+load @term/mill/tree/code/task/mint
+  find task
+
+load @term/mill/tree/code/tool/flow/mint
+  find move
+
+load @term/mill/tree/code/wait/mint
+  find wait
+
+load @term/mill/tree/code/bind/mint
+  find bind
+
+load @term/mill/tree/code/halt/mint
+  find halt
+
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/base/lang
+  find seed-def
+
+mint seed
+  case call
+    site call
+  case make
+    site make
+  case read
+    site read
+  case code, mint seed-code
+    site code
+  case text, mint seed-text
+    site text
+  case fork
+    site fork
+  case flag
+    site flag
+  case void
+    site void
+  case number
+    site number
+  case quote
+    site quote
+  case task
+    site task
+  case move
+    site move
+  case term, mint seed-term
+    site term
+  case meet, mint seed-meet
+    site meet
+  case wait, mint seed-wait
+    site wait
+  case open, mint seed-call-open
+    site open
+  case word
+    site word
+
+mint seed-def, like seed-def
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make seed-def
+      bind name, read name
+      bind seed, read seed
+
+mint seed-read
+  case path
+    site path
+  case link, mint call-link
+    site link
+  hook make
+    make seed-read
+      bind path, read path
+      bind link, read link
+
+# `loan x` is a read, and mints as one so the bridge has a single case to build
+mint seed-loan
+  case path
+    site path
+  hook make
+    make seed-loan
+      bind path, read path
+
+mint seed-code
+  case value
+    site value
+  hook make
+    make seed-code
+      bind value, read value
+
+mint seed-text
+  case value
+    site value
+  hook make
+    make seed-text
+      bind value, read value
+
+# `wait <call>` as a prefix: the awaited call, by whichever call spelling it was written in. lean-0031
+mint seed-wait
+  case call
+    site call
+  case open, mint seed-call-open
+    site open
+  hook make
+    make seed-wait
+      bind call, read call
+      bind open, read open
+
+mint seed-call-open
+  case seed
+    site seed
+  case name
+    site name
+  case wait, mint wait
+    site wait
+  case bind, mint bind
+    site bind
+  case halt, mint halt
+    site halt
+  case like, mint like
+    site like
+  case link, mint call-link
+    site link
+  hook make
+    make seed-call-open
+      bind seed, read seed
+      bind name, read name
+      bind wait, read wait
+      bind bind, read bind
+      bind halt, read halt
+      bind like, read like
+      bind link, read link
+
+mint seed-term
+  case name
+    site name
+  hook make
+    make seed-term
+      bind name, read name
+
+mint seed-meet
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make seed-meet
+      bind name, read name
+      bind seed, read seed
+
+mint seed-bind-arg
+  case seed
+    site seed
+  hook make
+    make seed-bind-arg
+      bind seed, read seed

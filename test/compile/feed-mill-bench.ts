@@ -68,7 +68,7 @@ const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const PACKS: Record<string, string> = {
   base: join(TERM, 'deck/base'),
-  feed: join(TERM, 'deck/feed'),
+  mill: join(TERM, 'deck/mill'),
 }
 
 // the generated reader may be at most this many times slower than the hand-written one. Generous on purpose: what
@@ -261,7 +261,7 @@ function frontEnd(
 
 // ---- hex: the dialect with both a generated and a hand-written reader ----
 
-const mineFile = join(TERM, 'deck/feed/code/hex/mine.tree')
+const mineFile = join(TERM, 'deck/mill/code/text/hex/mine.tree')
 const mineParsed = parse({ file: mineFile, text: readFileSync(mineFile, 'utf8') })
 
 ok('the hex grammar parses', mineParsed.ok)
@@ -276,8 +276,8 @@ const substrate = feedMineSubstrate(grammar)
 
 ok('the substrate infers as text', substrate === 'text', String(substrate))
 
-const generated = compileFeedMine(grammar, substrate ?? 'text', '@term/feed/code/base', [
-  'load @term/feed/code/hex/code',
+const generated = compileFeedMine(grammar, substrate ?? 'text', '@term/mill/feed', [
+  'load @term/mill/text/hex/code',
   '  find hex-digit-value',
   '  find read-hex, name hand-read-hex',
   '',

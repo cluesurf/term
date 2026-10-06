@@ -54,56 +54,34 @@ import type { Reuse } from '@term/make/code/compile/place'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
 import type { PlaceWrite } from '@term/make/code/compile/place'
 import { integerText } from '@term/make/code/compile/type-text'
+import * as tsNames from '@term/make/code/compile/ts-names'
+
+// The helpers that read no emitter state are Term, compile/ts-names.tree (self-hosting, 2026-10-06): the names, a type's
+// TypeScript spelling and empty value, one primary, the identity cases, the names a body assigns, the fill spec. This
+// file keeps the module state they read and hands it in as tests.
+type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
+const unbox = <T>(value: Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
+const boxed = <T>(value: T | undefined): Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
+const tsOpaqueOf = (name: string): never => boxed(tsOpaqueTypes.get(name)) as never
+const tsDeclares = (name: string): boolean => tsRecordFields.has(name) || tsVariantFieldsByOwner.has(name)
 
 // the render runtime's task names, asked of compile/render-names once
 const RENDER = renderNames()
 
-const guardStart = (text: string): string =>
-  /^[([`]/.test(text) ? `;${text}` : text
+const guardStart = (text: string): string => tsNames.guardStart(text)
 
 // whether a local of a task's body may shadow one of its parameters: a `let`, a loop's item or index, a closure's
 // parameter, or a field an arm binds (every field of every case of the label, which over-asks and is safe). A tail call
 // rebinding the parameters there would write the local instead (`target = __tail0_0` beside `const target`, in
 // ir/inline-statements.tree's `root-name`, a TypeError on the first program it ran, 2026-10-05)
 function tailShadowed(fn: Extract<Statement, { form: 'function' }>): boolean {
-  const params = new Set(fn.params.map(p => toCamel(p.name)))
-  let shadowed = false
+  // every field of every case of the label, which over-asks and is safe
+  const armFields = (label: string): string[] => [
+    ...[...tsVariantFieldsByOwner.values()].flatMap(fields => (fields.get(label) ?? []).map(f => f.name)),
+    ...(tsVariantFields.get(label) ?? []).map(f => f.name),
+  ]
 
-  const visit = (node: unknown): void => {
-    if (shadowed || !node || typeof node !== 'object') return
-    if (Array.isArray(node)) return node.forEach(visit)
-    const record = node as Record<string, unknown>
-    const names: string[] = []
-
-    if (record.form === 'let') names.push(record.name as string)
-    if (record.form === 'for-each') names.push(record.item as string, ...(record.index ? [record.index as string] : []))
-    if (record.form === 'closure') names.push(...(record.params as { name: string }[]).map(p => p.name))
-
-    if (record.form === 'match') {
-      for (const arm of record.cases as { label: string; binds?: string[] }[]) {
-        names.push(...(arm.binds ?? []))
-
-        for (const fields of tsVariantFieldsByOwner.values()) {
-          names.push(...(fields.get(arm.label) ?? []).map(f => f.name))
-        }
-
-        names.push(...(tsVariantFields.get(arm.label) ?? []).map(f => f.name))
-      }
-    }
-
-    if (names.some(name => params.has(toCamel(name)))) {
-      shadowed = true
-      return
-    }
-
-    for (const [key, child] of Object.entries(record)) {
-      if (key !== 'span' && key !== 'type') visit(child)
-    }
-  }
-
-  visit(fn.body)
-
-  return shadowed
+  return tsNames.tailShadowed(fn as never, armFields)
 }
 
 // whether an arm only READS the collection its local `name` holds: every use is a `walk` over it or its `length`. Such
@@ -112,31 +90,7 @@ function tailShadowed(fn: Extract<Statement, { form: 'function' }>): boolean {
 // natively. A port reading a type's `args` gave every type it read `args: []`, which the checker tells from none
 // (`if (subject.args)`), 2026-10-05
 function onlyReads(body: Statement[], name: string): boolean {
-  let safe = true
-
-  const visit = (node: unknown): void => {
-    if (!safe || !node || typeof node !== 'object') return
-    if (Array.isArray(node)) return node.forEach(visit)
-    const record = node as Record<string, unknown>
-    const isName = (value: unknown): boolean => (value as { form?: string; name?: string } | undefined)?.form === 'variable' && (value as { name: string }).name === name
-
-    if (isName(record)) {
-      safe = false
-      return
-    }
-
-    for (const [key, child] of Object.entries(record)) {
-      if (key === 'span' || key === 'type') continue
-      // `walk xs` and `xs/length` read it, and nothing else of it is visited
-      if (record.form === 'for-each' && key === 'iterable' && isName(child)) continue
-      if (record.form === 'member' && key === 'target' && record.name === 'length' && isName(child)) continue
-      visit(child)
-    }
-  }
-
-  visit(body)
-
-  return safe
+  return tsNames.armOnlyReads(body as never, name)
 }
 
 // a division of two integers: both operands typed `number` (a `float` or an unresolved operand keeps JavaScript's
@@ -145,83 +99,15 @@ function onlyReads(body: Statement[], name: string): boolean {
 // (`a.b.c`), that followed by a call or index group closing at the very end (`Math.trunc(x)`, `a.b[i]`), or a whole
 // parenthesized group. Text inside quotes is skipped when matching the groups
 function isPrimary(text: string): boolean {
-  const close: Record<string, string> = { '(': ')', '[': ']' }
-
-  // the index of the group closing the one that opens at `start`, or -1
-  const matching = (start: number): number => {
-    const stack: string[] = []
-    let quote = ''
-
-    for (let i = start; i < text.length; i++) {
-      const ch = text[i]!
-
-      if (quote) {
-        if (ch === '\\') {
-          i++
-        } else if (ch === quote) {
-          quote = ''
-        }
-
-        continue
-      }
-
-      if (ch === '"' || ch === "'" || ch === '`') {
-        quote = ch
-      } else if (ch === '(' || ch === '[') {
-        stack.push(close[ch]!)
-      } else if (ch === ')' || ch === ']') {
-        if (stack.pop() !== ch) {
-          return -1
-        }
-
-        if (stack.length === 0) {
-          return i
-        }
-      }
-    }
-
-    return -1
-  }
-
-  if (text.startsWith('(')) {
-    return matching(0) === text.length - 1
-  }
-
-  const name = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/.exec(text)
-
-  if (!name) {
-    return /^\d+$/.test(text)
-  }
-
-  let at = name[0].length
-
-  // any run of call and index groups after the name, each closing where the next begins
-  while (at < text.length && (text[at] === '(' || text[at] === '[')) {
-    const end = matching(at)
-
-    if (end < 0) {
-      return false
-    }
-
-    at = end + 1
-  }
-
-  return at === text.length
+  return tsNames.isPrimary(text)
 }
 
 // whether an operator is whole-number arithmetic: both operands numbers, or the checker's own answer for the node is a
 // number. The second is what a task inlined in place of its call leaves: `bump(n) = add(n, 1)` called with an `unknown`
 // puts that value where `n` stood, and the sum, checked as a unit, went unchecked inlined, so the one program printed
 // `seven1` built whole and stopped built in units (guides: examples/types/gradual, 2026-10-05)
-function integerDivision(node: {
-  type?: { kind: string }
-  left: { type?: { kind: string } }
-  right: { type?: { kind: string } }
-}): boolean {
-  return (
-    (node.left.type?.kind === 'number' && node.right.type?.kind === 'number') ||
-    (node.type?.kind === 'number' && node.left.type?.kind !== 'float' && node.right.type?.kind !== 'float')
-  )
+function integerDivision(node: Extract<Expression, { form: 'binary' }>): boolean {
+  return tsNames.integerDivision(node as never)
 }
 
 const PRECEDENCE: Record<BinaryOp, number> = {
@@ -240,200 +126,29 @@ const PRECEDENCE: Record<BinaryOp, number> = {
   '%': 5,
 }
 
-// JavaScript reserved words that cannot be bare identifiers; a seed name colliding with one is suffixed with `_`.
-// Applied uniformly (definitions and uses), so a field/param named `new` stays consistent across the module.
-const RESERVED = new Set([
-  'break',
-  'case',
-  'catch',
-  'class',
-  'const',
-  'continue',
-  'debugger',
-  'default',
-  'delete',
-  'do',
-  'else',
-  'enum',
-  'export',
-  'extends',
-  'false',
-  'finally',
-  'for',
-  'function',
-  'if',
-  'import',
-  'in',
-  'instanceof',
-  'new',
-  'null',
-  'return',
-  'super',
-  'switch',
-  'this',
-  'throw',
-  'true',
-  'try',
-  'typeof',
-  'var',
-  'void',
-  'while',
-  'with',
-  'yield',
-  'let',
-  'static',
-  'await',
-  'async',
-  'implements',
-  'interface',
-  'package',
-  'private',
-  'protected',
-  'public',
-  // not keywords, but illegal as binding names in an ES module / strict mode
-  'eval',
-  'arguments',
-  // not reserved, but the platform globals the runtime shims read by name. A page bundle is a classic script, so a
-  // top-level Term task named `window` (list's sliding windows) shadowed the real one for the whole bundle, and the
-  // cask bridge's `window.term` read a property of that function: every cask page failed on its first call
-  'window',
-  'document',
-  'globalThis',
-  'navigator',
-  // the same for the globals the shims call: a Term `fetch` (http's GET) made the http shim's `fetch(url)` call itself.
-  // Not `console` or `crypto`: modules dock those by that very name, and a dock alias is written as given
-  'fetch',
-  'performance',
-  'atob',
-  'btoa',
-  'setTimeout',
-  'clearTimeout',
-  'queueMicrotask',
-  'structuredClone',
-])
-
-// acronyms that the host APIs spell in all caps (randomUUID, toJSON, parseURL). A whole kebab segment matching one of
-// these uppercases entirely instead of just its first letter, so FFI member names match the platform exactly. `id` is
-// deliberately excluded (host convention is `Id`, e.g. userId).
-const ACRONYMS = new Set([
-  'uuid',
-  'url',
-  'uri',
-  'http',
-  'https',
-  'html',
-  'xml',
-  'json',
-  'css',
-  'api',
-  'sql',
-  'ascii',
-  'utf8',
-  'jwt',
-])
-
 // the TypeScript identifier a seed name compiles to (kebab/snake to camelCase). Exported so the benchmark runner can
 // map a seed function name to the exported symbol it must call in the emitted module. Plain camelCase: a user's own
 // function `make-api` becomes `makeApi`, not `makeAPI`. Acronym uppercasing (for host FFI names) is reserved for
 // member access (see `toMember`), where the emitted name must match the platform exactly.
 export function toCamel(name: string): string {
-  const parts = name.split(/[-_]/)
-  const head = parts[0] ?? ''
-  const camel =
-    head +
-    parts
-      .slice(1)
-      .map(p => p.charAt(0).toUpperCase() + p.slice(1))
-      .join('')
-
-  return RESERVED.has(camel) ? `${camel}_` : camel
+  return tsNames.toCamel(name)
 }
 
 // a kebab / snake name to a SCREAMING_SNAKE constant (`database-url` -> `DATABASE_URL`), for environment variable names
 export function toConstant(name: string): string {
-  return name
-    .split(/[-_]/)
-    .map(p => p.toUpperCase())
-    .join('_')
+  return tsNames.toConstant(name)
 }
 
 // a member name a seed name compiles to, uppercasing whole-segment acronyms so a host FFI call matches the platform
 // spelling exactly (`set-attribute` -> `setAttribute`, `to-json` -> `toJSON`, `inner-html` -> `innerHTML`). Used only
 // for member access (`receiver.method(...)`), which is how bind's JS-`this`-style DOM methods are invoked.
 function toMember(name: string): string {
-  const parts = name.split(/[-_]/)
-  const head = parts[0] ?? ''
-
-  return (
-    head +
-    parts
-      .slice(1)
-      .map(p =>
-        ACRONYMS.has(p)
-          ? p.toUpperCase()
-          : p.charAt(0).toUpperCase() + p.slice(1),
-      )
-      .join('')
-  )
+  return tsNames.toMember(name)
 }
-
-// TypeScript lib type names a seed form must not merge with: an emitted `interface Set` DECLARATION-MERGES with
-// the built-in `Set`, so every use site resolves to the wrong shape. Such a form is spelled with a `Form` suffix
-// throughout the emit, the way the Swift backend suffixes Foundation collisions.
-const TS_TAKEN = new Set([
-  'Set',
-  'Map',
-  'Date',
-  'Error',
-  'Promise',
-  'Symbol',
-  'Object',
-  'Array',
-  'Number',
-  'String',
-  'Boolean',
-  'RegExp',
-  'Function',
-  'Iterator',
-])
 
 // the empty value of a type: what a left-out field holds (the same rule the Rust / Swift / Kotlin backends apply)
 export function tsEmptyOf(type: Type | undefined): string {
-  switch (type?.kind) {
-    case 'string':
-      return '""'
-    case 'boolean':
-      return 'false'
-    case 'float':
-    case 'number':
-      return '0'
-    case 'bytes':
-      return 'new Uint8Array()'
-    case 'array':
-      return '[]'
-    case 'map':
-      return 'new Map()'
-    case 'named':
-      if (type.name === 'text') {
-        return '""'
-      }
-
-      if (type.name === 'boolean') {
-        return 'false'
-      }
-
-      if (type.name === 'list') {
-        return '[]'
-      }
-
-      if (type.name === 'hash') {
-        return 'new Map()'
-      }
-
-      return 'undefined as any'
-    default:
-      return 'undefined as any'
-  }
+  return tsNames.tsEmptyOf(boxed(type) as never)
 }
 
 // D10 (decided 2026-10-05): a `need false` field typed `maybe T` is `f?: T` on TypeScript, the shape a TypeScript
@@ -442,11 +157,7 @@ export function tsEmptyOf(type: Type | undefined): string {
 // undefined for none). A plain `need false` field keeps its type's empty value. Natively nothing changes: the field
 // is the maybe it is declared. test/compile/maybe-field.ts. Answers the inner type, or undefined for any other field
 export function optionalMaybe(field: { type: Type; optional?: boolean } | undefined): Type | undefined {
-  if (!field?.optional || field.type.kind !== 'named' || field.type.name !== 'maybe') {
-    return undefined
-  }
-
-  return field.type.args?.[0] ?? { kind: 'unknown' }
+  return field ? (unbox(tsNames.optionalMaybe(field as never)) as Type | undefined) : undefined
 }
 
 // the declared field `name` of a value of type `owner`: a struct's, else the one any case of a union declares
@@ -495,12 +206,7 @@ function declaredField(owner: Type | undefined, name: string): { name: string; t
 
 // is a type's empty value a collection, which a write may go through and which a left-out field therefore STORES
 function emptyStored(type: Type): boolean {
-  return (
-    type.kind === 'array' ||
-    type.kind === 'map' ||
-    type.kind === 'bytes' ||
-    (type.kind === 'named' && (type.name === 'list' || type.name === 'hash'))
-  )
+  return tsNames.emptyStored(type as never)
 }
 
 // the helpers a maybe field's read and write call (D10)
@@ -594,10 +300,7 @@ function inDeclaredOrder(
 }
 
 export function toPascal(name: string): string {
-  const camel = toCamel(name)
-  const spelled = camel.charAt(0).toUpperCase() + camel.slice(1)
-
-  return TS_TAKEN.has(spelled) ? `${spelled}Form` : spelled
+  return tsNames.toPascal(name)
 }
 
 // opaque per-backend handle types (`dock type / load <any>, name tcp-handle`): seed name -> concrete TS type. Populated
@@ -718,63 +421,7 @@ let tsGuards = new Map<string, string>()
 // (a shim builds its own `{ form: "none" }`), in no program that fills or melts data into forms, holds a stub of
 // another unit's task, or is emitted one module at a time (each module its own constant)
 export function identityCases(program: Program, perModule: boolean): Set<string> {
-  type Loose = Record<string, unknown> & { form?: string; type?: Type }
-  const cases = new Set<string>()
-
-  if (perModule || program.some(n => n.form === 'function' && n.stub)) {
-    return cases
-  }
-
-  const aliases = new Set(program.flatMap(n => (n.form === 'native' && n.kind !== 'type' ? [n.alias] : [])))
-  const fromNative = new Set<string>()
-  let filled = false
-  const namesIn = (t: Type | undefined, into: Set<string>): void => {
-    if (!t) return
-    if (t.kind === 'named') {
-      into.add(t.name)
-      t.args?.forEach(a => namesIn(a, into))
-    } else if (t.kind === 'array') namesIn(t.element, into)
-    else if (t.kind === 'map') {
-      namesIn(t.key, into)
-      namesIn(t.value, into)
-    } else if (t.kind === 'function') {
-      t.params.forEach(p => namesIn(p, into))
-      namesIn(t.result, into)
-    }
-  }
-  const rootOf = (e: Loose | undefined): string | undefined =>
-    e?.form === 'variable' ? (e.name as string) : e?.form === 'member' ? rootOf(e.target as Loose) : undefined
-  const visit = (value: unknown): void => {
-    if (typeof value !== 'object' || value === null) return
-    if (Array.isArray(value)) return value.forEach(visit)
-    const node = value as Loose
-
-    if (node.form === 'call') {
-      const callee = node.callee as Loose
-      const name = callee.form === 'variable' || callee.form === 'member' ? (callee.name as string) : ''
-      const root = rootOf(callee)
-
-      // `call fill / ... / like <form>` reaches the backends as `fill-form` (and `melt-form`), the run-time task as `fill`
-      if (['fill', 'melt', 'fill-form', 'melt-form'].includes(name)) filled = true
-      if (callee.form === 'member' && root !== undefined && aliases.has(root)) namesIn(node.type, fromNative)
-    }
-
-    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visit(child)
-  }
-
-  visit(program)
-
-  if (filled) {
-    return cases
-  }
-
-  for (const n of program) {
-    if (n.form === 'record-type' && n.variants.length > 0 && !n.shared && !fromNative.has(n.name)) {
-      n.variants.filter(v => v.fields.length === 0).forEach(v => cases.add(`${n.name}/${v.name}`))
-    }
-  }
-
-  return cases
+  return new Set(tsNames.identityCases(program as never, perModule))
 }
 
 // every function's declared parameters, so a left-out trailing `need false` argument is filled with its type's empty
@@ -788,37 +435,15 @@ let tsFunctionParams = new Map<string, { type?: Type; optional?: boolean }[]>()
 // too, because `__termEqual` checks identity first and a scalar never reaches the structural walk. A `note shared`
 // form and a closure keep identity.
 function structuralType(type: Type | undefined): boolean {
-  if (!type) {
-    return false
-  }
-
-  switch (type.kind) {
-    case 'array':
-    case 'map':
-    case 'bytes':
-    case 'unknown':
-    case 'variable':
-    case 'dynamic':
-      return true
-    case 'named':
-      return type.name !== 'text' && type.name !== 'boolean' && type.name !== 'void' && !tsSharedForms.has(type.name)
-    default:
-      return false
-  }
+  return tsNames.structuralType(boxed(type) as never, name => tsSharedForms.has(name))
 }
 
 // a map receiver's key type: the type when the receiver is a map (`like hash k v` or a native map), `true` when it is
 // a map whose key is not spelled, and `false` when the receiver is not a map at all
 function mapKeyType(type: Type | undefined): Type | true | false {
-  if (type?.kind === 'map') {
-    return type.key
-  }
+  const key = tsNames.mapKeyType(boxed(type) as never)
 
-  if (type?.kind === 'named' && type.name === 'hash') {
-    return type.args?.[0] ?? true
-  }
-
-  return false
+  return key.form === 'keyed' ? (key.key as Type) : key.form === 'unspelled'
 }
 
 // structural equality and key interning. `__termEqual` walks records (plain objects), lists, maps and bytes, and
@@ -913,63 +538,10 @@ type FormKind =
   | { kind: 'form'; spec: FormSpec }
 
 function formSpec(type: Type, seen: Set<string>): FormSpec {
-  const name = type.kind === 'named' ? type.name : ''
-  const fields = tsRecordFields.get(name) ?? []
-  const inner = new Set(seen).add(name)
+  const fieldsOf = (name: string) => (tsRecordFields.get(name) ?? []) as never
+  const isRecord = (name: string): boolean => tsRecordFields.has(name)
 
-  return {
-    form: name,
-    fields: fields.map(f => ({
-      name: f.name,
-      member: toMember(f.name),
-      optional: Boolean(f.optional),
-      kind: formKind(f.type, inner),
-    })),
-  }
-}
-
-function formKind(type: Type | undefined, seen: Set<string>): FormKind {
-  switch (type?.kind) {
-    case 'string':
-      return { kind: 'text' }
-    case 'boolean':
-      return { kind: 'flag' }
-    case 'number':
-      return { kind: 'number' }
-    case 'float':
-      return { kind: 'decimal' }
-    case 'array':
-      return { kind: 'list', item: formKind(type.element, seen) }
-    case 'named': {
-      if (type.name === 'text') {
-        return { kind: 'text' }
-      }
-
-      if (type.name === 'boolean') {
-        return { kind: 'flag' }
-      }
-
-      if (/^(number|integer|natural|size|count|index|u?int(8|16|32|64)?)$/.test(type.name)) {
-        return { kind: 'number' }
-      }
-
-      if (/^(decimal|float(32|64)?|double|real)$/.test(type.name)) {
-        return { kind: 'decimal' }
-      }
-
-      if (type.name === 'list') {
-        return { kind: 'list', item: formKind(type.args?.[0], seen) }
-      }
-
-      if (tsRecordFields.has(type.name) && !seen.has(type.name)) {
-        return { kind: 'form', spec: formSpec(type, seen) }
-      }
-
-      return { kind: 'any' }
-    }
-    default:
-      return { kind: 'any' }
-  }
+  return tsNames.fillSpecOf(type as never, [...seen], fieldsOf, isRecord) as FormSpec
 }
 
 const EXCEPTION_CLASS = 'TermException'
@@ -1456,236 +1028,15 @@ function __termMeltAny(value: any): any {
 // shared `exception` form. `note` is the message, `form` is the name a catch branches on.
 // a checked type to a TypeScript type
 function tsType(type: Type | undefined): string {
-  switch (type?.kind) {
-    case 'boolean':
-      return 'boolean'
-    case 'string':
-      return 'string'
-    case 'unit':
-      return 'void'
-    case 'array':
-      {
-        // a function element needs parens: `(() => string)[]`, not `() => string[]` (which is a function
-        // returning an array)
-        const element = tsType(type.element)
-
-        return type.element?.kind === 'function'
-          ? `(${element})[]`
-          : `${element}[]`
-      }
-    case 'map':
-      return `Map<${tsType(type.key)}, ${tsType(type.value)}>`
-
-    case 'named': {
-      const opaque = tsOpaqueTypes.get(type.name)
-
-      if (opaque) {
-        return opaque
-      }
-
-      // `like type` is the UNIVERSE (the type of types): the host has no spelling for it, so a signature that
-      // carries one emits `any` rather than a `Type` no module defines. Unless the program declares a `form type`
-      // (the compiler's own AST, compile/node.tree): then it is that form, as a local `form text` is (below), and a
-      // field typed by it was `any` where it should have been `Type` (2026-10-05, test/compile/form-named-type.ts)
-      if (type.name === 'type' && !tsRecordFields.has('type') && !tsVariantFieldsByOwner.has('type')) {
-        return 'any'
-      }
-
-      // THE FOUR KEYWORD PRIMITIVES, by their Term names. A milled annotation keeps `like text` as the NAMED
-      // type `text` (the checker seeds it to a fresh variable and unifies it with the literal, so it never
-      // rewrites the node), and a backend that Pascal-cases it emits a `Text` no module defines. These four
-      // and no others: they are exactly the names the mill itself synthesizes for a `host` with no `like`
-      // (mint-bridge, "the constant's type is the one its LITERAL names"), plus `like text`. A form the
-      // program declares is still its own type, so a local `form text` would win.
-      if (
-        !tsRecordFields.has(type.name) &&
-        !tsVariantFieldsByOwner.has(type.name)
-      ) {
-        if (type.name === 'text') {
-          return 'string'
-        }
-
-        if (type.name === 'boolean') {
-          return 'boolean'
-        }
-
-        // `decimal` and `float` are the float's names: a `host` of a decimal literal is declared `decimal`
-        if (type.name === 'number' || type.name === 'integer' || type.name === 'float') {
-          return 'number'
-        }
-      }
-
-      // type arguments when the reference carries them, so `like maybe / head
-      // text` reaches TypeScript as `Maybe<string>` rather than a bare
-      // `Maybe` that says nothing about what it holds.
-      const args =
-        type.args && type.args.length > 0
-          ? `<${type.args.map(a => tsType(a)).join(', ')}>`
-          : ''
-
-      return `${toPascal(type.name)}${args}`
-    }
-
-    case 'function': {
-      const result = type.effects?.includes('async')
-        ? `Promise<${tsType(type.result)}>`
-        : tsType(type.result)
-
-      return `(${type.params
-        .map((p, i) => `a${i}: ${tsType(p)}`)
-        .join(', ')}) => ${result}`
-    }
-
-    case 'number':
-    case 'float':
-      return 'number'
-    case 'dynamic':
-      return 'any'
-    case 'bytes':
-      return 'Uint8Array'
-    case 'unknown':
-      // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
-      return 'any'
-    case 'variable':
-    case undefined:
-    default:
-      // an unconstrained binding in a numeric program: default to number
-      return 'number'
-  }
-}
-
-// find expressions reassigned to a name, so the binding emits as `let` not `const`. Crucially this descends into
-// closure bodies: a variable declared in an outer scope but reassigned inside a callback (e.g. an effect) must be a
-// `let`. Without this, the reassignment would target a `const` and throw.
-function collectAssignedExpr(
-  expr: Expression,
-  into: Set<string>,
-): void {
-  switch (expr.form) {
-    case 'closure':
-      collectAssigned(expr.body, into)
-      break
-    case 'call':
-      collectAssignedExpr(expr.callee, into)
-      expr.args.forEach(a => collectAssignedExpr(a, into))
-      break
-    case 'binary':
-      collectAssignedExpr(expr.left, into)
-      collectAssignedExpr(expr.right, into)
-      break
-    case 'unary':
-      collectAssignedExpr(expr.operand, into)
-      break
-    case 'array':
-      expr.items.forEach(i => collectAssignedExpr(i, into))
-      break
-    case 'map':
-      expr.entries.forEach(e => {
-        collectAssignedExpr(e.key, into)
-        collectAssignedExpr(e.value, into)
-      })
-      break
-    case 'record':
-      expr.fields.forEach(f => collectAssignedExpr(f.value, into))
-      break
-    case 'member':
-      collectAssignedExpr(expr.target, into)
-      break
-    case 'await':
-      collectAssignedExpr(expr.expr, into)
-      break
-    case 'conditional':
-      expr.branches.forEach(b => {
-        collectAssignedExpr(b.cond, into)
-        collectAssignedExpr(b.value, into)
-      })
-
-      if (expr.otherwise) {
-        collectAssignedExpr(expr.otherwise, into)
-      }
-
-      break
-    default:
-      break
-  }
+  return tsNames.tsType(boxed(type) as never, tsOpaqueOf, tsDeclares)
 }
 
 function collectAssigned(
   statements: Statement[],
   into: Set<string>,
 ): void {
-  for (const statement of statements) {
-    switch (statement.form) {
-      case 'let':
-        collectAssignedExpr(statement.init, into)
-        break
-      case 'assign':
-        if (statement.target.form === 'variable') {
-          into.add(statement.target.name)
-        }
-
-        collectAssignedExpr(statement.value, into)
-        break
-      case 'expression':
-        collectAssignedExpr(statement.expr, into)
-        break
-      case 'return':
-        if (statement.value) {
-          collectAssignedExpr(statement.value, into)
-        }
-
-        break
-      case 'throw':
-        collectAssignedExpr(statement.value, into)
-        break
-      case 'hold':
-        collectAssignedExpr(statement.expr, into)
-        break
-      case 'guard':
-        collectAssigned(statement.body, into)
-
-        if (statement.catch) {
-          collectAssigned(statement.catch.body, into)
-        }
-
-        break
-      case 'while':
-        collectAssignedExpr(statement.cond, into)
-        collectAssigned(statement.body, into)
-        break
-      case 'for-each':
-        collectAssignedExpr(statement.iterable, into)
-        collectAssigned(statement.body, into)
-        break
-      case 'match':
-        collectAssignedExpr(statement.subject, into)
-
-        for (const branch of statement.cases) {
-          collectAssigned(branch.body, into)
-        }
-
-        if (statement.otherwise) {
-          collectAssigned(statement.otherwise, into)
-        }
-
-        break
-      case 'if':
-        for (const branch of statement.branches) {
-          collectAssignedExpr(branch.cond, into)
-          collectAssigned(branch.body, into)
-        }
-
-        if (statement.otherwise) {
-          collectAssigned(statement.otherwise, into)
-        }
-
-        break
-      case 'function':
-        collectAssigned(statement.body, into)
-        break
-      default:
-        break
-    }
+  for (const name of tsNames.collectAssigned(statements as never)) {
+    into.add(name)
   }
 }
 

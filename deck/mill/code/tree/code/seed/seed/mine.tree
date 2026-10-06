@@ -1,0 +1,45 @@
+load @term/mill/tree/code/form/link/mine
+  find link
+
+load @term/mill/tree/code/like/mine
+  find like
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+# `host <name>` with a value, a type, or a list of entries under it.
+#
+# The list comes BEFORE the inline value for the same reason the fork's arms do: the value alternation ends in
+# a fallback that takes any headed group, so a leading `mine maybe` for the value swallows the first nested
+# `host` entry and a 237-entry table comes out with 236.
+mine host
+  mine term, term host
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine any
+        mine form, like host-item
+          site item
+        mine form, like host
+          site host
+        # `host page, name <document>` with an indented `like document`: the type is written AFTER the
+        # foreign-name annotation, not before it, so the leading `maybe` above never sees it
+        mine form, like like
+          site like
+        mine form, like seed
+          site seed
+    mine maybe
+      mine form, like seed
+        site seed
+
+# one entry of a host data list: `term a98`, a bare word, a text, a number
+mine host-item
+  mine term, term term
+    mine term
+      site term
+    mine list
+      mine form, like link
+        site link

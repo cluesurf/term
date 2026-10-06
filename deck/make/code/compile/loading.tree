@@ -40,6 +40,9 @@ load ../parser/tree
 load ./templates
   find span-of-whole
 
+load ./scope
+  find expand-scopes
+
 # what a module's text imports, read from its parse tree: its `load` / `bear` paths, whether it has a top-level `view`
 # (a component, whose emitter synthesizes render-runtime calls) or a web route, the built-in bit words it names, and per
 # import path the names its `find` lines ask for
@@ -487,14 +490,16 @@ task scan-imports
   back scan
 
 # the scan of a module's parse, nothing for one that does not parse: its own diagnostics are raised where it is
-# compiled, and guessing at its imports here would only bury them
+# compiled, and guessing at its imports here would only bury them. The tree scanned is the one the mill reads, with
+# its grammar scopes lowered (compile/scope.tree): a grammar import names no module, and the modules lowered code
+# calls (`@term/base/unit` for a quantity) must be walked like any the file loads itself
 task scan-parsed
   take parsed, like parse-result
   like import-scan
 
   fork test, parsed/ok
     hold
-      back scan-imports(parsed/tree)
+      back scan-imports(expand-scopes(parsed/tree, <>)/tree)
   back
     make import-scan
       bind paths, make list

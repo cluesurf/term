@@ -1,6 +1,6 @@
 // The JSON grammar through feed-mill: no rule silently dropped, and the value dispatch is real.
 //
-// This is NOT the full round-trip suite. `deck/feed/code/json/mine.tree` does not yet generate a complete reader:
+// This is NOT the full round-trip suite. `deck/mill/code/text/json/mine.tree` does not yet generate a complete reader:
 // `mine number` is a span capture and the emitter cannot thread an accumulator through nested rules yet
 // (format-mill-0003 records why, and why slicing the cursor instead is unsound). JSON joins
 // test/compile/feed-mill-run.ts beside hex and gzip when it does. Putting it there now would mean a known-failing
@@ -34,7 +34,7 @@ import { readFeedMineGrammar, compileFeedMine } from '@term/make/code/compile/fe
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const GRAMMAR = join(TERM, 'deck/feed/code/json/mine.tree')
+const GRAMMAR = join(TERM, 'deck/mill/code/text/json/mine.tree')
 
 // Rules that do NOT read yet, each with the reason. A BASELINE, not permission: this fails if a rule outside the
 // list stops reading, and fails if one on it starts, so the list cannot grow quietly or rot. Emptying it is the
@@ -155,7 +155,7 @@ ok(
   partialNames.join(', '),
 )
 
-const source = compileFeedMine(grammar, 'text', '@term/feed/code/base')
+const source = compileFeedMine(grammar, 'text', '@term/mill/feed')
 const generated = parse({ file: 'json-generated.tree', text: source })
 
 ok('the generated reader parses', generated.ok)

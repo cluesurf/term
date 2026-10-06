@@ -287,7 +287,7 @@ describe('the mill role stays out of lean', () => {
   const TERM = join(__dirname, '..', '..', '..')
 
   // one real mill grammar file, as the thing no lean glob may reach
-  const MILL = join(TERM, 'deck/mill/code/code/call/mine.tree')
+  const MILL = join(TERM, 'deck/mill/code/tree/code/call/mine.tree')
 
   // every lean `take` glob in a config that matches the mill file
   function leanReaching(text: string, root: string): string[] {
@@ -313,7 +313,7 @@ describe('the mill role stays out of lean', () => {
         `
 role code
   mark lean
-  take @/deck/mill/code/**/*.tree
+  take @/deck/mill/code/tree/**/*.tree
 `,
         TERM,
       ),
@@ -325,7 +325,7 @@ role code
       leanReaching(
         `
 role code
-  take @/deck/mill/code/**/*.tree
+  take @/deck/mill/code/tree/**/*.tree
 `,
         TERM,
       ),

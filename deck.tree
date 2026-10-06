@@ -19,7 +19,6 @@ deck @term/code
   deck ./deck/cask
   deck ./deck/deck
   deck ./deck/face
-  deck ./deck/feed
   deck ./deck/flow
   deck ./deck/host
   deck ./deck/make

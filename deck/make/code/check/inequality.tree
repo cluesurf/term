@@ -1,0 +1,2387 @@
+# The hold prover's goal and inequality layer: an expression as a linear form (`to-linear`), the facts a condition
+# assumes (`assumption-inequalities`, `condition-facts`), the inequalities a goal must meet (`goal-inequalities`), the
+# facts a polynomial comparison gives over its monomial atoms (`polynomial-facts`), the product prover's goals
+# (`product-goal-linear`, `product-goal`), and the decision of one goal from the facts in hand (`goal-provable`).
+#
+#   - THE LINEAR TRANSLATION reads a literal, a name, a list's or a text's length, a number field through a plain path,
+#     an application, `+`, `-`, a product with a constant, `increment` and `decrement`, a max or a min, a masked
+#     `bitwise-and`, a truncated quotient and a remainder. Each of the last four is a fresh atom with its bounds as side
+#     facts, and what its sign depends on kept as a SNAPSHOT, decided at the goal (`signed-remainders`)
+#   - a number past 2^53 rounds, so a form holding one is declined (`within`), which is sound: the goal is left unproven
+#   - a goal is proven by its inequalities from the facts (check/refine.ts, through `proves`), by products of the facts
+#     (check/product.ts, through `product-proves`), or as a nonlinear non-negativity (check/nonlinear.tree). A
+#     disequality by strict separation or the integer gcd test, and any goal at all from facts with no integer solution
+#   - a theorem with universal hypotheses is decided by instantiating them, over an ordered field (check/universal.tree)
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part three. The decisions:
+#   - the translation's tables and counters are the shared `hold-state`'s, never cleared, as they never were
+#   - a goal's three answers (proven, unproven, outside the fragment) are `goal-verdict`, where the original returned
+#     `true`, `false` and `null`
+#   - the memoized linear prover, the product prover under its budget, the widths and the counter of uncertified answers
+#     stay with their faces, handed in through `hold-calls`
+#   - JavaScript's `Math.abs`, `Math.round`, `%`, `Number.isInteger` and its JSON are asked through binds, so every
+#     coefficient decides as it did
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/integer/big
+  find big-integer
+  find big-handle
+  find big-from-number
+  find big-subtract
+
+load ../compile/node
+  find expression
+  find statement
+  find expression-span
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find at-least
+  find at-most
+  find above
+  find below
+
+load ./products
+  find fact
+  find rational
+  find rational-of
+
+load ./nonlinear
+  find monomial-vars
+  find is-application
+  find application-key
+  find expand-polynomial
+  find polynomial-degree
+  find nonlinear-proves
+  find plain-path
+  find length-atom
+
+load ./universal
+  find hold-calls
+  find rule-parts
+  find polynomial-linear
+  find or-polynomial
+  find universal-goal
+
+load ./hold-state
+  find hold-state
+  find quotient
+  find extremum-pair
+
+# a goal's answer: PROVEN, in the linear fragment but UNPROVEN, or OUTSIDE it (an unchecked hold, not a failure)
+form goal-verdict
+  mark text
+  case proven
+  case unproven
+  case outside
+
+# ---- JavaScript's numbers ----
+
+bind literal-float
+  take value, like number
+  like float
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <($value as f64)>
+  case swift
+    text <Double($value)>
+  case kotlin
+    text <($value.toDouble())>
+
+bind whole-float
+  take value, like float
+  like boolean
+  case node
+    text <Number.isInteger($value)>
+  case browser
+    text <Number.isInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0)>
+
+bind safe-float
+  take value, like float
+  like boolean
+  case node
+    text <Number.isSafeInteger($value)>
+  case browser
+    text <Number.isSafeInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0 && $value.abs() \<= 9007199254740991.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \<= 9007199254740991.0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0 && Math.abs($value) \<= 9007199254740991.0)>
+
+bind js-abs
+  take value, like float
+  like float
+  case node
+    text <Math.abs($value)>
+  case browser
+    text <Math.abs($value)>
+  case rust
+    text <$value.abs()>
+  case swift
+    text <abs($value)>
+  case kotlin
+    text <Math.abs($value)>
+
+bind js-round
+  take value, like float
+  like float
+  case node
+    text <Math.round($value)>
+  case browser
+    text <Math.round($value)>
+  case rust
+    text <($value + 0.5).floor()>
+  case swift
+    text <($value + 0.5).rounded(.down)>
+  case kotlin
+    text <Math.floor($value + 0.5)>
+
+bind js-remainder
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <($a % $b)>
+  case browser
+    text <($a % $b)>
+  case rust
+    text <($a % $b)>
+  case swift
+    text <$a.truncatingRemainder(dividingBy: $b)>
+  case kotlin
+    text <($a % $b)>
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+# `BigInt(Math.round(value))`
+bind rounded-big
+  take value, like float
+  like big-handle
+  case node
+    text <BigInt(Math.round($value))>
+  case browser
+    text <BigInt(Math.round($value))>
+  case rust
+    text <std::rc::Rc::new(num_bigint::BigInt::from(($value).round() as i64)) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.fromInt(Int64(($value).rounded()))>
+  case kotlin
+    text <java.math.BigInteger.valueOf(Math.round($value))>
+
+# `-value` of a big integer's handle
+bind negated-big
+  take value, like big-handle
+  like big-handle
+  case node
+    text <(-$value)>
+  case browser
+    text <(-$value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# `/^[0-9]+$/`: a field named by its position
+bind digits-only
+  take value, like text
+  like boolean
+  case node
+    text </^[0-9]+$/.test($value)>
+  case browser
+    text </^[0-9]+$/.test($value)>
+  case rust
+    text <(!$value.is_empty() && $value.chars().all(|c| c.is_ascii_digit()))>
+  case swift
+    text <(!$value.isEmpty && $value.allSatisfy(\{ $0.isASCII && $0.isNumber \}))>
+  case kotlin
+    text <($value.isNotEmpty() && $value.all \{ it in '0'..'9' \})>
+
+# a key holding the NUL character, which a monomial key never does
+bind holds-nul
+  take value, like text
+  like boolean
+  case node
+    text <$value.includes('\\u0000')>
+  case browser
+    text <$value.includes('\\u0000')>
+  case rust
+    text <$value.contains('\\0')>
+  case swift
+    text <$value.contains("\\0")>
+  case kotlin
+    text <$value.contains('\\u0000')>
+
+# an expression as JSON with its spans and inferred types left out: how two are written alike
+bind bare-json
+  take value, like expression
+  like text
+  case node
+    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' ? undefined : value))>
+  case browser
+    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' ? undefined : value))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# ---- makers ----
+
+task poly-prefix
+  like text
+  mark private
+
+  back <@poly:>
+
+task facts
+  like list, like inequality
+  mark private
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task expressions
+  like list, like expression
+  mark private
+
+  back make list
+
+task number-terms
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task both-facts
+  take a, like list, like inequality
+  take b, like list, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+task one-fact
+  take q, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  push(out, q)
+  back out
+
+task two-facts
+  take q, like inequality
+  take r, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  push(out, q)
+  push(out, r)
+  back out
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-text
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  fork test, has-text(into, one)
+    hold
+      back
+  push(into, one)
+
+# `linear({ [key]: 1 })`
+task atom-linear
+  take key, like text
+  like linear
+
+  save terms, number-terms()
+  save terms/{key}, 1.0
+  back
+    make linear
+      bind terms, terms
+      bind constant, 0.0
+
+# `linear({}, constant)`
+task constant-linear
+  take constant, like float
+  like linear
+
+  back
+    make linear
+      bind terms, number-terms()
+      bind constant, constant
+
+# ---- linear forms ----
+
+# a linear form whose every number is still exact: below 2^53 in size. Past it a number has rounded, so the form is
+# declined
+task within
+  take a, like linear
+  like maybe, like linear
+
+  fork test, is-above(js-abs(a/constant), 9007199254740991.0)
+    hold
+      back make none
+  walk a/terms/values()
+    take c
+    fork test, is-above(js-abs(c), 9007199254740991.0)
+      hold
+        back make none
+  back make(some, a)
+
+task add-linear
+  take a, like linear
+  take b, like linear
+  like linear
+
+  save terms, number-terms()
+  walk a/terms/keys()
+    take v
+    save terms/{v}, a/terms/get(v)
+  walk b/terms/keys()
+    take v
+    save had, 0.0
+    fork test, terms/has(v)
+      hold
+        save had, terms/get(v)
+    save terms/{v}, add(had, b/terms/get(v))
+  back
+    make linear
+      bind terms, terms
+      bind constant, add(a/constant, b/constant)
+
+task scale-linear
+  take a, like linear
+  take k, like float
+  like linear
+
+  save terms, number-terms()
+  walk a/terms/keys()
+    take v
+    save terms/{v}, multiply(a/terms/get(v), k)
+  back
+    make linear
+      bind terms, terms
+      bind constant, multiply(a/constant, k)
+
+# the greatest common divisor of two non-negative integers (Euclid)
+task greatest-common-divisor
+  take a, like float
+  take b, like float
+  like float
+  mark private
+
+  save x, js-abs(js-round(a))
+  save y, js-abs(js-round(b))
+  walk test
+    hook test, is-unequal(y, 0.0)
+    hook hold
+      save next, js-remainder(x, y)
+      save x, y
+      save y, next
+  back x
+
+# a linear form that is a pure constant (no variable), its constant
+task constant-of
+  take a, like linear
+  like maybe, like float
+
+  walk a/terms/values()
+    take c
+    fork test, is-above(js-abs(c), 0.000000000001)
+      hold
+        back make none
+  save constant, a/constant
+  back make(some, constant)
+
+# a fresh atom equal to `value` now, which no later write can change
+task snapshot
+  take state, like hold-state
+  take value, like linear
+  take side, like list, like inequality
+  like linear
+  mark private
+
+  save atom, atom-linear(fresh-key(state, <__was>))
+  push(side, at-most(atom, value))
+  push(side, at-least(atom, value))
+  back atom
+
+# `${prefix}${modCounter++}`
+task fresh-key
+  take state, like hold-state
+  take prefix, like text
+  like text
+  mark private
+
+  save key, <{prefix}{state/mod-counter}>
+  save state/mod-counter, add(state/mod-counter, 1)
+  back key
+
+task width-of
+  take state, like hold-state
+  take expr, like expression
+  like maybe, like text
+  mark private
+
+  sift expr
+    case call
+      sift callee
+        case variable
+          link callee-name
+          fork test, state/result-widths/has(callee-name)
+            hold
+              save width, state/result-widths/get(callee-name)
+              back make(some, width)
+        miss
+          save nothing, 0
+    # a read of a width-typed field, `file/os` where `os` is `like u8`: a value inside the width, as a call to a
+    # width-typed result is
+    case member
+      link target
+      link name
+      sift expression-type(target)
+        case some
+          link target-type
+          sift target-type
+            case named
+              link form-name
+              save key, <{form-name}/{name}>
+              fork test, state/field-widths/has(key)
+                hold
+                  save width, state/field-widths/get(key)
+                  fork test, is-unequal(width, <>)
+                    hold
+                      back make(some, width)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# ---- number fields ----
+
+task is-number-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-kind-float
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case float
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-kind-array
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back true
+        miss
+          back false
+    case none
+      back false
+
+load ../compile/node
+  find type
+  find expression-type
+
+# a member read whose field is declared a number: by its inferred type, or, untyped, by its parameter's form
+task number-member
+  take state, like hold-state
+  take expr, like expression
+  like boolean
+  mark private
+
+  sift expr
+    case member
+      link member-target
+      link member-name
+      sift expression-type(expr)
+        case some
+          link known
+          sift known
+            case number
+              back true
+            miss
+              back false
+        case none
+          save nothing, 0
+      save form-name, <>
+      save has-form, false
+      sift expression-type(member-target)
+        case some
+          link target-type
+          sift target-type
+            case named
+              link named-name
+              save form-name, named-name
+              save has-form, true
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, not(has-form)
+        hold
+          sift member-target
+            case variable
+              link target-name
+              fork test, state/param-forms/has(target-name)
+                hold
+                  save form-name, state/param-forms/get(target-name)
+                  save has-form, true
+            miss
+              save nothing, 0
+      fork test, not(has-form)
+        hold
+          back false
+      fork test, not(state/number-fields/has(form-name))
+        hold
+          back false
+      back has-text(state/number-fields/get(form-name), member-name)
+    miss
+      back false
+
+# the atom key for a number field read through a plain path, or none for anything else
+task field-atom
+  take state, like hold-state
+  take expr, like expression
+  like maybe, like text
+
+  sift expr
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          link computed
+          back make none
+        case none
+          save nothing, 0
+      fork test, or(is-equal(member-name, <length>), digits-only(member-name))
+        hold
+          back make none
+      fork test, not(number-member(state, expr))
+        hold
+          back make none
+      fork test, is-kind-array(expression-type(member-target))
+        hold
+          back make none
+      sift plain-path(expr)
+        case some
+          link path
+          back make(some, <@field:{path}>)
+        case none
+          back make none
+    miss
+      back make none
+
+# ---- the linear translation ----
+
+# `bitwise-and`'s mask read as a constant: its own side facts are dropped
+task constant-mask
+  take state, like hold-state
+  take calls, like hold-calls
+  take e, like expression
+  like maybe, like float
+  mark private
+
+  sift to-linear(state, calls, e, facts())
+    case some
+      link l
+      back constant-of(l)
+    case none
+      back make none
+
+# translate an expression into a linear form, or none if it is not linear. Side facts (a remainder's range, a fresh
+# atom's bounds) are pushed onto `side` and become extra assumptions
+task to-linear
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take side, like list, like inequality
+  like maybe, like linear
+
+  sift expr
+    case integer
+      link literal
+      back within(constant-linear(literal-float(literal)))
+    case variable
+      link name
+      save made, atom-linear(name)
+      back make(some, made)
+    case binary
+      back binary-linear(state, calls, expr, side)
+    case member
+      back called-linear(state, calls, expr, side)
+    case call
+      back called-linear(state, calls, expr, side)
+    miss
+      back make none
+
+# a list's length, a number field, an application, or a call the translation knows
+task called-linear
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take side, like list, like inequality
+  like maybe, like linear
+  mark private
+
+  save width-read, width-of(state, expr)
+  sift application-key(state, expr)
+    case some
+      link applied
+      sift width-read
+        case some
+          link width
+          walk calls/width-facts(applied, width)
+            take q
+            push(side, q)
+        case none
+          save nothing, 0
+      save made, atom-linear(applied)
+      back make(some, made)
+    case none
+      save nothing, 0
+  # not pure, so each reading is a value of its own: a fresh atom, never equal to another reading of the call
+  sift width-read
+    case some
+      link width
+      save atom, <__width#{state/width-atoms}>
+      save state/width-atoms, add(state/width-atoms, 1)
+      walk calls/width-facts(atom, width)
+        take q
+        push(side, q)
+      save made, atom-linear(atom)
+      back make(some, made)
+    case none
+      save nothing, 0
+  sift expr
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link name
+          fork test, and(or(is-equal(name, <increment>), is-equal(name, <decrement>)), is-equal(args/length, 1))
+            hold
+              sift to-linear(state, calls, get(args, 0), side)
+                case some
+                  link inner
+                  save step, 1.0
+                  fork test, is-equal(name, <decrement>)
+                    hold
+                      save step, -1.0
+                  save made, add-linear(inner, constant-linear(step))
+                  back make(some, made)
+                case none
+                  back make none
+          fork test, and(state/extrema/has(name), is-equal(args/length, 2))
+            hold
+              save kind, state/extrema/get(name)
+              save a-read, to-linear(state, calls, get(args, 0), side)
+              save b-read, to-linear(state, calls, get(args, 1), side)
+              sift a-read
+                case some
+                  link a
+                  sift b-read
+                    case some
+                      link b
+                      save key, fresh-key(state, <__ext>)
+                      save e, atom-linear(key)
+                      fork test, is-equal(kind, <max>)
+                        hold
+                          push(side, at-least(e, a))
+                          push(side, at-least(e, b))
+                        miss
+                          push(side, at-most(e, a))
+                          push(side, at-most(e, b))
+                      save pair
+                        make extremum-pair
+                          bind kind, kind
+                          bind a, snapshot(state, a, side)
+                          bind b, snapshot(state, b, side)
+                      save state/extremum-arguments/{key}, pair
+                      back make(some, e)
+                    case none
+                      save nothing, 0
+                case none
+                  save nothing, 0
+          fork test, and(is-equal(name, <bitwise-and>), is-equal(args/length, 2))
+            hold
+              save mask-read, constant-mask(state, calls, get(args, 1))
+              sift mask-read
+                case none
+                  save mask-read, constant-mask(state, calls, get(args, 0))
+                case some
+                  link first-mask
+                  save nothing, 0
+              sift mask-read
+                case some
+                  link mask
+                  fork test, and(whole-float(mask), and(is-minimum(mask, 0.0), is-maximum(mask, 9007199254740991.0)))
+                    hold
+                      save bits, atom-linear(fresh-key(state, <__and>))
+                      push(side, at-least(bits, constant-linear(0.0)))
+                      push(side, at-most(bits, constant-linear(mask)))
+                      back make(some, bits)
+                case none
+                  save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  # a NUMBER FIELD of a record reached by a plain path is an atom too, keyed `@field:<path>`
+  sift field-atom(state, expr)
+    case some
+      link field
+      save made, atom-linear(field)
+      back make(some, made)
+    case none
+      save nothing, 0
+  sift length-atom(state, expr)
+    case some
+      link key
+      save atom, atom-linear(key)
+      push(side, at-least(atom, constant-linear(0.0)))
+      back make(some, atom)
+    case none
+      back make none
+
+# the bounds of a remainder by a positive constant k: -(k - 1) <= m <= k - 1, since every backend truncates
+task push-remainder-bounds
+  take m, like linear
+  take k, like float
+  take side, like list, like inequality
+  mark private
+
+  push(side, at-least(m, constant-linear(multiply(-1.0, subtract(k, 1.0)))))
+  push(side, at-most(m, constant-linear(subtract(k, 1.0))))
+
+task binary-linear
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take side, like list, like inequality
+  like maybe, like linear
+  mark private
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      save left-read, to-linear(state, calls, left-expr, side)
+      save right-read, to-linear(state, calls, right-expr, side)
+      # a remainder whose dividend is not linear still has a known size, from the divisor
+      sift op
+        case remainder
+          sift left-read
+            case none
+              sift right-read
+                case some
+                  link right
+                  save key, fresh-key(state, <__mod>)
+                  save m, atom-linear(key)
+                  sift constant-of(right)
+                    case none
+                      save state/mod-divisors/{key}, snapshot(state, right, side)
+                      back make(some, m)
+                    case some
+                      link k
+                      fork test, and(whole-float(k), is-above(k, 0.0))
+                        hold
+                          push-remainder-bounds(m, k, side)
+                          back make(some, m)
+                      back make none
+                case none
+                  save nothing, 0
+            case some
+              link left-known
+              save nothing, 0
+        miss
+          save nothing, 0
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              back combined-linear(state, expr, op, left, right, side)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+task combined-linear
+  take state, like hold-state
+  take expr, like expression
+  take op, like binary-op
+  take left, like linear
+  take right, like linear
+  take side, like list, like inequality
+  like maybe, like linear
+  mark private
+
+  sift op
+    case plus
+      back within(add-linear(left, right))
+    case minus
+      back within(add-linear(left, scale-linear(right, -1.0)))
+    case times
+      sift constant-of(right)
+        case some
+          link rc
+          back within(scale-linear(left, rc))
+        case none
+          save nothing, 0
+      sift constant-of(left)
+        case some
+          link lc
+          back within(scale-linear(right, lc))
+        case none
+          back make none
+    # `x / k` for a positive integer constant k: a fresh atom, the quotient TRUNCATED toward zero, never a float one
+    case divide
+      sift constant-of(right)
+        case some
+          link k
+          save floating, is-kind-float(expression-type(expr))
+          sift expr
+            case binary
+              save floating, or(floating, is-kind-float(expression-type(left)))
+            miss
+              save nothing, 0
+          fork test, and(and(whole-float(k), is-above(k, 0.0)), not(floating))
+            hold
+              save key, fresh-key(state, <__div>)
+              save made
+                make quotient
+                  bind dividend, snapshot(state, left, side)
+                  bind k, k
+              save state/quotients/{key}, made
+              save atom, atom-linear(key)
+              back make(some, atom)
+          back make none
+        case none
+          back make none
+    # x mod k is a fresh variable in [-(k-1), k-1], the dividend AS IT WAS kept, so a later write cannot change what its
+    # sign is decided from
+    case remainder
+      save key, fresh-key(state, <__mod>)
+      save m, atom-linear(key)
+      save state/mod-dividends/{key}, snapshot(state, left, side)
+      sift constant-of(right)
+        case some
+          link k
+          fork test, and(whole-float(k), is-above(k, 0.0))
+            hold
+              push-remainder-bounds(m, k, side)
+              back make(some, m)
+          back make none
+        case none
+          save state/mod-divisors/{key}, snapshot(state, right, side)
+          back make(some, m)
+    miss
+      back make none
+
+load ../compile/node
+  find binary-op
+
+# ---- what the signs decide ----
+
+# the facts the signs decide, for every remainder, quotient and extremum atom among these: what is proven comes from
+# the facts alone, never from the goal
+task signed-remainders
+  take state, like hold-state
+  take calls, like hold-calls
+  take all, like list, like inequality
+  take goals, like list, like inequality
+  like list, like inequality
+
+  save extra, facts()
+  save zero, constant-linear(0.0)
+  save one, constant-linear(1.0)
+  walk both-facts(all, goals)
+    take q
+    walk q/linear/terms/keys()
+      take key
+      save m, atom-linear(key)
+      fork test, state/mod-dividends/has(key)
+        hold
+          fork test, calls/proves(all, at-least(state/mod-dividends/get(key), zero))
+            hold
+              push(extra, at-least(m, zero))
+      fork test, state/quotients/has(key)
+        hold
+          save found, state/quotients/get(key)
+          save kq, scale-linear(m, found/k)
+          save slack, constant-linear(subtract(found/k, 1.0))
+          fork test, calls/proves(all, at-least(found/dividend, zero))
+            hold
+              push(extra, at-most(kq, found/dividend))
+              push(extra, at-most(found/dividend, add-linear(kq, slack)))
+            miss
+              fork test, calls/proves(all, at-most(found/dividend, zero))
+                hold
+                  push(extra, at-least(kq, found/dividend))
+                  push(extra, at-least(found/dividend, add-linear(kq, scale-linear(slack, -1.0))))
+      fork test, state/mod-divisors/has(key)
+        hold
+          save divisor, state/mod-divisors/get(key)
+          fork test, calls/proves(all, at-least(divisor, one))
+            hold
+              push(extra, at-most(m, add-linear(divisor, constant-linear(-1.0))))
+              push(extra, at-least(m, add-linear(scale-linear(divisor, -1.0), one)))
+            miss
+              fork test, calls/proves(all, at-most(divisor, constant-linear(-1.0)))
+                hold
+                  push(extra, at-most(m, add-linear(scale-linear(divisor, -1.0), constant-linear(-1.0))))
+                  push(extra, at-least(m, add-linear(divisor, one)))
+  # twice, so `min(min(r, g), b)` can use what the first pass found about the inner min
+  save pass, 0
+  walk test
+    hook test, is-below(pass, 2)
+    hook hold
+      walk extremum-bounds(state, calls, both-facts(all, extra), goals)
+        take q
+        push(extra, q)
+      save pass, add(pass, 1)
+  back extra
+
+task floats
+  like list, like float
+  mark private
+
+  back make list
+
+task has-float
+  take items, like list, like float
+  take one, like float
+  like boolean
+  mark private
+
+  walk items
+    take item
+    fork test, is-equal(item, one)
+      hold
+        back true
+  back false
+
+task by-size
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  save x, js-abs(a)
+  save y, js-abs(b)
+  fork test, is-below(x, y)
+    hold
+      back make less
+  fork test, is-above(x, y)
+    hold
+      back make greater
+  back make equal
+
+task ascending
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back make less
+  fork test, is-above(a, b)
+    hold
+      back make greater
+  back make equal
+
+task descending
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  back ascending(b, a)
+
+# the far side of every max or min atom among these: `max(a, b) <= c` when both a and b are, `min(a, b) >= c` when both
+# are. The candidates for c are the constants the facts mention, the 16 smallest, each confirmed for both arguments
+task extremum-bounds
+  take state, like hold-state
+  take calls, like hold-calls
+  take all, like list, like inequality
+  take goals, like list, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  save candidates, floats()
+  push(candidates, 0.0)
+  save every, both-facts(all, goals)
+  walk every
+    take q
+    save c, q/linear/constant
+    fork test, whole-float(c)
+      hold
+        fork test, not(has-float(candidates, c))
+          hold
+            push(candidates, c)
+        save negative, multiply(-1.0, c)
+        fork test, not(has-float(candidates, negative))
+          hold
+            push(candidates, negative)
+  save tried, floats()
+  walk sort(candidates, by-size)
+    take c
+    fork test, is-below(tried/length, 16)
+      hold
+        push(tried, c)
+  walk every
+    take q
+    walk q/linear/terms/keys()
+      take key
+      fork test, not(state/extremum-arguments/has(key))
+        hold
+          turn next
+      save pair, state/extremum-arguments/get(key)
+      save e, atom-linear(key)
+      save is-min, is-equal(pair/kind, <min>)
+      save ordered, sort(tried, ascending)
+      fork test, is-min
+        hold
+          save ordered, sort(tried, descending)
+      walk ordered
+        take c
+        save bound, constant-linear(c)
+        save both, false
+        fork test, is-min
+          hold
+            save both, and(calls/proves(all, at-least(pair/a, bound)), calls/proves(all, at-least(pair/b, bound)))
+          miss
+            save both, and(calls/proves(all, at-most(pair/a, bound)), calls/proves(all, at-most(pair/b, bound)))
+        fork test, both
+          hold
+            fork test, is-min
+              hold
+                push(out, at-least(e, bound))
+              miss
+                push(out, at-most(e, bound))
+            halt
+  back out
+
+# ---- polynomial facts ----
+
+# the facts a polynomial comparison contributes, in the same `<= 0` / `< 0` shape as `assumption-inequalities`
+task polynomial-facts
+  take state, like hold-state
+  take cond, like expression
+  take negated, like boolean
+  like list, like inequality
+
+  sift cond
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      save left-read, expand-polynomial(state, left-expr)
+      save right-read, expand-polynomial(state, right-expr)
+      sift left-read
+        case some
+          link left-poly
+          sift right-read
+            case some
+              link right-poly
+              save l, polynomial-linear(left-poly)
+              save r, polynomial-linear(right-poly)
+              back compared(op, l, r, negated)
+            case none
+              back facts()
+        case none
+          back facts()
+    miss
+      back facts()
+
+# a comparison as the facts it states, or its negation's. An equation's negation states none
+task compared
+  take op, like binary-op
+  take l, like linear
+  take r, like linear
+  take negated, like boolean
+  like list, like inequality
+  mark private
+
+  sift op
+    case below
+      fork test, negated
+        hold
+          back one-fact(at-least(l, r))
+      back one-fact(below(l, r))
+    case at-most
+      fork test, negated
+        hold
+          back one-fact(above(l, r))
+      back one-fact(at-most(l, r))
+    case above
+      fork test, negated
+        hold
+          back one-fact(at-most(l, r))
+      back one-fact(above(l, r))
+    case at-least
+      fork test, negated
+        hold
+          back one-fact(below(l, r))
+      back one-fact(at-least(l, r))
+    case equal
+      fork test, negated
+        hold
+          back facts()
+      back two-facts(at-most(l, r), at-least(l, r))
+    miss
+      back facts()
+
+# ---- the product prover's facts and goals ----
+
+task rational-table
+  like hash, like text, like rational
+  mark private
+
+  back make hash
+
+task fact-list
+  like list, like fact
+  mark private
+
+  back make list
+
+# a number map as exact rationals, or none when a coefficient is not a safe integer
+task from-numbers
+  take poly, like hash, like text, like float
+  like maybe, like hash, like text, like rational
+
+  save out, rational-table()
+  walk poly/keys()
+    take key
+    save c, poly/get(key)
+    fork test, not(safe-float(c))
+      hold
+        back make none
+    fork test, is-unequal(c, 0.0)
+      hold
+        save numerator
+          make big-integer
+            bind dock, rounded-big(c)
+        save out/{key}, rational-of(numerator, big-from-number(1))
+  back make(some, out)
+
+# the polynomial's negation: each rational's numerator negated
+task negative-of
+  take exact, like hash, like text, like rational
+  like hash, like text, like rational
+  mark private
+
+  save out, rational-table()
+  walk exact/keys()
+    take key
+    save r, exact/get(key)
+    save negated
+      make big-integer
+        bind dock, negated-big(r/n/dock)
+    save made
+      make rational
+        bind n, negated
+        bind d, r/d
+    save out/{key}, made
+  back out
+
+# two linear forms that are exact negatives (b == -a): a pair `a <= 0`, `-a <= 0` is how an equation `a == 0` is kept
+task negates-linear
+  take a, like linear
+  take b, like linear
+  like boolean
+
+  fork test, is-above(js-abs(add(a/constant, b/constant)), 0.000000001)
+    hold
+      back false
+  save keys, texts()
+  walk a/terms/keys()
+    take k
+    add-text(keys, k)
+  walk b/terms/keys()
+    take k
+    add-text(keys, k)
+  walk keys
+    take k
+    save x, 0.0
+    fork test, a/terms/has(k)
+      hold
+        save x, a/terms/get(k)
+    save y, 0.0
+    fork test, b/terms/has(k)
+      hold
+        save y, b/terms/get(k)
+    fork test, is-above(js-abs(add(x, y)), 0.000000001)
+      hold
+        back false
+  back true
+
+task index-flags
+  like list, like boolean
+  mark private
+
+  back make list
+
+# a linear fact `l <= 0` (`< 0`) as the product prover's `-l >= 0` (`> 0`), its atoms read back as monomials. A pair
+# `l <= 0`, `-l <= 0` is the equation `l == 0`, and is given as one, so products with it keep their sign free
+task product-facts
+  take available, like list, like inequality
+  like maybe, like list, like fact
+
+  save out, fact-list()
+  save used, index-flags()
+  walk available
+    take q
+    push(used, false)
+  save i, 0
+  walk available
+    take q
+    fork test, get(used, i)
+      hold
+        save i, add(i, 1)
+        turn next
+    save poly, number-terms()
+    walk q/linear/terms/keys()
+      take key
+      save c, q/linear/terms/get(key)
+      fork test, is-unequal(c, 0.0)
+        hold
+          save at, key
+          fork test, starts-with(key, poly-prefix())
+            hold
+              save at, substring(key, 6)
+            miss
+              # a key holding the monomial separator that is not a monomial would be misread as one
+              fork test, holds-nul(key)
+                hold
+                  back make none
+          save had, 0.0
+          fork test, poly/has(at)
+            hold
+              save had, poly/get(at)
+          save poly/{at}, subtract(had, c)
+    fork test, is-unequal(q/linear/constant, 0.0)
+      hold
+        save constant-key, <>
+        save poly/{constant-key}, multiply(-1.0, q/linear/constant)
+    sift from-numbers(poly)
+      case some
+        link exact
+        save partner, -1
+        fork test, not(q/strict)
+          hold
+            save j, 0
+            walk available
+              take b
+              fork test, and(and(is-above(j, i), not(get(used, j))), and(not(b/strict), negates-linear(q/linear, b/linear)))
+                hold
+                  save partner, j
+                  halt
+              save j, add(j, 1)
+        fork test, is-minimum(partner, 0)
+          hold
+            save used/{partner}, true
+            save made
+              make fact
+                bind polynomial, exact
+                bind relation, <zero>
+            push(out, made)
+          miss
+            save relation, <nonnegative>
+            fork test, q/strict
+              hold
+                save relation, <positive>
+            save made
+              make fact
+                bind polynomial, exact
+                bind relation, relation
+            push(out, made)
+      case none
+        back make none
+    save i, add(i, 1)
+  back make(some, out)
+
+# the variables a fact mentions, for keeping only the facts connected to the goal
+task fact-variables
+  take one, like fact
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk one/polynomial/keys()
+    take key
+    walk monomial-vars(key)
+      take v
+      push(out, v)
+  back out
+
+task is-comparison
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift op
+    case below
+      back true
+    case at-most
+      back true
+    case above
+      back true
+    case at-least
+      back true
+    case equal
+      back true
+    miss
+      back false
+
+task difference-of
+  take left, like hash, like text, like float
+  take right, like hash, like text, like float
+  like hash, like text, like float
+  mark private
+
+  save out, number-terms()
+  walk left/keys()
+    take key
+    save out/{key}, left/get(key)
+  walk right/keys()
+    take key
+    save had, 0.0
+    fork test, out/has(key)
+      hold
+        save had, out/get(key)
+    save out/{key}, subtract(had, right/get(key))
+  back out
+
+# the goal by its comparison: `>=` and `>` of the exact difference, `<=` and `<` of its negation, an equation both
+task proved-by-products
+  take calls, like hold-calls
+  take op, like binary-op
+  take kept, like list, like fact
+  take exact, like hash, like text, like rational
+  take multipliers, like maybe, like list, like text
+  like boolean
+  mark private
+
+  sift op
+    case at-least
+      back calls/product-proves(kept, exact, false, multipliers)
+    case above
+      back calls/product-proves(kept, exact, true, multipliers)
+    case at-most
+      back calls/product-proves(kept, negative-of(exact), false, multipliers)
+    case below
+      back calls/product-proves(kept, negative-of(exact), true, multipliers)
+    miss
+      fork test, not(calls/product-proves(kept, exact, false, multipliers))
+        hold
+          back false
+      back calls/product-proves(kept, negative-of(exact), false, multipliers)
+
+# the goal from the facts by linear combination alone (check/product.ts linear mode), over an ordered field. An equation
+# may be multiplied by any plain variable the facts or the goal read, never by an application
+task product-goal-linear
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take available, like list, like inequality
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      fork test, not(is-comparison(op))
+        hold
+          back false
+      save left-read, expand-polynomial(state, left-expr)
+      save right-read, expand-polynomial(state, right-expr)
+      save all-read, product-facts(available)
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              sift all-read
+                case some
+                  link all
+                  sift from-numbers(difference-of(left, right))
+                    case some
+                      link exact
+                      save multipliers, texts()
+                      walk all
+                        take one
+                        walk one/polynomial/keys()
+                          take monomial
+                          walk monomial-vars(monomial)
+                            take v
+                            fork test, not(is-application(state, v))
+                              hold
+                                add-text(multipliers, v)
+                      walk exact/keys()
+                        take monomial
+                        walk monomial-vars(monomial)
+                          take v
+                          fork test, not(is-application(state, v))
+                            hold
+                              add-text(multipliers, v)
+                      back proved-by-products(calls, op, all, exact, make(some, multipliers))
+                    case none
+                      back false
+                case none
+                  back false
+            case none
+              back false
+        case none
+          back false
+    miss
+      back false
+
+task reads-monomial-atom
+  take available, like list, like inequality
+  like boolean
+  mark private
+
+  walk available
+    take q
+    walk q/linear/terms/keys()
+      take k
+      fork test, starts-with(k, poly-prefix())
+        hold
+          back true
+  back false
+
+# a comparison goal proven by products of the facts: `L >= R` is `L - R >= 0`, an equation is both. Only the facts
+# that share a variable with the goal, directly or through other facts, are given, at most thirteen
+task product-goal
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take available, like list, like inequality
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case both
+          fork test, not(product-goal(state, calls, left-expr, available))
+            hold
+              back false
+          back product-goal(state, calls, right-expr, available)
+        miss
+          save nothing, 0
+      fork test, not(is-comparison(op))
+        hold
+          back false
+      save left-read, expand-polynomial(state, left-expr)
+      save right-read, expand-polynomial(state, right-expr)
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              save nonlinear, or(or(is-above(polynomial-degree(left), 1), is-above(polynomial-degree(right), 1)), reads-monomial-atom(available))
+              fork test, not(nonlinear)
+                hold
+                  back false
+              sift product-facts(available)
+                case some
+                  link all
+                  sift from-numbers(difference-of(left, right))
+                    case some
+                      link exact
+                      save reach, texts()
+                      walk exact/keys()
+                        take key
+                        walk monomial-vars(key)
+                          take v
+                          add-text(reach, v)
+                      save kept, fact-list()
+                      save grew, true
+                      walk test
+                        hook test, grew
+                        hook hold
+                          save grew, false
+                          save kept, fact-list()
+                          walk all
+                            take one
+                            save touches, false
+                            walk fact-variables(one)
+                              take v
+                              fork test, has-text(reach, v)
+                                hold
+                                  save touches, true
+                                  halt
+                            fork test, touches
+                              hold
+                                push(kept, one)
+                          walk kept
+                            take one
+                            walk fact-variables(one)
+                              take v
+                              fork test, not(has-text(reach, v))
+                                hold
+                                  push(reach, v)
+                                  save grew, true
+                      fork test, is-above(kept/length, 13)
+                        hold
+                          back false
+                      back proved-by-products(calls, op, kept, exact, make none)
+                    case none
+                      back false
+                case none
+                  back false
+            case none
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# the facts refute -1 >= 0 with products of them
+task refuted-by-products
+  take calls, like hold-calls
+  take known, like list, like inequality
+  like boolean
+
+  save given, fact-list()
+  sift product-facts(known)
+    case some
+      link all
+      save given, all
+    case none
+      save nothing, 0
+  save minus-one, rational-table()
+  save constant-key, <>
+  save minus-one/{constant-key}, rational-of(big-subtract(big-from-number(0), big-from-number(1)), big-from-number(1))
+  save no-multipliers, texts()
+  back calls/product-proves(given, minus-one, false, make(some, no-multipliers))
+
+# ---- integer contradiction ----
+
+# are the assumptions INTEGER-INCONSISTENT? A pair `a <= 0`, `-a <= 0` encodes `a == 0`, which by Bezout has no integer
+# solution when the gcd of its coefficients does not divide its constant: the branch is unreachable and every goal in it
+# holds vacuously. A pure constant equation is contradictory exactly when the constant is not zero
+task integer-inconsistent
+  take assumptions, like list, like inequality
+  like boolean
+
+  save i, 0
+  walk assumptions
+    take a
+    save at, i
+    save i, add(i, 1)
+    fork test, a/strict
+      hold
+        turn next
+    save equality, false
+    save j, 0
+    walk assumptions
+      take b
+      fork test, and(is-unequal(j, at), and(not(b/strict), negates-linear(a/linear, b/linear)))
+        hold
+          save equality, true
+          halt
+      save j, add(j, 1)
+    fork test, not(equality)
+      hold
+        turn next
+    save coefficients, floats()
+    walk a/linear/terms/values()
+      take c
+      save size, js-abs(c)
+      fork test, is-above(size, 0.000000000001)
+        hold
+          push(coefficients, js-round(size))
+    fork test, is-equal(coefficients/length, 0)
+      hold
+        fork test, is-above(js-abs(a/linear/constant), 0.000000001)
+          hold
+            back true
+        turn next
+    save divisor, 0.0
+    walk coefficients
+      take c
+      save divisor, greatest-common-divisor(divisor, c)
+    fork test, and(is-above(divisor, 1.0), is-unequal(js-remainder(js-round(a/linear/constant), divisor), 0.0))
+      hold
+        back true
+  back false
+
+# ---- goals ----
+
+# a goal's inequalities, all of which must hold (an equation is two), or none outside the linear fragment
+task goal-inequalities
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take side, like list, like inequality
+  like maybe, like list, like inequality
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case both
+          save left-goal, goal-inequalities(state, calls, left-expr, side)
+          save right-goal, goal-inequalities(state, calls, right-expr, side)
+          sift left-goal
+            case some
+              link l
+              sift right-goal
+                case some
+                  link r
+                  save joined, both-facts(l, r)
+                  back make(some, joined)
+                case none
+                  back make none
+            case none
+              back make none
+        miss
+          save nothing, 0
+      save left-read, to-linear(state, calls, left-expr, side)
+      save right-read, to-linear(state, calls, right-expr, side)
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              fork test, not(is-comparison(op))
+                hold
+                  back make none
+              save stated, compared(op, left, right, false)
+              back make(some, stated)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+# whether a hold's goal lies in the decidable fragment: a nonlinear non-negativity proven here, a disequality whose
+# sides are linear, or a goal whose inequalities are
+task is-linear-goal
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  like boolean
+
+  fork test, nonlinear-proves(state, expr, calls/note-uncertified)
+    hold
+      back true
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case unequal
+          save side, facts()
+          sift to-linear(state, calls, left-expr, side)
+            case some
+              link l
+              sift to-linear(state, calls, right-expr, side)
+                case some
+                  link r
+                  back true
+                case none
+                  back false
+            case none
+              back false
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  sift goal-inequalities(state, calls, expr, facts())
+    case some
+      link found
+      back true
+    case none
+      back false
+
+# a rule's hypotheses and goal, as the mill lowers them: nested single-branch guards around one named hold. None for a
+# rule of any other shape, or one that binds a `find`
+task theorem-parts
+  take rule, like statement
+  like maybe, like rule-parts
+
+  sift rule
+    case function
+      link rule-name
+      link params
+      link rule-body
+      save hypotheses, expressions()
+      save body, rule-body
+      walk test
+        hook test, true
+        hook hold
+          walk body
+            take s
+            sift s
+              case let
+                back make none
+              miss
+                save nothing, 0
+          walk body
+            take s
+            sift s
+              case hold
+                link held-expr
+                fork test, is-equal(hold-name(s), rule-name)
+                  hold
+                    save made
+                      make rule-parts
+                        bind hypotheses, hypotheses
+                        bind goal, held-expr
+                    back make(some, made)
+              miss
+                save nothing, 0
+          save guard-found, false
+          walk body
+            take s
+            sift s
+              case if
+                link branches
+                link otherwise
+                save guard-found, true
+                fork test, is-unequal(branches/length, 1)
+                  hold
+                    back make none
+                sift otherwise
+                  case some
+                    link else-body
+                    back make none
+                  case none
+                    save nothing, 0
+                push(hypotheses, get(branches, 0)/cond)
+                save body, get(branches, 0)/body
+                halt
+              miss
+                save nothing, 0
+          fork test, not(guard-found)
+            hold
+              back make none
+    miss
+      back make none
+  back make none
+
+# a hold's name, `''` for one with none (no rule is named `''`)
+bind hold-name
+  take s, like statement
+  like text
+  case node
+    text <($s.name ?? '\\u0001')>
+  case browser
+    text <($s.name ?? '\\u0001')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# two expressions written the same, ignoring where they were written and what inference annotated
+task written-alike
+  take a, like expression
+  take b, like expression
+  like boolean
+
+  back is-equal(bare-json(a), bare-json(b))
+
+# Does a goal follow from the facts over EVERY ordered field: by a linear combination of them or by the product
+# prover's certificate, never by integer tightening or the integer ex falso
+task field-provable
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case both
+          fork test, not(field-provable(state, calls, left-expr, known))
+            hold
+              back false
+          back field-provable(state, calls, right-expr, known)
+        case either
+          fork test, or(field-provable(state, calls, left-expr, known), field-provable(state, calls, right-expr, known))
+            hold
+              back true
+          save not-left, or-polynomial(calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
+          save not-right, or-polynomial(calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
+          fork test, and(is-above(not-left/length, 0), field-provable(state, calls, right-expr, both-facts(known, not-left)))
+            hold
+              back true
+          back and(is-above(not-right/length, 0), field-provable(state, calls, left-expr, both-facts(known, not-right)))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  fork test, product-goal-linear(state, calls, expr, known)
+    hold
+      back true
+  back product-goal(state, calls, expr, known)
+
+# THE FAST PATH: a goal that is a linear combination of the facts, conjunct by conjunct, building no products
+task linearly-provable
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case both
+          fork test, not(linearly-provable(state, calls, left-expr, known))
+            hold
+              back false
+          back linearly-provable(state, calls, right-expr, known)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back product-goal-linear(state, calls, expr, known)
+
+# AN ORDER FROM FACTS, for the kernel closing an induction case over its own atoms
+task order-follows
+  take state, like hold-state
+  take calls, like hold-calls
+  take goal, like expression
+  take stated-facts, like list, like expression
+  like boolean
+
+  save known, facts()
+  walk stated-facts
+    take fact
+    save side, facts()
+    save stated, assumption-inequalities(state, calls, fact, false, side)
+    walk side
+      take q
+      push(known, q)
+    walk stated
+      take q
+      push(known, q)
+  fork test, linearly-provable(state, calls, goal, known)
+    hold
+      back true
+  sift goal-provable(state, calls, goal, known)
+    case proven
+      back true
+    miss
+      back false
+
+task is-proven
+  take verdict, like goal-verdict
+  like boolean
+  mark private
+
+  sift verdict
+    case proven
+      back true
+    miss
+      back false
+
+task is-outside
+  take verdict, like goal-verdict
+  like boolean
+  mark private
+
+  sift verdict
+    case outside
+      back true
+    miss
+      back false
+
+# decide whether a goal is provable from the assumptions, handling the propositional structure: PROVEN, UNPROVEN in the
+# linear fragment, or OUTSIDE it
+task goal-provable
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take available, like list, like inequality
+  like goal-verdict
+
+  # a theorem with universal hypotheses is decided by instantiating them, over an ordered field and nothing else
+  fork test, is-above(state/universal-hypotheses/length, 0)
+    hold
+      fork test, universal-goal(state, calls, expr, available, expressions())
+        hold
+          back make proven
+      back make unproven
+
+  # EX FALSO: assumptions with no integer solution make the branch unreachable
+  fork test, integer-inconsistent(available)
+    hold
+      back make proven
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case either
+          save left, goal-provable(state, calls, left-expr, available)
+          fork test, is-proven(left)
+            hold
+              back make proven
+          save right, goal-provable(state, calls, right-expr, available)
+          fork test, is-proven(right)
+            hold
+              back make proven
+          # a disjunctive TAUTOLOGY: assuming one side false proves the other
+          save not-left, or-polynomial(calls, assumption-inequalities(state, calls, left-expr, true, facts()), left-expr)
+          fork test, is-above(not-left/length, 0)
+            hold
+              fork test, is-proven(goal-provable(state, calls, right-expr, both-facts(available, not-left)))
+                hold
+                  back make proven
+          save not-right, or-polynomial(calls, assumption-inequalities(state, calls, right-expr, true, facts()), right-expr)
+          fork test, is-above(not-right/length, 0)
+            hold
+              fork test, is-proven(goal-provable(state, calls, left-expr, both-facts(available, not-right)))
+                hold
+                  back make proven
+          fork test, and(is-outside(left), is-outside(right))
+            hold
+              back make outside
+          back make unproven
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+  # a nonlinear non-negativity goal holds for every assignment, no assumptions needed
+  fork test, nonlinear-proves(state, expr, calls/note-uncertified)
+    hold
+      back make proven
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case unequal
+          back disequality-provable(state, calls, left-expr, right-expr, available)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+  save side, facts()
+  sift goal-inequalities(state, calls, expr, side)
+    case some
+      link goals
+      save known, both-facts(available, side)
+      save all, both-facts(known, signed-remainders(state, calls, known, goals))
+      save every, true
+      walk goals
+        take goal
+        fork test, not(calls/proves(all, goal))
+          hold
+            save every, false
+            halt
+      fork test, or(every, product-goal(state, calls, expr, available))
+        hold
+          back make proven
+      back make unproven
+    case none
+      # a polynomial goal is proven, when it can be, by products of the facts
+      fork test, product-goal(state, calls, expr, available)
+        hold
+          back make proven
+      back make outside
+
+# a DISEQUALITY `L != R`: by STRICT SEPARATION (`L < R` everywhere, or `L > R`), or by the integer gcd test, which finds
+# `L == R` has no integer solution when the shared factor of its coefficients does not divide its constant
+task disequality-provable
+  take state, like hold-state
+  take calls, like hold-calls
+  take left-expr, like expression
+  take right-expr, like expression
+  take available, like list, like inequality
+  like goal-verdict
+  mark private
+
+  save dside, facts()
+  save left-read, to-linear(state, calls, left-expr, dside)
+  save right-read, to-linear(state, calls, right-expr, dside)
+  sift left-read
+    case some
+      link left
+      sift right-read
+        case some
+          link right
+          save known, both-facts(available, dside)
+          save all, both-facts(known, signed-remainders(state, calls, known, one-fact(below(left, right))))
+          fork test, or(calls/proves(all, below(left, right)), calls/proves(all, above(left, right)))
+            hold
+              back make proven
+          save diff, add-linear(left, scale-linear(right, -1.0))
+          save coefficients, floats()
+          walk diff/terms/values()
+            take c
+            save size, js-abs(c)
+            fork test, is-unequal(size, 0.0)
+              hold
+                push(coefficients, size)
+          fork test, is-equal(coefficients/length, 0)
+            hold
+              fork test, is-unequal(diff/constant, 0.0)
+                hold
+                  back make proven
+              back make unproven
+          save divisor, 0.0
+          walk coefficients
+            take c
+            save divisor, greatest-common-divisor(divisor, c)
+          fork test, and(is-above(divisor, 1.0), is-unequal(js-remainder(diff/constant, divisor), 0.0))
+            hold
+              back make proven
+          back make unproven
+        case none
+          back make outside
+    case none
+      back make outside
+
+# ---- assumptions ----
+
+# a condition used as a path assumption: the inequalities it contributes, optionally negated. Conjunctions contribute
+# both sides, and anything outside the linear fragment contributes nothing
+task assumption-inequalities
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take negated, like boolean
+  take side, like list, like inequality
+  like list, like inequality
+
+  sift expr
+    case unary
+      link op
+      link operand
+      sift op
+        case not
+          back assumption-inequalities(state, calls, operand, not(negated), side)
+        miss
+          back facts()
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      sift op
+        case both
+          fork test, not(negated)
+            hold
+              save left-facts, assumption-inequalities(state, calls, left-expr, false, side)
+              back both-facts(left-facts, assumption-inequalities(state, calls, right-expr, false, side))
+        # not (a or b) is (not a) and (not b)
+        case either
+          fork test, negated
+            hold
+              save left-facts, assumption-inequalities(state, calls, left-expr, true, side)
+              back both-facts(left-facts, assumption-inequalities(state, calls, right-expr, true, side))
+        miss
+          save nothing, 0
+      save left-read, to-linear(state, calls, left-expr, side)
+      save right-read, to-linear(state, calls, right-expr, side)
+      sift left-read
+        case some
+          link left
+          sift right-read
+            case some
+              link right
+              sift op
+                case unequal
+                  fork test, negated
+                    hold
+                      back two-facts(at-most(left, right), at-least(left, right))
+                  back non-empty(left, right)
+                case equal
+                  fork test, negated
+                    hold
+                      back non-empty(left, right)
+                  back two-facts(at-most(left, right), at-least(left, right))
+                miss
+                  back compared(op, left, right, negated)
+            case none
+              back facts()
+        case none
+          back facts()
+    miss
+      back facts()
+
+# A disequality is a disjunction and is not assumed, with ONE exact exception: a length is never negative, so
+# `length != 0` is `length >= 1`
+task non-empty
+  take left, like linear
+  take right, like linear
+  like list, like inequality
+
+  save difference, add-linear(left, scale-linear(right, -1.0))
+  save keys, texts()
+  save values, floats()
+  walk difference/terms/keys()
+    take key
+    save c, difference/terms/get(key)
+    fork test, is-unequal(c, 0.0)
+      hold
+        push(keys, key)
+        push(values, c)
+  fork test, and(and(is-equal(keys/length, 1), is-equal(difference/constant, 0.0)), and(starts-with(get(keys, 0), <@length:>), is-equal(js-abs(get(values, 0)), 1.0)))
+    hold
+      back one-fact(at-least(atom-linear(get(keys, 0)), constant-linear(1.0)))
+  back facts()
+
+# what a branch condition lets the branch assume, conjunct by conjunct: a pure conjunct is assumed even beside one that
+# calls something impure. A comparison of polynomials is kept over monomial atoms, and `a != b` where what is known
+# already orders them is strict
+task condition-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take cond, like expression
+  take negated, like boolean
+  take side, like list, like inequality
+  take impure
+    like task
+      take e, like expression
+      like boolean
+  take known, like list, like inequality
+  like list, like inequality
+
+  sift cond
+    case unary
+      link op
+      link operand
+      sift op
+        case not
+          back condition-facts(state, calls, operand, not(negated), side, impure, known)
+        miss
+          save nothing, 0
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      save splits, false
+      sift op
+        case both
+          save splits, not(negated)
+        case either
+          save splits, negated
+        miss
+          save nothing, 0
+      fork test, splits
+        hold
+          save left-facts, condition-facts(state, calls, left-expr, negated, side, impure, known)
+          back both-facts(left-facts, condition-facts(state, calls, right-expr, negated, side, impure, known))
+    miss
+      save nothing, 0
+  fork test, impure(cond)
+    hold
+      back facts()
+  save found, assumption-inequalities(state, calls, cond, negated, side)
+  fork test, is-equal(found/length, 0)
+    hold
+      walk polynomial-facts(state, cond, negated)
+        take q
+        push(found, q)
+  sift cond
+    case binary
+      link op
+      link left-expr
+      link right-expr
+      save unequal, false
+      sift op
+        case equal
+          save unequal, negated
+        case unequal
+          save unequal, not(negated)
+        miss
+          save nothing, 0
+      fork test, and(unequal, is-above(known/length, 0))
+        hold
+          save left-read, to-linear(state, calls, left-expr, side)
+          save right-read, to-linear(state, calls, right-expr, side)
+          sift left-read
+            case some
+              link left
+              sift right-read
+                case some
+                  link right
+                  save all, both-facts(known, side)
+                  fork test, calls/proves(all, at-least(left, right))
+                    hold
+                      push(found, at-least(left, add-linear(right, constant-linear(1.0))))
+                    miss
+                      fork test, calls/proves(all, at-most(left, right))
+                        hold
+                          push(found, at-most(left, add-linear(right, constant-linear(-1.0))))
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back found
+
+# equality assumptions from an immutable binding `x = e`: x <= e and x >= e. A POLYNOMIAL value is kept over monomial
+# atoms, unless it reads the name it defines
+task binding-equalities
+  take state, like hold-state
+  take calls, like hold-calls
+  take name, like text
+  take value, like expression
+  take side, like list, like inequality
+  like list, like inequality
+
+  save lhs, atom-linear(name)
+  sift to-linear(state, calls, value, side)
+    case some
+      link rhs
+      back two-facts(at-most(lhs, rhs), at-least(lhs, rhs))
+    case none
+      sift expand-polynomial(state, value)
+        case some
+          link poly
+          walk poly/keys()
+            take key
+            fork test, has-text(monomial-vars(key), name)
+              hold
+                back facts()
+          save value-linear, polynomial-linear(poly)
+          back two-facts(at-most(lhs, value-linear), at-least(lhs, value-linear))
+        case none
+          back facts()

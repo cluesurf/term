@@ -1,0 +1,2107 @@
+# THE TYPESCRIPT EMITTER: a statement, an expression, a view component and a task's unchecked or reusing copy written as
+# clean TypeScript (compile/typescript.ts says what each choice buys and when it was made).
+#
+# Ported from compile/typescript.ts's `makeEmitter` (self-hosting, 2026-10-06). typescript.ts stays the face: it reads
+# the program's forms into the tables below, runs the analyses, and keeps `emitTypeScript`, which asks this for each
+# statement and writes the preludes the emitter's flags call for.
+#
+# What crosses, and how:
+#   - the program's tables (its forms' fields, tags and texts, its tasks' parameters, its binds) as one `emit-facts`
+#   - every analysis answer keyed by a NODE (a proven step, a loop's guard, a place write, a reuse site, a tail return,
+#     a redeclared `let`, a cursor read) as a test the face answers on its own maps, so nothing here needs identity
+#   - the emitter's mutable state (the prelude flags, the field-less constants and guards, the narrowed arms, the
+#     loop copy being written) as one `mark shared` `emit-state`, which the face reads back
+#
+# The original wrote `fastCalls.has(node)` for the calls of the loop copy being written: here the loops whose fast copy
+# is being written are a stack, and the face is asked whether a call is one of a loop's. The original's `reused === node`
+# is the face's `same-node`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find split
+
+load ./node
+  find type
+  find expression
+  find statement
+  find view-node
+  find field-value
+  find function-param
+  find expression-type
+  find statement-span
+
+load ./ts-names
+  find to-camel
+  find to-member
+  find to-pascal
+  find ts-type
+  find ts-empty-of
+  find empty-stored
+  find optional-maybe
+  find structural-type
+  find map-key-type
+  find map-key
+  find integer-division
+  find is-primary
+  find guard-start
+  find collect-assigned
+  find tail-shadowed
+  find arm-only-reads
+  find fill-spec-of
+  find fill-spec
+  find fill-kind
+  find ts-field
+
+load ./backend-shapes
+  find string-call
+  find string-read
+  find map-collect-of
+  find is-text
+
+load ./backend-names
+  find names-in
+  find map-update-of
+  find fill-call-of
+  find fill
+
+load ./node-children
+  find node-handle
+  find block-handles
+
+load ./type-text
+  find integer-text
+
+load ./bind
+  find render-bind
+  find bind-gap
+
+load ./render-names
+  find render-names
+
+load ./lowered-members
+  find list-length-tasks
+
+load ../check/arm
+  find arm-locals
+
+load ../ir/facts/guards
+  find list-key
+
+load ../term/quote
+  find json-quote
+
+# ---- what the face hands in ----
+
+# one bound a loop's guard checks (ir/facts/bounds.ts `BoundCheck`): `base + offset` against 0 or the list's length
+form bound-check
+  link list, like text
+  link base
+    like text
+    need false
+  link offset, like number
+  link side, like text
+  link path
+    like maybe, like expression
+    need false
+
+# a bound on a name the guard also reads (`Limit`)
+form bound-limit
+  link name, like text
+  link low
+    like boolean
+    need false
+  link high
+    like number
+    need false
+
+form loop-guard
+  link checks, like list, like bound-check
+  link limits
+    like list, like bound-limit
+    need false
+
+# a record written back to its slot, its changed fields assigned on the object already there (compile/place.ts)
+form place-write
+  link local, like text
+  link fields, like list, like field-value
+  link temps, like boolean
+
+# a task a reuse site calls: the record parameter's position, and the field a carrier keeps alone, `''` for none
+form reuse-task
+  link param, like number
+  link keep, like text
+
+form emit-facts
+  link variants, like hash, like text, like boolean
+  link variant-fields, like hash, like text, like list, like ts-field
+  link variant-fields-by-owner, like hash, like text, like hash, like text, like list, like ts-field
+  link record-fields, like hash, like text, like list, like ts-field
+  link shared-forms, like hash, like text, like boolean
+  link identity, like hash, like text, like boolean
+  link text-by-owner, like hash, like text, like hash, like text, like text
+  link text-by-variant, like hash, like text, like text
+  link tag-by-owner, like hash, like text, like text
+  link tag-by-variant, like hash, like text, like text
+  link function-params, like hash, like text, like list, like function-param
+  link exceptions, like hash, like text, like boolean
+  link dock-names, like hash, like text, like boolean
+  link opaque, like hash, like text, like text
+  link binds, like hash, like text, like statement
+  link fills, like hash, like text, like fill
+  link copy-params, like hash, like text, like hash, like number, like boolean
+  link plain-records, like hash, like text, like boolean
+  link env, like text
+  link hmr, like boolean
+  # the analyses' answers about nodes, each asked of the face
+  link is-proven
+    like task
+      take node, like expression
+      like boolean
+  link loop-guard-of
+    like task
+      take node, like statement
+      like maybe, like loop-guard
+  link is-fast-in
+    like task
+      take node, like expression
+      take loop, like statement
+      like boolean
+  link place-of
+    like task
+      take node, like statement
+      like maybe, like place-write
+  link copy-of-let
+    like task
+      take node, like statement
+      like maybe, like boolean
+  link is-ascii
+    like task
+      take node, like expression
+      like boolean
+  link is-reuse-site
+    like task
+      take node, like expression
+      like boolean
+  link reuse-kept-of
+    like task
+      take node, like statement
+      like maybe, like text
+  link is-write-back
+    like task
+      take node, like statement
+      like boolean
+  link reuse-task-of
+    like task
+      take name, like text
+      like maybe, like reuse-task
+  link is-build
+    like task
+      take task-name, like text
+      take node, like expression
+      like boolean
+  link is-carrier
+    like task
+      take task-name, like text
+      take node, like expression
+      like boolean
+  link has-tails
+    like task
+      take name, like text
+      like boolean
+  link is-tail-return
+    like task
+      take task-name, like text
+      take node, like statement
+      like boolean
+  link is-redeclared
+    like task
+      take fn, like statement
+      take node, like statement
+      like boolean
+  link cursor-names
+    like task
+      take fn, like statement
+      like list, like text
+  link cursor-of
+    like task
+      take fn, like statement
+      take node, like expression
+      like maybe, like text
+  link same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+
+# ---- the emitter's state ----
+
+form reusing
+  link param, like text
+  link task, like text
+  link keep, like text
+
+form tailing
+  link task, like text
+  link params, like list, like text
+  link types, like list, like text
+  link held, like boolean
+
+form emit-state
+  mark shared
+  # the prelude flags: each set when the emitted text calls the helper it names
+  link form-walk-used, like boolean
+  link host-used, like boolean
+  link maybe-field-used, like boolean
+  link int-used, like boolean
+  link equal-used, like boolean
+  link text-used, like boolean
+  link list-used, like boolean
+  # the field-less variants' constants and the identity guards a match called, each in the order first met
+  link fieldless, like hash, like text, like text
+  link guards, like hash, like text, like text
+  # the case each match subject is narrowed to while its arm is written, by the subject's name
+  link arm-cases, like hash, like text, like text
+  # the lists the loop copy being written reads unchecked, and the lists it read once before it, by key
+  link unchecked-lists, like list, like text
+  link hoisted, like hash, like text, like text
+  # set while an assignment writes its target, and while a walk reads the list it walks
+  link writing-target, like boolean
+  link walked-list, like boolean
+  link path-count, like number
+  link tested-count, like number
+  link reuse-count, like number
+  # the loops whose fast copy is being written, innermost last
+  link fast-loops, like list, like statement
+  link fast-tasks, like list, like text
+  link reuse-tasks, like list, like text
+  # the task being written: its cursors and redeclared `let`s are asked of it
+  link current-fn
+    like maybe, like statement
+  link reusing
+    like maybe, like reusing
+  link carrier-locals, like hash, like text, like text
+  link reused
+    like maybe, like expression
+  link tailing
+    like maybe, like tailing
+  link unchecked-ints, like boolean
+  link assigned-names, like list, like text
+
+task new-emit-state
+  take fieldless, like hash, like text, like text
+  take guards, like hash, like text, like text
+  like emit-state
+
+  back
+    make emit-state
+      bind form-walk-used, false
+      bind host-used, false
+      bind maybe-field-used, false
+      bind int-used, false
+      bind equal-used, false
+      bind text-used, false
+      bind list-used, false
+      bind fieldless, fieldless
+      bind guards, guards
+      bind arm-cases, text-texts()
+      bind unchecked-lists, make list
+      bind hoisted, text-texts()
+      bind writing-target, false
+      bind walked-list, false
+      bind path-count, 0
+      bind tested-count, 0
+      bind reuse-count, 0
+      bind fast-loops, make list
+      bind fast-tasks, make list
+      bind reuse-tasks, make list
+      bind current-fn, make none
+      bind reusing, make none
+      bind carrier-locals, text-texts()
+      bind reused, make none
+      bind tailing, make none
+      bind unchecked-ints, false
+      bind assigned-names, make list
+
+# ---- small helpers ----
+
+task text-texts
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}  >
+      save at, add(at, 1)
+  back out
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case array
+          back <array>
+        case map
+          back <map>
+        case named
+          back <named>
+        case function
+          back <function>
+        case unit
+          back <unit>
+        case dynamic
+          back <dynamic>
+        miss
+          back <other>
+    case none
+      back <>
+
+task named-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          back type-name
+        miss
+          back <>
+    case none
+      back <>
+
+# the element type of a list type, none for any other
+task element-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          link element
+          back make(some, element)
+        miss
+          back make none
+    case none
+      back make none
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# the number a run of digits spells
+task digits-value
+  take digits, like text
+  like number
+  mark private
+
+  save value, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(digits))
+    hook hold
+      save value, add(multiply(value, 10), subtract(char-code-at(digits, at), 48))
+      save at, add(at, 1)
+  back value
+
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+task is-name-start-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(is-equal(code, 95), is-equal(code, 36)))
+
+# `^[A-Za-z_$][\w$]*$`: one JavaScript name
+task is-identifier
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  fork test, not(is-name-start-code(char-code-at(text, 0)))
+    hold
+      back false
+  save at, 1
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(or(is-word-code(code), is-equal(code, 36)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# `^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$`: a name or a member chain of names
+task is-dotted-name
+  take text, like text
+  like boolean
+  mark private
+
+  walk split(text, <.>)
+    take part
+    fork test, not(is-identifier(part))
+      hold
+        back false
+  back true
+
+# `^[\w.]+$`
+task is-plain-text
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(or(is-word-code(code), is-equal(code, 46)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# `^(\{|function\b)`: a statement JavaScript would read as a block or a declaration
+task opens-block
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(text, <\{>)
+    hold
+      back true
+  fork test, not(starts-with(text, <function>))
+    hold
+      back false
+  fork test, is-equal(char-count(text), 8)
+    hold
+      back true
+  back not(is-word-code(char-code-at(text, 8)))
+
+# the text before the first `.`
+task root-text
+  take text, like text
+  like text
+  mark private
+
+  back get(split(text, <.>), 0)
+
+# a block's text with its first `{\n` given more after it, as `.replace(/^\{\n/, ...)` did
+task after-open
+  take text, like text
+  take more, like text
+  like text
+  mark private
+
+  fork test, starts-with(text, <\{\n>)
+    hold
+      back <\{\n{more}{substring(text, 2)}>
+  back text
+
+# a template's chunk, escaped for a backquoted literal: `\` and the backquote, `${`, and a carriage return as `\r`
+task template-chunk
+  take value, like text
+  like text
+  mark private
+
+  save out, <>
+  save size, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(value, at)
+      save code, char-code-at(value, at)
+      fork test, or(is-equal(code, 92), is-equal(code, 96))
+        hold
+          save out, <{out}\\{one}>
+        miss
+          fork test, and(is-equal(code, 36), and(is-below(add(at, 1), size), is-equal(char-code-at(value, add(at, 1)), 123)))
+            hold
+              save out, <{out}\\$\{>
+              save at, add(at, 1)
+            miss
+              fork test, is-equal(code, 13)
+                hold
+                  save out, <{out}\\r>
+                miss
+                  save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# ---- what the program declares ----
+
+# the case each match subject is narrowed to wins; else a struct's field, else the one any case of the union declares
+task declared-field-of
+  take target, like expression
+  take name, like text
+  take st, like emit-state
+  take facts, like emit-facts
+  like maybe, like ts-field
+  mark private
+
+  save owner, named-of(expression-type(target))
+  sift target
+    case variable
+      link variable-name
+      fork test, and(is-unequal(owner, <>), st/arm-cases/has(variable-name))
+        hold
+          save label, st/arm-cases/get(variable-name)
+          fork test, facts/variant-fields-by-owner/has(owner)
+            hold
+              save cases, facts/variant-fields-by-owner/get(owner)
+              fork test, cases/has(label)
+                hold
+                  walk cases/get(label)
+                    take field
+                    fork test, is-equal(field/name, name)
+                      hold
+                        back make(some, field)
+    miss
+      save nothing, 0
+  back declared-field(owner, name, facts)
+
+task declared-field
+  take owner, like text
+  take name, like text
+  take facts, like emit-facts
+  like maybe, like ts-field
+  mark private
+
+  fork test, is-equal(owner, <>)
+    hold
+      back make none
+  fork test, facts/record-fields/has(owner)
+    hold
+      walk facts/record-fields/get(owner)
+        take field
+        fork test, is-equal(field/name, name)
+          hold
+            back make(some, field)
+  fork test, facts/variant-fields-by-owner/has(owner)
+    hold
+      save cases, facts/variant-fields-by-owner/get(owner)
+      walk cases/keys()
+        take label
+        walk cases/get(label)
+          take field
+          fork test, is-equal(field/name, name)
+            hold
+              back make(some, field)
+  back make none
+
+# whether a field is a `need false` maybe (D10)
+task maybe-field
+  take field, like maybe, like ts-field
+  like boolean
+  mark private
+
+  sift field
+    case some
+      link known
+      sift optional-maybe(known)
+        case some
+          back true
+        case none
+          back false
+    case none
+      back false
+
+# the declared fields of one variant, through the enum the construction was typed as. An overloaded name with no
+# resolved type fills nothing
+task variant-case
+  take name, like text
+  take given, like maybe, like type
+  take facts, like emit-facts
+  like list, like ts-field
+  mark private
+
+  save owner, named-of(given)
+  fork test, and(is-unequal(owner, <>), facts/variant-fields-by-owner/has(owner))
+    hold
+      save cases, facts/variant-fields-by-owner/get(owner)
+      fork test, cases/has(name)
+        hold
+          back cases/get(name)
+  save owners, 0
+  walk facts/variant-fields-by-owner/keys()
+    take sum
+    save cases, facts/variant-fields-by-owner/get(sum)
+    fork test, cases/has(name)
+      hold
+        save owners, add(owners, 1)
+  fork test, and(is-equal(owners, 1), facts/variant-fields/has(name))
+    hold
+      back facts/variant-fields/get(name)
+  back make list
+
+# the fields a construction left out, each its type's empty value; a `need false` field stays out
+task empty-for
+  take declared, like list, like ts-field
+  take given, like list, like field-value
+  like list, like text
+  mark private
+
+  save out, make list
+  walk declared
+    take field
+    save named, false
+    walk given
+      take one
+      fork test, is-equal(one/name, field/name)
+        hold
+          save named, true
+    fork test, and(not(named), not(field/optional))
+      hold
+        push(out, <{to-member(field/name)}: {ts-empty-of(make(some, field/type))}>)
+  back out
+
+# a value that can do nothing but produce itself: a literal, a name, a field of a name
+task inert
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case null
+      back true
+    case unit
+      back true
+    case variable
+      back true
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          back false
+        case none
+          back inert(member-target)
+    miss
+      back false
+
+# the members of a construction in the form's DECLARED order where no given value can do anything but produce itself,
+# else the written order followed by the filled fields
+task in-declared-order
+  take declared, like list, like ts-field
+  take given, like list, like field-value
+  take rendered, like list, like text
+  like list, like text
+  mark private
+
+  save all-known, is-above(declared/length, 0)
+  walk given
+    take one
+    save known, false
+    walk declared
+      take field
+      fork test, is-equal(field/name, one/name)
+        hold
+          save known, true
+    fork test, or(not(known), not(inert(one/value)))
+      hold
+        save all-known, false
+  fork test, not(all-known)
+    hold
+      save out, make list
+      walk rendered
+        take one
+        push(out, one)
+      walk empty-for(declared, given)
+        take one
+        push(out, one)
+      back out
+  save by-name, text-texts()
+  save at, 0
+  walk given
+    take one
+    save by-name/{one/name}, get(rendered, at)
+    save at, add(at, 1)
+  save out, make list
+  walk declared
+    take field
+    fork test, by-name/has(field/name)
+      hold
+        push(out, by-name/get(field/name))
+      miss
+        fork test, not(field/optional)
+          hold
+            push(out, <{to-member(field/name)}: {ts-empty-of(make(some, field/type))}>)
+  back out
+
+# the text of a case of a `mark text` form; the union the type names decides
+task text-for
+  take variant, like text
+  take given, like maybe, like type
+  take facts, like emit-facts
+  like maybe, like text
+
+  save owner, named-of(given)
+  fork test, and(is-unequal(owner, <>), facts/variant-fields-by-owner/has(owner))
+    hold
+      fork test, facts/text-by-owner/has(owner)
+        hold
+          save texts, facts/text-by-owner/get(owner)
+          fork test, texts/has(variant)
+            hold
+              save found, texts/get(variant)
+              back make(some, found)
+      back make none
+  fork test, facts/text-by-variant/has(variant)
+    hold
+      save found, facts/text-by-variant/get(variant)
+      back make(some, found)
+  back make none
+
+# the field a variant's union discriminates on
+task tag-for
+  take variant, like text
+  take given, like maybe, like type
+  take facts, like emit-facts
+  like text
+
+  save owner, named-of(given)
+  fork test, and(is-unequal(owner, <>), facts/variant-fields-by-owner/has(owner))
+    hold
+      fork test, facts/tag-by-owner/has(owner)
+        hold
+          back to-member(facts/tag-by-owner/get(owner))
+      back to-member(<form>)
+  fork test, facts/tag-by-variant/has(variant)
+    hold
+      back to-member(facts/tag-by-variant/get(variant))
+  back to-member(<form>)
+
+# the guard that tests a field-less case by identity, its constant registered so the prelude declares it
+task guard-for
+  take variant, like text
+  take st, like emit-state
+  like text
+  mark private
+
+  fork test, not(st/fieldless/has(variant))
+    hold
+      save st/fieldless/{variant}, <__termVariant{to-pascal(variant)}>
+  save guard, <__termIs{to-pascal(variant)}>
+  save st/guards/{variant}, guard
+  back guard
+
+# the JSON of a fill spec, as `JSON.stringify` wrote the original's object
+task fill-spec-json
+  take spec, like fill-spec
+  like text
+  mark private
+
+  save fields, make list
+  walk spec/fields
+    take field
+    fork test, field/optional
+      hold
+        push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(field/member)},"optional":true,"kind":{fill-kind-json(field/kind)}\}>)
+      miss
+        push(fields, <\{"name":{json-quote(field/name)},"member":{json-quote(field/member)},"optional":false,"kind":{fill-kind-json(field/kind)}\}>)
+  back <\{"form":{json-quote(spec/form)},"fields":[{join-texts(fields, <,>)}]\}>
+
+task fill-kind-json
+  take kind, like fill-kind
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <\{"kind":"text"\}>
+    case number
+      back <\{"kind":"number"\}>
+    case decimal
+      back <\{"kind":"decimal"\}>
+    case flag
+      back <\{"kind":"flag"\}>
+    case any
+      back <\{"kind":"any"\}>
+    case list
+      link item
+      back <\{"kind":"list","item":{fill-kind-json(item)}\}>
+    case form
+      link spec
+      back <\{"kind":"form","spec":{fill-spec-json(spec)}\}>
+
+# ---- reading a list ----
+
+# a name, a literal, or a field of a name: evaluating it twice changes nothing
+task plain-operand
+  take node, like expression
+  like boolean
+
+  sift node
+    case variable
+      back true
+    case integer
+      back true
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          back false
+        case none
+          save nothing, 0
+      fork test, is-digits(member-name)
+        hold
+          back false
+      back plain-operand(member-target)
+    miss
+      back false
+
+# a value with no effect of its own beyond stopping
+task effect-free
+  take node, like expression
+  like boolean
+  mark private
+
+  fork test, plain-operand(node)
+    hold
+      back true
+  sift node
+    case float
+      back true
+    case string
+      back true
+    case boolean
+      back true
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          link index-node
+          back and(and(is-equal(kind-of(expression-type(member-target)), <array>), plain-operand(member-target)), plain-operand(index-node))
+        case none
+          back false
+    case binary
+      link binary-op
+      link left
+      link right
+      back and(effect-free(left), effect-free(right))
+    case unary
+      link unary-op
+      link operand
+      back effect-free(operand)
+    miss
+      back false
+
+# the key a list is known by in the loop copy being written, `''` for none
+task key-of-list
+  take node, like expression
+  like text
+  mark private
+
+  sift list-key(node)
+    case some
+      link key
+      back key
+    case none
+      back <>
+
+# A list read, its check written IN PLACE when the list and the index are plain. `index-text` is the index as written,
+# `plain-index` whether it is plain, `low-known` whether it is a literal not below zero
+task read-at
+  take list, like expression
+  take index-text, like text
+  take plain-index, like boolean
+  take low-known, like boolean
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save xs, emit-expression(list, 0, st, facts)
+  # inside the guarded copy of a counted loop the index is proven in bounds
+  fork test, and(is-above(st/unchecked-lists/length, 0), has-text(st/unchecked-lists, key-of-list(list)))
+    hold
+      back <{xs}[{index-text}]!>
+  save low, <{index-text} >= 0 && >
+  fork test, low-known
+    hold
+      save low, <>
+  fork test, and(plain-operand(list), plain-index)
+    hold
+      back <({low}{index-text} \< {xs}.length ? {xs}[{index-text}]! : __termReadPast({xs}, {index-text}))>
+  back <__termAt({xs}, {index-text})>
+
+# a read of a list at an expression index
+task read-at-node
+  take list, like expression
+  take index, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save xs-first, emit-expression(list, 0, st, facts)
+  save index-text, emit-expression(index, 0, st, facts)
+  save low-known, false
+  sift index
+    case integer
+      link index-value
+      save low-known, is-minimum(index-value, 0)
+    miss
+      save nothing, 0
+  back read-at-with(list, xs-first, index-text, plain-operand(index), low-known, st, facts)
+
+# as `read-at`, the list already written: the original wrote the list, then the index, then the test
+task read-at-with
+  take list, like expression
+  take xs, like text
+  take index-text, like text
+  take plain-index, like boolean
+  take low-known, like boolean
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  fork test, and(is-above(st/unchecked-lists/length, 0), has-text(st/unchecked-lists, key-of-list(list)))
+    hold
+      back <{xs}[{index-text}]!>
+  save low, <{index-text} >= 0 && >
+  fork test, low-known
+    hold
+      save low, <>
+  fork test, and(plain-operand(list), plain-index)
+    hold
+      back <({low}{index-text} \< {xs}.length ? {xs}[{index-text}]! : __termReadPast({xs}, {index-text}))>
+  back <__termAt({xs}, {index-text})>
+
+# the value an assignment writes: a `need false` maybe field holds the value inside the maybe, or nothing (D10)
+task written-value
+  take target, like expression
+  take value, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift target
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case none
+          fork test, maybe-field(declared-field-of(member-target, member-name, st, facts))
+            hold
+              save st/maybe-field-used, true
+              back <__termSome({emit-expression(value, 0, st, facts)})>
+        case some
+          save nothing, 0
+    miss
+      save nothing, 0
+  back emit-expression(value, 0, st, facts)
+
+# ---- expressions ----
+
+task precedence-of
+  take op, like text
+  like number
+  mark private
+
+  fork test, is-equal(op, <||>)
+    hold
+      back 1
+  fork test, is-equal(op, <&&>)
+    hold
+      back 2
+  fork test, or(is-equal(op, <+>), is-equal(op, <->))
+    hold
+      back 4
+  fork test, or(or(is-equal(op, <*>), is-equal(op, </>)), is-equal(op, <%>))
+    hold
+      back 5
+  back 3
+
+task emit-all
+  take values, like list, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, emit-expression(one, 0, st, facts))
+  back out
+
+# a callee renamed, for a task's copy (`<task>-reuse`, `<task>-fast`)
+task renamed-call
+  take node, like expression
+  take suffix, like text
+  like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      link call-span
+      sift call-callee
+        case variable
+          link callee-name
+          link callee-span
+          save renamed
+            make expression/variable
+              bind name, <{callee-name}{suffix}>
+              bind span, callee-span
+          save made
+            make expression/call
+              bind callee, renamed
+              bind args, call-args
+              bind span, call-span
+          back made
+        miss
+          back node
+    miss
+      back node
+
+task variable-callee
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task emit-expression
+  take node, like expression
+  take parent, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+
+  # the walked-list flag is for the member it was set over, and no other expression keeps it
+  sift node
+    case member
+      save nothing, 0
+    miss
+      save st/walked-list, false
+  sift node
+    case integer
+      back integer-text(node)
+    case float
+      link float-value
+      back <{float-value}>
+    case boolean
+      link boolean-value
+      fork test, boolean-value
+        hold
+          back <true>
+      back <false>
+    case string
+      link string-value
+      back json-quote(string-value)
+    case template
+      link template-parts
+      save out, <>
+      walk template-parts
+        take part
+        sift part
+          case chunk
+            link chunk-value
+            save out, <{out}{template-chunk(chunk-value)}>
+          case value
+            link part-value
+            save out, <{out}$\{{emit-expression(part-value, 0, st, facts)}\}>
+      back <`{out}`>
+    case unit
+      back <undefined>
+    case null
+      back <null>
+    case variable
+      link variable-name
+      back to-camel(variable-name)
+    case hole
+      link hole-name
+      back to-camel(hole-name)
+    case call
+      back emit-call(node, parent, st, facts)
+    case array
+      link items
+      sift element-of(expression-type(node))
+        case some
+          link element
+          fork test, is-equal(items/length, 0)
+            hold
+              back <([] as {ts-type-of(make(some, element), facts)}[])>
+        case none
+          save nothing, 0
+      back <[{join-texts(emit-all(items, st, facts), <, >)}]>
+    case map
+      link entries
+      save ann, <>
+      sift expression-type(node)
+        case some
+          link known
+          sift known
+            case map
+              link map-key-type-of
+              link map-value-type-of
+              fork test, is-equal(entries/length, 0)
+                hold
+                  save ann, <\<{ts-type-of(make(some, map-key-type-of), facts)}, {ts-type-of(make(some, map-value-type-of), facts)}\>>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save rendered, make list
+      walk entries
+        take entry
+        save key, emit-expression(entry/key, 0, st, facts)
+        fork test, not(structural-type(expression-type(entry/key), facts-is-shared(facts)))
+          hold
+            push(rendered, <[{key}, {emit-expression(entry/value, 0, st, facts)}]>)
+          miss
+            save st/equal-used, true
+            push(rendered, <[__termKey({key}), {emit-expression(entry/value, 0, st, facts)}]>)
+      back <new Map{ann}([{join-texts(rendered, <, >)}])>
+    case record
+      back emit-record(node, st, facts)
+    case member
+      back emit-member(node, st, facts)
+    case await
+      link awaited
+      back <await {emit-expression(awaited, 0, st, facts)}>
+    case closure
+      link closure-params
+      link closure-body
+      save params, make list
+      walk closure-params
+        take param
+        push(params, <{to-camel(param/name)}: {ts-type-of(param/type, facts)}>)
+      save arrow, <({join-texts(params, <, >)})>
+      fork test, read(async)
+        hold
+          save arrow, <async {arrow}>
+      # a single trailing `return X` becomes a concise arrow
+      fork test, is-equal(closure-body/length, 1)
+        hold
+          save only, get(closure-body, 0)
+          sift only
+            case return
+              link return-value
+              sift return-value
+                case some
+                  link returned
+                  back <{arrow} =\> ({emit-expression(returned, 0, st, facts)})>
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+      back <{arrow} =\> {emit-block(closure-body, 0, st, facts)}>
+    case unary
+      link unary-op
+      link operand
+      back <{to-text(unary-op)}{emit-expression(operand, 6, st, facts)}>
+    case binary
+      back emit-binary(node, parent, st, facts)
+    case conditional
+      link branches
+      link otherwise
+      save text, <undefined>
+      sift otherwise
+        case some
+          link other
+          save text, emit-expression(other, 0, st, facts)
+        case none
+          save nothing, 0
+      # the chain is built from the last branch back, as `reduceRight` built it
+      save at, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(at, 0)
+        hook hold
+          save branch, get(branches, at)
+          save cond, emit-expression(branch/cond, 0, st, facts)
+          save value, emit-expression(branch/value, 0, st, facts)
+          save text, <{cond} ? {value} : {text}>
+          save at, subtract(at, 1)
+      fork test, is-above(parent, 0)
+        hold
+          back <({text})>
+      back text
+
+task facts-is-shared
+  take facts, like emit-facts
+  like task
+    take name, like text
+    like boolean
+  mark private
+
+  back
+    task
+      take name, like text
+      like boolean
+      back facts/shared-forms/has(name)
+
+# a checked type's TypeScript spelling, through the program's opaque types and forms
+task ts-type-of
+  take given, like maybe, like type
+  take facts, like emit-facts
+  like text
+
+  save opaque-of
+    task
+      take name, like text
+      like maybe, like text
+      fork test, facts/opaque/has(name)
+        hold
+          save found, facts/opaque/get(name)
+          back make(some, found)
+      back make none
+  save declares
+    task
+      take name, like text
+      like boolean
+      back or(facts/record-fields/has(name), facts/variant-fields-by-owner/has(name))
+  back ts-type(given, opaque-of, declares)
+
+# ---- calls ----
+
+# whether the call is one of a loop's fast calls, for a loop whose fast copy is being written
+task is-fast-call
+  take node, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like boolean
+  mark private
+
+  walk st/fast-loops
+    take loop
+    fork test, facts/is-fast-in(node, loop)
+      hold
+        back true
+  back false
+
+task list-helper
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(name, <pop>)
+    hold
+      back <__termPop>
+  fork test, is-equal(name, <shift>)
+    hold
+      back <__termShift>
+  fork test, is-equal(name, <slice>)
+    hold
+      back <__termSlice>
+  fork test, is-equal(name, <splice>)
+    hold
+      back <__termSplice>
+  back <>
+
+task emit-call
+  take node, like expression
+  take parent, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case call
+      link callee
+      link args
+      save callee-name, variable-callee(callee)
+      # a call at a reuse site: the task's copy that builds its result in the object it is given
+      fork test, and(facts/is-reuse-site(node), is-unequal(callee-name, <>))
+        hold
+          add-text(st/reuse-tasks, callee-name)
+          back emit-expression(renamed-call(node, <-reuse>), parent, st, facts)
+      save node-type, expression-type(node)
+      save node-kind, kind-of(node-type)
+      # a call to a task that only fills a list is the array made at its size and filled
+      fork test, is-equal(node-kind, <array>)
+        hold
+          sift fill-call-of(node, facts/fills)
+            case some
+              link fill
+              save size, <>
+              sift fill/size
+                case integer
+                  link size-value
+                  save size, <{size-value}>
+                  fork test, is-below(size-value, 0)
+                    hold
+                      save size, <0>
+                miss
+                  save size, <Math.max({emit-expression(fill/size, 0, st, facts)}, 0)>
+              back <new Array\<{ts-type-of(element-of(node-type), facts)}\>({size}).fill({emit-expression(fill/item, 0, st, facts)})>
+            case none
+              save nothing, 0
+      save first-kind, <>
+      fork test, is-above(args/length, 0)
+        hold
+          save first-kind, kind-of(expression-type(get(args, 0)))
+      # the stdlib's `list_push` and `list_size` are the array's own `push` and `length`
+      fork test, and(and(is-equal(callee-name, <list_push>), is-equal(args/length, 2)), is-equal(first-kind, <array>))
+        hold
+          save pushed-on, emit-expression(get(args, 0), 100, st, facts)
+          back <{pushed-on}.push({emit-expression(get(args, 1), 0, st, facts)})>
+      fork test, and(and(has-text(list-length-tasks(), callee-name), is-equal(args/length, 1)), is-equal(first-kind, <array>))
+        hold
+          back <{emit-expression(get(args, 0), 100, st, facts)}.length>
+      # a call inside a guarded loop copy whose guard bounds its arguments: the task's copy with no overflow checks
+      fork test, and(is-fast-call(node, st, facts), is-unequal(callee-name, <>))
+        hold
+          add-text(st/fast-tasks, callee-name)
+          back emit-expression(renamed-call(node, <-fast>), parent, st, facts)
+      sift callee
+        case member
+          link member-target
+          link member-name
+          save target-type, expression-type(member-target)
+          save target-kind, kind-of(target-type)
+          # `get` / `set` / `at` on an ARRAY receiver: the checked read and write
+          fork test, and(is-equal(target-kind, <array>), or(or(is-equal(member-name, <get>), is-equal(member-name, <set>)), is-equal(member-name, <at>)))
+            hold
+              save st/list-used, true
+              save target, emit-expression(member-target, 0, st, facts)
+              fork test, is-equal(member-name, <set>)
+                hold
+                  save at-text, emit-expression(get(args, 0), 0, st, facts)
+                  back <__termPut({target}, {at-text}, {emit-expression(get(args, 1), 0, st, facts)})>
+              back read-at-node-after(member-target, get(args, 0), st, facts)
+          save helper, list-helper(member-name)
+          fork test, and(is-equal(target-kind, <array>), is-unequal(helper, <>))
+            hold
+              save st/list-used, true
+              save parts, make list
+              push(parts, emit-expression(member-target, 0, st, facts))
+              walk args
+                take arg
+                push(parts, emit-expression(arg, 0, st, facts))
+              back <{helper}({join-texts(parts, <, >)})>
+          # membership and position in a list of records compare by structure, as `is-equal` does
+          fork test, and(is-equal(target-kind, <array>), or(or(is-equal(member-name, <includes>), is-equal(member-name, <indexOf>)), is-equal(member-name, <lastIndexOf>)))
+            hold
+              fork test, structural-type(element-of(target-type), facts-is-shared(facts))
+                hold
+                  save st/equal-used, true
+                  save target, emit-expression(member-target, 0, st, facts)
+                  save item, emit-expression(get(args, 0), 0, st, facts)
+                  save test, <(__e) =\> __termEqual(__e, {item})>
+                  fork test, is-equal(member-name, <includes>)
+                    hold
+                      back <{target}.some({test})>
+                  fork test, is-equal(member-name, <indexOf>)
+                    hold
+                      back <{target}.findIndex({test})>
+                  back <{target}.findLastIndex({test})>
+        miss
+          save nothing, 0
+      # a text method follows the code-point meaning (`__termText`)
+      sift string-call(callee)
+        case some
+          link text-op
+          save op, text-op/op
+          save on-ascii, facts/is-ascii(text-op/target)
+          fork test, and(on-ascii, or(is-equal(op, <substring>), is-equal(op, <slice>)))
+            hold
+              save receiver, emit-expression(text-op/target, 100, st, facts)
+              back <{receiver}.substring({join-texts(emit-all(args, st, facts), <, >)})>
+          fork test, and(on-ascii, or(is-equal(op, <indexOf>), is-equal(op, <lastIndexOf>)))
+            hold
+              save receiver, emit-expression(text-op/target, 100, st, facts)
+              back <{receiver}.{op}({join-texts(emit-all(args, st, facts), <, >)})>
+          fork test, and(on-ascii, or(or(is-equal(op, <charAt>), is-equal(op, <at>)), is-equal(op, <charCodeAt>)))
+            hold
+              save target, emit-expression(text-op/target, 100, st, facts)
+              save at, emit-expression(get(args, 0), 0, st, facts)
+              fork test, is-unequal(op, <charCodeAt>)
+                hold
+                  back <({target}[{at}] ?? "")>
+              fork test, and(is-plain-text(at), is-plain-text(target))
+                hold
+                  back <({at} >= 0 && {at} \< {target}.length ? {target}.charCodeAt({at}) : -1)>
+          # a read through the text's cursor steps from the last read
+          save cursor, <>
+          sift st/current-fn
+            case some
+              link fn
+              sift facts/cursor-of(fn, node)
+                case some
+                  link found
+                  save cursor, found
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, and(is-unequal(cursor, <>), or(is-equal(op, <substring>), is-equal(op, <slice>)))
+            hold
+              save st/text-used, true
+              save receiver, emit-expression(text-op/target, 0, st, facts)
+              save from, emit-expression(get(args, 0), 0, st, facts)
+              save until, <Infinity>
+              fork test, is-above(args/length, 1)
+                hold
+                  save until, emit-expression(get(args, 1), 0, st, facts)
+              back <__termText_cursorSlice({receiver}, {from}, {until}, __cursor{to-pascal(cursor)})>
+          fork test, is-unequal(cursor, <>)
+            hold
+              save st/text-used, true
+              save which, <cursorCharAt>
+              fork test, is-equal(op, <charCodeAt>)
+                hold
+                  save which, <cursorCodeAt>
+              save receiver, emit-expression(text-op/target, 0, st, facts)
+              back <__termText_{which}({receiver}, {emit-expression(get(args, 0), 0, st, facts)}, __cursor{to-pascal(cursor)})>
+          save st/text-used, true
+          save parts, make list
+          push(parts, emit-expression(text-op/target, 0, st, facts))
+          walk args
+            take arg
+            push(parts, emit-expression(arg, 0, st, facts))
+          back <__termText_{op}({join-texts(parts, <, >)})>
+        case none
+          save nothing, 0
+      sift callee
+        case member
+          link member-target
+          link member-name
+          # `flat()` rides through `any`
+          fork test, and(is-equal(member-name, <flat>), is-equal(kind-of(expression-type(member-target)), <array>))
+            hold
+              back <({emit-expression(member-target, 0, st, facts)}.flat() as any)>
+        miss
+          save nothing, 0
+      # `call fill / <data> / like <form>`: walk the data against the form's fields
+      fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
+        hold
+          sift read(into)
+            case some
+              link filled-type
+              save st/form-walk-used, true
+              save helper, <__termMelt>
+              fork test, is-equal(callee-name, <fill-form>)
+                hold
+                  save helper, <__termFill>
+              save data, emit-expression(get(args, 0), 0, st, facts)
+              save fields-of
+                task
+                  take name, like text
+                  like list, like ts-field
+                  fork test, facts/record-fields/has(name)
+                    hold
+                      back facts/record-fields/get(name)
+                  back make list
+              save is-record
+                task
+                  take name, like text
+                  like boolean
+                  back facts/record-fields/has(name)
+              back <{helper}({data}, {fill-spec-json(fill-spec-of(filled-type, make list, fields-of, is-record))})>
+            case none
+              save nothing, 0
+      # a declarative native binding renders its environment's template in place of a real call
+      fork test, and(is-unequal(callee-name, <>), facts/binds/has(callee-name))
+        hold
+          save one-bind, facts/binds/get(callee-name)
+          # the code-point count of an ASCII text is its length
+          fork test, and(is-equal(callee-name, <code-point-count>), is-above(args/length, 0))
+            hold
+              fork test, facts/is-ascii(get(args, 0))
+                hold
+                  back <{emit-expression(get(args, 0), 100, st, facts)}.length>
+          save rendered-args, make list
+          walk args
+            take arg
+            push(rendered-args, emit-expression(arg, 100, st, facts))
+          save rendered, <>
+          save found, false
+          sift render-bind(one-bind, facts/env, rendered-args)
+            case some
+              link text
+              save rendered, text
+              save found, true
+            case none
+              sift render-bind(one-bind, <javascript>, rendered-args)
+                case some
+                  link text
+                  save rendered, text
+                  save found, true
+                case none
+                  save nothing, 0
+          fork test, not(found)
+            hold
+              back bind-gap(callee-name)
+          fork test, and(is-above(parent, 0), not(is-primary(rendered)))
+            hold
+              back <({rendered})>
+          back rendered
+      # a map read is the stored value: `get(k)!`
+      save map-read, false
+      save keyed, false
+      save key-test, false
+      sift callee
+        case member
+          link member-target
+          link member-name
+          save target-type, expression-type(member-target)
+          fork test, and(and(is-equal(member-name, <get>), is-equal(kind-of(target-type), <map>)), is-equal(args/length, 1))
+            hold
+              save map-read, true
+          # a map read or write whose key may be a record goes through `__termKey`
+          fork test, and(or(or(is-equal(member-name, <get>), is-equal(member-name, <set>)), or(is-equal(member-name, <has>), is-equal(member-name, <delete>))), is-above(args/length, 0))
+            hold
+              sift map-key-type(target-type)
+                case keyed
+                  link key-type
+                  save key-test, structural-type(make(some, key-type), facts-is-shared(facts))
+                case unspelled
+                  save key-test, structural-type(expression-type(get(args, 0)), facts-is-shared(facts))
+                case not-map
+                  save nothing, 0
+        miss
+          save nothing, 0
+      save bang, <>
+      fork test, map-read
+        hold
+          save bang, <!>
+      fork test, key-test
+        hold
+          save st/equal-used, true
+          save head, emit-expression(callee, 0, st, facts)
+          save parts, make list
+          push(parts, <__termKey({emit-expression(get(args, 0), 0, st, facts)})>)
+          save at, 1
+          walk test
+            hook test, is-below(at, args/length)
+            hook hold
+              push(parts, emit-expression(get(args, at), 0, st, facts))
+              save at, add(at, 1)
+          back <{head}({join-texts(parts, <, >)}){bang}>
+      # keys / values on a map materialize to an array
+      sift map-collect-of(callee)
+        case some
+          link collected
+          back <Array.from({emit-expression(collected/target, 0, st, facts)}.{collected/name}())>
+        case none
+          save nothing, 0
+      # a record passed to a task that writes its fields is the task's own copy; a parameter or local shadows a task
+      save task-name, <>
+      sift callee
+        case variable
+          link variable-name
+          save is-local, false
+          sift binding
+            case some
+              link bound
+              sift bound
+                case parameter
+                  save is-local, true
+                case local
+                  save is-local, true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, not(is-local)
+            hold
+              save task-name, variable-name
+        miss
+          save nothing, 0
+      save writes, index-flags()
+      fork test, and(is-unequal(task-name, <>), facts/copy-params/has(task-name))
+        hold
+          save writes, facts/copy-params/get(task-name)
+      save rendered, make list
+      save at, 0
+      walk args
+        take arg
+        save text, emit-expression(arg, 0, st, facts)
+        save is-record, false
+        sift arg
+          case record
+            save is-record, true
+          miss
+            save nothing, 0
+        fork test, and(writes/has(at), not(is-record))
+          hold
+            push(rendered, <\{ ...{text} \}>)
+          miss
+            push(rendered, text)
+        save at, add(at, 1)
+      fork test, and(is-unequal(task-name, <>), facts/function-params/has(task-name))
+        hold
+          save declared, facts/function-params/get(task-name)
+          save at, rendered/length
+          save filling, true
+          walk test
+            hook test, and(filling, is-below(at, declared/length))
+            hook hold
+              save param, get(declared, at)
+              fork test, not(param/optional)
+                hold
+                  save filling, false
+                miss
+                  save empty, ts-empty-of(param/type)
+                  fork test, starts-with(empty, <undefined>)
+                    hold
+                      save filling, false
+                    miss
+                      push(rendered, empty)
+                      save at, add(at, 1)
+      back <{emit-expression(callee, 0, st, facts)}({join-texts(rendered, <, >)}){bang}>
+    miss
+      back <>
+
+task index-flags
+  like hash, like number, like boolean
+  mark private
+
+  back make hash
+
+# a list read at an expression index, the list written after its receiver was decided
+task read-at-node-after
+  take list, like expression
+  take index, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  back read-at-node(list, index, st, facts)
+
+# ---- records ----
+
+task emit-record
+  take node, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case record
+      link record-name
+      link record-fields
+      # the build this `return` has assigned on the object the task was given
+      sift st/reusing
+        case some
+          link reusing
+          sift st/reused
+            case some
+              link reused
+              fork test, facts/same-node(reused, node)
+                hold
+                  back to-camel(reusing/param)
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      save node-type, expression-type(node)
+      save is-variant, facts/variants/has(record-name)
+      save declared-here, make list
+      fork test, is-variant
+        hold
+          save declared-here, variant-case(record-name, node-type, facts)
+        miss
+          fork test, facts/record-fields/has(record-name)
+            hold
+              save declared-here, facts/record-fields/get(record-name)
+      save fields, make list
+      walk record-fields
+        take field
+        save declared-one, make none
+        walk declared-here
+          take d
+          fork test, is-equal(d/name, field/name)
+            hold
+              save declared-one, make(some, d)
+              halt
+        fork test, maybe-field(declared-one)
+          hold
+            save st/maybe-field-used, true
+            push(fields, <{to-member(field/name)}: __termSome({emit-expression(field/value, 0, st, facts)})>)
+          miss
+            push(fields, <{to-member(field/name)}: {emit-expression(field/value, 0, st, facts)}>)
+      fork test, and(is-equal(record-name, <hash>), is-equal(fields/length, 0))
+        hold
+          back <new Map()>
+      fork test, and(is-equal(record-name, <list>), is-equal(fields/length, 0))
+        hold
+          back <[]>
+      fork test, and(is-equal(record-name, <void>), is-equal(fields/length, 0))
+        hold
+          back <undefined>
+      fork test, is-variant
+        hold
+          # a case of a closed set of texts is its text
+          sift text-for(record-name, node-type, facts)
+            case some
+              link text
+              back json-quote(text)
+            case none
+              save nothing, 0
+          # a variant with no fields at all, and not `mark shared`: the module's one frozen constant for it
+          fork test, and(and(is-equal(record-fields/length, 0), is-equal(variant-case(record-name, node-type, facts)/length, 0)), not(facts/shared-forms/has(record-name)))
+            hold
+              fork test, not(st/fieldless/has(record-name))
+                hold
+                  save st/fieldless/{record-name}, <__termVariant{to-pascal(record-name)}>
+              back st/fieldless/get(record-name)
+          save members, make list
+          push(members, <{tag-for(record-name, node-type, facts)}: {json-quote(record-name)}>)
+          walk in-declared-order(variant-case(record-name, node-type, facts), record-fields, fields)
+            take one
+            push(members, one)
+          back <\{ {join-texts(members, <, >)} \}>
+      save own-fields, make list
+      fork test, facts/record-fields/has(record-name)
+        hold
+          save own-fields, facts/record-fields/get(record-name)
+      save made, <\{ {join-texts(in-declared-order(own-fields, record-fields, fields), <, >)} \}>
+      # a `mark shared` value carries a hidden marker
+      fork test, facts/shared-forms/has(record-name)
+        hold
+          save st/equal-used, true
+          back <__termShare({made})>
+      back made
+    miss
+      back <>
+
+# ---- members ----
+
+task emit-member
+  take node, like expression
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      # is this member the target an assignment writes? Only this one: what it is read through is read (D10)
+      save writing, st/writing-target
+      save st/writing-target, false
+      save walked, st/walked-list
+      save st/walked-list, false
+      save target-kind, kind-of(expression-type(member-target))
+      save has-index, false
+      sift member-index
+        case some
+          save has-index, true
+        case none
+          save nothing, 0
+      # `x/f/length` only measures `f`
+      fork test, and(is-equal(member-name, <length>), not(has-index))
+        hold
+          sift member-target
+            case member
+              save st/walked-list, true
+            miss
+              save nothing, 0
+      # a list reached through a path that this loop copy read once before it
+      fork test, and(and(is-above(st/hoisted/keys()/length, 0), not(has-index)), is-equal(kind-of(expression-type(node)), <array>))
+        hold
+          save key, key-of-list(node)
+          fork test, st/hoisted/has(key)
+            hold
+              back st/hoisted/get(key)
+      # a DYNAMIC segment subscripts; on a list it is the checked read
+      sift member-index
+        case some
+          link index-node
+          fork test, is-equal(target-kind, <array>)
+            hold
+              save st/list-used, true
+              back read-at-node(member-target, index-node, st, facts)
+          save target, emit-expression(member-target, 0, st, facts)
+          back <{target}[{emit-expression(index-node, 0, st, facts)}]>
+        case none
+          save nothing, 0
+      # the length of a text counts code points
+      sift string-read(node)
+        case some
+          save st/text-used, true
+          back <__termText_length({emit-expression(member-target, 0, st, facts)})>
+        case none
+          save nothing, 0
+      # a literal index is a plain segment, spelled with brackets
+      fork test, is-digits(member-name)
+        hold
+          fork test, is-equal(target-kind, <array>)
+            hold
+              save st/list-used, true
+              save xs, emit-expression(member-target, 0, st, facts)
+              back read-at-with(member-target, xs, <{digits-value(member-name)}>, true, true, st, facts)
+          back <{emit-expression(member-target, 0, st, facts)}[{member-name}]>
+      # the kept field of a carrier that holds it alone
+      sift member-target
+        case variable
+          link carrier-name
+          fork test, and(st/carrier-locals/has(carrier-name), is-equal(st/carrier-locals/get(carrier-name), member-name))
+            hold
+              back to-camel(carrier-name)
+        miss
+          save nothing, 0
+      save spelled, read(nick)
+      fork test, is-equal(spelled, <>)
+        hold
+          save spelled, to-member(member-name)
+      # a `need false` maybe field reads as a maybe (D10), never under an assignment
+      save field, make none
+      fork test, not(writing)
+        hold
+          save field, declared-field-of(member-target, member-name, st, facts)
+      fork test, maybe-field(field)
+        hold
+          save st/maybe-field-used, true
+          back <__termMaybe({emit-expression(member-target, 0, st, facts)}.{spelled})>
+      # a plain `need false` field reads as its type's empty value where a TypeScript caller left it out
+      sift field
+        case some
+          link known
+          fork test, known/optional
+            hold
+              save empty, ts-empty-of(make(some, known/type))
+              save member, <{emit-expression(member-target, 0, st, facts)}.{spelled}>
+              fork test, not(starts-with(empty, <undefined>))
+                hold
+                  fork test, and(empty-stored(known/type), not(walked))
+                    hold
+                      back <({member} ??= {empty})>
+                  back <({member} ?? {empty})>
+              back member
+        case none
+          save nothing, 0
+      back <{emit-expression(member-target, 0, st, facts)}.{spelled}>
+    miss
+      back <>
+
+# ---- binary operators ----
+
+task scalar-literal
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case string
+      back true
+    case boolean
+      back true
+    miss
+      back false
+
+task is-null
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case null
+      back true
+    miss
+      back false
+
+task emit-binary
+  take node, like expression
+  take parent, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case binary
+      link binary-op
+      link left
+      link right
+      save op, to-text(binary-op)
+      save shared, facts-is-shared(facts)
+      # `is-equal` on records, lists, maps or bytes compares their structure
+      fork test, and(and(or(is-equal(op, <==>), is-equal(op, <!=>)), and(not(scalar-literal(left)), not(scalar-literal(right)))), or(structural-type(expression-type(left), shared), structural-type(expression-type(right), shared)))
+        hold
+          save st/equal-used, true
+          save call, <__termEqual({emit-expression(left, 0, st, facts)}, {emit-expression(right, 0, st, facts)})>
+          fork test, is-equal(op, <==>)
+            hold
+              back call
+          back <!{call}>
+      # two texts order by code point
+      fork test, and(or(or(is-equal(op, <\<>), is-equal(op, <\>>)), or(is-equal(op, <\<=>), is-equal(op, <\>=>))), and(is-text(expression-type(left)), is-text(expression-type(right))))
+        hold
+          save st/text-used, true
+          save compared, <__termText_compare({emit-expression(left, 0, st, facts)}, {emit-expression(right, 0, st, facts)}) {op} 0>
+          fork test, is-above(parent, 0)
+            hold
+              back <({compared})>
+          back compared
+      save precedence, precedence-of(op)
+      save left-text, emit-expression(left, precedence, st, facts)
+      save right-text, emit-expression(right, add(precedence, 1), st, facts)
+      # strict equality, but a comparison with a `null` literal stays loose
+      save written-op, op
+      fork test, not(or(is-null(left), is-null(right)))
+        hold
+          fork test, is-equal(op, <==>)
+            hold
+              save written-op, <===>
+          fork test, is-equal(op, <!=>)
+            hold
+              save written-op, <!==>
+      save text, <{left-text} {written-op} {right-text}>
+      # an integer quotient truncates toward zero
+      fork test, and(is-equal(op, </>), integer-division(node))
+        hold
+          fork test, or(st/unchecked-ints, facts/is-proven(node))
+            hold
+              back <Math.trunc({text})>
+          save st/int-used, true
+          back <__termInt(Math.trunc({text}))>
+      # its sum, difference, product and remainder are the integer one or nothing
+      fork test, and(and(or(or(is-equal(op, <+>), is-equal(op, <->)), or(is-equal(op, <*>), is-equal(op, <%>))), integer-division(node)), and(not(facts/is-proven(node)), not(st/unchecked-ints)))
+        hold
+          save st/int-used, true
+          back <__termInt({text})>
+      fork test, is-below(precedence, parent)
+        hold
+          back <({text})>
+      back text
+    miss
+      back <>
+
+# ---- more below ----

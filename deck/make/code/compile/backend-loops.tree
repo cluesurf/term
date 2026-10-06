@@ -1,0 +1,1342 @@
+# What the emitters ask of a task's loops and blocks: the `let`s that declare a name again in one statement list (a
+# second counted walk over `i`), a list a counted loop generates (`xs = []`, `i = 0`, `while (i < n) { push(xs, e); i
+# = i + 1 }`), and the lists a backend may hold as a fixed-length primitive array.
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), which stays as the face and turns the answers into the
+# `Set`s and `Map`s its callers hold. Each walk here is BLOCK-AWARE: an answer depends on a statement's place in its
+# statement list (a generator is three statements in a row), so a statement list is walked by its own loop, with the
+# position, and every other child through compile/node-children.tree. The original found a generator's push again by
+# node identity (`generatorPushes.has(node)`, `generators.has(made)`); here the walk that meets the generator's `let`
+# marks it, and the generator's loop is walked with its push left uncounted.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-shapes
+  find collection-call
+
+load ./backend-names
+  find names-in
+
+load ./backend-lending
+  find owned-locals
+  find never-moved
+
+load ./type-text
+  find type-equal
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task index-flags
+  like hash, like number, like boolean
+  mark private
+
+  back make hash
+
+task index-table
+  like hash, like text, like hash, like number, like boolean
+  mark private
+
+  back make hash
+
+task name-table
+  like hash, like text, like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task text-statements
+  like hash, like text, like statement
+  mark private
+
+  back make hash
+
+task text-maybe-types
+  like hash, like text, like maybe, like type
+  mark private
+
+  back make hash
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task statement-handle-of
+  take node, like statement
+  like node-handle
+  mark private
+
+  back
+    make node-handle/statement-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back <array>
+        miss
+          back <other>
+    case none
+      back <>
+
+# the statement at a position of a list, none past its end
+task statement-at
+  take body, like list, like statement
+  take at, like number
+  like maybe, like statement
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, body/length))
+    hold
+      save found, get(body, at)
+      back make(some, found)
+  back make none
+
+# two types alike, as the original's `JSON.stringify` compared them, none alike only with none
+task same-maybe-type
+  take a, like maybe, like type
+  take b, like maybe, like type
+  like boolean
+  mark private
+
+  sift a
+    case some
+      link left
+      sift b
+        case some
+          link right
+          back type-equal(left, right)
+        case none
+          back false
+    case none
+      sift b
+        case some
+          back false
+        case none
+          back true
+
+# ---- the statement lists a node holds ----
+
+# the statement lists directly under a node: a branch's and an arm's bodies, a loop's, a guard's and its handler's, a
+# task's (and a stub's whole body), a closure's. Every other statement the node holds is in one of these, but a stub's
+# shape
+task statement-lists
+  take handle, like node-handle
+  like list, like list, like statement
+  mark private
+
+  save out, make list
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case if
+          link if-branches
+          link if-otherwise
+          walk if-branches
+            take branch
+            push(out, branch/body)
+          sift if-otherwise
+            case some
+              link other
+              push(out, other)
+            case none
+              save nothing, 0
+        case while
+          link while-cond
+          link while-body
+          push(out, while-body)
+        case match
+          link match-subject
+          link match-cases
+          link match-otherwise
+          walk match-cases
+            take arm
+            push(out, arm/body)
+          sift match-otherwise
+            case some
+              link other
+              push(out, other)
+            case none
+              save nothing, 0
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          push(out, each-body)
+        case guard
+          link guard-body
+          link guard-catch
+          push(out, guard-body)
+          sift guard-catch
+            case some
+              link clause
+              push(out, clause/body)
+            case none
+              save nothing, 0
+        case function
+          link fn-name
+          link fn-params
+          link fn-body
+          push(out, fn-body)
+          save whole, make list
+          walk stub-body
+            take one
+            push(whole, one)
+          fork test, is-above(whole/length, 0)
+            hold
+              push(out, whole)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          link closure-body
+          push(out, closure-body)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# a stub's shape: the one statement a node holds outside a list
+task stub-shape-of
+  take handle, like node-handle
+  like maybe, like statement
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case function
+          back read(stub-shape)
+        miss
+          back make none
+    miss
+      back make none
+
+# the children that are not statements: a statement is reached through its list
+task other-children
+  take handle, like node-handle
+  like list, like node-handle
+  mark private
+
+  save out, make list
+  walk node-children(handle, type-and-span())
+    take child
+    sift child
+      case statement-handle
+        save nothing, 0
+      miss
+        push(out, child)
+  back out
+
+# ---- the `let`s declared again in one statement list ----
+
+form redeclare-state
+  mark shared
+  link assigned, like hash, like text, like boolean
+  link lists, like list, like list, like statement
+
+task redeclare-visit
+  take handle, like node-handle
+  take st, like redeclare-state
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          sift assign-target
+            case variable
+              link target-name
+              save st/assigned/{target-name}, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk other-children(handle)
+    take child
+    redeclare-visit(child, st)
+  walk statement-lists(handle)
+    take body
+    redeclare-block(body, st)
+  sift stub-shape-of(handle)
+    case some
+      link shape
+      redeclare-visit(statement-handle-of(shape), st)
+    case none
+      save nothing, 0
+
+task redeclare-block
+  take body, like list, like statement
+  take st, like redeclare-state
+  mark private
+
+  save has-let, false
+  walk body
+    take one
+    sift one
+      case let
+        save has-let, true
+      miss
+        save nothing, 0
+  fork test, has-let
+    hold
+      push(st/lists, body)
+  walk body
+    take one
+    redeclare-visit(statement-handle-of(one), st)
+
+# The `let`s that declare again a name an earlier `let` in the same statement list declared, at the same type, where the
+# task also assigns that name. TypeScript, Swift and Kotlin write each as an assignment to the first
+task redeclared-lets
+  take fn, like statement
+  like list, like statement
+
+  save out, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      save st
+        make redeclare-state
+          bind assigned, text-flags()
+          bind lists, make list
+      redeclare-block(fn-body, st)
+      walk st/lists
+        take body
+        save seen, text-maybe-types()
+        walk body
+          take one
+          sift one
+            case let
+              link let-name
+              link let-init
+              link let-mutable
+              link let-span
+              link let-type
+              fork test, is-equal(read(foreign), <>)
+                hold
+                  save declared, let-type
+                  sift let-type
+                    case none
+                      save declared, expression-type(let-init)
+                    case some
+                      save nothing, 0
+                  fork test, seen/has(let-name)
+                    hold
+                      fork test, and(same-maybe-type(seen/get(let-name), declared), st/assigned/has(let-name))
+                        hold
+                          push(out, one)
+                    miss
+                      save seen/{let-name}, declared
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# ---- a list a counted loop generates ----
+
+form list-generator
+  link list, like text
+  link counter, like text
+  link base, like number
+  link bound, like expression
+  link item, like expression
+  link type, like type
+  link push, like expression
+
+form generator-state
+  mark shared
+  link lets, like number
+  link refused, like boolean
+
+# the task as a whole: the counter declared once, no guard, the list never assigned whole, and no closure writing the
+# counter or the bound
+task generator-visit
+  take handle, like node-handle
+  take in-closure, like boolean
+  take list, like text
+  take counter, like text
+  take bound-name, like text
+  take st, like generator-state
+  mark private
+
+  save inside, in-closure
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          fork test, is-equal(let-name, counter)
+            hold
+              save st/lets, add(st/lets, 1)
+        case guard
+          save st/refused, true
+        case assign
+          link assign-target
+          save target-name, variable-name-of(assign-target)
+          fork test, and(is-unequal(target-name, <>), is-equal(target-name, list))
+            hold
+              save st/refused, true
+          fork test, and(in-closure, is-unequal(target-name, <>))
+            hold
+              fork test, or(is-equal(target-name, counter), and(is-unequal(bound-name, <>), is-equal(target-name, bound-name)))
+                hold
+                  save st/refused, true
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          save inside, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    generator-visit(child, inside, list, counter, bound-name, st)
+
+# the item a push puts onto the list: `list_push(xs, e)` or `xs.push(e)`
+task pushed-item
+  take call, like expression
+  take list, like text
+  like maybe, like expression
+  mark private
+
+  sift call
+    case call
+      link call-callee
+      link call-args
+      sift call-callee
+        case variable
+          link callee-name
+          fork test, and(and(is-equal(callee-name, <list_push>), is-above(call-args/length, 1)), is-equal(variable-name-of(get(call-args, 0)), list))
+            hold
+              save item, get(call-args, 1)
+              back make(some, item)
+        case member
+          sift collection-call(call-callee)
+            case some
+              link op
+              fork test, and(and(is-equal(op/kind, <array>), is-equal(op/op, <push>)), and(is-equal(variable-name-of(op/target), list), is-equal(call-args/length, 1)))
+                hold
+                  save item, get(call-args, 0)
+                  back make(some, item)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+# the counter's step: `i = i + 1`
+task counts-up
+  take step, like statement
+  take counter, like text
+  like boolean
+  mark private
+
+  sift step
+    case assign
+      link step-target
+      link step-op
+      link step-value
+      sift step-op
+        case set
+          save nothing, 0
+        miss
+          back false
+      fork test, is-unequal(variable-name-of(step-target), counter)
+        hold
+          back false
+      sift step-value
+        case binary
+          link value-op
+          link value-left
+          link value-right
+          sift value-op
+            case plus
+              save nothing, 0
+            miss
+              back false
+          fork test, is-unequal(variable-name-of(value-left), counter)
+            hold
+              back false
+          sift value-right
+            case integer
+              link right-value
+              back is-equal(right-value, 1)
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# an empty list: `make list` or `[]`
+task empty-list
+  take init, like expression
+  like boolean
+  mark private
+
+  sift init
+    case array
+      back is-equal(items/length, 0)
+    case record
+      back and(is-equal(name, <list>), is-equal(fields/length, 0))
+    miss
+      back false
+
+# A list GENERATED by a counted loop at `at` in `body`, which a backend may make in one sized construction. Only where
+# nothing can tell (compile/backend.ts says each rule)
+task list-generator-at
+  take body, like list, like statement
+  take at, like number
+  take fn, like statement
+  like maybe, like list-generator
+
+  save made-at, statement-at(body, at)
+  save start-at, statement-at(body, add(at, 1))
+  save loop-at, statement-at(body, add(at, 2))
+  sift made-at
+    case some
+      link made
+      sift start-at
+        case some
+          link start
+          sift loop-at
+            case some
+              link loop
+              back generator-of(body, at, fn, made, start, loop)
+            case none
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+task generator-of
+  take body, like list, like statement
+  take at, like number
+  take fn, like statement
+  take made, like statement
+  take start, like statement
+  take loop, like statement
+  like maybe, like list-generator
+  mark private
+
+  sift made
+    case let
+      link list
+      link made-init
+      link made-mutable
+      link made-span
+      link made-type
+      fork test, is-unequal(kind-of(made-type), <array>)
+        hold
+          back make none
+      fork test, not(empty-list(made-init))
+        hold
+          back make none
+      sift start
+        case let
+          link counter
+          link start-init
+          sift start-init
+            case integer
+              link base
+              fork test, is-equal(counter, list)
+                hold
+                  back make none
+              sift loop
+                case while
+                  link cond
+                  link loop-body
+                  sift cond
+                    case binary
+                      link cond-op
+                      link cond-left
+                      link bound
+                      sift cond-op
+                        case below
+                          save nothing, 0
+                        miss
+                          back make none
+                      fork test, is-unequal(variable-name-of(cond-left), counter)
+                        hold
+                          back make none
+                      save bound-name, <>
+                      sift bound
+                        case integer
+                          save nothing, 0
+                        case variable
+                          link bound-variable
+                          fork test, or(is-equal(bound-variable, counter), is-equal(bound-variable, list))
+                            hold
+                              back make none
+                          save bound-name, bound-variable
+                        miss
+                          back make none
+                      fork test, is-unequal(loop-body/length, 2)
+                        hold
+                          back make none
+                      save push-statement, get(loop-body, 0)
+                      save step, get(loop-body, 1)
+                      sift push-statement
+                        case expression
+                          link push-call
+                          sift pushed-item(push-call, list)
+                            case some
+                              link item
+                              fork test, not(counts-up(step, counter))
+                                hold
+                                  back make none
+                              fork test, has-text(names-in(handles-of-expression(item)), list)
+                                hold
+                                  back make none
+                              save rest, make list
+                              save k, add(at, 3)
+                              walk test
+                                hook test, is-below(k, body/length)
+                                hook hold
+                                  push(rest, get(body, k))
+                                  save k, add(k, 1)
+                              fork test, has-text(names-in(block-handles(rest)), counter)
+                                hold
+                                  back make none
+                              save st
+                                make generator-state
+                                  bind lets, 0
+                                  bind refused, false
+                              sift fn
+                                case function
+                                  link fn-name
+                                  link fn-params
+                                  link fn-body
+                                  walk block-handles(fn-body)
+                                    take handle
+                                    generator-visit(handle, false, list, counter, bound-name, st)
+                                miss
+                                  save nothing, 0
+                              fork test, or(is-unequal(st/lets, 1), st/refused)
+                                hold
+                                  back make none
+                              sift made-type
+                                case some
+                                  link list-type
+                                  save found
+                                    make list-generator
+                                      bind list, list
+                                      bind counter, counter
+                                      bind base, base
+                                      bind bound, bound
+                                      bind item, item
+                                      bind type, list-type
+                                      bind push, push-call
+                                  back make(some, found)
+                                case none
+                                  back make none
+                            case none
+                              back make none
+                        miss
+                          back make none
+                    miss
+                      back make none
+                miss
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+task handles-of-expression
+  take node, like expression
+  like list, like node-handle
+  mark private
+
+  save out, make list
+  push(out, expression-handle-of(node))
+  back out
+
+form generated-list
+  link made, like statement
+  link generator, like list-generator
+
+form generators-state
+  mark shared
+  link found, like list, like generated-list
+
+task generators-visit
+  take handle, like node-handle
+  take fn, like statement
+  take st, like generators-state
+  mark private
+
+  walk other-children(handle)
+    take child
+    generators-visit(child, fn, st)
+  walk statement-lists(handle)
+    take body
+    generators-block(body, fn, st)
+  sift stub-shape-of(handle)
+    case some
+      link shape
+      generators-visit(statement-handle-of(shape), fn, st)
+    case none
+      save nothing, 0
+
+task generators-block
+  take body, like list, like statement
+  take fn, like statement
+  take st, like generators-state
+  mark private
+
+  save at, 0
+  walk body
+    take one
+    sift list-generator-at(body, at, fn)
+      case some
+        link generator
+        save found
+          make generated-list
+            bind made, one
+            bind generator, generator
+        push(st/found, found)
+      case none
+        save nothing, 0
+    save at, add(at, 1)
+  walk body
+    take one
+    generators-visit(statement-handle-of(one), fn, st)
+
+# every generated list in a task, by the `let` that makes it
+task list-generators
+  take fn, like statement
+  like list, like generated-list
+
+  save st
+    make generators-state
+      bind found, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      generators-block(fn-body, fn, st)
+    miss
+      save nothing, 0
+  back st/found
+
+# ---- the lists a backend may hold as a fixed-length array ----
+
+form fixed-scan
+  mark shared
+  link lets, like hash, like text, like statement
+  # whether the last `let` of each name is a generator's
+  link generated-lets, like hash, like text, like boolean
+  link pushed, like hash, like text, like boolean
+  link returned, like hash, like text, like boolean
+
+task push-name
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      sift call-callee
+        case variable
+          link callee-name
+          fork test, and(is-equal(callee-name, <list_push>), is-above(call-args/length, 0))
+            hold
+              back variable-name-of(get(call-args, 0))
+        case member
+          # the collection operation `list_push` inlines to, `xs.push(v)`
+          sift collection-call(call-callee)
+            case some
+              link op
+              fork test, and(is-equal(op/kind, <array>), is-equal(op/op, <push>))
+                hold
+                  back variable-name-of(op/target)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back <>
+
+# `skip-call`: this handle is a generator's push, which puts nothing onto a full list. `generator-let`: this handle is a
+# generator's `let`
+task fixed-visit
+  take handle, like node-handle
+  take skip-call, like boolean
+  take generator-let, like boolean
+  take fn, like statement
+  take generated, like boolean
+  take st, like fixed-scan
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          save st/lets/{let-name}, node
+          save st/generated-lets/{let-name}, generator-let
+        case return
+          link return-value
+          sift return-value
+            case some
+              link value-node
+              sift value-node
+                case variable
+                  link returned-name
+                  save st/returned/{returned-name}, true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      fork test, not(skip-call)
+        hold
+          save pushed-name, push-name(node)
+          fork test, is-unequal(pushed-name, <>)
+            hold
+              save st/pushed/{pushed-name}, true
+    miss
+      save nothing, 0
+  walk other-children(handle)
+    take child
+    fixed-visit(child, false, false, fn, generated, st)
+  walk statement-lists(handle)
+    take body
+    fixed-block(body, fn, generated, st)
+  sift stub-shape-of(handle)
+    case some
+      link shape
+      fixed-visit(statement-handle-of(shape), false, false, fn, generated, st)
+    case none
+      save nothing, 0
+
+# a generator's loop, its push left uncounted: the condition and the rest as usual, the push's own parts too
+task fixed-loop
+  take loop, like statement
+  take fn, like statement
+  take generated, like boolean
+  take st, like fixed-scan
+  mark private
+
+  save handle, statement-handle-of(loop)
+  walk other-children(handle)
+    take child
+    fixed-visit(child, false, false, fn, generated, st)
+  sift loop
+    case while
+      link loop-cond
+      link loop-body
+      save at, 0
+      walk loop-body
+        take one
+        fork test, is-equal(at, 0)
+          hold
+            sift one
+              case expression
+                link push-call
+                fixed-visit(expression-handle-of(push-call), true, false, fn, generated, st)
+              miss
+                fixed-visit(statement-handle-of(one), false, false, fn, generated, st)
+          miss
+            fixed-visit(statement-handle-of(one), false, false, fn, generated, st)
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+
+task fixed-block
+  take body, like list, like statement
+  take fn, like statement
+  take generated, like boolean
+  take st, like fixed-scan
+  mark private
+
+  # the positions of the generators' `let`s and loops in this list
+  save lets-at, index-flags()
+  save loops-at, index-flags()
+  fork test, generated
+    hold
+      save at, 0
+      walk body
+        take one
+        sift list-generator-at(body, at, fn)
+          case some
+            save lets-at/{at}, true
+            save loop-at, add(at, 2)
+            save loops-at/{loop-at}, true
+          case none
+            save nothing, 0
+        save at, add(at, 1)
+  save at, 0
+  walk body
+    take one
+    fork test, loops-at/has(at)
+      hold
+        fixed-loop(one, fn, generated, st)
+      miss
+        fixed-visit(statement-handle-of(one), false, lets-at/has(at), fn, generated, st)
+    save at, add(at, 1)
+
+form fixed-site
+  link caller, like text
+  link callee, like text
+  link at, like number
+  link arg, like expression
+
+form fixed-lists
+  link locals, like hash, like text, like hash, like text, like boolean
+  link params, like hash, like text, like hash, like number, like boolean
+
+task sites-visit
+  take handle, like node-handle
+  take in-closure, like boolean
+  take caller, like text
+  take lend, like hash, like text, like hash, like number, like text
+  take sites, like list, like fixed-site
+  mark private
+
+  save inside, in-closure
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          save inside, true
+        case call
+          link call-callee
+          link call-args
+          save callee-name, variable-name-of(call-callee)
+          fork test, and(is-unequal(callee-name, <>), lend/has(callee-name))
+            hold
+              save lent, lend/get(callee-name)
+              save at, 0
+              walk call-args
+                take arg
+                fork test, lent/has(at)
+                  hold
+                    # an argument inside a closure is never a caller's fixed list: mark it as nothing the caller holds
+                    save site-caller, caller
+                    fork test, inside
+                      hold
+                        save site-caller, <>
+                    save site
+                      make fixed-site
+                        bind caller, site-caller
+                        bind callee, callee-name
+                        bind at, at
+                        bind arg, arg
+                    push(sites, site)
+                save at, add(at, 1)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    sites-visit(child, inside, caller, lend, sites)
+
+# the position of a parameter by name, -1 when the task has none
+task param-index
+  take fn, like statement
+  take name, like text
+  like number
+  mark private
+
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      save at, 0
+      walk fn-params
+        take param
+        fork test, is-equal(param/name, name)
+          hold
+            back at
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+  back -1
+
+task holds-index
+  take params, like hash, like text, like hash, like number, like boolean
+  take name, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, params/has(name)
+    hold
+      save at-table, params/get(name)
+      back at-table/has(at)
+  back false
+
+task holds-name
+  take locals, like hash, like text, like hash, like text, like boolean
+  take caller, like text
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, locals/has(caller)
+    hold
+      save names, locals/get(caller)
+      back names/has(name)
+  back false
+
+task fixed-arg
+  take site, like fixed-site
+  take fresh, like hash, like text, like boolean
+  take by-name, like hash, like text, like statement
+  take locals, like hash, like text, like hash, like text, like boolean
+  take params, like hash, like text, like hash, like number, like boolean
+  like boolean
+  mark private
+
+  save arg, site/arg
+  sift arg
+    case call
+      link call-callee
+      save callee-name, variable-name-of(call-callee)
+      back and(is-unequal(callee-name, <>), fresh/has(callee-name))
+    case variable
+      link arg-name
+      fork test, is-equal(site/caller, <>)
+        hold
+          back false
+      fork test, holds-name(locals, site/caller, arg-name)
+        hold
+          back true
+      fork test, not(by-name/has(site/caller))
+        hold
+          back false
+      save index, param-index(by-name/get(site/caller), arg-name)
+      back and(is-minimum(index, 0), holds-index(params, site/caller, index))
+    miss
+      back false
+
+# F1, the fixed-length slice: the lists a backend may hold as a plain primitive ARRAY (Kotlin's `LongArray`), which
+# cannot grow. Locals and lent parameters, solved together (compile/backend.ts says each rule)
+task fixed-lists-of
+  take program, like list, like statement
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  take element
+    like task
+      take given, like type
+      like boolean
+  # whether a list a counted loop generates counts as made full
+  take generated, like boolean
+  like fixed-lists
+
+  save fns, make list
+  save by-name, text-statements()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        push(fns, one)
+        save by-name/{fn-name}, one
+      miss
+        save nothing, 0
+  save locals, name-table()
+  save params, index-table()
+  # the candidate locals, per task
+  walk fns
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, not(read(async))
+          hold
+            save owned, owned-locals(one, fresh, lend, text-flags(), never-moved)
+            save st
+              make fixed-scan
+                bind lets, text-statements()
+                bind generated-lets, text-flags()
+                bind pushed, text-flags()
+                bind returned, text-flags()
+            fixed-block(fn-body, one, generated, st)
+            save fixed, text-flags()
+            walk owned/keys()
+              take name
+              fork test, fixed-local(name, st, fresh, element)
+                hold
+                  save fixed/{name}, true
+            fork test, is-above(fixed/keys()/length, 0)
+              hold
+                save locals/{fn-name}, fixed
+      miss
+        save nothing, 0
+  # the candidate parameters
+  walk lend/keys()
+    take name
+    fork test, by-name/has(name)
+      hold
+        save fn, by-name/get(name)
+        save at, index-flags()
+        save lent, lend/get(name)
+        walk lent/keys()
+          take i
+          sift param-type-at(fn, i)
+            case some
+              link param-type
+              sift param-type
+                case array
+                  link element-type
+                  fork test, element(element-type)
+                    hold
+                      save at/{i}, true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        fork test, is-above(at/keys()/length, 0)
+          hold
+            save params/{name}, at
+  # every lending call: who calls, what, at which position, with what
+  save sites, make list
+  walk fns
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        walk block-handles(fn-body)
+          take handle
+          sites-visit(handle, false, fn-name, lend, sites)
+      miss
+        save nothing, 0
+  # drop until stable
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk params/keys()
+        take name
+        save at, params/get(name)
+        walk at/keys()
+          take i
+          save every, true
+          walk sites
+            take site
+            fork test, and(and(is-equal(site/callee, name), is-equal(site/at, i)), not(fixed-arg(site, fresh, by-name, locals, params)))
+              hold
+                save every, false
+          fork test, not(every)
+            hold
+              at/delete(i)
+              save changed, true
+        fork test, is-equal(at/keys()/length, 0)
+          hold
+            params/delete(name)
+      walk sites
+        take site
+        save arg-name, variable-name-of(site/arg)
+        fork test, and(is-unequal(arg-name, <>), is-unequal(site/caller, <>))
+          hold
+            fork test, and(holds-name(locals, site/caller, arg-name), not(holds-index(params, site/callee, site/at)))
+              hold
+                save names, locals/get(site/caller)
+                names/delete(arg-name)
+                save changed, true
+            # a fixed PARAMETER passed on the same way
+            save index, -1
+            fork test, by-name/has(site/caller)
+              hold
+                save index, param-index(by-name/get(site/caller), arg-name)
+            fork test, and(and(is-minimum(index, 0), holds-index(params, site/caller, index)), not(holds-index(params, site/callee, site/at)))
+              hold
+                save caller-at, params/get(site/caller)
+                caller-at/delete(index)
+                fork test, is-equal(caller-at/keys()/length, 0)
+                  hold
+                    params/delete(site/caller)
+                save changed, true
+  back
+    make fixed-lists
+      bind locals, locals
+      bind params, params
+
+# a local is fixed when its element passes, it is made full (a fresh task's answer, or a generator), nothing pushes onto
+# it, and it is never handed back
+task fixed-local
+  take name, like text
+  take st, like fixed-scan
+  take fresh, like hash, like text, like boolean
+  take element
+    like task
+      take given, like type
+      like boolean
+  like boolean
+  mark private
+
+  fork test, or(st/pushed/has(name), st/returned/has(name))
+    hold
+      back false
+  fork test, not(st/lets/has(name))
+    hold
+      back false
+  save made, st/lets/get(name)
+  sift made
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      save full, st/generated-lets/get(name)
+      sift let-init
+        case call
+          link init-callee
+          sift init-callee
+            case variable
+              link init-name
+              fork test, fresh/has(init-name)
+                hold
+                  save full, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      fork test, not(full)
+        hold
+          back false
+      sift let-type
+        case some
+          link known
+          sift known
+            case array
+              link element-type
+              back element(element-type)
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+task param-type-at
+  take fn, like statement
+  take at, like number
+  like maybe, like type
+  mark private
+
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      fork test, is-below(at, fn-params/length)
+        hold
+          save param, get(fn-params, at)
+          sift param/type
+            case some
+              link known
+              back make(some, known)
+            case none
+              back make none
+    miss
+      save nothing, 0
+  back make none

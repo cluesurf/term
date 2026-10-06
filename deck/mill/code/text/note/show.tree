@@ -1,0 +1,76 @@
+# One read expression as a line of text, every node in parentheses with its operator first: `x + y * 2` is
+# `(+ x (* y 2))`. What a test states and what a mistake report quotes, so the shape the reader built is plain to see.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load ./form
+  find unit-factor
+  find note-node
+
+task show-note
+  take node, like note-node
+  like text
+
+  sift node
+    case number-node
+      back literal
+    case quantity-node
+      back <(quantity {value} {unit}{show-factors(factors)})>
+    case text-node
+      back <"{value}">
+    case name-node
+      back name
+    case unary-node
+      back <({operator} {show-note(operand)})>
+    case binary-node
+      back <({operator} {show-note(left)} {show-note(right)})>
+    case call-node
+      back <(call {show-note(callee)}{show-all(arguments)})>
+    case index-node
+      back <(index {show-note(target)} {show-note(index)})>
+    case member-node
+      back <(member {show-note(target)} {name})>
+    case list-node
+      back <(list{show-all(items)})>
+    case set-node
+      back <(set{show-all(items)})>
+    case range-node
+      back <({bracket(from-open, <(>, <[>)}range {show-note(from)} {show-note(to)}{bracket(to-open, <)>, <]>)})>
+
+task show-all
+  take nodes, like list, like note-node
+  like text
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, < {show-note(one)}>)
+  back join(out, <>)
+
+# each factor as its unit's symbol and power: ` m^1 s^-2`
+task show-factors
+  take factors, like list, like unit-factor
+  like text
+  mark private
+
+  save out, make list
+  walk factors
+    take one
+    push(out, < {one/entry/symbol}^{one/power}>)
+  back join(out, <>)
+
+task bracket
+  take open, like boolean
+  take when-open, like text
+  take when-closed, like text
+  like text
+  mark private
+
+  fork test, open
+    hold
+      back when-open
+  back when-closed

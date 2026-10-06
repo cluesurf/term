@@ -1,5 +1,5 @@
 # Which mill reads which file. `deck/deck/code/role.ts` reads this THROUGH
-# THE ROLE MILL at `deck/mill/code/deck/role/`, and `deck/call/code/role-of.ts`
+# THE ROLE MILL at `deck/mill/code/tree/deck/role/`, and `deck/call/code/role-of.ts`
 # hands the answer to the compiler, so a file's role overrides what its
 # content says.
 #

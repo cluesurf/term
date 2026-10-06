@@ -1,0 +1,978 @@
+# What the hold walk does to the facts it carries: forget a name by projecting it out (Fourier-Motzkin), forget the
+# fields a write lands in, copy the facts through a record to a second name for it, move them across `x = x + d`, join
+# the facts at the end of a branch's paths, and read the constant a key is pinned to.
+#
+#   - an inequality is `L <= 0` (`< 0` when strict), as check/certificate.tree states it
+#   - a KEY is a plain name, a list's length `@length:<path>`, a number field `@field:<path>`, a text's length
+#     `@text:<path>`, a monomial `@poly:<vars>`, an application `@apply:...`, or an auxiliary atom `__...` the linear
+#     translation made. Its ROOT is the name its path starts at. A key that stands for STATE (a length or a field) is
+#     one that calls and writes can change; a text's length and an auxiliary atom are not
+#   - forgetting a name projects it out rather than dropping its facts, so what they said about other names through
+#     it holds: `len - i == 0` and `i == 25` leave `len == 25`. A projection that would make more than 200 rows drops
+#     instead, which is weaker and still sound
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
+#   - a row's text (`row-key`) and every number in it are JavaScript's, through binds, so two rows the original took
+#     for one are one here
+#   - the linear prover is the face's (`proves`, memoized), handed in through `hold-calls`
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find slice
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+
+load @term/base/ordering
+  find ordering
+
+load ../compile/node
+  find expression
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find at-least
+  find at-most
+
+load ./nonlinear
+  find monomial-vars
+
+load ./universal
+  find hold-calls
+
+load ./inequality
+  find atom-linear
+  find constant-linear
+  find add-linear
+  find scale-linear
+  find signed-remainders
+
+load ./hold-state
+  find hold-state
+
+load ./purity
+  find everything
+
+# ---- JavaScript's numbers and texts ----
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+bind js-abs
+  take value, like float
+  like float
+  case node
+    text <Math.abs($value)>
+  case browser
+    text <Math.abs($value)>
+  case rust
+    text <$value.abs()>
+  case swift
+    text <abs($value)>
+  case kotlin
+    text <Math.abs($value)>
+
+bind whole-float
+  take value, like float
+  like boolean
+  case node
+    text <Number.isInteger($value)>
+  case browser
+    text <Number.isInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0)>
+
+bind js-divide
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <($a / $b)>
+  case browser
+    text <($a / $b)>
+  case rust
+    text <($a / $b)>
+  case swift
+    text <($a / $b)>
+  case kotlin
+    text <($a / $b)>
+
+# `/[^a-z0-9_#-]/`: a key holding anything a plain name cannot
+bind not-plain
+  take value, like text
+  like boolean
+  case node
+    text </[^a-z0-9_#-]/.test($value)>
+  case browser
+    text </[^a-z0-9_#-]/.test($value)>
+  case rust
+    text <$value.chars().any(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '#' || c == '-'))>
+  case swift
+    text <$value.contains(where: \{ !(($0 \>= "a" && $0 \<= "z") || ($0 \>= "0" && $0 \<= "9") || $0 == "_" || $0 == "#" || $0 == "-") \})>
+  case kotlin
+    text <$value.any \{ !(it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '#' || it == '-') \}>
+
+# `/^[0-9]+$/`: a step named by its position
+bind digits-only
+  take value, like text
+  like boolean
+  case node
+    text </^[0-9]+$/.test($value)>
+  case browser
+    text </^[0-9]+$/.test($value)>
+  case rust
+    text <(!$value.is_empty() && $value.chars().all(|c| c.is_ascii_digit()))>
+  case swift
+    text <(!$value.isEmpty && $value.allSatisfy(\{ $0.isASCII && $0.isNumber \}))>
+  case kotlin
+    text <($value.isNotEmpty() && $value.all \{ it in '0'..'9' \})>
+
+# JavaScript's `a < b` on two texts: by UTF-16 code unit
+bind text-before
+  take a, like text
+  take b, like text
+  like boolean
+  case node
+    text <($a \< $b)>
+  case browser
+    text <($a \< $b)>
+  case rust
+    text <($a.encode_utf16().cmp($b.encode_utf16()) == std::cmp::Ordering::Less)>
+  case swift
+    text <(Array($a.utf16).lexicographicallyPrecedes(Array($b.utf16)))>
+  case kotlin
+    text <($a \< $b)>
+
+# ---- makers ----
+
+task facts
+  like list, like inequality
+  mark private
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task number-terms
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task both-facts
+  take a, like list, like inequality
+  take b, like list, like inequality
+  like list, like inequality
+
+  save out, facts()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-text
+  take into, like list, like text
+  take one, like text
+
+  fork test, has-text(into, one)
+    hold
+      back
+  push(into, one)
+
+# `{ ...q, linear: { terms, constant } }`
+task with-linear
+  take q, like inequality
+  take terms, like hash, like text, like float
+  take constant, like float
+  like inequality
+  mark private
+
+  save made
+    make linear
+      bind terms, terms
+      bind constant, constant
+  back
+    make inequality
+      bind linear, made
+      bind strict, q/strict
+
+# ---- keys ----
+
+task length-prefix
+  like text
+
+  back <@length:>
+
+task field-prefix
+  like text
+
+  back <@field:>
+
+task text-prefix
+  like text
+
+  back <@text:>
+
+task poly-prefix
+  like text
+  mark private
+
+  back <@poly:>
+
+# the text after a prefix the key starts with, or none
+task after-prefix
+  take key, like text
+  take prefix, like text
+  like maybe, like text
+
+  fork test, starts-with(key, prefix)
+    hold
+      save rest, substring(key, prefix/length)
+      back make(some, rest)
+  back make none
+
+# the variable a fact key reads: itself for a plain name, the root of the path for a length, a field or a text
+task key-root
+  take key, like text
+  like text
+
+  walk state-prefixes()
+    take prefix
+    sift after-prefix(key, prefix)
+      case some
+        link path
+        back get(split(path, <.>), 0)
+      case none
+        save nothing, 0
+  back key
+
+task state-prefixes
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, length-prefix())
+  push(out, field-prefix())
+  push(out, text-prefix())
+  back out
+
+# a key that stands for STATE, which calls and writes can change: a list's length or a record's field. A text's length
+# (`@text:`) is not state, and neither is an auxiliary atom (`__`)
+task is-state-atom
+  take key, like text
+  like boolean
+
+  back and(not-plain(key), and(not(starts-with(key, <__>)), not(starts-with(key, text-prefix()))))
+
+# a fact over an atom that stands for state
+task mentions-atom
+  take q, like inequality
+  like boolean
+
+  walk q/linear/terms/keys()
+    take key
+    fork test, is-state-atom(key)
+      hold
+        back true
+  back false
+
+# a row with no atom that no value satisfies: `c <= 0` with c above zero, or `0 < 0`
+task contradiction
+  take q, like inequality
+  like boolean
+
+  walk q/linear/terms/values()
+    take c
+    fork test, is-unequal(c, 0.0)
+      hold
+        back false
+  back or(is-above(q/linear/constant, 0.0), and(is-equal(q/linear/constant, 0.0), q/strict))
+
+# what is known where no path arrives: a row that is false outright, `1 <= 0`
+task unreachable-facts
+  like list, like inequality
+
+  save out, facts()
+  push(out, at-least(constant-linear(0.0), constant-linear(1.0)))
+  back out
+
+# `@length:name == n`
+task literal-length
+  take name, like text
+  take n, like float
+  like list, like inequality
+
+  save atom, atom-linear(<{length-prefix()}{name}>)
+  save count, constant-linear(n)
+  save out, facts()
+  push(out, at-most(atom, count))
+  push(out, at-least(atom, count))
+  back out
+
+# a key's path, after `@field:` or `@length:`, or none
+task state-path
+  take key, like text
+  like maybe, like text
+  mark private
+
+  sift after-prefix(key, field-prefix())
+    case some
+      link path
+      back make(some, path)
+    case none
+      back after-prefix(key, length-prefix())
+
+# ---- a row's text ----
+
+task by-key
+  take a, like text
+  take b, like text
+  like ordering
+  mark private
+
+  fork test, text-before(a, b)
+    hold
+      back make less
+  fork test, text-before(b, a)
+    hold
+      back make greater
+  back make equal
+
+# the canonical text of a row: its terms sorted by key, `v*k` joined by `+`, the relation, and the negated constant
+task row-key
+  take q, like inequality
+  like text
+
+  save keys, texts()
+  walk q/linear/terms/keys()
+    take key
+    push(keys, key)
+  save parts, texts()
+  walk sort(keys, by-key)
+    take key
+    push(parts, <{js-text(q/linear/terms/get(key))}*{key}>)
+  save relation, <\<=>
+  fork test, q/strict
+    hold
+      save relation, <\<>
+  back <{join(parts, <+>)}{relation}{js-text(multiply(-1.0, q/linear/constant))}>
+
+# ---- forgetting ----
+
+task key-coefficient
+  take q, like inequality
+  take key, like text
+  like float
+  mark private
+
+  fork test, q/linear/terms/has(key)
+    hold
+      back q/linear/terms/get(key)
+  back 0.0
+
+# Fourier-Motzkin elimination of one atom: the facts that do not mention it, and every sum of an upper and a lower
+# bound on it scaled so it cancels. Past 200 such sums the atom's facts are dropped instead
+task eliminate-key
+  take known, like list, like inequality
+  take key, like text
+  like list, like inequality
+
+  save kept, facts()
+  save upper, facts()
+  save lower, facts()
+  walk known
+    take q
+    save c, key-coefficient(q, key)
+    fork test, is-above(c, 0.0)
+      hold
+        push(upper, q)
+      miss
+        fork test, is-below(c, 0.0)
+          hold
+            push(lower, q)
+          miss
+            push(kept, q)
+  fork test, is-above(multiply(upper/length, lower/length), 200)
+    hold
+      back kept
+  save seen, texts()
+  walk kept
+    take q
+    push(seen, row-key(q))
+  walk upper
+    take u
+    walk lower
+      take l
+      save a, u/linear/terms/get(key)
+      save b, multiply(-1.0, l/linear/terms/get(key))
+      save sum, add-linear(scale-linear(u/linear, b), scale-linear(l/linear, a))
+      save terms, number-terms()
+      walk sum/terms/keys()
+        take k
+        save v, sum/terms/get(k)
+        fork test, and(is-unequal(k, key), is-unequal(v, 0.0))
+          hold
+            save terms/{k}, v
+      save strict, or(u/strict, l/strict)
+      # a row with no atoms is either always true (drop it) or a contradiction the path already carried (keep it)
+      fork test, and(is-equal(terms/keys()/length, 0), or(is-below(sum/constant, 0.0), and(is-equal(sum/constant, 0.0), not(strict))))
+        hold
+          turn next
+      save made
+        make linear
+          bind terms, terms
+          bind constant, sum/constant
+      save row
+        make inequality
+          bind linear, made
+          bind strict, strict
+      save id, row-key(row)
+      fork test, not(has-text(seen, id))
+        hold
+          push(seen, id)
+          push(kept, row)
+  back kept
+
+# forget these names: each is PROJECTED out rather than its facts dropped, so what the facts said about OTHER names
+# through them still holds. The name `everything()` (a write whose root has no name) drops every fact
+task forget
+  take current, like list, like inequality
+  take names, like list, like text
+  like list, like inequality
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back current
+  fork test, has-text(names, everything())
+    hold
+      back facts()
+  save keys, texts()
+  walk current
+    take q
+    walk q/linear/terms/keys()
+      take key
+      fork test, has-text(names, key-root(key))
+        hold
+          add-text(keys, key)
+          turn next
+      sift after-prefix(key, poly-prefix())
+        case some
+          link monomial
+          walk monomial-vars(monomial)
+            take v
+            fork test, has-text(names, v)
+              hold
+                add-text(keys, key)
+                halt
+        case none
+          save nothing, 0
+  save known, current
+  walk keys
+    take key
+    save known, eliminate-key(known, key)
+  back known
+
+# drop every fact over a state atom whose path passes through one of these field names after its root
+task drop-fields
+  take current, like list, like inequality
+  take fields, like list, like text
+  like list, like inequality
+
+  fork test, is-equal(fields/length, 0)
+    hold
+      back current
+  save out, facts()
+  walk current
+    take q
+    save keep, true
+    walk q/linear/terms/keys()
+      take key
+      sift state-path(key)
+        case some
+          link path
+          save steps, split(path, <.>)
+          save at, 1
+          walk test
+            hook test, is-below(at, steps/length)
+            hook hold
+              fork test, has-text(fields, get(steps, at))
+                hold
+                  save keep, false
+                  halt
+              save at, add(at, 1)
+        case none
+          save nothing, 0
+      fork test, not(keep)
+        hold
+          halt
+    fork test, keep
+      hold
+        push(out, q)
+  back out
+
+# forget every fact over a state atom whose path goes through a list position (`@length:rows.0`)
+task drop-element-paths
+  take current, like list, like inequality
+  like list, like inequality
+
+  save out, facts()
+  walk current
+    take q
+    save keep, true
+    walk q/linear/terms/keys()
+      take key
+      sift state-path(key)
+        case some
+          link path
+          walk split(path, <.>)
+            take step
+            fork test, digits-only(step)
+              hold
+                save keep, false
+                halt
+        case none
+          save nothing, 0
+      fork test, not(keep)
+        hold
+          halt
+    fork test, keep
+      hold
+        push(out, q)
+  back out
+
+task without-state
+  take current, like list, like inequality
+  like list, like inequality
+
+  save out, facts()
+  walk current
+    take q
+    fork test, not(mentions-atom(q))
+      hold
+        push(out, q)
+  back out
+
+# `x = y` with y a record: the two names hold ONE record, so every fact over a field or a length reached through y is
+# a fact through x too, copied with x as the root
+task alias-facts
+  take current, like list, like inequality
+  take name, like text
+  take from, like text
+  like list, like inequality
+
+  save out, facts()
+  walk current
+    take q
+    save renames, false
+    walk q/linear/terms/keys()
+      take key
+      sift renamed-key(key, from, name)
+        case some
+          link found
+          save renames, true
+          halt
+        case none
+          save nothing, 0
+    fork test, not(renames)
+      hold
+        turn next
+    save terms, number-terms()
+    walk q/linear/terms/keys()
+      take key
+      save target, key
+      sift renamed-key(key, from, name)
+        case some
+          link found
+          save target, found
+        case none
+          save nothing, 0
+      save had, 0.0
+      fork test, terms/has(target)
+        hold
+          save had, terms/get(target)
+      save terms/{target}, add(had, q/linear/terms/get(key))
+    push(out, with-linear(q, terms, q/linear/constant))
+  back out
+
+# a key through `from` written through `name`: `@field:from.x` is `@field:name.x`
+task renamed-key
+  take key, like text
+  take from, like text
+  take name, like text
+  like maybe, like text
+  mark private
+
+  walk two-prefixes()
+    take prefix
+    sift after-prefix(key, <{prefix}{from}.>)
+      case some
+        link rest
+        save renamed, <{prefix}{name}.{rest}>
+        back make(some, renamed)
+      case none
+        save nothing, 0
+  back make none
+
+task two-prefixes
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, field-prefix())
+  push(out, length-prefix())
+  back out
+
+# ---- exact values ----
+
+# the constant a key equals in these facts, when they pin it: some fact bounds it above and below by the same
+# constant, confirmed by the prover. The constants the facts mention are tried first, then each fact over the key alone
+task exact-value
+  take calls, like hold-calls
+  take known, like list, like inequality
+  take key, like text
+  like maybe, like float
+
+  save atom, atom-linear(key)
+  save candidates, floats()
+  push(candidates, 0.0)
+  walk known
+    take q
+    add-float(candidates, q/linear/constant)
+    add-float(candidates, multiply(-1.0, q/linear/constant))
+  walk candidates
+    take candidate
+    fork test, pinned(calls, known, atom, candidate)
+      hold
+        back make(some, candidate)
+  walk known
+    take q
+    fork test, or(is-unequal(q/linear/terms/keys()/length, 1), q/strict)
+      hold
+        turn next
+    fork test, not(q/linear/terms/has(key))
+      hold
+        turn next
+    save coefficient, q/linear/terms/get(key)
+    fork test, is-unequal(js-abs(coefficient), 1.0)
+      hold
+        turn next
+    # `c*key + k <= 0` gives the candidate key = -k/c
+    save candidate, js-divide(multiply(-1.0, q/linear/constant), coefficient)
+    fork test, pinned(calls, known, atom-linear(key), candidate)
+      hold
+        back make(some, candidate)
+  back make none
+
+task pinned
+  take calls, like hold-calls
+  take known, like list, like inequality
+  take atom, like linear
+  take candidate, like float
+  like boolean
+  mark private
+
+  fork test, not(whole-float(candidate))
+    hold
+      back false
+  fork test, not(calls/proves(known, at-most(atom, constant-linear(candidate))))
+    hold
+      back false
+  back calls/proves(known, at-least(atom, constant-linear(candidate)))
+
+task floats
+  like list, like float
+
+  back make list
+
+# a number added to a list of distinct ones, as a JavaScript `Set` adds it: `0` and `-0` are one
+task add-float
+  take into, like list, like float
+  take one, like float
+
+  walk into
+    take item
+    fork test, is-equal(item, one)
+      hold
+        back
+  push(into, one)
+
+# ---- the join after a branch ----
+
+task by-size
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  save x, js-abs(a)
+  save y, js-abs(b)
+  fork test, is-below(x, y)
+    hold
+      back make less
+  fork test, is-above(x, y)
+    hold
+      back make greater
+  back make equal
+
+task ascending
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back make less
+  fork test, is-above(a, b)
+    hold
+      back make greater
+  back make equal
+
+task descending
+  take a, like float
+  take b, like float
+  like ordering
+  mark private
+
+  back ascending(b, a)
+
+task every-path-proves
+  take calls, like hold-calls
+  take paths, like list, like list, like inequality
+  take q, like inequality
+  like boolean
+  mark private
+
+  walk paths
+    take path
+    fork test, not(calls/proves(path, q))
+      hold
+        back false
+  back true
+
+task mentions-written
+  take q, like inequality
+  take written, like list, like text
+  like boolean
+  mark private
+
+  walk q/linear/terms/keys()
+    take key
+    fork test, has-text(written, key-root(key))
+      hold
+        back true
+  back false
+
+# the atoms the paths relate to any of `of`, besides `of` themselves and auxiliary atoms
+task near
+  take ends, like list, like list, like inequality
+  take of, like list, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk ends
+    take path
+    walk path
+      take q
+      save touches, false
+      walk of
+        take k
+        fork test, q/linear/terms/has(k)
+          hold
+            save touches, true
+            halt
+      fork test, touches
+        hold
+          walk q/linear/terms/keys()
+            take key
+            fork test, and(not(has-text(of, key)), not(starts-with(key, <__>)))
+              hold
+                add-text(out, key)
+  back out
+
+task path-list
+  like list, like list, like inequality
+  mark private
+
+  back make list
+
+# THE JOIN AFTER A BRANCH. A fact about a name the branches write survives only when EVERY path that reaches the end
+# proves it. The candidates are the facts the paths end with, a bound on each written name over the constants the paths
+# mention, and each written name against the atoms the paths relate it to
+task join-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take ends, like list, like list, like inequality
+  take written, like list, like text
+  like list, like inequality
+
+  fork test, is-equal(ends/length, 0)
+    hold
+      back facts()
+  save paths, path-list()
+  walk ends
+    take end
+    push(paths, both-facts(end, signed-remainders(state, calls, end, facts())))
+  save seen, texts()
+  save candidates, facts()
+  walk paths
+    take path
+    walk path
+      take q
+      save id, row-key(q)
+      fork test, and(and(mentions-written(q, written), not(has-text(seen, id))), is-below(candidates/length, 40))
+        hold
+          push(seen, id)
+          push(candidates, q)
+  save constants, floats()
+  push(constants, 0.0)
+  push(constants, 1.0)
+  push(constants, -1.0)
+  walk paths
+    take path
+    walk path
+      take q
+      save c, q/linear/constant
+      fork test, and(whole-float(c), is-below(js-abs(c), 2147483648.0))
+        hold
+          add-float(constants, c)
+          add-float(constants, multiply(-1.0, c))
+  save names, texts()
+  walk written
+    take name
+    fork test, and(is-unequal(name, everything()), is-below(names/length, 6))
+      hold
+        push(names, name)
+  save tried, floats()
+  walk sort(constants, by-size)
+    take c
+    fork test, is-below(tried/length, 16)
+      hold
+        push(tried, c)
+  walk names
+    take name
+    save x, atom-linear(name)
+    walk sort(tried, descending)
+      take c
+      save bound, at-least(x, constant-linear(c))
+      fork test, every-path-proves(calls, paths, bound)
+        hold
+          push(candidates, bound)
+          halt
+    walk sort(tried, ascending)
+      take c
+      save bound, at-most(x, constant-linear(c))
+      fork test, every-path-proves(calls, paths, bound)
+        hold
+          push(candidates, bound)
+          halt
+    save only-name, texts()
+    push(only-name, name)
+    save first, near(ends, only-name)
+    save widened, texts()
+    push(widened, name)
+    walk first
+      take k
+      add-text(widened, k)
+    save partners, texts()
+    walk first
+      take k
+      add-text(partners, k)
+    walk near(ends, widened)
+      take k
+      add-text(partners, k)
+    save tried-partners, 0
+    walk partners
+      take partner
+      fork test, is-equal(partner, name)
+        hold
+          turn next
+      fork test, is-minimum(tried-partners, 12)
+        hold
+          halt
+      save tried-partners, add(tried-partners, 1)
+      save terms, number-terms()
+      save terms/{name}, 1.0
+      save terms/{partner}, -1.0
+      save difference
+        make linear
+          bind terms, terms
+          bind constant, 0.0
+      walk two-constants(-1.0, 0.0)
+        take c
+        save below, at-most(difference, constant-linear(c))
+        fork test, every-path-proves(calls, paths, below)
+          hold
+            push(candidates, below)
+            halt
+      walk two-constants(1.0, 0.0)
+        take c
+        save above, at-least(difference, constant-linear(c))
+        fork test, every-path-proves(calls, paths, above)
+          hold
+            push(candidates, above)
+            halt
+  save out, facts()
+  walk candidates
+    take q
+    fork test, every-path-proves(calls, paths, q)
+      hold
+        push(out, q)
+  back out
+
+task two-constants
+  take a, like float
+  take b, like float
+  like list, like float
+  mark private
+
+  save out, floats()
+  push(out, a)
+  push(out, b)
+  back out

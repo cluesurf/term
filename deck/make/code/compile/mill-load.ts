@@ -58,9 +58,10 @@ function readPart(
 }
 
 // resolve one `load` path against the mill: `@term/mill/<p>` by the package path rule every resolver calls
-// (`resolvePackagePath`: the mill's code root, then its package root, so `@term/mill/deck/role/mine` and the older
-// `@term/mill/code/deck/role/mine` both reach deck/mill/code/deck/role/mine.tree), or a `./<p>` relative to the
-// importer. `millRoot` is the mill's code root, deck/mill/code, so the package is the directory above it.
+// (`resolvePackagePath`: the mill's code root, then its package root, so `@term/mill/tree/deck/role/mine` reaches
+// deck/mill/code/tree/deck/role/mine.tree), or a `./<p>` relative to the importer. `millRoot` is where the dialects
+// are, deck/mill/code/tree since 2026-10-06 (note/term/plan/mill-merge-and-role-scopes.md), so the package is the
+// nearest folder above it holding a `deck.tree`, never a fixed number of levels up.
 export function resolveMillImport(
   millRoot: string,
   from: string,
@@ -70,7 +71,7 @@ export function resolveMillImport(
 
   if (named.found) {
     return named.pkg === '@term/mill'
-      ? resolvePackagePath({ dir: dirname(millRoot), rest: named.rest }).file
+      ? resolvePackagePath({ dir: packageOf(millRoot), rest: named.rest }).file
       : undefined
   }
 
@@ -83,6 +84,21 @@ export function resolveMillImport(
   return [`${join(from, '..', nearby[1]!)}.tree`, join(from, '..', nearby[1]!, 'base.tree')].find(candidate =>
     existsSync(candidate),
   )
+}
+
+// the @term/mill package folder: the nearest folder at or above `millRoot` holding a `deck.tree`
+function packageOf(millRoot: string): string {
+  let dir = millRoot
+
+  while (dir !== dirname(dir)) {
+    if (existsSync(join(dir, 'deck.tree'))) {
+      return dir
+    }
+
+    dir = dirname(dir)
+  }
+
+  return dirname(millRoot)
 }
 
 // One rule as a grammar FILE holds it: its name, the `like` it annotates, the form its `hook make` builds, and

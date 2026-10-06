@@ -1,0 +1,18 @@
+load @term/mill/tree/code/head/mint
+  find head
+
+load @term/mill/tree/code/task/mint
+  find task
+
+mint wear
+  case name
+    site name
+  case head
+    site head
+  case task
+    site task
+  hook make
+    make wear
+      bind name, read name
+      bind head, read head
+      bind task, read task

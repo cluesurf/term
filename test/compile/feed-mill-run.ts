@@ -1,7 +1,7 @@
 // Proof for the feed mill compiler (deck/make/code/compile/feed-mill.ts): reads a real, shipped mine.tree
 // grammar, generates .tree source implementing its reader from the grammar ALONE, compiles it through the
 // ordinary parse/mill/check pipeline, and checks its output against the same fixed fixtures the hand-written
-// reader already passes in deck/feed/test/*.tree. Run: npx tsx test/compile/feed-mill-run.ts
+// reader already passes in deck/mill/test/feed/*.tree. Run: npx tsx test/compile/feed-mill-run.ts
 
 import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -39,7 +39,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), mill: join(TERM, 'deck/mill') }
 
 const resolver = (path: string, from: string): Source | undefined => {
   if (path.startsWith('./') || path.startsWith('../')) {
@@ -54,7 +54,7 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  const found = /^@term\/(base|feed)\/(.*)$/.exec(path)
+  const found = /^@term\/(base|mill)\/(.*)$/.exec(path)
 
   if (!found) {
     return undefined
@@ -164,10 +164,10 @@ function runSuite(suite: Suite): void {
 // hex: text substrate, list/form/any/range/value/send.
 runSuite({
   label: 'hex',
-  mineFile: join(TERM, 'deck/feed/code/hex/mine.tree'),
+  mineFile: join(TERM, 'deck/mill/code/text/hex/mine.tree'),
   substrate: 'text',
-  cursorImportPath: '@term/feed/code/base',
-  extraImports: ['load @term/feed/code/hex/code', '  find hex-digit-value', ''],
+  cursorImportPath: '@term/mill/feed',
+  extraImports: ['load @term/mill/text/hex/code', '  find hex-digit-value', ''],
   entryTaskName: 'round-generated-hex',
   entryTaskBody: [
     'task round-generated-hex',
@@ -193,20 +193,20 @@ runSuite({
 // grammar's own missing `mine value` construction found (see gzip/mine.tree's header comment). `read-gzip` is
 // the GENERATED reader here (the whole point), so gzip/code.tree's own `read-gzip` is deliberately not
 // imported — only `write-gzip`, a different name, to round-trip and compare against the same hex-bridged
-// fixture `deck/feed/test/gzip.tree` and `test/compile/feed-native.ts`'s own GZIP suite already prove.
+// fixture `deck/mill/test/feed/gzip.tree` and `test/compile/feed-native.ts`'s own GZIP suite already prove.
 runSuite({
   label: 'gzip',
-  mineFile: join(TERM, 'deck/feed/code/gzip/mine.tree'),
+  mineFile: join(TERM, 'deck/mill/code/blob/gzip/mine.tree'),
   substrate: 'byte',
-  cursorImportPath: '@term/feed/code/base',
+  cursorImportPath: '@term/mill/feed',
   extraImports: [
-    'load @term/feed/code/gzip/form',
+    'load @term/mill/blob/gzip/form',
     '  find gzip-file',
     '',
-    'load @term/feed/code/gzip/code',
+    'load @term/mill/blob/gzip/code',
     '  find write-gzip',
     '',
-    'load @term/feed/code/hex/code',
+    'load @term/mill/text/hex/code',
     '  find read-hex',
     '  find write-hex',
     '',
@@ -243,9 +243,9 @@ runSuite({
 // with, which is the span capture doing its job.
 runSuite({
   label: 'json',
-  mineFile: join(TERM, 'deck/feed/code/json/mine.tree'),
+  mineFile: join(TERM, 'deck/mill/code/text/json/mine.tree'),
   substrate: 'text',
-  cursorImportPath: '@term/feed/code/base',
+  cursorImportPath: '@term/mill/feed',
   extraImports: [],
   entryTaskName: 'round-generated-json',
   entryTaskBody: [

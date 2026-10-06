@@ -1,0 +1,34 @@
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+mine fuse
+  mine term, term fuse
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like fuse-bind
+          site bind
+        mine form, like fuse-term
+          site term
+        mine term
+          site word
+        # LAST: the value fallback takes any headed group, so a bare positional word listed after it would
+        # never be tried
+        mine form, like seed
+          site seed
+
+# `fuse access, term r`: a positional template argument naming a term
+mine fuse-term
+  mine term, term term
+    mine term
+      site name
+
+mine fuse-bind
+  mine term, term bind
+    mine term
+      site name
+    mine maybe
+      mine form, like seed
+        site seed

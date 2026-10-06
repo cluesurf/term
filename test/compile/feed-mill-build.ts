@@ -9,7 +9,7 @@
 // that into `host/` at the grammar's own path, so a dialect is written once. This holds the three claims that makes:
 //
 //   THE GRAMMAR IS RECOGNISED BY CONTENT, not by its name. `mine.tree` is a strong hint and nothing more: the tree
-//   already has a 0-byte `deck/feed/code/font/otf/mine.tree`, and a file called `deck.tree` that is an ordinary
+//   already has a 0-byte `deck/mill/code/blob/font/otf/mine.tree`, and a file called `deck.tree` that is an ordinary
 //   stdlib module. Reading a name instead of a file is the mistake that once skipped the entire stdlib from the
 //   build, silently, while reporting success on the twenty files left.
 //
@@ -63,7 +63,7 @@ const DECK = 'deck @term/probe\n'
 // type checker", which was true of a grammar compiled as CODE and is the thing this change retires: what has to
 // pass the checker is the reader generated FROM it.
 
-const hex = readFileSync(join(TERM, 'deck/feed/code/hex/mine.tree'), 'utf8')
+const hex = readFileSync(join(TERM, 'deck/mill/code/text/hex/mine.tree'), 'utf8')
   .split('\n')
   .filter(line => line.trim() !== 'mark draft' && line.trim() !== 'note draft')
   .join('\n')
@@ -129,7 +129,7 @@ if (existsSync(emitted)) {
 
 // ---- a 0-byte mine.tree is not a grammar ----
 //
-// deck/feed/code/font/otf/mine.tree is exactly this: a placeholder, and ordinary Term code as far as the build is
+// deck/mill/code/blob/font/otf/mine.tree is exactly this: a placeholder, and ordinary Term code as far as the build is
 // concerned. A filename test would have sent it to the generator, which would have emitted a reader with no rules.
 
 const empty = project({ 'deck.tree': DECK, 'code/thing/mine.tree': '' })

@@ -1,0 +1,335 @@
+# The deck manifest grammar, written against the REAL deck.tree files of this tree and the manifest reader's
+# whole field surface (deck/deck/test/manifest.test.ts): the name is a path word (`deck @term/base`), the fields
+# come in any order, and an unknown field passes over with `mine node` the way the hand-rolled reader ignores it.
+# The executor (compile/mill-run.ts) reads a manifest through this; test/compile/mill-run.ts holds it against
+# deck/deck/code/manifest.ts on every manifest in the tree, and deck/deck/code/manifest.ts itself reads through
+# this grammar (mill-self-hosting-0005).
+
+load @term/mill/tree/deck/role/mine
+  find role
+
+load @term/mill/tree/deck/load/mine
+  find load
+
+mine deck
+  mine list
+    mine any
+      mine form, like deck-def
+        site deck
+      mine form, like role
+        site role
+      mine form, like load
+        site load
+      mine node
+
+mine deck-def
+  mine term, term deck
+    mine path
+      site name
+    mine list
+      mine any
+        mine form, like deck-head
+          site head
+        mine form, like deck-code
+          site code
+        mine form, like deck-mark
+          site mark
+        mine form, like deck-lock
+          site lock
+        mine form, like deck-link
+          site link
+        mine form, like deck-host
+          site host
+        mine form, like deck-base
+          site base
+        mine form, like deck-case
+          site case
+        mine form, like deck-mind
+          site mind
+        mine form, like deck-hook
+          site hook
+        mine form, like deck-bear
+          site bear
+        mine form, like deck-boot
+          site boot
+        mine form, like deck-tool
+          site tool
+        mine form, like deck-test
+          site test
+        mine form, like deck-line
+          site line
+        mine form, like deck-book
+          site book
+        mine form, like deck-call
+          site call
+        mine form, like deck-task
+          site task
+        mine form, like deck-role
+          site role
+        mine form, like deck-deck
+          site deck
+        mine form, like deck-hide
+          site hide
+        mine form, like deck-site
+          site site
+        mine form, like deck-view
+          site view
+        mine form, like deck-make
+          site make
+        mine form, like deck-term
+          site term
+        mine form, like deck-text
+          site text
+        mine form, like deck-cite
+          site cite
+        mine form, like deck-sort
+          site sort
+        mine form, like deck-need
+          site need
+        mine node
+
+# `head <one line about the package>`
+mine deck-head
+  mine term, term head
+    mine text
+      site text
+
+# `mark <1.4.2>`: the version
+mine deck-mark
+  mine term, term mark
+    mine text
+      site text
+
+# `code ./code`: the code root, the folder a package path resolves in first (absent means `./code`). `code <1.4.2>`
+# is the version's OLD spelling, told apart by FORM and never by guessing: a text literal is a version, a path is a
+# folder. The reader takes the old spelling as the version and `term lint` warns (`manifest-code-version`)
+mine deck-code
+  mine term, term code
+    mine any
+      mine path
+        site path
+      mine text
+        site text
+
+# `lock mit` or `lock <Apache 2.0>`
+mine deck-lock
+  mine term, term lock
+    mine any
+      mine text
+        site text
+      mine term
+        site term
+
+# `link @term/base, mark <0.0.x>`, with an optional `have <n>`. The constraint is a version, so it is `mark` beside
+# the manifest's own; `code <0.0.x>` is the old spelling, captured apart so the reader can say so
+mine deck-link
+  mine term, term link
+    mine path
+      site name
+    mine maybe
+      mine any
+        mine term, term mark
+          mine text
+            site mark
+        mine term, term code
+          mine text
+            site code
+    mine maybe
+      mine term, term have
+        mine any
+          mine text
+            site have
+          mine code
+            site have
+
+# `case work` holds the DEV dependencies: `link` forms and `host` groups
+mine deck-case
+  mine term, term case
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like deck-link
+          site link
+        mine form, like deck-host
+          site host
+
+# `host <registry url>` with child links: dependencies resolved at that registry
+mine deck-host
+  mine term, term host
+    mine text
+      site registry
+    mine list
+      mine form, like deck-link
+        site link
+
+# `base alice, <ghcr.io/alice-gh/term>`: the registry a scope's packages come from. A scope with no `base` line
+# comes from `ghcr.io/<scope>`, so the mapping lives in the project that uses it and is never stored anywhere else
+mine deck-base
+  mine term, term base
+    mine any
+      mine path
+        site scope
+      mine term
+        site scope
+    mine text
+      site registry
+
+# `mind <Lance Pollard>, base <lp@elk.fm>` with an optional child `site <...>`
+mine deck-mind
+  mine term, term mind
+    mine text
+      site name
+    mine maybe
+      mine term, term base
+        mine text
+          site base
+    mine maybe
+      mine term, term site
+        mine text
+          site site
+
+# `hook build, task ./task/build`
+mine deck-hook
+  mine term, term hook
+    mine term
+      site name
+    mine term, term task
+      mine path
+        site path
+
+# `bear ./code`: the OLD spelling of `code ./code`. It named the folder the package's paths live in and nothing
+# read it but the round trip and the editor, so it is the same field as `code <path>`, read as the code root
+# when no `code <path>` is written, and `term lint` warns (`manifest-bear`)
+mine deck-bear
+  mine term, term bear
+    mine path
+      site path
+
+# `boot ./code/boot`: the app entry, what `term wake` scaffolds and `term boot` runs
+mine deck-boot
+  mine term, term boot
+    mine path
+      site path
+
+# `tool ./tool`: the tools directory
+mine deck-tool
+  mine term, term tool
+    mine path
+      site path
+
+# `test ./test`
+mine deck-test
+  mine term, term test
+    mine path
+      site path
+
+# `line ./code/line`: the CLI entry
+mine deck-line
+  mine term, term line
+    mine path
+      site path
+
+# `book ./book`: the docs
+mine deck-book
+  mine term, term book
+    mine path
+      site path
+
+# `call ./call`
+mine deck-call
+  mine term, term call
+    mine path
+      site path
+
+# `task ./task`
+mine deck-task
+  mine term, term task
+    mine path
+      site path
+
+# `role ./base/role`: the role file
+mine deck-role
+  mine term, term role
+    mine path
+      site path
+
+# `deck ./deck/load`: a sub-package entry
+mine deck-deck
+  mine term, term deck
+    mine path
+      site path
+
+# `hide true`
+mine deck-hide
+  mine term, term hide
+    mine term
+      site flag
+
+# `site <https://...>`
+mine deck-site
+  mine term, term site
+    mine any
+      mine text
+        site text
+      mine path
+        site text
+
+# `view ./view/tree.gif`
+mine deck-view
+  mine term, term view
+    mine any
+      mine text
+        site text
+      mine path
+        site text
+
+# `make <security>`: a keyword, repeatable
+mine deck-make
+  mine term, term make
+    mine text
+      site text
+
+# `term <Apache 2.0>` or `term tree-code`: a licence or keyword term
+mine deck-term
+  mine term, term term
+    mine any
+      mine text
+        site text
+      mine term
+        site text
+
+# `text <The Term Secret Access Library>`: the long title
+mine deck-text
+  mine term, term text
+    mine text
+      site text
+
+# `cite <Lance Pollard>, base <lp@elk.fm>`
+mine deck-cite
+  mine term, term cite
+    mine text
+      site name
+    mine maybe
+      mine term, term base
+        mine text
+          site base
+
+# `need @term/code, mark <2.6.x>`: the toolchain the project builds with, a range in a `link`'s constraint syntax.
+# `term` reads it at startup and runs a matching version (note/term/plan/term-versions.md)
+mine deck-need
+  mine term, term need
+    mine path
+      site name
+    mine term, term mark
+      mine text
+        site mark
+
+# `sort library`
+mine deck-sort
+  mine term, term sort
+    mine any
+      mine text
+        site text
+      mine term
+        site term

@@ -1,6 +1,7 @@
 
 deck @term/mill
-  head <The Term DSL Library>
+  head <Every Term grammar: the tree dialects, and the text and binary format readers>
   mark <0.0.16>
   lock <Apache-2.0>
+  test ./test
   link @term/base, mark <0.0.x>

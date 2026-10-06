@@ -319,7 +319,7 @@ function unhandled(bridge: Bridge, value: Minted, what: string): undefined {
   return undefined
 }
 
-// Every head `mine flow` lists as a statement (mill/code/code/tool/flow/mine.tree), in that file's own order.
+// Every head `mine flow` lists as a statement (mill/code/tree/code/tool/flow/mine.tree), in that file's own order.
 // None of them can be a bare-head call: the grammar matches the statement rule first, so a word from this set
 // arriving as a lean CALLEE means its own rule refused the line and the generic "an unknown head is a call"
 // fallback took it.
@@ -4984,6 +4984,7 @@ function fieldOf(
   nick?: string
   optional?: boolean
   fallback?: Expression
+  width?: string
   span: Span
 } {
   const like = firstAt(link, 'like')
@@ -5016,12 +5017,17 @@ function fieldOf(
   // grammar that matches children in order. It goes when quirk 6 is fixed.
   const field = wordAt(link, 'name')
   const nick = field === 'name' ? undefined : wordAt(link, 'nick')
+  // `like u8` and the other width aliases are a `number`; the width is kept, as a parameter's is, so a value put in
+  // the field owes its range (check/width-range.ts, D12)
+  const word = like ? (textOf(like) ?? wordAt(like, 'name')) : undefined
+  const width = word !== undefined && WIDTH_WORDS.has(word) ? word : undefined
 
   return {
     name: field ?? '',
     type,
     identity: false,
     ...(nick !== undefined ? { nick } : {}),
+    ...(width ? { width } : {}),
     // A DEFAULT does not make a field optional. `need false` does, and only that: `link actual, like number,
     // fall 0` is a required field that has a value when none is given, which is a different thing from one the
     // constructor may leave out.

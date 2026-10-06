@@ -1,0 +1,11 @@
+
+load @term/mill/tree/deck/link/mine
+  find deck-link
+
+mine deck-host
+  mine term, term host
+    mine text
+      site site
+    mine list
+      mine form, like deck-link
+        site link

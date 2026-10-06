@@ -1,0 +1,92 @@
+
+load @term/base/code/deck
+  find deck
+
+load @term/mill/tree/deck/link/mint
+  find deck-link
+  find deck-term
+  find deck-deck
+
+load @term/mill/tree/deck/mind/mint
+  find deck-mind
+
+load @term/mill/tree/deck/host/mint
+  find deck-host
+
+load @term/mill/tree/deck/case/mint
+  find deck-case
+
+load @term/mill/tree/deck/role/mint
+  find role
+
+load @term/mill/tree/deck/load/mint
+  find load
+
+mint deck
+  case deck, mint deck-def
+    site deck
+  case role, mint role
+    site role
+  case load, mint load
+    site load
+
+mint deck-def, like deck
+  case name
+    site name
+  case mark
+    site mark
+  case code
+    site code
+  case head
+    site head
+  case lock
+    site lock
+  case sort
+    site sort
+  case site
+    site site
+  case view
+    site view
+  case hide
+    site hide
+  case task
+    site task
+  case book
+    site book
+  case role
+    site role
+  case call
+    site call
+  case term, mint deck-term
+    site term
+  case mind, mint deck-mind
+    site mind
+  case link, mint deck-link
+    site link
+  case host, mint deck-host
+    site host
+  case deck, mint deck-deck
+    site deck
+  case case, mint deck-case
+    site case
+  hook make
+    make deck
+      bind name, read name
+      bind mark, read mark
+      bind code, read code
+      bind head, read head
+      bind lock, read lock
+      bind sort, read sort
+      bind site, read site
+      bind view, read view
+      bind hide, read hide
+      bind task, read task
+      bind book, read book
+      bind role, read role
+      bind call, read call
+      bind term, read term
+      bind mind, read mind
+      bind link, read link
+      bind host, read host
+      bind deck, read deck
+      bind case, read case

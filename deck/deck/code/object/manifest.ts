@@ -10,7 +10,7 @@
  * content-defined sitemap index), each a sub-manifest covering a path range.
  *
  * This is the running implementation; the self-hosted mill grammar in
- * @term/mill/code/base is the formal spec of the same format.
+ * @term/mill/tree/base is the formal spec of the same format.
  */
 
 import { ManifestFile } from './graph'

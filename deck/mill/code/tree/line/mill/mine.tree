@@ -1,0 +1,11 @@
+
+load @term/mill/tree/code/bind/mine
+  find bind
+
+mine dock-mill
+  mine term, term mill
+    mine term
+      site name
+    mine list
+      mine form, like bind
+        site bind

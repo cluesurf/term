@@ -16,7 +16,7 @@ import { parseRoleMill } from './mill'
  *     take @/book/**\/{code,view}/**\/*.tree
  */
 // The role file reads THROUGH THE MILL, the same way the manifest does (mill-self-hosting-0005). The grammar has
-// been at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it in; this reader simply
+// been at deck/mill/code/tree/deck/role/mine.tree all along and the deck grammar composes it in; this reader simply
 // never ran it. Two readers of one dialect disagree eventually, and the disagreement is silent.
 //
 // `parseRoleFileByHand` below is RETIRED as the primary path and kept as the reference the differential in

@@ -1,0 +1,153 @@
+
+load @term/mill/tree/code/call/mine
+  find call
+
+load @term/mill/tree/code/like/mine
+  find like
+
+mine hold
+  mine term, term hold
+    mine term
+      site name
+    mine list
+      mine form, like step
+        site step
+
+mine step
+  mine any
+    mine form, like show-claim
+      site show
+    mine form, like seat
+      site seat
+    # the old spelling of `seat`, read only so it is refused by name rather than dropped
+    mine form, like mark
+      site mark
+    mine form, like take
+      site take
+    mine form, like have
+      site have
+    mine form, like fold
+      site fold
+    mine form, like case
+      site case
+    mine form, like calm
+      site calm
+    mine form, like melt
+      site melt
+    mine form, like cite
+      site cite
+    mine form, like find
+      site find
+
+mine show-claim
+  mine term, term show
+    mine form, like call
+      site claim
+
+mine seat
+  mine term, term seat
+    mine term
+      site name
+    mine form, like like
+      site like
+
+mine mark
+  mine term, term mark
+    mine term
+      site name
+    mine form, like like
+      site like
+
+mine fold
+  mine term, term fold
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine case
+  mine term, term case
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine melt
+  mine term, term melt
+    mine term
+      site arg
+
+mine calm
+  mine term, term calm
+    mine term
+      site arg
+
+mine cite
+  mine term, term cite
+    mine term
+      site arg
+
+mine turn
+  mine term, term turn
+    mine term
+      site arg
+
+mine take
+  mine term, term take
+    mine term
+      site arg
+
+mine find
+  mine term, term find
+    mine term
+      site arg
+
+mine self
+  mine term, term self
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine rule-seed
+  mine term, term seed
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine rest
+  mine term, term rest
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine weld
+  mine term, term weld
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine link
+  mine term, term link
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step
+
+mine have
+  mine term, term have
+    mine term
+      site arg
+    mine list
+      mine form, like step
+        site step

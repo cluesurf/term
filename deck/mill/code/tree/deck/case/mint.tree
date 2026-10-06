@@ -1,0 +1,22 @@
+
+load @term/base/code/deck
+  find deck-case
+
+load @term/mill/tree/deck/link/mint
+  find deck-link
+
+load @term/mill/tree/deck/host/mint
+  find deck-host
+
+mint deck-case, like deck-case
+  case name
+    site name
+  case link, mint deck-link
+    site link
+  case host, mint deck-host
+    site host
+  hook make
+    make deck-case
+      bind name, read name
+      bind link, read link
+      bind host, read host

@@ -3,7 +3,7 @@
 // `collectTreeFiles` is what `term form`, `term lint`, `term time` and `term hold` walk with, and it did not
 // honour either of the two ways this codebase shelves a file. So `term form deck --check` reported 33 files it
 // COULD NOT PARSE, and 32 of them were deliberately shelved drafts — several not written in Term at all
-// (`deck/feed/code/ansi/mine.tree` is a regex, `deck/base/code/native/browser/motion.tree` is JavaScript). A
+// (`deck/mill/code/text/ansi/mine.tree` is a regex, `deck/base/code/native/browser/motion.tree` is JavaScript). A
 // check that cannot reach zero is a check nobody can put in a gate, which is what lint-and-format needs of it.
 //
 // It also walked into `link/`, where `term link` puts a DEPENDENCY's source, so three of those 33 were

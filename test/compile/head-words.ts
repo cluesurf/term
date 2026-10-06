@@ -24,7 +24,7 @@ import type { Form } from '../../deck/deck/code/read'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const MILL = join(TERM, 'deck/mill/code')
+const MILL = join(TERM, 'deck/mill/code/tree')
 const TERMS = join(TERM, '../../../../hold/base/terms.json')
 
 // heads outside terms.json, with where each lives. Renaming one is a mechanical rewrite checked mill-equivalent.

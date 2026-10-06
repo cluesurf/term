@@ -483,8 +483,15 @@ const KOTLIN_HELPERS = {
   error: 'class SeedError(message: String) : RuntimeException(message)',
   text: KOTLIN_TEXT,
   number: KOTLIN_NUMBER,
-  // integer division that stops where the JVM wraps (`Long.MIN_VALUE / -1`), and throws on zero as `/` does
-  divide: 'fun termDivide(a: Long, b: Long): Long = if (b == -1L) Math.negateExact(a) else a / b',
+  // integer division that stops where the JVM wraps (`Long.MIN_VALUE / -1`). A zero divisor raises the `defect`
+  // TypeScript raises (`__termIntStop`), so a guard catches the same exception on both. The JVM's own
+  // ArithmeticException reached a guard as `failure`
+  divide: [
+    'fun termDivide(a: Long, b: Long): Long = if (b == 0L) throw termByZero() else if (b == -1L) Math.negateExact(a) else a / b',
+    'fun termByZero(): TermException = TermException("@term/base", "defect", "Invalid", "", System.currentTimeMillis(), null, null)',
+  ].join('\n\n'),
+  // an integer remainder, raising the same `defect` on a zero divisor
+  remainder: 'fun termRemainder(a: Long, b: Long): Long = if (b == 0L) throw termByZero() else a % b',
   // integer lists in a LongArray (KOTLIN_LONGS)
   longs: KOTLIN_LONGS,
   // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md): the shared
@@ -1754,7 +1761,17 @@ export function emitKotlin(
             return `(${longOf(node.left)} / ${longOf(node.right)})`
           }
 
+          needs.add('exception')
+
           return need('divide', `termDivide(${longOf(node.left)}, ${longOf(node.right)})`)
+        }
+
+        // a remainder by an unproven divisor raises the `defect` a division does, where `%` threw the JVM's own
+        if (node.op === '%' && node.left.type?.kind === 'number' && node.right.type?.kind === 'number' && !uncheckedInts && !provenSteps.has(node)) {
+          needs.add('exception')
+          needs.add('divide')
+
+          return need('remainder', `termRemainder(${longOf(node.left)}, ${longOf(node.right)})`)
         }
 
         // two texts order by code point (note/term/stdlib/semantics.md). Kotlin's compareTo orders by UTF-16 unit,

@@ -1,0 +1,18 @@
+load @term/mill/tree/code/head/mint
+  find head
+
+load @term/mill/tree/code/seed/seed/mint
+  find host
+
+mint tune
+  case name
+    site name
+  case head
+    site head
+  case host
+    site host
+  hook make
+    make tune
+      bind name, read name
+      bind head, read head
+      bind host, read host

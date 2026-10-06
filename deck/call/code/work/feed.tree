@@ -2,8 +2,8 @@ load @term/call/work/home
   find root, name project-root
 
 # `term feed` -- refused. The development server is `term boot` (`term boot moon`, the default, or `dev` /
-# `development`), and production is `term boot star` (`prod` / `production`). The word `feed` belongs to `@term/feed`,
-# the package of readers, and the command says where the server went rather than starting it (2026-10-05).
+# `development`), and production is `term boot star` (`prod` / `production`). The word `feed` belongs to the readers
+# (`@term/mill/feed`, the cursors under every format grammar), and the command says where the server went rather than starting it (2026-10-05).
 #
 # Ported from deck/call/code/feed.ts (cli-in-term-0004).
 

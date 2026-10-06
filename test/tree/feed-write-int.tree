@@ -1,4 +1,4 @@
-note <A width-8 integer written by @term/feed's writer gives the same bytes on every backend: byte 7 needed 256^7, past 2^53, and raised `excess` on TypeScript until 2026-10-04. Held by `pnpm term:base-gate`.>
+note <A width-8 integer written by the format writers' cursor (@term/mill/feed) gives the same bytes on every backend: byte 7 needed 256^7, past 2^53, and raised `excess` on TypeScript until 2026-10-04. Held by `pnpm term:base-gate`.>
 
 load @term/base/list
   find get
@@ -6,7 +6,7 @@ load @term/base/list
 load @term/base/boolean
   find and
 
-load @term/feed/base
+load @term/mill/feed
   find make-cursor
   find read-int
   find make-writer

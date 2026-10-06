@@ -1,0 +1,1512 @@
+# GRAMMAR SCOPES: a stretch of a file written in another grammar, read by that grammar and lowered to the code it
+# means, before the code grammar ever sees it (note/term/mill/02-role-scopes.md).
+#
+#   something x, role note, x + y          ->  something x, add(read(x), read(y))
+#   load @term/mill/text/note / find note
+#   save speed, note 20MB/s                 ->  save speed, quantity-of(20.0, <MB/s>, divide(8000000.0, 1.0), ...)
+#
+# The lexer (parser/token.tree) has already handed each scope over whole, as a text literal under its opener, so
+# nothing here reads `.tree` syntax. This pass:
+#
+#   1. takes the grammar imports out of the file's loads: a `find role <name>`, or a find token.tree's
+#      `is-grammar-load` says names a grammar. They import no module, so the module graph never sees them
+#   2. finds each scope: a group headed `role <name>` (any name but a file's seven roles) holding a literal, or headed
+#      by a name the file imports as a grammar and holding one. A literal written out (`role note, <<x + y>>`) is the
+#      same scope as one the lexer made
+#   3. reads its text with the grammar it names (`note` is deck/mill/code/text/note/read.tree, against the unit
+#      registry of @term/base/unit)
+#   4. LOWERS what the grammar read to ordinary Term source, parses that with the one parser, and puts the group it
+#      reads to where the scope stood, every span in it pointing at the scope
+#   5. adds the loads the lowered code needs (`@term/base/unit` for a quantity, `@term/base/math` for `^`, ...)
+#
+# One function for the build and for the import scan (compile/loading.tree `scan-parsed`), so the modules a scope
+# needs are walked and the grammar imports are not. Browser-safe.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/unit
+  find unit-table
+  find unit-entry
+  find dimension-power
+
+load @term/mill/text/note/form
+  find note-node
+  find note-problem
+  find unit-factor
+
+load @term/mill/text/note/read
+  find read-note
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ../parser/token
+  find token-source
+  find raw-content
+  find is-grammar-load
+  find is-file-role
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+
+# what the pass gives: the file's tree with every scope lowered, and what it refused
+form scope-result
+  link tree, like root-node
+  link diagnostics, like list, like diagnostic
+
+# a name the file imports as a grammar, and the grammar it names
+form grammar-name
+  link alias, like text
+  link grammar, like text
+
+# a name the lowered code calls, and the module it comes from: `find <name>`, or `find <name>, name <alias>`
+form scope-need
+  link path, like text
+  link name, like text
+  link alias, like text
+
+form scope-pass
+  mark shared
+  link file, like text
+  link grammars, like list, like grammar-name
+  link registry, like list, like unit-entry
+  link needs, like list, like scope-need
+  link diagnostics, like list, like diagnostic
+
+# where a scope's text begins, and how many columns a block's lines were taken in by
+form scope-place
+  link line, like number
+  link column, like number
+
+# A lowered expression: its Term source, what it is as far as its spelling says (`quantity`, `decimal`, `whole`,
+# `other`), and the path it reads when it is a read of one (`read(point/x)` is the path `point/x`)
+form lowered
+  link text, like text
+  link kind, like text
+  link path, like maybe, like text
+  link ok, like boolean
+
+task expand-scopes
+  take tree, like root-node
+  take file, like text
+  like scope-result
+
+  save pass
+    make scope-pass
+      bind file, file
+      bind grammars, make list
+      bind registry, unit-table()
+      bind needs, make list
+      bind diagnostics, make list
+
+  save top, make list
+  sift tree
+    case root
+      link given
+      save top, given
+
+  save kept, make list
+  walk top
+    take one
+    save trimmed, without-grammar-finds(pass, one)
+    sift trimmed
+      case some
+        link group
+        push(kept, group)
+      case none
+        save nothing, 0
+
+  # almost every file holds no scope: hand its tree back as it came, rather than rebuild every group of it
+  fork test, and(is-equal(pass/grammars/length, 0), not(holds-role(top)))
+    hold
+      back
+        make scope-result
+          bind tree, tree
+          bind diagnostics, pass/diagnostics
+
+  save out, make list
+  walk kept
+    take one
+    push(out, expand(pass, one, true, make none))
+
+  fork test, is-above(pass/needs/length, 0)
+    hold
+      save loads, loads-for(pass, out)
+      save both, make list
+      walk loads
+        take one
+        push(both, one)
+      walk out
+        take one
+        push(both, one)
+      save out, both
+
+  save expanded
+    make root
+      bind nodes, out
+  back
+    make scope-result
+      bind tree, expanded
+      bind diagnostics, pass/diagnostics
+
+# whether any group in these is headed `role` with a name under it, the one scope a file needs no load for
+task holds-role
+  take nodes, like list, like node
+  like boolean
+  mark private
+
+  walk nodes
+    take one
+    save kids, nodes-of(one)
+    fork test, and(is-equal(word-of-head(one), <role>), is-above(kids/length, 1))
+      hold
+        back true
+    fork test, and(is-above(kids/length, 1), holds-role(kids))
+      hold
+        back true
+  back false
+
+# ---- grammar imports ----
+
+# a top-level group with its grammar finds taken out, or none when it was a load that imported grammars alone
+task without-grammar-finds
+  take pass, like scope-pass
+  take one, like node
+  like maybe, like node
+  mark private
+
+  fork test, not(is-equal(word-of-head(one), <load>))
+    hold
+      back make(some, one)
+  save kids, nodes-of(one)
+  fork test, is-below(kids/length, 2)
+    hold
+      back make(some, one)
+  save path, word-of-head(get(kids, 1))
+
+  save kept, make list
+  push(kept, get(kids, 0))
+  push(kept, get(kids, 1))
+  save finds, 0
+  save grammar-finds, 0
+  save k, 2
+  walk test
+    hook test, is-below(k, kids/length)
+    hook hold
+      save child, get(kids, k)
+      save k, add(k, 1)
+      fork test, not(is-equal(word-of-head(child), <find>))
+        hold
+          push(kept, child)
+          turn next
+      save finds, add(finds, 1)
+      save parts, nodes-of(child)
+      fork test, is-below(parts/length, 2)
+        hold
+          push(kept, child)
+          turn next
+      save target, get(parts, 1)
+      save found, word-of-head(target)
+      save role, false
+      # `find role note`: the role and its name nest, `role > note`
+      fork test, and(is-equal(found, <role>), is-above(nodes-of(target)/length, 1))
+        hold
+          save role, true
+          save found, word-of-head(get(nodes-of(target), 1))
+      fork test, not(or(role, is-grammar-load(path, found)))
+        hold
+          push(kept, child)
+          turn next
+      save grammar-finds, add(grammar-finds, 1)
+      save alias, alias-in(parts, found)
+      fork test, not(is-grammar(found))
+        hold
+          refuse(pass, make(unknown-grammar), span-of-node(child), <`{found}` is no grammar the compiler has>, <the grammars are `note` (@term/mill/text/note)>)
+      push(pass/grammars, grammar-of(alias, found))
+
+  fork test, and(is-above(grammar-finds, 0), is-equal(grammar-finds, finds))
+    hold
+      back make none
+  fork test, is-equal(grammar-finds, 0)
+    hold
+      back make(some, one)
+  save rebuilt, group-of(kept)
+  back make(some, rebuilt)
+
+# `find x, name y`: the comma leaves `name y` a sibling of `x` under the `find`
+task alias-in
+  take parts, like list, like node
+  take found, like text
+  like text
+  mark private
+
+  save k, 2
+  walk test
+    hook test, is-below(k, parts/length)
+    hook hold
+      save part, get(parts, k)
+      fork test, and(is-equal(word-of-head(part), <name>), is-above(nodes-of(part)/length, 1))
+        hold
+          back word-of-head(get(nodes-of(part), 1))
+      save k, add(k, 1)
+  back found
+
+# the grammars the compiler has
+task is-grammar
+  take name, like text
+  like boolean
+  mark private
+
+  back is-equal(name, <note>)
+
+task grammar-of
+  take alias, like text
+  take grammar, like text
+  like grammar-name
+  mark private
+
+  back
+    make grammar-name
+      bind alias, alias
+      bind grammar, grammar
+
+# the grammar a name the file imported stands for, or empty
+task grammar-named
+  take pass, like scope-pass
+  take name, like text
+  like text
+  mark private
+
+  walk pass/grammars
+    take one
+    fork test, is-equal(one/alias, name)
+      hold
+        back one/grammar
+  back <>
+
+# ---- finding scopes ----
+
+# A node with the scopes in it lowered. `statement` says the group stands on a line of its own, where `x = 1` is an
+# assignment rather than a comparison. `above` is the head span of the group it stands in
+task expand
+  take pass, like scope-pass
+  take one, like node
+  take statement, like boolean
+  take above, like maybe, like span
+  like node
+  mark private
+
+  save kids, nodes-of(one)
+  fork test, is-equal(kids/length, 0)
+    hold
+      back one
+
+  sift scope-of(pass, one)
+    case some
+      link found
+      back lower-scope(pass, one, found, statement)
+    case none
+      save nothing, 0
+
+  save here, head-span(one)
+  save out, make list
+  save k, 0
+  walk kids
+    take kid
+    fork test, is-equal(k, 0)
+      hold
+        push(out, kid)
+        save k, 1
+        turn next
+    push(out, expand(pass, kid, starts-own-line(kid, here), here))
+    save k, add(k, 1)
+  back regroup(one, out)
+
+# the grammar a group is a scope of, and the literal holding its text
+form scope-found
+  link grammar, like text
+  link text, like node
+
+task scope-of
+  take pass, like scope-pass
+  take group, like node
+  like maybe, like scope-found
+  mark private
+
+  save kids, nodes-of(group)
+  fork test, is-below(kids/length, 2)
+    hold
+      back make none
+  save head, word-of-head(group)
+
+  # `role note, x + y` (role > [note, text]) and `role note x + y` (role > note > text)
+  fork test, and(is-equal(head, <role>), is-group(get(kids, 1)))
+    hold
+      save named, word-of-head(get(kids, 1))
+      fork test, or(is-equal(named, <>), is-file-role(named))
+        hold
+          back make none
+      fork test, and(is-equal(kids/length, 3), is-text(get(kids, 2)))
+        hold
+          save beside, found-of(named, get(kids, 2))
+          back make(some, beside)
+      save inner, nodes-of(get(kids, 1))
+      fork test, and(is-equal(kids/length, 2), and(is-equal(inner/length, 2), is-text(get(inner, 1))))
+        hold
+          save under, found-of(named, get(inner, 1))
+          back make(some, under)
+      back make none
+
+  save grammar, grammar-named(pass, head)
+  fork test, and(is-unequal(grammar, <>), and(is-equal(kids/length, 2), is-text(get(kids, 1))))
+    hold
+      save named-scope, found-of(grammar, get(kids, 1))
+      back make(some, named-scope)
+  back make none
+
+task found-of
+  take grammar, like text
+  take text, like node
+  like scope-found
+  mark private
+
+  back
+    make scope-found
+      bind grammar, grammar
+      bind text, read(text)
+
+# ---- lowering one scope ----
+
+task lower-scope
+  take pass, like scope-pass
+  take group, like node
+  take found, like scope-found
+  take statement, like boolean
+  like node
+  mark private
+
+  save where, span-of-node(group)
+  fork test, not(is-grammar(found/grammar))
+    hold
+      refuse(pass, make(unknown-grammar), where, <`{found/grammar}` is no grammar the compiler has>, <the grammars are `note` (@term/mill/text/note)>)
+      back group
+
+  sift text-of(found/text)
+    case none
+      refuse(pass, make(scope-refused), where, <a scope's text is read as written, so it cannot interpolate>, <write the value in the grammar itself: `x + y`, not `\{x\} + y`>)
+      back group
+    case some
+      link source
+      save place, place-of(found/text)
+      save answer, read-note(source, pass/registry)
+      sift answer/node
+        case none
+          save first, get(answer/problems, 0)
+          refuse(pass, make(scope-refused), span-at(place, source, first/at), first/message, first/hint)
+          back group
+        case some
+          link tree
+          save written, <>
+          save done, false
+          # `x = 1` on a line of its own is an assignment
+          fork test, statement
+            hold
+              sift assignment-of(pass, tree, place, source)
+                case some
+                  link line
+                  save written, line
+                  save done, true
+                case none
+                  save nothing, 0
+          fork test, not(done)
+            hold
+              save value, lower(pass, tree, place, source)
+              fork test, not(value/ok)
+                hold
+                  back group
+              save written, <scope {value/text}>
+          back reread(pass, written, done, where)
+
+# `x = value` and `a.b = value`, as `save x, value` and `save a/b, value`, when the scope is a statement
+task assignment-of
+  take pass, like scope-pass
+  take tree, like note-node
+  take place, like scope-place
+  take source, like text
+  like maybe, like text
+  mark private
+
+  sift tree
+    case binary-node
+      fork test, not(is-equal(operator, <=>))
+        hold
+          back make none
+      save target, lower(pass, left, place, source)
+      sift target/path
+        case some
+          link path
+          save value, lower(pass, right, place, source)
+          fork test, not(value/ok)
+            hold
+              back make none
+          back make(some, <save {path}, {value/text}>)
+        case none
+          back make none
+    miss
+      back make none
+
+# parse what a scope lowered to and give the node it reads to, every span in it the scope's own. A value is parsed
+# under a head of its own, `scope <value>`, since a number cannot head a line
+task reread
+  take pass, like scope-pass
+  take text, like text
+  take statement, like boolean
+  take where, like span
+  like node
+  mark private
+
+  save source
+    make token-source
+      bind file, pass/file
+      bind text, read(text)
+  save parsed, parse(source)
+  save top, make list
+  sift parsed/tree
+    case root
+      link given
+      save top, given
+  fork test, or(not(parsed/ok), is-equal(top/length, 0))
+    hold
+      refuse(pass, make(scope-refused), where, <this scope lowered to code that does not parse: {text}>, <this is a defect in the scope pass (compile/scope.tree), not in the scope>)
+      back name-node-of(<scope>, where)
+  save group, get(top, 0)
+  fork test, statement
+    hold
+      back respan(group, where)
+  back respan(get(nodes-of(group), 1), where)
+
+# ---- lowering an expression ----
+
+task lowered-of
+  take text, like text
+  take kind, like text
+  like lowered
+  mark private
+
+  back
+    make lowered
+      bind text, read(text)
+      bind kind, kind
+      bind path, make none
+      bind ok, true
+
+task read-of
+  take path, like text
+  like lowered
+  mark private
+
+  back
+    make lowered
+      bind text, <read({path})>
+      bind kind, <other>
+      bind path, make(some, path)
+      bind ok, true
+
+task refused-lowering
+  like lowered
+  mark private
+
+  back
+    make lowered
+      bind text, <>
+      bind kind, <other>
+      bind path, make none
+      bind ok, false
+
+# what the note grammar read, as Term source
+task lower
+  take pass, like scope-pass
+  take tree, like note-node
+  take place, like scope-place
+  take source, like text
+  like lowered
+  mark private
+
+  sift tree
+    case number-node
+      fork test, decimal
+        hold
+          back lowered-of(literal, <decimal>)
+      back lowered-of(literal, <whole>)
+
+    case quantity-node
+      require-load(pass,<@term/base/unit>, <quantity-of>)
+      require-load(pass,<@term/base/unit>, <dimension-power>)
+      back lowered-of(<quantity-of({value}, \<{escaped(unit)}\>, {scale-of(factors)}, {dimension-of(factors)})>, <quantity>)
+
+    case text-node
+      back lowered-of(<\<{escaped(value)}\>>, <other>)
+
+    case name-node
+      fork test, or(is-equal(name, <true>), is-equal(name, <false>))
+        hold
+          back lowered-of(name, <other>)
+      back read-of(name)
+
+    case member-node
+      save base, lower(pass, target, place, source)
+      fork test, not(base/ok)
+        hold
+          back base
+      sift base/path
+        case some
+          link path
+          back read-of(<{path}/{name}>)
+        case none
+          back lowered-of(<{base/text}/{name}>, <other>)
+
+    case call-node
+      save callee-path, <>
+      sift callee
+        case name-node
+          save callee-path, name
+        case member-node
+          save base, lower(pass, target, place, source)
+          sift base/path
+            case some
+              link path
+              save callee-path, <{path}/{name}>
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      fork test, is-equal(callee-path, <>)
+        hold
+          refuse-at(pass, place, source, at, <only a name or a member of one can be called here>, <`sin(x)`, `point.scale(2)`>)
+          back refused-lowering()
+      save parts, lower-all(pass, arguments, place, source)
+      fork test, not(all-ok(parts))
+        hold
+          back refused-lowering()
+      back lowered-of(<{callee-path}({texts-of(parts)})>, <other>)
+
+    case index-node
+      save base, lower(pass, target, place, source)
+      save key, lower(pass, index, place, source)
+      fork test, not(and(base/ok, key/ok))
+        hold
+          back refused-lowering()
+      # a whole number into a read: `read(x/4)`
+      sift base/path
+        case some
+          link path
+          fork test, is-equal(key/kind, <whole>)
+            hold
+              back read-of(<{path}/{key/text}>)
+        case none
+          save nothing, 0
+      require-load(pass,<@term/base/list>, <get>)
+      back lowered-of(<get({base/text}, {key/text})>, <other>)
+
+    case list-node
+      save parts, lower-all(pass, items, place, source)
+      fork test, not(all-ok(parts))
+        hold
+          back refused-lowering()
+      fork test, is-equal(parts/length, 0)
+        hold
+          back lowered-of(<make(list)>, <other>)
+      back lowered-of(<make(list, {texts-of(parts)})>, <other>)
+
+    case set-node
+      save parts, lower-all(pass, items, place, source)
+      fork test, not(all-ok(parts))
+        hold
+          back refused-lowering()
+      require-load(pass,<@term/base/set>, <set>)
+      require-load(pass,<@term/base/set>, <make-set>)
+      fork test, is-equal(parts/length, 0)
+        hold
+          back lowered-of(<make-set(make(list))>, <other>)
+      back lowered-of(<make-set(make(list, {texts-of(parts)}))>, <other>)
+
+    # `1..10` holds 10, and a range's end is the first number out, so 11
+    case range-node
+      save start, lower(pass, from, place, source)
+      save stop, lower(pass, to, place, source)
+      fork test, not(and(start/ok, stop/ok))
+        hold
+          back refused-lowering()
+      save first, start/text
+      fork test, from-open
+        hold
+          save first, <add({start/text}, 1)>
+      save last, <add({stop/text}, 1)>
+      fork test, to-open
+        hold
+          save last, stop/text
+      require-load(pass,<@term/base/range>, <range>)
+      require-load(pass,<@term/base/range>, <make-range>)
+      back lowered-of(<make-range({first}, {last})>, <other>)
+
+    case unary-node
+      save inner, lower(pass, operand, place, source)
+      fork test, not(inner/ok)
+        hold
+          back inner
+      fork test, is-equal(operator, <+>)
+        hold
+          back inner
+      fork test, is-equal(operator, <not>)
+        hold
+          back lowered-of(<not({inner/text})>, <other>)
+      # a minus straight before a number is a negative number
+      sift operand
+        case number-node
+          back lowered-of(<-{inner/text}>, inner/kind)
+        miss
+          save nothing, 0
+      fork test, is-equal(inner/kind, <quantity>)
+        hold
+          require-load(pass,<@term/base/unit>, <quantity-multiply>)
+          back lowered-of(<quantity-multiply(-1.0, {inner/text})>, <quantity>)
+      fork test, is-equal(inner/kind, <decimal>)
+        hold
+          back lowered-of(<subtract(0.0, {inner/text})>, <decimal>)
+      back lowered-of(<subtract(0, {inner/text})>, inner/kind)
+
+    case binary-node
+      save a, lower(pass, left, place, source)
+      save b, lower(pass, right, place, source)
+      fork test, not(and(a/ok, b/ok))
+        hold
+          back refused-lowering()
+      back lower-binary(pass, operator, a, b, place, source, at)
+
+task lower-all
+  take pass, like scope-pass
+  take nodes, like list, like note-node
+  take place, like scope-place
+  take source, like text
+  like list, like lowered
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, lower(pass, one, place, source))
+  back out
+
+task all-ok
+  take parts, like list, like lowered
+  like boolean
+  mark private
+
+  walk parts
+    take one
+    fork test, not(one/ok)
+      hold
+        back false
+  back true
+
+task texts-of
+  take parts, like list, like lowered
+  like text
+  mark private
+
+  save out, make list
+  walk parts
+    take one
+    push(out, one/text)
+  back join(out, <, >)
+
+# An operator, as the builtin or the stdlib task it means. Unit arithmetic is chosen by SPELLING: an operand written
+# as a quantity (`3m`, `$20`, or a sum or product of one) makes `+` a `quantity-add`. A name's type is the checker's
+# to know, so `x + y` is always `add`
+task lower-binary
+  take pass, like scope-pass
+  take operator, like text
+  take a, like lowered
+  take b, like lowered
+  take place, like scope-place
+  take source, like text
+  take at, like number
+  like lowered
+  mark private
+
+  save quantities, or(is-equal(a/kind, <quantity>), is-equal(b/kind, <quantity>))
+  save both, and(is-equal(a/kind, <quantity>), is-equal(b/kind, <quantity>))
+  save kind, <whole>
+  fork test, or(is-equal(a/kind, <decimal>), is-equal(b/kind, <decimal>))
+    hold
+      save kind, <decimal>
+  fork test, not(and(is-equal(a/kind, <whole>), is-equal(b/kind, <whole>)))
+    hold
+      fork test, is-unequal(kind, <decimal>)
+        hold
+          save kind, <other>
+
+  save arithmetic, arithmetic-task(operator)
+  fork test, is-unequal(arithmetic, <>)
+    hold
+      fork test, not(quantities)
+        hold
+          back lowered-of(<{arithmetic}({a/text}, {b/text})>, kind)
+      fork test, or(is-equal(operator, <+>), is-equal(operator, <->))
+        hold
+          fork test, not(both)
+            hold
+              refuse-at(pass, place, source, at, <a quantity and a plain number are not added or taken away>, <give the number its unit: `3m + 2m`>)
+              back refused-lowering()
+          require-load(pass,<@term/base/unit>, <quantity-{arithmetic}>)
+          back lowered-of(<quantity-{arithmetic}({a/text}, {b/text})>, <quantity>)
+      fork test, is-equal(operator, <*>)
+        hold
+          require-load(pass,<@term/base/unit>, <quantity-multiply>)
+          back lowered-of(<quantity-multiply({as-float(a)}, {as-float(b)})>, <quantity>)
+      fork test, and(is-equal(operator, </>), is-equal(a/kind, <quantity>))
+        hold
+          require-load(pass,<@term/base/unit>, <quantity-divide>)
+          back lowered-of(<quantity-divide({a/text}, {as-float(b)})>, <quantity>)
+      refuse-at(pass, place, source, at, <`{operator}` is not defined between a quantity and a number in this order>, <a quantity is multiplied, divided or added: `2 * 3m`, `6m / 2`, `1km + 500m`>)
+      back refused-lowering()
+
+  fork test, is-equal(operator, <^>)
+    hold
+      fork test, quantities
+        hold
+          refuse-at(pass, place, source, at, <a quantity is not raised to a power>, <multiply it by itself: `3m * 3m`>)
+          back refused-lowering()
+      fork test, is-equal(kind, <decimal>)
+        hold
+          require-load-as(pass, <@term/base/float>, <power>, <decimal-power>)
+          back lowered-of(<decimal-power({as-float(a)}, {as-float(b)})>, <decimal>)
+      require-load(pass,<@term/base/math>, <power>)
+      back lowered-of(<power({a/text}, {b/text})>, kind)
+
+  save comparison, comparison-task(operator)
+  fork test, is-unequal(comparison, <>)
+    hold
+      fork test, quantities
+        hold
+          fork test, not(both)
+            hold
+              refuse-at(pass, place, source, at, <a quantity and a plain number are not compared>, <give the number its unit: `5m \< 2km`>)
+              back refused-lowering()
+          require-load(pass,<@term/base/unit>, <quantity-compare>)
+          back lowered-of(<{comparison}(quantity-compare({a/text}, {b/text}), 0)>, <other>)
+      back lowered-of(<{comparison}({a/text}, {b/text})>, <other>)
+
+  fork test, or(is-equal(operator, <and>), is-equal(operator, <or>))
+    hold
+      back lowered-of(<{operator}({a/text}, {b/text})>, <other>)
+
+  # membership and the set operators, on a set (@term/base/set)
+  fork test, is-equal(operator, <in>)
+    hold
+      require-load(pass,<@term/base/set>, <set>)
+      back lowered-of(<has({b/text}, {a/text})>, <other>)
+  fork test, or(is-equal(operator, <union>), or(is-equal(operator, <intersect>), is-equal(operator, <\\>)))
+    hold
+      save named, operator
+      fork test, is-equal(operator, <\\>)
+        hold
+          save named, <difference>
+      require-load(pass,<@term/base/set>, <set>)
+      back lowered-of(<{named}({a/text}, {b/text})>, <other>)
+
+  refuse-at(pass, place, source, at, <`{operator}` is read by the note grammar, and Term gives it no meaning yet>, <write what it should mean as a call: `implies(a, b)`>)
+  back refused-lowering()
+
+task arithmetic-task
+  take operator, like text
+  like text
+  mark private
+
+  save pairs, split(<+ add - subtract * multiply / divide % modulo>, < >)
+  back paired(pairs, operator)
+
+# `<=` is `is-maximum`: `a <= b` says `a` is at most `b`
+task comparison-task
+  take operator, like text
+  like text
+  mark private
+
+  save pairs, split(<= is-equal != is-unequal \< is-below \> is-above \<= is-maximum \>= is-minimum>, < >)
+  back paired(pairs, operator)
+
+task paired
+  take pairs, like list, like text
+  take key, like text
+  like text
+  mark private
+
+  save k, 0
+  walk test
+    hook test, is-below(add(k, 1), pairs/length)
+    hook hold
+      fork test, is-equal(get(pairs, k), key)
+        hold
+          back get(pairs, add(k, 1))
+      save k, add(k, 2)
+  back <>
+
+# a whole number written as one is a decimal where a decimal is needed: `2` beside a quantity is `2.0`
+task as-float
+  take value, like lowered
+  like text
+  mark private
+
+  fork test, is-equal(value/kind, <whole>)
+    hold
+      back <{value/text}.0>
+  back value/text
+
+# what one of a unit is in its base units, as source: the product of each factor's registered scale, each to its
+# power, a negative power dividing
+task scale-of
+  take factors, like list, like unit-factor
+  like text
+  mark private
+
+  save over, make list
+  save under, make list
+  walk factors
+    take one
+    save count, one/power
+    fork test, is-below(count, 0)
+      hold
+        save count, subtract(0, count)
+    save k, 0
+    walk test
+      hook test, is-below(k, count)
+      hook hold
+        fork test, is-above(one/power, 0)
+          hold
+            push(over, one/entry/scale)
+          miss
+            push(under, one/entry/scale)
+        save k, add(k, 1)
+  save top, product-of(over)
+  fork test, is-equal(under/length, 0)
+    hold
+      back top
+  back <divide({top}, {product-of(under)})>
+
+task product-of
+  take scales, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(scales/length, 0)
+    hold
+      back <1.0>
+  save out, get(scales, 0)
+  save k, 1
+  walk test
+    hook test, is-below(k, scales/length)
+    hook hold
+      save out, <multiply({out}, {get(scales, k)})>
+      save k, add(k, 1)
+  back out
+
+# The base units a quantity's unit is made of, with their powers, as source: each factor's registered dimension to the
+# factor's power, summed by base, and a base whose powers cancel left out. `MB/s` is `bit` 1 and `s` -1
+task dimension-of
+  take factors, like list, like unit-factor
+  like text
+  mark private
+
+  save bases, make list
+  save powers, make list
+  walk factors
+    take one
+    walk one/entry/dimension
+      take part
+      save at, index-in(bases, part/base)
+      save add-power, multiply(part/power, one/power)
+      fork test, is-below(at, 0)
+        hold
+          push(bases, part/base)
+          push(powers, add-power)
+        miss
+          save powers/{at}, add(get(powers, at), add-power)
+  save out, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, bases/length)
+    hook hold
+      fork test, is-unequal(get(powers, k), 0)
+        hold
+          push(out, <make(dimension-power, \<{escaped(get(bases, k))}\>, {get(powers, k)})>)
+      save k, add(k, 1)
+  fork test, is-equal(out/length, 0)
+    hold
+      back <make(list)>
+  back <make(list, {join(out, <, >)})>
+
+task index-in
+  take values, like list, like text
+  take wanted, like text
+  like number
+  mark private
+
+  save k, 0
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back k
+    save k, add(k, 1)
+  back -1
+
+# a text as the content of a Term literal: the angles, the braces and the backslash escaped
+task escaped
+  take value, like text
+  like text
+  mark private
+
+  save out, make list
+  walk to-runes(value)
+    take code
+    fork test, or(is-equal(code, 60), or(is-equal(code, 62), or(is-equal(code, 123), or(is-equal(code, 125), is-equal(code, 92)))))
+      hold
+        push(out, 92)
+    push(out, code)
+  back from-runes(out)
+
+# ---- the loads the lowered code needs ----
+
+task require-load
+  take pass, like scope-pass
+  take path, like text
+  take name, like text
+  mark private
+
+  require-load-as(pass, path, name, name)
+
+task require-load-as
+  take pass, like scope-pass
+  take path, like text
+  take name, like text
+  take alias, like text
+  mark private
+
+  walk pass/needs
+    take one
+    fork test, and(is-equal(one/path, path), is-equal(one/alias, alias))
+      hold
+        back
+  save one
+    make scope-need
+      bind path, path
+      bind name, name
+      bind alias, alias
+  push(pass/needs, one)
+
+# one load per module the lowered code needs, holding what the file does not already find there
+task loads-for
+  take pass, like scope-pass
+  take top, like list, like node
+  like list, like node
+  mark private
+
+  save paths, make list
+  walk pass/needs
+    take one
+    fork test, is-below(index-in(paths, one/path), 0)
+      hold
+        push(paths, one/path)
+
+  save lines, make list
+  walk paths
+    take path
+    save finds, make list
+    walk pass/needs
+      take one
+      fork test, and(is-equal(one/path, path), not(already-found(top, path, one/alias)))
+        hold
+          fork test, is-equal(one/name, one/alias)
+            hold
+              push(finds, <  find {one/name}>)
+            miss
+              push(finds, <  find {one/name}, name {one/alias}>)
+    fork test, is-above(finds/length, 0)
+      hold
+        push(lines, <load {path}>)
+        walk finds
+          take line
+          push(lines, line)
+
+  fork test, is-equal(lines/length, 0)
+    hold
+      back make list
+  save source
+    make token-source
+      bind file, pass/file
+      bind text, join(lines, <\n>)
+  save parsed, parse(source)
+  sift parsed/tree
+    case root
+      link given
+      back given
+
+# whether the file already finds `name` under a load of `path`
+task already-found
+  take top, like list, like node
+  take path, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk top
+    take one
+    fork test, and(is-equal(word-of-head(one), <load>), is-equal(word-of-head(get-or-void(nodes-of(one), 1)), path))
+      hold
+        save kids, nodes-of(one)
+        save k, 2
+        walk test
+          hook test, is-below(k, kids/length)
+          hook hold
+            save child, get(kids, k)
+            fork test, and(is-equal(word-of-head(child), <find>), is-equal(alias-in(nodes-of(child), word-of-head(get-or-void(nodes-of(child), 1))), name))
+              hold
+                back true
+            save k, add(k, 1)
+  back false
+
+# ---- reading the tree ----
+
+task nodes-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      link kids
+      back kids
+    miss
+      back make list
+
+task get-or-void
+  take nodes, like list, like node
+  take at, like number
+  like node
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      back get(nodes, at)
+  back name-node-of(<>, zero-span())
+
+task is-group
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+task is-text
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      back true
+    miss
+      back false
+
+# the plain word a group is headed by (or a name is), or empty when it is not one plain word
+task word-of-head
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case group
+      link kids
+      fork test, is-equal(kids/length, 0)
+        hold
+          back <>
+      back word-of-head(get(kids, 0))
+    case name
+      fork test, is-unequal(parts/length, 1)
+        hold
+          back <>
+      sift get(parts, 0)
+        case chunk
+          back read(text)
+        miss
+          back <>
+    miss
+      back <>
+
+# a scope's text as written: a scope's own text, or a literal's chunks with the escapes the mill reads taken out.
+# None for a literal that interpolates
+task text-of
+  take literal, like node
+  like maybe, like text
+  mark private
+
+  sift literal
+    case text
+      sift raw
+        case some
+          link given
+          back make(some, given)
+        case none
+          save out, make list
+          walk parts
+            take part
+            sift part
+              case chunk
+                push(out, raw-content(read(text)))
+              miss
+                back make none
+          save joined, join(out, <>)
+          back make(some, joined)
+    miss
+      back make none
+
+# where a literal's text starts: its first chunk, else the literal's own place
+task place-of
+  take literal, like node
+  like scope-place
+  mark private
+
+  sift literal
+    case text
+      walk parts
+        take part
+        sift part
+          case chunk
+            back
+              make scope-place
+                bind line, span/start/line
+                bind column, span/start/column
+          miss
+            save nothing, 0
+    miss
+      save nothing, 0
+  back
+    make scope-place
+      bind line, 0
+      bind column, 0
+
+# the span of the code point `at` in a scope's text: lines after the first begin at the block's column
+task span-at
+  take place, like scope-place
+  take source, like text
+  take at, like number
+  like span
+  mark private
+
+  save runes, to-runes(source)
+  save line, place/line
+  save column, place/column
+  save k, 0
+  walk test
+    hook test, and(is-below(k, at), is-below(k, runes/length))
+    hook hold
+      fork test, is-equal(get(runes, k), 10)
+        hold
+          save line, add(line, 1)
+          save column, place/column
+        miss
+          save column, add(column, 1)
+      save k, add(k, 1)
+  back
+    make span
+      bind start, position-at(line, column)
+      bind end, position-at(line, add(column, 1))
+
+task position-at
+  take line, like number
+  take column, like number
+  like position
+  mark private
+
+  back
+    make position
+      bind line, line
+      bind column, column
+
+task zero-span
+  like span
+  mark private
+
+  back
+    make span
+      bind start, position-at(0, 0)
+      bind end, position-at(0, 0)
+
+# the span a node's first chunk or number stands at
+task head-span
+  take one, like node
+  like maybe, like span
+  mark private
+
+  sift one
+    case group
+      link kids
+      walk kids
+        take kid
+        sift head-span(kid)
+          case some
+            link found
+            back make(some, found)
+          case none
+            save nothing, 0
+      back make none
+    case name
+      walk parts
+        take part
+        sift head-span(part)
+          case some
+            link found
+            back make(some, found)
+          case none
+            save nothing, 0
+      back make none
+    case text
+      walk parts
+        take part
+        sift head-span(part)
+          case some
+            link found
+            back make(some, found)
+          case none
+            save nothing, 0
+      back make none
+    case chunk
+      back make(some, span)
+    case integer
+      back make(some, span)
+    case decimal
+      back make(some, span)
+    case radix
+      back make(some, span)
+    miss
+      back make none
+
+task span-of-node
+  take one, like node
+  like span
+  mark private
+
+  sift head-span(one)
+    case some
+      link found
+      back found
+    case none
+      back zero-span()
+
+# whether a group starts a line of its own below the group it stands in: its head is on a later line
+task starts-own-line
+  take one, like node
+  take above, like maybe, like span
+  like boolean
+  mark private
+
+  sift above
+    case some
+      link parent
+      sift head-span(one)
+        case some
+          link mine
+          back is-above(mine/start/line, parent/start/line)
+        case none
+          back false
+    case none
+      back true
+
+# ---- building ----
+
+task regroup
+  take one, like node
+  take kids, like list, like node
+  like node
+  mark private
+
+  sift one
+    case group
+      link old
+      link optional
+      link comments
+      back
+        make group
+          bind nodes, kids
+          bind optional, optional
+          bind comments, comments
+    miss
+      back one
+
+task group-of
+  take kids, like list, like node
+  like node
+  mark private
+
+  back
+    make group
+      bind nodes, kids
+      bind optional, make none
+      bind comments, make none
+
+task name-node-of
+  take word, like text
+  take where, like span
+  like node
+  mark private
+
+  save parts, make list
+  save part
+    make chunk
+      bind text, word
+      bind span, where
+      bind follows, make none
+  push(parts, part)
+  back
+    make name
+      bind parts, parts
+
+# a node and everything in it at `where`: lowered code was written by the pass, and its mistakes are the scope's
+task respan
+  take one, like node
+  take where, like span
+  like node
+  mark private
+
+  sift one
+    case group
+      link kids
+      link optional
+      link comments
+      save out, make list
+      walk kids
+        take kid
+        push(out, respan(kid, where))
+      back
+        make group
+          bind nodes, out
+          bind optional, optional
+          bind comments, comments
+    case name
+      back
+        make name
+          bind parts, respan-all(parts, where)
+    case text
+      back
+        make text
+          bind parts, respan-all(parts, where)
+          bind raw, raw
+          bind scope, scope
+          bind comments, comments
+    case interpolation
+      sift group
+        case some
+          link held
+          save moved, respan(held, where)
+          back
+            make interpolation
+              bind depth, depth
+              bind group, make(some, moved)
+              bind call, call
+        case none
+          back one
+    case chunk
+      back
+        make chunk
+          bind text, read(text)
+          bind span, where
+          bind follows, follows
+    case integer
+      back
+        make integer
+          bind value, value
+          bind text, read(text)
+          bind span, where
+          bind comments, comments
+    case decimal
+      back
+        make decimal
+          bind value, value
+          bind text, read(text)
+          bind span, where
+          bind comments, comments
+    case radix
+      back
+        make radix
+          bind value, value
+          bind text, read(text)
+          bind span, where
+          bind comments, comments
+          bind radix, radix
+
+task respan-all
+  take nodes, like list, like node
+  take where, like span
+  like list, like node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, respan(one, where))
+  back out
+
+# ---- refusing ----
+
+task refuse
+  take pass, like scope-pass
+  take name, like diagnostic-name
+  take where, like span
+  take message, like text
+  take hint, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, pass/file
+      bind span, where
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  push(pass/diagnostics, diagnose(name, input))
+
+task refuse-at
+  take pass, like scope-pass
+  take place, like scope-place
+  take source, like text
+  take at, like number
+  take message, like text
+  take hint, like text
+  mark private
+
+  refuse(pass, make(scope-refused), span-at(place, source, at), message, hint)

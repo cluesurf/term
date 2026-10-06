@@ -4,7 +4,7 @@
 //
 // It was `term feed` until 2026-10-05, when the development server became `term boot`'s own mode (`moon`, `dev`,
 // `development`, the default) beside production (`star`, `prod`, `production`). `term feed` now refuses and names
-// `term boot` (`refuseFeed`), and `@term/feed`, the package of readers, has the word to itself.
+// `term boot` (`refuseFeed`), and the word belongs to the readers: `@term/mill/feed`, the cursor library under every format grammar.
 //
 // A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item
 // per hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.

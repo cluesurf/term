@@ -18,9 +18,15 @@
 load @term/base/list
   find list
   find get
+  find join
 
 load @term/base/text
   find split
+  find substring
+  find trim
+  find trim-end
+  find starts-with
+  find ends-with
 
 load @term/base/text/unicode
   find to-runes
@@ -90,6 +96,17 @@ form token-source
   link file, like text
   link text, like text
 
+# A GRAMMAR SCOPE, handed over: the tokens that stand for it (the separator as written, then a text literal whose
+# open token names the spelling, `line`, `paren` or `block`, holding the scope's text verbatim), where reading goes on,
+# and the first line after a block it took. `taken` is false when the word opens no scope
+form scope-step
+  link taken, like boolean
+  link tokens, like list, like token
+  link pos, like number
+  link column, like number
+  link skip-to, like number
+  link found, like list, like diagnostic
+
 # the matchers each mode tries, in priority order, built once a run
 form mode-orders
   link plain, like list, like token-kind
@@ -149,6 +166,13 @@ task tokenize
   save list, make list
   save found, make list
   save orders, mode-orders-of()
+  # the names this file imports as GRAMMARS, read off its own load lines before the body (grammar-names-of): a word
+  # that is one of them opens a grammar scope
+  save grammars, grammar-names-of(lines)
+  # the first line past a block a grammar scope took, which the walk then skips: those lines are the scope's text
+  save skip-to, 0
+  # where the current line's tokens begin in the list, so a scope can look back along its own line only
+  save line-start, 0
 
   # the open interpolations' brace runs, the modes, where each open text literal started, and each open literal's
   # running `<` minus `>` balance, so a nested `>` (closing a generic like `Hmac<Sha256>`, not the literal) stays
@@ -169,12 +193,17 @@ task tokenize
 
   walk lines
     take raw-line
+    fork test, is-below(physical, skip-to)
+      hold
+        save physical, add(physical, 1)
+        turn next
     save line, physical
     save column, 0
     save physical, add(physical, 1)
     save runes, to-runes(<{raw-line}\n>)
     # a cursor over the line's code points, advanced in place
     save pos, 0
+    save line-start, list/length
 
     walk test
       hook test, is-below(pos, runes/length)
@@ -312,6 +341,24 @@ task tokenize
                     save text-depths/{subtract(text-depths/length, 1)}, add(last-number(text-depths), opens-in(read(text)))
               miss
                 save size, size
+
+            # A WORD MAY OPEN A GRAMMAR SCOPE: `role note, x + y`, or a name the file imported as a grammar, `note x + y`
+            # and `note(x + y)`. What `.tree` cannot tokenize (`+`, `^`, `=`) is never read as `.tree`: the scope's text
+            # goes over whole, as one literal, and the mill hands it to the grammar (scope-at)
+            fork test, and(is-word(hit-kind), is-plain(mode))
+              hold
+                save step, scope-at(runes, pos, column, line, list, line-start, grammars, lines, source/file)
+                fork test, step/taken
+                  hold
+                    walk step/tokens
+                      take one
+                      push(list, one)
+                    walk step/found
+                      take one
+                      push(found, one)
+                    save pos, step/pos
+                    save column, step/column
+                    save skip-to, step/skip-to
             turn next
 
         # `read items/{0}`: a brace opens an interpolation only before a letter, so a digit inside one is the one
@@ -378,6 +425,511 @@ task tokenize
     make token-result
       bind tokens, tokens
       bind diagnostics, found
+
+# ---- grammar scopes ----
+#
+# A stretch of a line written in another grammar: `something x, role note, x + y`. The lexer never reads it as `.tree`,
+# which could not tokenize `+` at all. It hands the text over as one literal, verbatim, and the mill gives it to the
+# grammar the scope names (note/term/mill/02-role-scopes.md). The opener is one of two:
+#
+#   role <name>     anywhere a part may start, for any `<name>` that is not a FILE role (`role mill` in a role.tree
+#                   is a file's role, and those seven names are reserved for it)
+#   <name>          a name the file's own load lines import as a grammar (grammar-names-of)
+#
+# and the scope is what follows it on the line, written one of three ways:
+#
+#   , x + y         after `role <name>`, the rest of the line after a comma: the literal is a sibling of the name
+#   x + y           the rest of the line after a space: the literal nests under the name
+#   (x + y)         the balanced parentheses, which close on the same line
+#   (nothing)       the block indented under the line, when the opener heads its line or is a `role`
+#
+# A literal written out (`role note, <<x + y>>`, `note <x + y>`) opens no scope: it is already the literal a scope
+# would make, and the mill reads it the same way.
+
+# which names the file imports as grammars, from its own load lines: `find role <name>` under any load, the format
+# grammar's own name under `load @term/mill/text/<name>`, and every `find` under a relative load whose last segment is
+# `mill` (`load ./some/mill`, the project's own grammars). An alias (`find note, name n`) is the name in the file
+task grammar-names-of
+  take lines, like list, like text
+  like list, like text
+  mark private
+
+  save names, make list
+  # the path of the load whose finds are being read, or empty outside one
+  save path, <>
+  walk lines
+    take one
+    fork test, starts-with(one, <load >)
+      hold
+        save path, first-word(trim(substring(one, 5)))
+        turn next
+    fork test, not(starts-with(one, < >))
+      hold
+        save path, <>
+        turn next
+    fork test, or(is-equal(path, <>), not(starts-with(one, <  find >)))
+      hold
+        turn next
+    save rest, trim(substring(one, 7))
+    save role, starts-with(rest, <role >)
+    fork test, role
+      hold
+        save rest, trim(substring(rest, 5))
+    fork test, or(role, is-grammar-load(path, first-word(rest)))
+      hold
+        push(names, alias-of(rest))
+  back names
+
+# whether a load imports grammars: the text grammar named like the find, or a project's own `mill` folder. The one
+# rule, which the scope pass (compile/scope.tree) asks too, so what the lexer reads as a grammar is what the build
+# takes out of the module graph
+task is-grammar-load
+  take path, like text
+  take found, like text
+  like boolean
+
+  fork test, is-equal(path, <@term/mill/text/{found}>)
+    hold
+      back true
+  back and(or(starts-with(path, <./>), starts-with(path, <../>)), ends-with(path, </mill>))
+
+# the name a `find` gives in the file: its alias after `, name`, or the found name itself
+task alias-of
+  take rest, like text
+  like text
+  mark private
+
+  save parts, split(rest, <, name >)
+  fork test, is-above(parts/length, 1)
+    hold
+      back first-word(trim(get(parts, 1)))
+  back first-word(rest)
+
+# the text up to the first space or comma
+task first-word
+  take value, like text
+  like text
+  mark private
+
+  save runes, to-runes(value)
+  save end, 0
+  walk test
+    hook test, and(is-below(end, runes/length), not(or(is-equal(get(runes, end), 32), is-equal(get(runes, end), 44))))
+    hook hold
+      save end, add(end, 1)
+  back from-runes(runes/slice(0, end))
+
+# how many spaces a line starts with
+task indent-width
+  take value, like text
+  like number
+  mark private
+
+  back run-of(to-runes(value), 0, 32)
+
+# the seven roles a file has (call/code/role-check.tree): `role <one of these>` is a role.tree's rule, never a scope
+task is-file-role
+  take name, like text
+  like boolean
+
+  walk split(<code host view site call mill book>, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# a grammar's name is a plain lowercase word: letters, digits and hyphens, a letter first
+task is-scope-name
+  take name, like text
+  like boolean
+  mark private
+
+  save runes, to-runes(name)
+  fork test, or(is-equal(runes/length, 0), not(and(is-minimum(get(runes, 0), 97), is-maximum(get(runes, 0), 122))))
+    hold
+      back false
+  walk runes
+    take code
+    fork test, not(or(is-letter-code(code), or(is-digit-code(code), is-equal(code, 45))))
+      hold
+        back false
+  back true
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# what a token is, as text, for the few kinds a scope looks back at
+task kind-text
+  take kind, like token-kind
+  like text
+  mark private
+
+  sift kind
+    case word
+      back <word>
+    case space
+      back <space>
+    case comma
+      back <comma>
+    case open-paren
+      back <open-paren>
+    miss
+      back <>
+
+task is-word
+  take kind, like token-kind
+  like boolean
+  mark private
+
+  back is-equal(kind-text(kind), <word>)
+
+# whether a part may start at the token `at`: first on its line, or after a comma, an opening parenthesis or a space,
+# and never the name a `find` or a `load` names
+task opens-here
+  take list, like list, like token
+  take at, like number
+  take line-start, like number
+  like boolean
+  mark private
+
+  fork test, is-maximum(at, line-start)
+    hold
+      back true
+  save before, kind-text(get(list, subtract(at, 1))/kind)
+  fork test, or(is-equal(before, <comma>), is-equal(before, <open-paren>))
+    hold
+      back true
+  fork test, not(is-equal(before, <space>))
+    hold
+      back false
+  # the indentation that opens the line
+  fork test, is-equal(subtract(at, 1), line-start)
+    hold
+      back true
+  save word, get(list, subtract(at, 2))
+  fork test, not(is-equal(kind-text(word/kind), <word>))
+    hold
+      back true
+  back not(or(is-equal(word/text, <find>), is-equal(word/text, <load>)))
+
+# whether the word at `at` follows `role` and a space, where a part may start
+task is-scope-role
+  take list, like list, like token
+  take at, like number
+  take line-start, like number
+  like boolean
+  mark private
+
+  fork test, is-below(subtract(at, 2), line-start)
+    hold
+      back false
+  save space, get(list, subtract(at, 1))
+  save role, get(list, subtract(at, 2))
+  fork test, not(and(is-equal(kind-text(space/kind), <space>), and(is-equal(kind-text(role/kind), <word>), is-equal(role/text, <role>))))
+    hold
+      back false
+  back opens-here(list, subtract(at, 2), line-start)
+
+# whether the token at `at` heads its line: first, or after the line's indentation
+task is-line-head
+  take list, like list, like token
+  take at, like number
+  take line-start, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(at, line-start)
+    hold
+      back true
+  back and(is-equal(at, add(line-start, 1)), is-equal(kind-text(get(list, line-start)/kind), <space>))
+
+# The scope the word just read opens, if any. `at` is just past the word, at `column`, on physical line `line`
+task scope-at
+  take runes, like list, like number
+  take at, like number
+  take column, like number
+  take line, like number
+  take list, like list, like token
+  take line-start, like number
+  take grammars, like list, like text
+  take lines, like list, like text
+  take file, like text
+  like scope-step
+  mark private
+
+  save word-at, subtract(list/length, 1)
+  save name, get(list, word-at)/text
+  fork test, not(is-scope-name(name))
+    hold
+      back no-scope(at, column)
+
+  save role, false
+  save head, false
+  fork test, and(is-scope-role(list, word-at, line-start), not(is-file-role(name)))
+    hold
+      save role, true
+      save head, is-line-head(list, subtract(word-at, 2), line-start)
+    miss
+      fork test, not(and(has-name(grammars, name), opens-here(list, word-at, line-start)))
+        hold
+          back no-scope(at, column)
+      save head, is-line-head(list, word-at, line-start)
+
+  save next, rune-at(runes, at)
+  save end, subtract(runes/length, 1)
+
+  fork test, is-equal(next, 40)
+    hold
+      back paren-scope(runes, at, column, line, file)
+
+  # `role note, x + y`: a comma, the spaces after it, and the rest of the line
+  fork test, and(role, is-equal(next, 44))
+    hold
+      save content-at, add(at, comma-size(runes, at))
+      fork test, or(is-minimum(content-at, end), is-equal(get(runes, content-at), 60))
+        hold
+          back no-scope(at, column)
+      save content-column, add(column, width-of(runes, at, content-at))
+      save separator, token-of(make(comma), line, column, content-column, from-runes(runes/slice(at, content-at)))
+      back line-scope(runes, content-at, content-column, line, separator)
+
+  fork test, is-equal(next, 32)
+    hold
+      save content-at, add(at, run-of(runes, at, 32))
+      fork test, is-minimum(content-at, end)
+        hold
+          back block-scope(runes, at, column, line, lines, or(role, head))
+      fork test, is-equal(get(runes, content-at), 60)
+        hold
+          back no-scope(at, column)
+      save content-column, add(column, width-of(runes, at, content-at))
+      save separator, token-of(make(space), line, column, content-column, from-runes(runes/slice(at, content-at)))
+      back line-scope(runes, content-at, content-column, line, separator)
+
+  fork test, is-equal(next, 10)
+    hold
+      back block-scope(runes, at, column, line, lines, or(role, head))
+  back no-scope(at, column)
+
+task no-scope
+  take at, like number
+  take column, like number
+  like scope-step
+  mark private
+
+  back
+    make scope-step
+      bind taken, false
+      bind tokens, make list
+      bind pos, at
+      bind column, column
+      bind skip-to, 0
+      bind found, make list
+
+task scope-step-of
+  take tokens, like list, like token
+  take pos, like number
+  take column, like number
+  take skip-to, like number
+  like scope-step
+  mark private
+
+  back
+    make scope-step
+      bind taken, true
+      bind tokens, tokens
+      bind pos, pos
+      bind column, column
+      bind skip-to, skip-to
+      bind found, make list
+
+# the rest of the line from `content-at`, its trailing spaces left to the lexer
+task line-scope
+  take runes, like list, like number
+  take content-at, like number
+  take content-column, like number
+  take line, like number
+  take separator, like token
+  like scope-step
+  mark private
+
+  save stop, subtract(runes/length, 1)
+  walk test
+    hook test, and(is-above(stop, content-at), is-space-code(get(runes, subtract(stop, 1))))
+    hook hold
+      save stop, subtract(stop, 1)
+  save stop-column, add(content-column, width-of(runes, content-at, stop))
+  save tokens, make list
+  push(tokens, separator)
+  push(tokens, token-of(make(open-angle), line, content-column, content-column, <line>))
+  push(tokens, token-of(make(text-chunk), line, content-column, stop-column, raw-chunk(from-runes(runes/slice(content-at, stop)))))
+  push(tokens, token-of(make(close-angle), line, stop-column, stop-column, <>))
+  back scope-step-of(tokens, stop, stop-column, 0)
+
+# `note(x + y)`: the text inside the balanced parentheses from `at`, which must close on this line
+task paren-scope
+  take runes, like list, like number
+  take at, like number
+  take column, like number
+  take line, like number
+  take file, like text
+  like scope-step
+  mark private
+
+  save depth, 0
+  save close, -1
+  save k, add(at, 1)
+  walk test
+    hook test, and(is-below(k, runes/length), is-below(close, 0))
+    hook hold
+      save one, get(runes, k)
+      fork test, is-equal(one, 10)
+        hold
+          halt
+      fork test, is-equal(one, 40)
+        hold
+          save depth, add(depth, 1)
+      fork test, is-equal(one, 41)
+        hold
+          fork test, is-equal(depth, 0)
+            hold
+              save close, k
+              halt
+          save depth, subtract(depth, 1)
+      save k, add(k, 1)
+
+  fork test, is-below(close, 0)
+    hold
+      save input
+        make diagnostic-input
+          bind file, file
+          bind span, span-of(line, column, add(column, 1))
+          bind message, make(some, <a grammar scope opened with `(` must close with `)` on the same line>)
+          bind hint, make(some, <for more than one line, write the scope as a block: the name alone on its line, the text indented under it>)
+      save found, make list
+      push(found, diagnose(make(syntax-error), input))
+      save stop, subtract(runes/length, 1)
+      back
+        make scope-step
+          bind taken, true
+          bind tokens, make list
+          bind pos, stop
+          bind column, add(column, width-of(runes, at, stop))
+          bind skip-to, 0
+          bind found, found
+
+  # `note()` is the empty call it always was
+  fork test, is-equal(close, add(at, 1))
+    hold
+      back no-scope(at, column)
+
+  save inner, add(column, 1)
+  save shut, add(inner, width-of(runes, add(at, 1), close))
+  save tokens, make list
+  push(tokens, token-of(make(open-paren), line, column, inner, <(>))
+  push(tokens, token-of(make(open-angle), line, inner, inner, <paren>))
+  push(tokens, token-of(make(text-chunk), line, inner, shut, raw-chunk(from-runes(runes/slice(add(at, 1), close)))))
+  push(tokens, token-of(make(close-angle), line, shut, shut, <>))
+  push(tokens, token-of(make(close-paren), line, shut, add(shut, 1), <)>))
+  back scope-step-of(tokens, add(close, 1), add(shut, 1), 0)
+
+# The block indented under line `line`: every line below it indented deeper, blank lines between them included, each
+# with the block's least indentation taken off. The literal nests under the opener as a space would put it, and the
+# lines it took are skipped by the walk. `may` is whether this opener can take a block at all: a `role`, or a name that
+# heads its line
+task block-scope
+  take runes, like list, like number
+  take at, like number
+  take column, like number
+  take line, like number
+  take lines, like list, like text
+  take may, like boolean
+  like scope-step
+  mark private
+
+  fork test, not(may)
+    hold
+      back no-scope(at, column)
+
+  save own, indent-width(get(lines, line))
+  save last, -1
+  save least, -1
+  save k, add(line, 1)
+  walk test
+    hook test, is-below(k, lines/length)
+    hook hold
+      save one, get(lines, k)
+      fork test, is-equal(trim(one), <>)
+        hold
+          save k, add(k, 1)
+          turn next
+      save width, indent-width(one)
+      fork test, is-maximum(width, own)
+        hold
+          halt
+      save last, k
+      fork test, or(is-below(least, 0), is-below(width, least))
+        hold
+          save least, width
+      save k, add(k, 1)
+
+  fork test, is-below(last, 0)
+    hold
+      back no-scope(at, column)
+
+  save parts, make list
+  save k, add(line, 1)
+  walk test
+    hook test, is-maximum(k, last)
+    hook hold
+      save one, get(lines, k)
+      fork test, is-equal(trim(one), <>)
+        hold
+          push(parts, <>)
+        miss
+          push(parts, trim-end(substring(one, least)))
+      save k, add(k, 1)
+
+  save end, subtract(runes/length, 1)
+  save tail, add(column, width-of(runes, at, end))
+  save last-runes, to-runes(get(lines, last))
+  save last-width, width-of(last-runes, 0, last-runes/length)
+  save tokens, make list
+  push(tokens, token-of(make(space), line, column, tail, < >))
+  push(tokens, token-of(make(open-angle), line, tail, tail, <block>))
+  save chunk
+    make token
+      bind kind, make(text-chunk)
+      bind span, span-across(add(line, 1), least, last, last-width)
+      bind text, raw-chunk(join(parts, <\n>))
+  push(tokens, chunk)
+  push(tokens, token-of(make(close-angle), last, last-width, last-width, <>))
+  push(tokens, token-of(make(newline), last, last-width, add(last-width, 1), <\n>))
+  back scope-step-of(tokens, runes/length, tail, add(last, 1))
+
+task span-across
+  take from-line, like number
+  take from-column, like number
+  take to-line, like number
+  take to-column, like number
+  like span
+  mark private
+
+  back
+    make span
+      bind start, position-of(from-line, from-column)
+      bind end, position-of(to-line, to-column)
 
 # ---- the matchers ----
 

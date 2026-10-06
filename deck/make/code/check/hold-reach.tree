@@ -1,0 +1,1690 @@
+# What the hold walk asks of the code around a fact: whether a statement's impure calls can reach a list the task holds
+# (`reaches-lists`), change a list's length (`keeps-lengths`, `only-keeps-lengths`), or only push (`body-only-pushes`);
+# which list a statement pushes to or pops from; whether a body leaves a turn early or writes through a member; which
+# values are scalars and which locals only ever hold one; what a write forgets (`forget-writes`); and the closures an
+# expression builds, whose holds are checked on their own.
+#
+# Each of these was a reflective walk in the original, over `unknown`: a stack of whatever it was handed, popped last
+# first, descending every field but `type`, `span` and `binding`, and never visiting one object twice. Here each is a
+# typed walk over node handles: `node-children` (compile/node-children.tree) is the descent the original's default made,
+# in the same order, and a handle's node is remembered by the host's identity, so a node two parents share is still met
+# once. Popped from the same end, the handles come out in the order the original's objects did.
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
+#   - the walk's sets are hashes of flags, and a set the original left out (`fresh`, `params`, `constants`, `scalars`)
+#     is an empty hash, which every test the original made of it answers the same way
+#   - check/purity.tree answers what is impure, what a subtree writes and what it reads, as check/facts.ts handed it
+#   - the tally a caller owns is `hold-tally`, converted by the face both ways: the original created its `seen` and its
+#     `kinds` the first time it counted, so the record says whether they exist
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ../compile/node
+  find expression
+  find statement
+  find function-param
+  find hold-origin
+  find type
+  find expression-type
+  find statement-span
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./certificate
+  find inequality
+
+load ./inequality
+  find to-linear
+  find constant-of
+
+load ./nonlinear
+  find plain-path
+
+load ./universal
+  find hold-calls
+
+load ./hold-facts
+  find forget
+  find drop-fields
+  find drop-element-paths
+  find without-state
+  find mentions-atom
+  find is-state-atom
+  find key-root
+  find has-text
+  find add-text
+
+load ./hold-state
+  find hold-state
+
+load ./purity
+  find subtree
+  find calls-impure
+  find written-names
+  find root-name
+  find immutable-kinds
+  find read-only-list-methods
+  find everything
+  find only-statement
+
+# ---- the walk ----
+
+# how many obligations of one tier-0 kind, and how many proven
+form kind-count
+  mark shared
+  link total, like number
+  link proven, like number
+
+# one tier-0 obligation that was not proven: the task, what it was owed for, its ordinal among that task's of that kind
+form failed-obligation
+  link task, like text
+  link origin, like hold-origin
+  link ordinal, like number
+  link diagnostic, like diagnostic
+
+# the tier-0 count of one compile, as the caller's `Tally`: `seen` and `kinds` exist once something was counted
+form hold-tally
+  mark shared
+  link total, like number
+  link proven, like number
+  link failed, like list, like failed-obligation
+  link has-seen, like boolean
+  link seen, like hash, like text, like number
+  link has-kinds, like boolean
+  link kinds, like hash, like text, like kind-count
+
+# what a walk needs besides its facts: where to report, which tasks are pure, which names the task binds itself, which
+# names a closure may write behind the walk's back, and what the whole program says of the rest
+form hold-walk
+  link diagnostics, like list, like diagnostic
+  link file, like text
+  link pure, like hash, like text, like boolean
+  link functions, like hash, like text, like boolean
+  link local, like hash, like text, like boolean
+  link volatile, like hash, like text, like boolean
+  link origin-only, like boolean
+  link tally, like maybe, like hold-tally
+  link task, like maybe, like text
+  link globals, like hash, like text, like boolean
+  link state-free, like hash, like text, like boolean
+  link keeping, like hash, like text, like boolean
+  link fresh, like hash, like text, like boolean
+  link returning, like hash, like text, like boolean
+  link params, like hash, like text, like boolean
+  link constants, like hash, like text, like boolean
+  link scalars, like hash, like text, like boolean
+
+# ---- identity ----
+
+# a set of nodes by identity, which the original's `seen` was
+bind fresh-seen
+  like unknown
+  case node
+    text <new Set()>
+  case browser
+    text <new Set()>
+  case rust
+    text <std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <(NSMutableSet() as Any)>
+  case kotlin
+    text <(java.util.IdentityHashMap\<Any, Boolean\>() as Any)>
+
+# is this the first time the handle's node is met: remembered if so
+bind seen-first
+  take seen, like unknown
+  take handle, like node-handle
+  like boolean
+  case node
+    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
+  case browser
+    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+# ---- small makers ----
+
+task handles
+  like list, like node-handle
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task flags
+  like hash, like text, like boolean
+
+  back make hash
+
+task skip-plain
+  like list, like text
+
+  save out, texts()
+  push(out, <type>)
+  push(out, <span>)
+  push(out, <binding>)
+  back out
+
+task skip-places
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task expression-handle-of
+  take e, like expression
+  like node-handle
+
+  back
+    make node-handle/expression-handle
+      bind node, e
+
+task statement-handle-of
+  take s, like statement
+  like node-handle
+
+  back
+    make node-handle/statement-handle
+      bind node, s
+
+task expression-handles
+  take items, like list, like expression
+  like list, like node-handle
+
+  save out, handles()
+  walk items
+    take item
+    push(out, expression-handle-of(item))
+  back out
+
+# the parts check/purity.tree reads, of what the original handed a name walk
+task block-parts
+  take body, like list, like statement
+  like list, like subtree
+
+  save out, make list
+  save one
+    make subtree/in-block
+      bind node, body
+  push(out, one)
+  back out
+
+task statement-parts
+  take s, like statement
+  like list, like subtree
+
+  save out, make list
+  save one
+    make subtree/in-statement
+      bind node, s
+  push(out, one)
+  back out
+
+task expression-parts
+  take e, like expression
+  like list, like subtree
+
+  save out, make list
+  save one
+    make subtree/in-expression
+      bind node, e
+  push(out, one)
+  back out
+
+task handle-parts
+  take handle, like node-handle
+  like list, like subtree
+
+  sift handle
+    case expression-handle
+      back expression-parts(node)
+    case statement-handle
+      back statement-parts(node)
+    miss
+      back make list
+
+# does a subtree call something impure, by the walk's sets
+task impure-in
+  take parts, like list, like subtree
+  take walk, like hold-walk
+  like boolean
+
+  save is-pure
+    task
+      take name, like text
+      like boolean
+      back walk/pure/has(name)
+  save is-function
+    task
+      take name, like text
+      like boolean
+      back walk/functions/has(name)
+  save is-local
+    task
+      take name, like text
+      like boolean
+      back walk/local/has(name)
+  back calls-impure(parts, is-pure, is-function, is-local)
+
+# a call as the original's `{ ...call, args: [] }`: the callee alone judged
+bind without-arguments
+  take call, like expression
+  like expression
+  case node
+    text <(\{ ...$call, args: [] \})>
+  case browser
+    text <(\{ ...$call, args: [] \})>
+  case rust
+    text <$call>
+  case swift
+    text <$call>
+  case kotlin
+    text <$call>
+
+task callee-impure
+  take call, like expression
+  take walk, like hold-walk
+  like boolean
+  mark private
+
+  back impure-in(expression-parts(without-arguments(call)), walk)
+
+task written-in-block
+  take body, like list, like statement
+  like list, like text
+
+  back written-names(block-parts(body))
+
+task root-of
+  take target, like expression
+  like maybe, like text
+
+  back root-name(target)
+
+# ---- types ----
+
+# the kind of a node's type, `''` when it has none
+task kind-of
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link known
+      back known/kind
+    case none
+      back <>
+
+# the kind of a list type's element, `''` when it is not a list
+task element-kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back element/kind
+        miss
+          back <>
+    case none
+      back <>
+
+task scalar-kinds
+  like list, like text
+
+  save out, texts()
+  push(out, <number>)
+  push(out, <float>)
+  push(out, <boolean>)
+  push(out, <string>)
+  push(out, <unit>)
+  push(out, <bytes>)
+  back out
+
+task is-scalar-kind
+  take kind, like text
+  like boolean
+
+  back has-text(scalar-kinds(), kind)
+
+task is-array-typed
+  take e, like expression
+  like boolean
+
+  back is-equal(kind-of(expression-type(e)), <array>)
+
+# `/^[0-9]+$/`
+bind digits-only
+  take value, like text
+  like boolean
+  case node
+    text </^[0-9]+$/.test($value)>
+  case browser
+    text </^[0-9]+$/.test($value)>
+  case rust
+    text <(!$value.is_empty() && $value.chars().all(|c| c.is_ascii_digit()))>
+  case swift
+    text <(!$value.isEmpty && $value.allSatisfy(\{ $0.isASCII && $0.isNumber \}))>
+  case kotlin
+    text <($value.isNotEmpty() && $value.all \{ it in '0'..'9' \})>
+
+task has-index
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          link at
+          back true
+        case none
+          back false
+    miss
+      back false
+
+# ---- scalars ----
+
+# a list whose elements are scalars
+task scalar-list
+  take target, like expression
+  like boolean
+  mark private
+
+  back and(is-array-typed(target), is-scalar-kind(element-kind-of(expression-type(target))))
+
+# does an expression carry no reference to a Term value: its type is a scalar, it reads one element out of a list of
+# scalars, or it reads a local that only ever holds such values
+task scalar-value
+  take e, like expression
+  take locals, like hash, like text, like boolean
+  like boolean
+
+  fork test, is-scalar-kind(kind-of(expression-type(e)))
+    hold
+      back true
+  sift e
+    case variable
+      link variable-name
+      fork test, locals/has(variable-name)
+        hold
+          back true
+    miss
+      save nothing, 0
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      back and(scalar-value(left, locals), scalar-value(right, locals))
+    case integer
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case member
+      link member-target
+      link member-name
+      link member-index
+      save positional, digits-only(member-name)
+      sift member-index
+        case some
+          link at
+          save positional, true
+        case none
+          save nothing, 0
+      fork test, positional
+        hold
+          back scalar-list(member-target)
+      back false
+    case call
+      link callee
+      sift callee
+        case member
+          link callee-target
+          link callee-name
+          fork test, or(is-equal(callee-name, <get>), is-equal(callee-name, <at>))
+            hold
+              back scalar-list(callee-target)
+          back false
+        miss
+          back false
+    miss
+      back false
+
+task value-table
+  like hash, like text, like list, like expression
+  mark private
+
+  back make hash
+
+task push-value
+  take values, like hash, like text, like list, like expression
+  take name, like text
+  take value, like expression
+  mark private
+
+  fork test, not(values/has(name))
+    hold
+      save fresh, make list
+      save values/{name}, fresh
+  save held, values/get(name)
+  push(held, value)
+
+# The locals of a task that only ever hold scalars: every binding of the name, and every plain assignment to it, is a
+# scalar value given the others, a fixed point from "all of them" down
+task scalar-locals
+  take body, like list, like statement
+  take params, like list, like function-param
+  like hash, like text, like boolean
+
+  save values, value-table()
+  save order, texts()
+  save disqualified, texts()
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case let
+              link let-name
+              link init
+              add-text(order, let-name)
+              push-value(values, let-name, init)
+            case assign
+              link target
+              link op
+              link value
+              sift target
+                case variable
+                  link target-name
+                  add-text(order, target-name)
+                  push-value(values, target-name, value)
+                miss
+                  save nothing, 0
+            case for-each
+              link item
+              add-text(disqualified, item)
+            case function
+              link task-name
+              link fn-params
+              link fn-body
+              walk written-in-block(fn-body)
+                take name
+                add-text(disqualified, name)
+            miss
+              save nothing, 0
+        case expression-handle
+          sift node
+            case closure
+              link closure-params
+              link closure-body
+              walk written-in-block(closure-body)
+                take name
+                add-text(disqualified, name)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  walk params
+    take param
+    fork test, not(is-scalar-kind(kind-of(param/type)))
+      hold
+        add-text(disqualified, param/name)
+  save scalars, flags()
+  walk order
+    take name
+    fork test, not(has-text(disqualified, name))
+      hold
+        save scalars/{name}, true
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk order
+        take name
+        fork test, not(scalars/has(name))
+          hold
+            turn next
+        save every, true
+        walk values/get(name)
+          take value
+          fork test, not(scalar-value(value, scalars))
+            hold
+              save every, false
+              halt
+        fork test, not(every)
+          hold
+            scalars/remove(name)
+            save changed, true
+  back scalars
+
+# ---- what impure calls reach ----
+
+# a call that changes no list's length: `xs/get i` or `xs/at i` on a list, `xs/set i, v`, a method on a value no method
+# can change handed only such values, or a task that only ever does such things
+task keeps-lengths
+  take call, like expression
+  take walk, like hold-walk
+  like boolean
+
+  sift call
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link callee-name
+          back and(walk/functions/has(callee-name), walk/keeping/has(callee-name))
+        case member
+          link callee-target
+          link callee-name
+          link callee-index
+          save immutable, immutable-kinds()
+          fork test, has-text(immutable, kind-of(expression-type(callee-target)))
+            hold
+              save every, true
+              walk args
+                take a
+                fork test, not(has-text(immutable, kind-of(expression-type(a))))
+                  hold
+                    save every, false
+                    halt
+              fork test, every
+                hold
+                  back true
+          sift callee-index
+            case some
+              link at
+              back false
+            case none
+              save nothing, 0
+          fork test, not(is-array-typed(callee-target))
+            hold
+              back false
+          fork test, and(or(is-equal(callee-name, <get>), is-equal(callee-name, <at>)), is-equal(args/length, 1))
+            hold
+              back true
+          back and(is-equal(callee-name, <set>), is-equal(args/length, 2))
+        miss
+          back false
+    miss
+      back false
+
+task reads-a-list
+  take callee, like expression
+  take args, like list, like expression
+  like boolean
+  mark private
+
+  sift callee
+    case member
+      link callee-target
+      link callee-name
+      link callee-index
+      sift callee-index
+        case some
+          link at
+          back false
+        case none
+          save nothing, 0
+      fork test, not(has-text(read-only-list-methods(), callee-name))
+        hold
+          back false
+      fork test, not(is-array-typed(callee-target))
+        hold
+          back false
+      walk args
+        take a
+        fork test, not(is-scalar-kind(kind-of(expression-type(a))))
+          hold
+            back false
+      back true
+    miss
+      back false
+
+# could an impure call in these nodes reach a list the task holds? Only through what it is handed, a method called on
+# a value, or a function value. So an impure call to a TASK OF THE PROGRAM handed only scalars reaches no local list,
+# and native code handed only scalars holds no Term value
+task reaches-lists
+  take start, like list, like node-handle
+  take walk, like hold-walk
+  like boolean
+
+  save stack, handles()
+  walk start
+    take one
+    push(stack, one)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case expression-handle
+          save call, node
+          sift call
+            case call
+              link callee
+              link args
+              fork test, callee-impure(call, walk)
+                hold
+                  save scalars, true
+                  walk args
+                    take a
+                    fork test, not(scalar-value(a, walk/scalars))
+                      hold
+                        save scalars, false
+                        halt
+                  save on-module, false
+                  sift callee
+                    case member
+                      sift root-of(callee)
+                        case some
+                          link root
+                          save on-module, and(and(not(walk/local/has(root)), not(walk/globals/has(root))), not(walk/functions/has(root)))
+                        case none
+                          save nothing, 0
+                    miss
+                      save nothing, 0
+                  fork test, or(reads-a-list(callee, args), keeps-lengths(call, walk))
+                    hold
+                      save nothing, 0
+                    miss
+                      save program-task, false
+                      save callee-name, <>
+                      sift callee
+                        case variable
+                          link name
+                          save callee-name, name
+                          save program-task, walk/functions/has(name)
+                        miss
+                          save nothing, 0
+                      fork test, program-task
+                        hold
+                          fork test, not(and(walk/state-free/has(callee-name), scalars))
+                            hold
+                              back true
+                        miss
+                          fork test, not(and(on-module, scalars))
+                            hold
+                              back true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back false
+
+# does every impure call in these nodes change no length, with none passing a function value on. With `besides-fresh`,
+# a push onto a name bound only to fresh lists is allowed too
+task only-keeps-lengths
+  take start, like list, like node-handle
+  take walk, like hold-walk
+  take besides-fresh, like boolean
+  like boolean
+
+  save stack, handles()
+  walk start
+    take one
+    push(stack, one)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case function
+              back false
+            miss
+              save nothing, 0
+        case expression-handle
+          save call, node
+          sift call
+            case closure
+              back false
+            case variable
+              link name
+              fork test, and(walk/functions/has(name), not(walk/pure/has(name)))
+                hold
+                  back false
+            case call
+              link callee
+              link args
+              save fresh-push, false
+              fork test, besides-fresh
+                hold
+                  sift callee
+                    case member
+                      link callee-target
+                      link callee-name
+                      link callee-index
+                      sift callee-index
+                        case none
+                          fork test, is-equal(callee-name, <push>)
+                            hold
+                              sift callee-target
+                                case variable
+                                  link target-name
+                                  save fresh-push, and(is-array-typed(callee-target), walk/fresh/has(target-name))
+                                miss
+                                  save nothing, 0
+                        case some
+                          link at
+                          save nothing, 0
+                    miss
+                      save nothing, 0
+              save read-only, false
+              sift callee
+                case member
+                  link callee-target
+                  link callee-name
+                  link callee-index
+                  sift callee-index
+                    case none
+                      save read-only, and(has-text(read-only-list-methods(), callee-name), is-array-typed(callee-target))
+                    case some
+                      link at
+                      save nothing, 0
+                miss
+                  save nothing, 0
+              fork test, and(and(callee-impure(call, walk), not(keeps-lengths(call, walk))), and(not(fresh-push), not(read-only)))
+                hold
+                  back false
+              # the callee itself was judged; only the arguments are left to look at, and a method's receiver
+              walk args
+                take a
+                push(stack, expression-handle-of(a))
+              sift callee
+                case member
+                  link callee-target
+                  push(stack, expression-handle-of(callee-target))
+                miss
+                  save nothing, 0
+              turn next
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back true
+
+# ---- pushes and pops ----
+
+# the tasks that ARE a list's push: the whole body is `send back, call p/push v` with p and v the task's own two
+# parameters in order
+task list-pushes-of
+  take program, like list, like statement
+  like hash, like text, like boolean
+
+  save out, flags()
+  walk program
+    take s
+    sift s
+      case function
+        link task-name
+        link params
+        fork test, is-unequal(params/length, 2)
+          hold
+            turn next
+        sift only-return(s)
+          case some
+            link value
+            sift value
+              case call
+                link callee
+                link args
+                sift callee
+                  case member
+                    link callee-target
+                    link callee-name
+                    fork test, and(is-equal(callee-name, <push>), is-equal(args/length, 1))
+                      hold
+                        fork test, and(names-variable(callee-target, get(params, 0)/name), names-variable(get(args, 0), get(params, 1)/name))
+                          hold
+                            save out/{task-name}, true
+                  miss
+                    save nothing, 0
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+# the tasks that ARE a list's pop: the whole body is `send back, call p/pop` on the task's only parameter
+task list-pops-of
+  take program, like list, like statement
+  like hash, like text, like boolean
+
+  save out, flags()
+  walk program
+    take s
+    sift s
+      case function
+        link task-name
+        link params
+        fork test, is-unequal(params/length, 1)
+          hold
+            turn next
+        sift only-return(s)
+          case some
+            link value
+            sift value
+              case call
+                link callee
+                link args
+                sift callee
+                  case member
+                    link callee-target
+                    link callee-name
+                    fork test, and(and(is-equal(callee-name, <pop>), is-equal(args/length, 0)), names-variable(callee-target, get(params, 0)/name))
+                      hold
+                        save out/{task-name}, true
+                  miss
+                    save nothing, 0
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+# the value a task's one statement sends back, when that statement is a `send back`
+task only-return
+  take s, like statement
+  like maybe, like expression
+  mark private
+
+  sift only-statement(s)
+    case some
+      link only
+      sift only
+        case return
+          link value
+          back value
+        miss
+          back make none
+    case none
+      back make none
+
+task names-variable
+  take e, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      link variable-name
+      back is-equal(variable-name, name)
+    miss
+      back false
+
+# the path a statement pops one item off: `call p/pop` or the list method `call pop, p`, alone or as the value of a
+# binding, with `p` a plain path to a list
+task popped-path
+  take statement, like statement
+  take pops, like hash, like text, like boolean
+  like maybe, like text
+
+  save value-read, statement-value(statement)
+  sift value-read
+    case some
+      link value
+      sift value
+        case call
+          link callee
+          link args
+          sift callee
+            case member
+              link callee-target
+              link callee-name
+              link callee-index
+              sift callee-index
+                case none
+                  fork test, and(is-equal(callee-name, <pop>), is-equal(args/length, 0))
+                    hold
+                      back listed-path(callee-target)
+                case some
+                  link at
+                  save nothing, 0
+            case variable
+              link callee-name
+              fork test, and(pops/has(callee-name), is-equal(args/length, 1))
+                hold
+                  back listed-path(get(args, 0))
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task listed-path
+  take list, like expression
+  like maybe, like text
+  mark private
+
+  fork test, is-array-typed(list)
+    hold
+      back plain-path(list)
+  back make none
+
+# the value of an expression statement, a binding, or a plain assignment to a name
+task statement-value
+  take statement, like statement
+  like maybe, like expression
+  mark private
+
+  sift statement
+    case expression
+      link expr
+      back make(some, expr)
+    case let
+      link let-name
+      link init
+      back make(some, init)
+    case assign
+      link target
+      link op
+      link value
+      sift target
+        case variable
+          back make(some, value)
+        miss
+          back make none
+    miss
+      back make none
+
+# the path a statement pushes one item onto, when it is exactly `call p/push, <value>` with `p` a plain path to a list
+# and the value reaching no list, or the list method `push(xs, v)`
+task pushed-path
+  take state, like hold-state
+  take statement, like statement
+  take walk, like hold-walk
+  take pushes, like hash, like text, like boolean
+  like maybe, like text
+
+  sift statement
+    case expression
+      link expr
+      sift expr
+        case call
+          link callee
+          link args
+          sift callee
+            case variable
+              link callee-name
+              fork test, and(pushes/has(callee-name), is-equal(args/length, 2))
+                hold
+                  save list, get(args, 0)
+                  fork test, is-array-typed(list)
+                    hold
+                      save pushed, handles()
+                      push(pushed, expression-handle-of(get(args, 1)))
+                      fork test, not(reaches-lists(pushed, walk))
+                        hold
+                          back plain-path(list)
+              back make none
+            case member
+              link callee-target
+              link callee-name
+              link callee-index
+              sift callee-index
+                case some
+                  link at
+                  back make none
+                case none
+                  save nothing, 0
+              fork test, or(is-unequal(callee-name, <push>), not(is-array-typed(callee-target)))
+                hold
+                  back make none
+              fork test, is-unequal(args/length, 1)
+                hold
+                  back make none
+              fork test, reaches-lists(expression-handles(args), walk)
+                hold
+                  back make none
+              back plain-path(callee-target)
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# the plain paths every `p/push v` in a body pushes to, nested walks and branches included
+task push-targets
+  take state, like hold-state
+  take body, like list, like statement
+  take walk, like hold-walk
+  take pushes, like hash, like text, like boolean
+  like list, like text
+
+  save out, texts()
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case expression
+              sift pushed-path(state, node, walk, pushes)
+                case some
+                  link target
+                  add-text(out, target)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back out
+
+# how a loop body changes state: the number of `p/push v` statements when those are its ONLY changes a local list could
+# see, or -1 when it makes any other impure call that may reach one. A closure's body counts, because it may run here
+task body-only-pushes
+  take state, like hold-state
+  take body, like list, like statement
+  take walk, like hold-walk
+  take pushes, like hash, like text, like boolean
+  like number
+
+  save count, 0
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case expression
+              sift pushed-path(state, node, walk, pushes)
+                case some
+                  link target
+                  save count, add(count, 1)
+                  turn next
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case expression-handle
+          sift node
+            case call
+              save start, handles()
+              push(start, handle)
+              fork test, reaches-lists(start, walk)
+                hold
+                  back -1
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back count
+
+# does a body write through a member anywhere, a closure's body included
+task writes-through-member
+  take body, like list, like statement
+  like boolean
+
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case assign
+              link target
+              sift target
+                case member
+                  back true
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back false
+
+# does a body leave a turn before its end, anywhere in it (a nested walk's own `halt` included, conservatively), a
+# closure's or a nested task's body excepted
+task exits-early
+  take body, like list, like statement
+  like boolean
+
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case function
+              turn next
+            case break
+              back true
+            case continue
+              back true
+            case return
+              back true
+            case throw
+              back true
+            case exit
+              back true
+            miss
+              save nothing, 0
+        case expression-handle
+          sift node
+            case closure
+              turn next
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  back false
+
+# a walk whose only change to state is pushes with pure arguments, from a condition or sequence that calls nothing
+# impure: keepAcrossTurns has already kept exactly the length facts such a walk preserves
+task only-pushing-loop
+  take state, like hold-state
+  take statement, like statement
+  take walk, like hold-walk
+  take pushes, like hash, like text, like boolean
+  like boolean
+
+  sift statement
+    case while
+      link cond
+      link body
+      fork test, impure-in(expression-parts(cond), walk)
+        hold
+          back false
+      fork test, is-below(body-only-pushes(state, body, walk, pushes), 0)
+        hold
+          back false
+      back not(writes-through-member(body))
+    case for-each
+      link item
+      link index
+      link iterable
+      link body
+      fork test, impure-in(expression-parts(iterable), walk)
+        hold
+          back false
+      fork test, is-below(body-only-pushes(state, body, walk, pushes), 0)
+        hold
+          back false
+      back not(writes-through-member(body))
+    miss
+      back false
+
+# what a statement's (or expression's) impure calls leave of the facts: a call that changes no length and no field
+# leaves all but what was known through a list position. Any other impure call may change any state, except that one
+# which cannot reach a LOCAL list leaves local lengths alone
+task impure-effect
+  take state, like hold-state
+  take current, like list, like inequality
+  take start, like list, like node-handle
+  take parts, like list, like subtree
+  take walk, like hold-walk
+  take pushes, like hash, like text, like boolean
+  like list, like inequality
+
+  fork test, not(impure-in(parts, walk))
+    hold
+      back current
+  fork test, only-keeps-lengths(start, walk, false)
+    hold
+      back drop-element-paths(current)
+  fork test, is-equal(start/length, 1)
+    hold
+      sift get(start, 0)
+        case statement-handle
+          fork test, only-pushing-loop(state, node, walk, pushes)
+            hold
+              back current
+        miss
+          save nothing, 0
+  save reached, reaches-lists(start, walk)
+  save out, make list
+  walk current
+    take q
+    fork test, not(mentions-atom(q))
+      hold
+        push(out, q)
+        turn next
+    fork test, reached
+      hold
+        turn next
+    save keep, true
+    walk q/linear/terms/keys()
+      take key
+      fork test, and(and(is-state-atom(key), starts-with(key, <@>)), not(walk/local/has(key-root(key))))
+        hold
+          save keep, false
+          halt
+    fork test, keep
+      hold
+        push(out, q)
+  back out
+
+# ---- forgetting what a statement writes ----
+
+form written-fields
+  mark shared
+  link names, like list, like text
+  link fields, like list, like text
+  link everything-written, like boolean
+
+# WHAT A BODY WRITES, split by what it can change. A name written is forgotten whole. A FIELD written through a plain
+# path changes that field of whatever record the path reaches, so every atom whose path passes through a field of that
+# NAME goes, whatever its root. A write through a computed index or a list position may land anywhere, and every state
+# atom goes
+task forget-writes
+  take current, like list, like inequality
+  take start, like list, like node-handle
+  like list, like inequality
+
+  save found
+    make written-fields
+      bind names, texts()
+      bind fields, texts()
+      bind everything-written, false
+  walk start
+    take one
+    visit-writes(one, found)
+  fork test, found/everything-written
+    hold
+      back without-state(forget(current, found/names))
+  back drop-fields(forget(current, found/names), found/fields)
+
+task visit-writes
+  take handle, like node-handle
+  take found, like written-fields
+  mark private
+
+  fork test, found/everything-written
+    hold
+      back
+  sift handle
+    case statement-handle
+      sift node
+        case assign
+          link target
+          sift target
+            case variable
+              link target-name
+              push(found/names, target-name)
+            case member
+              link member-target
+              link member-name
+              save plain, false
+              sift plain-path(target)
+                case some
+                  link path
+                  save plain, true
+                case none
+                  save nothing, 0
+              fork test, and(and(not(has-index(target)), not(digits-only(member-name))), plain)
+                hold
+                  push(found/fields, member-name)
+                miss
+                  save found/everything-written, true
+            miss
+              save found/everything-written, true
+        case let
+          link let-name
+          push(found/names, let-name)
+        case for-each
+          link item
+          push(found/names, item)
+          sift for-each-index(node)
+            case some
+              link index-name
+              push(found/names, index-name)
+            case none
+              save nothing, 0
+        case function
+          link task-name
+          link fn-params
+          walk fn-params
+            take param
+            push(found/names, param/name)
+        case guard
+          link guard-body
+          link handler
+          sift handler
+            case some
+              link clause
+              push(found/names, clause/name)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      sift node
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            push(found/names, param/name)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, skip-plain())
+    take child
+    visit-writes(child, found)
+
+# a for-each's index name, when it has one, as the original's `typeof record.index === 'string'` asked
+bind for-each-index-text
+  take s, like statement
+  like text
+  case node
+    text <(typeof ($s as any).index === 'string' ? ($s as any).index : '\\u0001')>
+  case browser
+    text <(typeof ($s as any).index === 'string' ? ($s as any).index : '\\u0001')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+task for-each-index
+  take s, like statement
+  like maybe, like text
+  mark private
+
+  save name, for-each-index-text(s)
+  fork test, is-equal(name, <\\u0001>)
+    hold
+      back make none
+  back make(some, name)
+
+# ---- the closures an expression builds ----
+
+# the closures an expression builds, in the order the original met them, nested ones excepted: a closure's own body
+# reaches those
+task closures-in
+  take expression, like expression
+  like list, like expression
+
+  save out, make list
+  save stack, handles()
+  push(stack, expression-handle-of(expression))
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case expression-handle
+          sift node
+            case closure
+              push(out, node)
+              turn next
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-places())
+        take child
+        push(stack, child)
+  back out
+
+# ---- direction ----
+
+# how a body moves a name: `up` when every write is an increment by a constant >= 0, `down` for decrements, `any`
+# otherwise (a rebinding, a computed step, a write inside a closure, a member write)
+task direction-of
+  take state, like hold-state
+  take calls, like hold-calls
+  take name, like text
+  take body, like list, like statement
+  like text
+
+  save ups, 0
+  save downs, 0
+  save stack, block-handles(body)
+  save seen, fresh-seen()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          save s, node
+          sift s
+            case function
+              link task-name
+              link fn-params
+              link fn-body
+              fork test, has-text(written-in-block(fn-body), name)
+                hold
+                  back <any>
+              turn next
+            case let
+              link let-name
+              fork test, is-equal(let-name, name)
+                hold
+                  back <any>
+            case for-each
+              link item
+              fork test, is-equal(item, name)
+                hold
+                  back <any>
+              sift for-each-index(s)
+                case some
+                  link index-name
+                  fork test, is-equal(index-name, name)
+                    hold
+                      back <any>
+                case none
+                  save nothing, 0
+            case assign
+              link target
+              save hit, false
+              sift root-of(target)
+                case some
+                  link root
+                  save hit, is-equal(root, name)
+                case none
+                  save hit, true
+              fork test, hit
+                hold
+                  save is-variable, false
+                  sift target
+                    case variable
+                      save is-variable, true
+                    miss
+                      save nothing, 0
+                  sift step-of(state, calls, name, s)
+                    case some
+                      link step
+                      fork test, not(is-variable)
+                        hold
+                          back <any>
+                      fork test, is-minimum(step, 0.0)
+                        hold
+                          save ups, add(ups, 1)
+                        miss
+                          save downs, add(downs, 1)
+                    case none
+                      back <any>
+            miss
+              save nothing, 0
+        case expression-handle
+          sift node
+            case closure
+              link closure-params
+              link closure-body
+              fork test, has-text(written-in-block(closure-body), name)
+                hold
+                  back <any>
+              turn next
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  fork test, is-equal(downs, 0)
+    hold
+      back <up>
+  fork test, is-equal(ups, 0)
+    hold
+      back <down>
+  back <any>
+
+# the constant an assignment adds to a name (`x = x + 2` is 2, `x -= 1` is -1), or none when it is not one
+task step-of
+  take state, like hold-state
+  take calls, like hold-calls
+  take name, like text
+  take statement, like statement
+  like maybe, like float
+
+  sift statement
+    case assign
+      link target
+      link op
+      link value
+      save side, make list
+      sift to-linear(state, calls, value, side)
+        case some
+          link v
+          fork test, is-above(side/length, 0)
+            hold
+              back make none
+          sift op
+            case set
+              save own, 0.0
+              fork test, v/terms/has(name)
+                hold
+                  save own, v/terms/get(name)
+              fork test, or(is-unequal(own, 1.0), is-unequal(v/terms/keys()/length, 1))
+                hold
+                  back make none
+              save constant, v/constant
+              back make(some, constant)
+            case add
+              fork test, is-unequal(v/terms/keys()/length, 0)
+                hold
+                  back make none
+              save constant, v/constant
+              back make(some, constant)
+            case subtract
+              fork test, is-unequal(v/terms/keys()/length, 0)
+                hold
+                  back make none
+              save constant, multiply(-1.0, v/constant)
+              back make(some, constant)
+            miss
+              back make none
+        case none
+          back make none
+    miss
+      back make none

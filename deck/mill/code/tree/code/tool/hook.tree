@@ -1,0 +1,19 @@
+
+load @term/mill/tree/code/form/case/mine
+  find base
+
+load @term/mill/tree/code/tool/flow/mine
+  find flow
+
+tree hook
+  take name
+  hook fuse
+    mine term, term hook
+      mine term, term {name}
+        site name
+      mine list
+        mine form, like base
+          site base
+      mine list
+        mine form, like flow
+          site flow

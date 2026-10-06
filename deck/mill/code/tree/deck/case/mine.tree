@@ -1,0 +1,16 @@
+
+load @term/mill/tree/deck/link/mine
+  find deck-link
+
+load @term/mill/tree/deck/host/mine
+  find deck-host
+
+mine deck-case
+  mine term, term case
+    site name
+    mine list
+      mine form, like deck-link
+        site link
+    mine list
+      mine form, like deck-host
+        site host

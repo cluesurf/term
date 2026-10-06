@@ -1,0 +1,17 @@
+
+load @term/mill/tree/code/bind/mine
+  find bind
+
+load @term/mill/tree/code/wait/mine
+  find wait
+
+mine hold
+  mine term, term hold
+    mine term
+      site name
+    mine case
+      mine form, like wait
+        site wait
+    mine list
+      mine form, like bind
+        site bind

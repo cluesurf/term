@@ -1,0 +1,126 @@
+# The `note` grammar's reader, on every form note/term/mill/01-note-research.md names: each written expression and
+# the tree it must read to, shown by show-note, or the mistake it must be refused with and where.
+
+load @term/base/unit
+  find unit-table
+
+load @term/mill/text/note/read
+  find read-note
+
+load @term/mill/text/note/show
+  find show-note
+
+# the tree, or `error at <code point>: <message>`
+task shown
+  take text, like text
+  like text
+
+  host read, read-note(text, unit-table())
+  sift read/node
+    case some
+      back show-note(value)
+    case none
+      host first, get(read/problems, 0)
+      back <error at {first/at}: {first/message}>
+
+test <numbers in every base, and scientific as an exact decimal>
+  want hold, is-equal(shown(<42>), <42>)
+  want hold, is-equal(shown(<3.14>), <3.14>)
+  want hold, is-equal(shown(<1_000_000>), <1000000>)
+  want hold, is-equal(shown(<0xFF>), <0xFF>)
+  want hold, is-equal(shown(<0b1010>), <0b1010>)
+  want hold, is-equal(shown(<0o17>), <0o17>)
+  want hold, is-equal(shown(<1e-9>), <0.000000001>)
+  want hold, is-equal(shown(<6.02e23>), <602000000000000000000000.0>)
+  want hold, is-equal(shown(<2.5E3>), <2500.0>)
+  want hold, is-equal(shown(<1.5e-1>), <0.15>)
+
+test <precedence: a product before a sum, a power before a sign, a power to the right>
+  want hold, is-equal(shown(<x + y * 2>), <(+ x (* y 2))>)
+  want hold, is-equal(shown(<(x + y) * 2>), <(* (+ x y) 2)>)
+  want hold, is-equal(shown(<a - b - c>), <(- (- a b) c)>)
+  want hold, is-equal(shown(<-x^2>), <(- (^ x 2))>)
+  want hold, is-equal(shown(<2^3^2>), <(^ 2 (^ 3 2))>)
+  want hold, is-equal(shown(<2^-1>), <(^ 2 (- 1))>)
+  want hold, is-equal(shown(<a % b>), <(% a b)>)
+
+test <comparison and logic, every spelling read to one>
+  want hold, is-equal(shown(<x \<= 3 and y != 2>), <(and (\<= x 3) (!= y 2))>)
+  want hold, is-equal(shown(<x ≤ 3 && y ≠ 2>), <(and (\<= x 3) (!= y 2))>)
+  want hold, is-equal(shown(<a or b and c>), <(or a (and b c))>)
+  want hold, is-equal(shown(<not done || x == 1>), <(or (not done) (= x 1))>)
+  want hold, is-equal(shown(<0 \< x \< 10>), <(and (\< 0 x) (\< x 10))>)
+
+test <quantities: a number and a registered unit, the rest in unit mode>
+  want hold, is-equal(shown(<10px>), <(quantity 10.0 px px^1)>)
+  want hold, is-equal(shown(<9.81m/s^2>), <(quantity 9.81 m/s^2 m^1 s^-2)>)
+  want hold, is-equal(shown(<20MB/s>), <(quantity 20.0 MB/s MB^1 s^-1)>)
+  want hold, is-equal(shown(<20Mb/s>), <(quantity 20.0 Mb/s Mb^1 s^-1)>)
+  want hold, is-equal(shown(<50%>), <(quantity 50.0 % %^1)>)
+  want hold, is-equal(shown(<90°>), <(quantity 90.0 ° °^1)>)
+  want hold, is-equal(shown(<3GHz>), <(quantity 3.0 GHz GHz^1)>)
+  want hold, is-equal(shown(<100req/s>), <(quantity 100.0 req/s req^1 s^-1)>)
+  want hold, is-equal(shown(<60fps>), <(quantity 60.0 fps fps^1)>)
+  want hold, is-equal(shown(<1.5rem>), <(quantity 1.5 rem rem^1)>)
+  want hold, is-equal(shown(<1em>), <(quantity 1.0 em em^1)>)
+
+test <white space decides: a space before a word unit is allowed, around an operator it ends the unit>
+  want hold, is-equal(shown(<20 MB/s>), <(quantity 20.0 MB/s MB^1 s^-1)>)
+  want hold, is-equal(shown(<20MB / s>), <(/ (quantity 20.0 MB MB^1) s)>)
+  want hold, is-equal(shown(<20 * MB / s>), <(/ (* 20 MB) s)>)
+  want hold, is-equal(shown(<MB / s>), <(/ MB s)>)
+  want hold, is-equal(shown(<10 % 3>), <(% 10 3)>)
+
+test <a unit is registered, never guessed, and casing is meaning>
+  want hold, is-equal(shown(<20mb/s>), <error at 2: `mb` is not a registered unit>)
+  want hold, is-equal(shown(<20foo/bar>), <error at 2: `foo` is not a registered unit>)
+  want hold, is-equal(shown(<2x>), <error at 1: `x` is not a registered unit>)
+  want hold, is-equal(shown(<30m>), <(quantity 30.0 m m^1)>)
+  want hold, is-equal(shown(<30min>), <(quantity 30.0 min min^1)>)
+
+test <currencies, by sign before the amount or by code after it>
+  want hold, is-equal(shown(<$20>), <(quantity 20.0 USD USD^1)>)
+  want hold, is-equal(shown(<€10.50>), <(quantity 10.50 EUR EUR^1)>)
+  want hold, is-equal(shown(<20 USD>), <(quantity 20.0 USD USD^1)>)
+
+test <calls, indexes and members>
+  want hold, is-equal(shown(<sin(x)>), <(call sin x)>)
+  want hold, is-equal(shown(<max(a, b + 1)>), <(call max a (+ b 1))>)
+  want hold, is-equal(shown(<now()>), <(call now)>)
+  want hold, is-equal(shown(<x[4]>), <(index x 4)>)
+  want hold, is-equal(shown(<foo.bar.baz>), <(member (member foo bar) baz)>)
+  want hold, is-equal(shown(<point.scale(2)>), <(call (member point scale) 2)>)
+  want hold, is-equal(shown(<max-value - 1>), <(- max-value 1)>)
+  want hold, is-equal(shown(<x-1>), <(- x 1)>)
+
+test <collections>
+  want hold, is-equal(shown(<[1, 2, 3]>), <(list 1 2 3)>)
+  want hold, is-equal(shown(<[]>), <(list)>)
+  want hold, is-equal(shown(<[[1, 2], [3, 4]]>), <(list (list 1 2) (list 3 4))>)
+  want hold, is-equal(shown(<\{x, y, z\}>), <(set x y z)>)
+  want hold, is-equal(shown(<"a text">), <"a text">)
+
+test <ranges and intervals>
+  want hold, is-equal(shown(<1..10>), <([range 1 10])>)
+  want hold, is-equal(shown(<0..\<100>), <([range 0 100))>)
+  want hold, is-equal(shown(<[0, 1)>), <([range 0 1))>)
+  want hold, is-equal(shown(<(0, 1]>), <((range 0 1])>)
+  want hold, is-equal(shown(<(0, 1)>), <((range 0 1))>)
+  want hold, is-equal(shown(<[0, 1]>), <(list 0 1)>)
+  want hold, is-equal(shown(<1..n + 1>), <([range 1 (+ n 1)])>)
+
+test <relations and sets read, for a lowering to give a meaning>
+  want hold, is-equal(shown(<x in xs>), <(in x xs)>)
+  want hold, is-equal(shown(<x ∈ xs>), <(in x xs)>)
+  want hold, is-equal(shown(<a ∪ b>), <(union a b)>)
+  want hold, is-equal(shown(<a -\> b>), <(-\> a b)>)
+
+test <mistakes are reported where they were written>
+  want hold, is-equal(shown(<>), <error at 0: there is nothing to read here>)
+  want hold, is-equal(shown(<x +>), <error at 3: the expression ends where a value was expected>)
+  want hold, is-equal(shown(<(x + 1>), <error at 6: the expression ends before its `)`>)
+  want hold, is-equal(shown(<x y>), <error at 2: `y` cannot follow the expression before it>)
+  want hold, is-equal(shown(<x @ y>), <error at 2: `@` is no part of the note grammar>)
+  want hold, is-equal(shown(<"open>), <error at 0: this text is never closed>)
+  want hold, is-equal(shown(<0xffpx>), <error at 0: a quantity's number is written in decimal>)
+  want hold, is-equal(shown(<9.81m/s^x>), <error at 7: a unit's power is a whole number written straight after its `^`>)

@@ -1,0 +1,596 @@
+# THE SCOPE CENSUS (module-scope-0001): over a milled program and its import scope, what the flat merge of modules is
+# relied on for.
+#
+#   collisions    a name defined in two or more files, in one namespace
+#   unimported    a reference whose file neither defines the name nor imports a file that does (by `find`, or through
+#                 that file's `bear` chain), so only the global merge resolves it
+#   shadowed      such a reference whose name is ALSO a method of some form, most likely a receiver call
+#
+# Two namespaces, because a task and a form of one name are two things told apart by position: `value` (tasks that
+# are not form methods, components, top-level constants, dock aliases, binds) and `type` (forms, masks, opaque dock
+# types). A name nothing in the program defines is not counted.
+#
+# Ported from check/scope-census.ts (self-hosting, 2026-10-06), which stays as the face. The original's two walks
+# visited every key of every object but `span`, types included, and read a `name` wherever one stood: a local is a
+# `let`'s or a view `save`'s name, a walk's item and index, an entry of any `params` or `binds` list, and a handler's
+# name; a reference is a variable, a placed component, a named type, a construction, a raise and a mask instance. Here
+# each is the case of the node that holds it, walked by compile/node-children.tree with only `span` skipped.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find view-node
+  find dock-call
+  find dock-route
+  find statement-span
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ../compile/import-scope
+  find file-scope
+  find scope-of
+  find targets-of
+  find gather-exported
+  find new-file-set
+  find holds-file
+
+load ../compile/view-lower
+  find is-html-tag
+
+# ---- the answer ----
+
+form collision
+  link namespace, like text
+  link name, like text
+  link files, like list, like text
+
+form unimported
+  link namespace, like text
+  link name, like text
+  link file, like text
+  link definers, like list, like text
+
+form scope-census
+  link collisions, like list, like collision
+  link unimported, like list, like unimported
+  link shadowed, like list, like unimported
+
+# ---- small helpers ----
+
+task only-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <span>)
+  back out
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task text-lists
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task sort-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  back sort(values, from-texts)
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# ---- what a top-level statement defines ----
+
+form definition
+  link namespace, like text
+  link name, like text
+
+task definition-of
+  take namespace, like text
+  take name, like text
+  like maybe, like definition
+  mark private
+
+  save found
+    make definition
+      bind namespace, namespace
+      bind name, name
+  back make(some, found)
+
+task defined
+  take one, like statement
+  like maybe, like definition
+  mark private
+
+  sift one
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      # a form's method is reached through its form, and an abstract signature is a declaration, not a definition
+      fork test, or(or(read(stub), read(claim)), is-equal(fn-body/length, 0))
+        hold
+          back make none
+      sift method
+        case some
+          back make none
+        case none
+          back definition-of(<value>, fn-name)
+    case view
+      link view-name
+      back definition-of(<value>, view-name)
+    case let
+      link let-name
+      back definition-of(<value>, let-name)
+    case bind
+      link bind-name
+      back definition-of(<value>, bind-name)
+    case native
+      link native-alias
+      link native-module
+      link native-kind
+      save namespace, <value>
+      sift native-kind
+        case some
+          link known
+          sift known
+            case type
+              save namespace, <type>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      back definition-of(namespace, native-alias)
+    case record-type
+      link form-name
+      back definition-of(<type>, form-name)
+    case mask
+      link mask-name
+      back definition-of(<type>, mask-name)
+    miss
+      back make none
+
+# ---- the names a statement binds ----
+
+task add-name
+  take into, like hash, like text, like boolean
+  take name, like text
+  mark private
+
+  fork test, is-unequal(name, <>)
+    hold
+      save into/{name}, true
+
+task dock-call-locals
+  take calls, like list, like dock-call
+  take into, like hash, like text, like boolean
+  mark private
+
+  walk calls
+    take one
+    walk one/params
+      take name
+      add-name(into, name)
+
+task dock-route-locals
+  take route, like dock-route
+  take into, like hash, like text, like boolean
+  mark private
+
+  dock-call-locals(route/calls, into)
+  walk route/methods
+    take method
+    dock-call-locals(method/calls, into)
+  walk route/hooks
+    take hook
+    dock-call-locals(hook/calls, into)
+  walk route/children
+    take child
+    dock-route-locals(child, into)
+
+task locals-into
+  take handle, like node-handle
+  take into, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          add-name(into, let-name)
+        case for-each
+          link each-item
+          link each-index
+          add-name(into, each-item)
+          add-name(into, each-index)
+        case function
+          link fn-name
+          link fn-params
+          walk fn-params
+            take param
+            add-name(into, param/name)
+        case view
+          link view-name
+          link view-params
+          walk view-params
+            take param
+            add-name(into, param/name)
+        case bind
+          link bind-name
+          link bind-params
+          walk bind-params
+            take param
+            add-name(into, param/name)
+        case record-type
+          link form-name
+          link form-params
+          walk form-params
+            take param
+            add-name(into, param)
+        case match
+          link match-subject
+          link match-cases
+          walk match-cases
+            take arm
+            walk arm/binds
+              take one
+              add-name(into, one)
+        case guard
+          link guard-body
+          link guard-catch
+          sift guard-catch
+            case some
+              link clause
+              add-name(into, clause/name)
+            case none
+              save nothing, 0
+        case dock
+          link dock-route
+          dock-route-locals(dock-route, into)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            add-name(into, param/name)
+        miss
+          save nothing, 0
+    case view-handle
+      link node
+      sift node
+        case save
+          link save-name
+          add-name(into, save-name)
+        case walk
+          link walk-iterable
+          link walk-item
+          add-name(into, walk-item)
+        miss
+          save nothing, 0
+    case type-handle
+      link node
+      sift node
+        # a function type's parameters are an entry list too, and a named one has a name
+        case function
+          link type-params
+          walk type-params
+            take param
+            sift param
+              case named
+                link param-name
+                add-name(into, param-name)
+              miss
+                save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, only-span())
+    take child
+    locals-into(child, into)
+
+# ---- every reference under a node ----
+
+form reference
+  link namespace, like text
+  link name, like text
+
+task add-reference
+  take found, like list, like reference
+  take namespace, like text
+  take name, like text
+  mark private
+
+  save one
+    make reference
+      bind namespace, namespace
+      bind name, name
+  push(found, one)
+
+task references-into
+  take handle, like node-handle
+  take found, like list, like reference
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link var-name
+          add-reference(found, <value>, var-name)
+        case record
+          link record-name
+          add-reference(found, <type>, record-name)
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case throw
+          link throw-value
+          link throw-span
+          link throw-raise
+          fork test, is-unequal(throw-raise, <>)
+            hold
+              add-reference(found, <type>, throw-raise)
+        case instance
+          link instance-mask
+          link instance-target
+          add-reference(found, <type>, instance-mask)
+          add-reference(found, <type>, instance-target)
+        miss
+          save nothing, 0
+    case view-handle
+      link node
+      # a component a view places: a standard HTML tag is always an element, never a component
+      sift node
+        case element
+          link element-name
+          fork test, and(not(is-html-tag(element-name)), not(read(forced)))
+            hold
+              add-reference(found, <value>, element-name)
+        miss
+          save nothing, 0
+    case type-handle
+      link node
+      sift node
+        case named
+          link type-name
+          add-reference(found, <type>, type-name)
+        miss
+          save nothing, 0
+  walk node-children(handle, only-span())
+    take child
+    references-into(child, found)
+
+# ---- the census ----
+
+task namespace-table
+  take tables, like hash, like text, like hash, like text, like list, like text
+  take namespace, like text
+  like hash, like text, like list, like text
+  mark private
+
+  fork test, not(tables/has(namespace))
+    hold
+      save tables/{namespace}, text-lists()
+  back tables/get(namespace)
+
+task definer-files
+  take tables, like hash, like text, like hash, like text, like list, like text
+  take namespace, like text
+  take name, like text
+  like list, like text
+  mark private
+
+  save table, namespace-table(tables, namespace)
+  fork test, table/has(name)
+    hold
+      back table/get(name)
+  back make list
+
+task namespace-tables
+  like hash, like text, like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task census-of
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take skip
+    like task
+      take file, like text
+      like boolean
+  like scope-census
+
+  # namespace -> name -> the files defining it, each once, in the order met
+  save definers, namespace-tables()
+  # the native module each dock alias names: one module docked under one alias in two files is one handle twice
+  save docked, text-lists()
+  walk program
+    take one
+    save own-file, file-of(one)
+    sift defined(one)
+      case some
+        link def
+        fork test, is-unequal(own-file, <>)
+          hold
+            save table, namespace-table(definers, def/namespace)
+            save files, make list
+            fork test, table/has(def/name)
+              hold
+                save files, table/get(def/name)
+            fork test, not(has-text(files, own-file))
+              hold
+                push(files, own-file)
+            save table/{def/name}, files
+            sift one
+              case native
+                link native-alias
+                link native-module
+                save key, <{def/namespace} {def/name}>
+                save modules, make list
+                fork test, docked/has(key)
+                  hold
+                    save modules, docked/get(key)
+                fork test, not(has-text(modules, native-module))
+                  hold
+                    push(modules, native-module)
+                save docked/{key}, modules
+              miss
+                save nothing, 0
+      case none
+        save nothing, 0
+  save collisions, make list
+  save namespaces, make list
+  push(namespaces, <value>)
+  push(namespaces, <type>)
+  walk namespaces
+    take namespace
+    save table, namespace-table(definers, namespace)
+    walk table/keys()
+      take name
+      save files, table/get(name)
+      save key, <{namespace} {name}>
+      save same-dock, false
+      fork test, docked/has(key)
+        hold
+          save same-dock, is-equal(docked/get(key)/length, 1)
+      fork test, and(is-above(files/length, 1), not(same-dock))
+        hold
+          save found
+            make collision
+              bind namespace, namespace
+              bind name, name
+              bind files, sort-texts(files)
+          push(collisions, found)
+  save unimported, make list
+  save shadowed, make list
+  save seen, text-flags()
+  # every form method's bare name
+  save methods, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link of
+            save methods/{of/name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk program
+    take one
+    save own-file, file-of(one)
+    fork test, and(is-unequal(own-file, <>), not(skip(own-file)))
+      hold
+        save local, text-flags()
+        save handle
+          make node-handle/statement-handle
+            bind node, one
+        locals-into(handle, local)
+        save found, make list
+        references-into(handle, found)
+        walk found
+          take ref
+          save files, definer-files(definers, ref/namespace, ref/name)
+          fork test, and(and(is-above(files/length, 0), not(has-text(files, own-file))), not(and(is-equal(ref/namespace, <value>), local/has(ref/name))))
+            hold
+              save reach, new-file-set()
+              sift scope-of(scopes, own-file)
+                case some
+                  link own
+                  sift targets-of(own/finds, ref/name)
+                    case some
+                      link targets
+                      walk targets
+                        take target
+                        gather-exported(scopes, target, reach)
+                    case none
+                      save nothing, 0
+                case none
+                  save nothing, 0
+              save reached, false
+              walk files
+                take definer
+                fork test, holds-file(reach, definer)
+                  hold
+                    save reached, true
+              fork test, not(reached)
+                hold
+                  save key, <{own-file} {ref/namespace} {ref/name}>
+                  fork test, not(seen/has(key))
+                    hold
+                      save seen/{key}, true
+                      save entry
+                        make unimported
+                          bind namespace, ref/namespace
+                          bind name, ref/name
+                          bind file, own-file
+                          bind definers, sort-texts(files)
+                      fork test, and(is-equal(ref/namespace, <value>), methods/has(ref/name))
+                        hold
+                          push(shadowed, entry)
+                        miss
+                          push(unimported, entry)
+  back
+    make scope-census
+      bind collisions, collisions
+      bind unimported, unimported
+      bind shadowed, shadowed

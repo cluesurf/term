@@ -174,8 +174,11 @@ compiler itself.
 │   │       ├── check/    type inference, the kernel, the prover, contracts
 │   │       ├── lint/     lint rules
 │   │       └── format/   the formatter
-│   ├── mill/             @term/mill   the DSL grammars, one mine.tree and
-│   │   └── code/<name>/  mint.tree per dialect (code, view, host, zone, ...)
+│   ├── mill/             @term/mill   every grammar
+│   │   ├── code/tree/    the tree dialects, a mine.tree and mint.tree each (code, view, host, zone, ...)
+│   │   ├── code/text/    text format readers (json, hex, ...) and embedded grammars (note)
+│   │   ├── code/blob/    binary format readers (gzip, pdf, font/otf, ...)
+│   │   └── code/feed.tree  the byte and text cursors every format reader reads
 │   ├── call/             @term/call   the CLI, built to host/line.js
 │   │   └── code/         line.ts is the entry, make.ts the build driver,
 │   │                     test.ts the test runner, hold.ts the proof gate
@@ -192,7 +195,6 @@ compiler itself.
 │   ├── face/             @term/face   headless UI components
 │   ├── bind/             @term/bind   typed platform bindings, the largest deck
 │   ├── host/             @term/host   the data dialect, read at run time
-│   ├── feed/             @term/feed   text and binary format grammars
 │   ├── cask/             @term/cask   native app shell: window, WebView, bridge
 │   ├── scan/             @term/scan   dependency and advisory scanning
 │   └── test/             @term/test   fuzzing, benchmarks, model checking
@@ -208,7 +210,7 @@ Where to start digging:
 
 | you want | open |
 | --- | --- |
-| what a keyword means | [term.surf/guides](https://term.surf/guides), then the dialect in `deck/mill/code/` |
+| what a keyword means | [term.surf/guides](https://term.surf/guides), then the dialect in `deck/mill/code/tree/` |
 | why a file fails to compile | `deck/make/code/check/` |
 | what a backend emits | `deck/make/code/compile/<target>.ts` |
 | what a CLI command does | `deck/call/code/line.ts`, then the file it dispatches to |

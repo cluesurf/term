@@ -1,0 +1,162 @@
+mark draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-cmap-table, proven by deck/mill/test/feed/otf-cmap.tree. Replaces the old pre-rename draft (raw opentype.js
+# JS comments left mid-file — see note/term/feed/04-otf-case-study.md, which called this out directly) entirely.
+# Formats 4 and 12 only; every other format sends a `format-unsupported` value rather than failing, matching
+# ./code.tree's `otf-cmap-format-unsupported` case. `mine case` here branches on a plain number (`format`), so the
+# real reader uses `mine test`/`is-equal` for it (`feedback_term_fork_case_needs_form`, memory) — shown as `mine
+# case` here anyway, since `01-grammar.md` still calls that the open, undecided spelling for a numeric branch.
+
+mine cmap-table
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send version
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send table-count
+  mine list
+    bind count, read table-count
+    mine form, form cmap-encoding-record
+    send records
+
+mine cmap-encoding-record
+  take table-start, like number
+
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send platform-id
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send encoding-id
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send subtable-offset
+  mine at
+    bind base, read table-start
+    bind offset, read subtable-offset
+    mine form, form cmap-subtable
+    send subtable
+
+mine cmap-subtable
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send format
+  mine case, read format
+    case 4
+      mine form, form cmap-subtable-format-4
+    case 12
+      mine form, form cmap-subtable-format-12
+    case else
+      mine form, form cmap-subtable-format-unsupported
+    send body
+
+mine cmap-subtable-format-4
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send length
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send language
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send seg-count-x2
+  mine skip
+    bind width, code 6
+  mine list
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
+    mine form, form ushort
+    send end-codes
+  mine skip
+    bind width, code 2
+  mine list
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
+    mine form, form ushort
+    send start-codes
+  mine list
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
+    mine form, form short
+    send id-deltas
+  mine list
+    bind
+      count
+      read seg-count-x2
+      divide
+      code 2
+    mine form, form ushort
+    send id-range-offsets
+  mine list
+    mine form, form ushort
+    send glyph-id-array
+
+mine cmap-subtable-format-12
+  mine skip
+    bind width, code 2
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send length
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send language
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send num-groups
+  mine list
+    bind count, read num-groups
+    mine form, form cmap-group
+    send groups
+
+mine cmap-group
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send start-char-code
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send end-char-code
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send start-glyph-id
+
+mine cmap-subtable-format-unsupported
+  send format

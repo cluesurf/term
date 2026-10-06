@@ -1,0 +1,2854 @@
+# The hold prover's universal layer: recursive tasks read as their own equations, universal hypotheses instantiated at
+# the terms a goal names, proof by cases over the disjunctions they make, and Peano induction over a goal about
+# quantified functions.
+#
+#   - A task defined by recursion on one natural-number parameter, `if p == 0 then B else S` with S calling the task
+#     again at `p - 1`, IS its two equations, `T(.., 0) = B` and `T(.., m) = S` for every m >= 1 (`recurrences-of`,
+#     `recurrence-facts`). The step may test again, and is then several guarded values, its equation a disjunction
+#   - A hypothesis `for every t, P(t)` is used at terms: each binder is replaced by an argument some quantified function
+#     is applied to in the goal, every combination, up to a bound (`instances`). Each instance is a fact. A disjunction
+#     contributes the one disjunct the facts in hand do not refute (`open-disjunct`)
+#   - The goal is then decided over an ordered field: an equation by algebra first (`ring-from-equations`), then by
+#     linear combination of the facts, then with products of the facts most relevant to it, then over the integers,
+#     then by cases (`universal-goal`, `by-cases`)
+#   - `universal-induction`: the base at 0, and the step at n + 1 from the goal at n as facts, generalized over the
+#     theorem's other number marks where it has them
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part two. The decisions:
+#   - the tables are the shared `hold-state`, as part one's are
+#   - what is still TypeScript in holds.ts (the linear translation, the polynomial facts, the product goals, the
+#     memoized linear prover and the definitions' unfolding) is handed in as `hold-calls`, each a task the face builds
+#   - a node's spread copy is `shallow-copy`, the bind check/unfolding.tree uses, so a rebuilt node keeps every field
+#   - `made.filter(other => other !== instance)` asks object identity, and an instance can be the same object twice
+#     (a hypothesis whose binders it does not read), so `same-node` asks the host's `===`
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+  find slice
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load ../compile/node
+  find expression
+  find statement
+  find expression-span
+  find proof
+  find function-param
+  find universal
+
+load @term/base/ordering
+  find ordering
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find utf16-order
+  find at-least
+  find above
+  find below
+
+load ./explain
+  find print-expression
+
+load ./products
+  find fact
+  find rational
+
+load ./ring
+  find equation
+  find ring-equal-by-equations
+
+load ./nonlinear
+  find monomial-vars
+  find is-application
+  find application-variables
+  find application-key
+  find expand-polynomial
+  find names-in
+
+load ./hold-state
+  find hold-state
+  find hold-atom
+  find guarded
+  find recurrence
+  find binder-fact
+
+# ---- what holds.ts still answers ----
+
+# a rule's hypotheses and its goal, as check/holds.ts `theoremParts` reads them
+form rule-parts
+  link hypotheses, like list, like expression
+  link goal, like expression
+
+form hold-calls
+  # an expression as a linear form, its side facts pushed onto `side`, or none outside the linear fragment
+  link to-linear
+    like task
+      take expr, like expression
+      take side, like list, like inequality
+      like maybe, like linear
+  # the facts a condition assumes, or its negation's
+  link assumption-inequalities
+    like task
+      take expr, like expression
+      take negated, like boolean
+      take side, like list, like inequality
+      like list, like inequality
+  # the facts a polynomial comparison contributes
+  link polynomial-facts
+    like task
+      take cond, like expression
+      take negated, like boolean
+      like list, like inequality
+  # the goal from the facts by linear combination alone, over an ordered field
+  link product-goal-linear
+    like task
+      take expr, like expression
+      take facts, like list, like inequality
+      like boolean
+  # and with products of the facts
+  link product-goal
+    like task
+      take expr, like expression
+      take facts, like list, like inequality
+      like boolean
+  # do the facts refute -1 >= 0 with products of them
+  link refuted-by-products
+    like task
+      take facts, like list, like inequality
+      like boolean
+  # check/refine.ts `proves`, memoized
+  link proves
+    like task
+      take facts, like list, like inequality
+      take goal, like inequality
+      like boolean
+  link theorem-parts
+    like task
+      take rule, like statement
+      like maybe, like rule-parts
+  # check/unfold.ts `unfoldDefinitions` over the program being checked
+  link unfold
+    like task
+      take expr, like expression
+      like expression
+  # check/product.ts, under its work budget: does the goal polynomial follow from the facts, `>= 0` or `> 0`, combined
+  # linearly with the equations multiplied by `multipliers` when there are any
+  link product-proves
+    like task
+      take facts, like list, like fact
+      take goal, like hash, like text, like rational
+      take strict, like boolean
+      take multipliers, like maybe, like list, like text
+      like boolean
+  # a polynomial prover's answer that its Gram certificate did not confirm, counted (check/refine.ts)
+  link note-uncertified
+    like task
+  # a width-typed value's range as facts (check/width-range.ts)
+  link width-facts
+    like task
+      take name, like text
+      take width, like text
+      like list, like inequality
+
+# the theorem's other number marks and its `have` guards, for a generalized induction
+form generalized
+  link others, like list, like text
+  link hypotheses, like list, like expression
+
+# ---- the host's values ----
+
+bind literal-float
+  take value, like number
+  like float
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <($value as f64)>
+  case swift
+    text <Double($value)>
+  case kotlin
+    text <($value.toDouble())>
+
+bind whole-float
+  take value, like float
+  like boolean
+  case node
+    text <Number.isInteger($value)>
+  case browser
+    text <Number.isInteger($value)>
+  case rust
+    text <($value.is_finite() && $value.fract() == 0.0)>
+  case swift
+    text <($value.isFinite && $value.truncatingRemainder(dividingBy: 1) == 0)>
+  case kotlin
+    text <($value.isFinite() && $value % 1.0 == 0.0)>
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <(if $value.fract() == 0.0 && $value.abs() \< 1e21 \{ format!("\{\}", $value as i64) \} else \{ $value.to_string() \})>
+  case swift
+    text <($value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \< 1e15 ? String(Int64($value)) : String($value))>
+  case kotlin
+    text <(if ($value % 1.0 == 0.0 && Math.abs($value) \< 1e15) $value.toLong().toString() else $value.toString())>
+
+bind same-node
+  take a, like expression
+  take b, like expression
+  like boolean
+  case node
+    text <($a === $b)>
+  case browser
+    text <($a === $b)>
+  case rust
+    text <std::ptr::eq(&$a, &$b)>
+  case swift
+    text <($a === $b)>
+  case kotlin
+    text <($a === $b)>
+
+# a copy of a node holding every field it holds, as the original's spread made one
+bind shallow-copy
+  take value, like expression
+  like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# does a rule state universal hypotheses, as JavaScript's truth asks `rule.universals?.length`: present and not empty.
+# Read without a default, since a default written back would change the node
+bind has-universals
+  take rule, like statement
+  like boolean
+  case node
+    text <($rule.universals !== undefined && $rule.universals.length \> 0)>
+  case browser
+    text <($rule.universals !== undefined && $rule.universals.length \> 0)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# an optional text, as JavaScript's truth asks it: present and not empty
+bind filled-text
+  take value, like text
+  like boolean
+  case node
+    text <Boolean($value)>
+  case browser
+    text <Boolean($value)>
+  case rust
+    text <!$value.is_empty()>
+  case swift
+    text <!$value.isEmpty>
+  case kotlin
+    text <$value.isNotEmpty()>
+
+# ---- small makers ----
+
+task poly-prefix
+  like text
+
+  back <@poly:>
+
+task expressions
+  like list, like expression
+  mark private
+
+  back make list
+
+task facts
+  like list, like inequality
+  mark private
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task expression-table
+  like hash, like text, like expression
+  mark private
+
+  back make hash
+
+task flag-table
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task number-terms
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task with-expression
+  take items, like list, like expression
+  take one, like expression
+  like list, like expression
+  mark private
+
+  save out, expressions()
+  walk items
+    take item
+    push(out, item)
+  push(out, one)
+  back out
+
+task both-expressions
+  take a, like list, like expression
+  take b, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, expressions()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+task both-facts
+  take a, like list, like inequality
+  take b, like list, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+task with-fact
+  take items, like list, like inequality
+  take one, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  walk items
+    take item
+    push(out, item)
+  push(out, one)
+  back out
+
+task has-text
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task add-text
+  take into, like list, like text
+  take one, like text
+  mark private
+
+  fork test, has-text(into, one)
+    hold
+      back
+  push(into, one)
+
+# `{ terms: { [key]: c }, constant }`
+task linear-of
+  take key, like text
+  take c, like float
+  take constant, like float
+  like linear
+  mark private
+
+  save terms, number-terms()
+  save terms/{key}, c
+  back
+    make linear
+      bind terms, terms
+      bind constant, constant
+
+task constant-linear
+  take constant, like float
+  like linear
+  mark private
+
+  back
+    make linear
+      bind terms, number-terms()
+      bind constant, constant
+
+task integer-node
+  take value, like number
+  take span, like expression
+  like expression
+  mark private
+
+  save at, expression-span(span)
+  back
+    make integer
+      bind value, value
+      bind span, at
+
+task variable-node
+  take name, like text
+  take span, like expression
+  like expression
+  mark private
+
+  save at, expression-span(span)
+  back
+    make variable
+      bind name, name
+      bind span, at
+
+# `{ form: 'binary', op, left, right, span }`, the span another node's
+task binary-node
+  take op, like text
+  take left, like expression
+  take right, like expression
+  take span, like expression
+  like expression
+  mark private
+
+  save at, expression-span(span)
+  fork test, is-equal(op, <||>)
+    hold
+      back
+        make binary
+          bind op, make either
+          bind left, left
+          bind right, right
+          bind span, at
+  fork test, is-equal(op, <&&>)
+    hold
+      back
+        make binary
+          bind op, make both
+          bind left, left
+          bind right, right
+          bind span, at
+  fork test, is-equal(op, <==>)
+    hold
+      back
+        make binary
+          bind op, make equal
+          bind left, left
+          bind right, right
+          bind span, at
+  fork test, is-equal(op, <\<>)
+    hold
+      back
+        make binary
+          bind op, make below
+          bind left, left
+          bind right, right
+          bind span, at
+  back
+    make binary
+      bind op, make plus
+      bind left, left
+      bind right, right
+      bind span, at
+
+# ---- polynomials as linear forms ----
+
+# a polynomial as a linear form over monomial atoms: a variable stays itself, a higher monomial is `@poly:<key>`
+task polynomial-linear
+  take poly, like hash, like text, like float
+  like linear
+
+  save terms, number-terms()
+  save constant, 0.0
+  walk poly/keys()
+    take key
+    save c, poly/get(key)
+    fork test, is-equal(c, 0.0)
+      hold
+        turn next
+    fork test, is-equal(key, <>)
+      hold
+        save constant, add(constant, c)
+      miss
+        save at, key
+        fork test, is-unequal(monomial-vars(key)/length, 1)
+          hold
+            save at, <{poly-prefix()}{key}>
+        save had, 0.0
+        fork test, terms/has(at)
+          hold
+            save had, terms/get(at)
+        save terms/{at}, add(had, c)
+  back
+    make linear
+      bind terms, terms
+      bind constant, constant
+
+# the negation of a disjunct as facts: the linear ones when it has them, else its polynomial ones
+task or-polynomial
+  take calls, like hold-calls
+  take linear-facts, like list, like inequality
+  take disjunct, like expression
+  like list, like inequality
+
+  fork test, is-above(linear-facts/length, 0)
+    hold
+      back linear-facts
+  back calls/polynomial-facts(disjunct, true)
+
+# ---- substitution ----
+
+task substitute-name
+  take e, like expression
+  take name, like text
+  take repl, like expression
+  like expression
+
+  sift e
+    case variable
+      link variable-name
+      fork test, is-equal(variable-name, name)
+        hold
+          back repl
+      back e
+    case binary
+      save copy, shallow-copy(e)
+      save new-left, substitute-name(left, name, repl)
+      save new-right, substitute-name(right, name, repl)
+      sift copy
+        case binary
+          save copy/left, new-left
+          save copy/right, new-right
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      save new-operand, substitute-name(operand, name, repl)
+      sift copy
+        case unary
+          save copy/operand, new-operand
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save copy, shallow-copy(e)
+      save new-args, expressions()
+      walk args
+        take arg
+        push(new-args, substitute-name(arg, name, repl))
+      sift copy
+        case call
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+# a condition's negation, kept a comparison where it is one (`a < b` is `a >= b`), so the facts can refute it
+task negated-condition
+  take e, like expression
+  like expression
+
+  sift e
+    case binary
+      link op
+      save flipped, true
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          sift op
+            case below
+              save copy/op, make at-least
+            case at-most
+              save copy/op, make above
+            case above
+              save copy/op, make at-most
+            case at-least
+              save copy/op, make below
+            case equal
+              save copy/op, make unequal
+            case unequal
+              save copy/op, make equal
+            miss
+              save flipped, false
+        miss
+          save nothing, 0
+      fork test, flipped
+        hold
+          back copy
+    miss
+      save nothing, 0
+  save at, expression-span(e)
+  back
+    make unary
+      bind op, make not
+      bind operand, e
+      bind span, at
+
+# ---- recurrences ----
+
+task is-zero-literal
+  take x, like expression
+  like boolean
+  mark private
+
+  sift x
+    case integer
+      link literal
+      back is-equal(literal-float(literal), 0.0)
+    miss
+      back false
+
+task is-one-literal
+  take x, like expression
+  like boolean
+  mark private
+
+  sift x
+    case integer
+      link literal
+      back is-equal(literal-float(literal), 1.0)
+    miss
+      back false
+
+task is-variable-named
+  take x, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  sift x
+    case variable
+      link variable-name
+      back is-equal(variable-name, name)
+    miss
+      back false
+
+# each value a step can return, with the tests on the way to it, or none for a step that does anything but test and
+# return. A conditional's value
+task guarded-of-value
+  take step, like expression
+  take guards, like list, like expression
+  like maybe, like list, like guarded
+  mark private
+
+  sift step
+    case conditional
+      link branches
+      link otherwise
+      save out, guarded-list()
+      save before, guards
+      walk branches
+        take branch
+        sift guarded-of-value(branch/value, with-expression(before, branch/cond))
+          case some
+            link inside
+            walk inside
+              take one
+              push(out, one)
+          case none
+            back make none
+        save before, with-expression(before, negated-not(branch/cond))
+      sift otherwise
+        case some
+          link rest-value
+          sift guarded-of-value(rest-value, before)
+            case some
+              link rest-steps
+              walk rest-steps
+                take one
+                push(out, one)
+              back make(some, out)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      save out, guarded-list()
+      save one
+        make guarded
+          bind guards, guards
+          bind value, step
+      push(out, one)
+      back make(some, out)
+
+# and a body's: one `back`, or one test with an `else` whose branches are bodies of this shape
+task guarded-of-body
+  take step, like list, like statement
+  take guards, like list, like expression
+  like maybe, like list, like guarded
+  mark private
+
+  fork test, is-unequal(step/length, 1)
+    hold
+      back make none
+  save only, get(step, 0)
+  sift only
+    case return
+      link value
+      sift value
+        case some
+          link returned
+          back guarded-of-value(returned, guards)
+        case none
+          back make none
+    case if
+      link branches
+      link otherwise
+      sift otherwise
+        case some
+          link else-body
+          save out, guarded-list()
+          save before, guards
+          walk branches
+            take branch
+            sift guarded-of-body(branch/body, with-expression(before, branch/cond))
+              case some
+                link inside
+                walk inside
+                  take one
+                  push(out, one)
+              case none
+                back make none
+            save before, with-expression(before, negated-not(branch/cond))
+          sift guarded-of-body(else-body, before)
+            case some
+              link rest-steps
+              walk rest-steps
+                take one
+                push(out, one)
+              back make(some, out)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+task guarded-list
+  like list, like guarded
+  mark private
+
+  back make list
+
+# `{ form: 'unary', op: '!', operand: cond, span: cond.span }`
+task negated-not
+  take cond, like expression
+  like expression
+  mark private
+
+  save at, expression-span(cond)
+  back
+    make unary
+      bind op, make not
+      bind operand, cond
+      bind span, at
+
+# is a condition `p == 0`, as the operator or as `is-equal(p, 0)`
+task at-zero
+  take cond, like expression
+  take p, like text
+  like boolean
+  mark private
+
+  save sides, expressions()
+  save known, false
+  sift cond
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case equal
+          push(sides, left)
+          push(sides, right)
+          save known, true
+        miss
+          save nothing, 0
+    case call
+      link callee
+      link args
+      fork test, and(is-variable-named(callee, <is-equal>), is-equal(args/length, 2))
+        hold
+          save sides, args
+          save known, true
+    miss
+      save nothing, 0
+  fork test, not(known)
+    hold
+      back false
+  save named, false
+  save zero, false
+  walk sides
+    take x
+    fork test, is-variable-named(x, p)
+      hold
+        save named, true
+  walk sides
+    take x
+    fork test, is-zero-literal(x)
+      hold
+        save zero, true
+  back and(named, zero)
+
+form branches-found
+  link base, like expression
+  link steps, like list, like guarded
+
+# `if p == 0, back B, else S`, written as a statement or as a value, where S returns, or tests and returns
+task recurrence-branches
+  take body, like list, like statement
+  take p, like text
+  like maybe, like branches-found
+  mark private
+
+  fork test, is-unequal(body/length, 1)
+    hold
+      back make none
+  save only, get(body, 0)
+  sift only
+    case if
+      link branches
+      link otherwise
+      fork test, and(is-equal(branches/length, 1), at-zero(get(branches, 0)/cond, p))
+        hold
+          save base, get(branches, 0)/body
+          save steps-read, make none
+          sift otherwise
+            case some
+              link else-body
+              save steps-read, guarded-of-body(else-body, expressions())
+            case none
+              save nothing, 0
+          fork test, is-equal(base/length, 1)
+            hold
+              sift get(base, 0)
+                case return
+                  link value
+                  sift value
+                    case some
+                      link base-value
+                      sift steps-read
+                        case some
+                          link steps
+                          save found
+                            make branches-found
+                              bind base, base-value
+                              bind steps, steps
+                          back make(some, found)
+                        case none
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+      back make none
+    case return
+      link value
+      sift value
+        case some
+          link returned
+          sift returned
+            case conditional
+              link branches
+              link otherwise
+              sift otherwise
+                case some
+                  link else-value
+                  fork test, and(is-equal(branches/length, 1), at-zero(get(branches, 0)/cond, p))
+                    hold
+                      sift guarded-of-value(else-value, expressions())
+                        case some
+                          link steps
+                          save found
+                            make branches-found
+                              bind base, get(branches, 0)/value
+                              bind steps, steps
+                          back make(some, found)
+                        case none
+                          back make none
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      back make none
+    miss
+      back make none
+
+# `p - 1`, written as the operator or as `subtract(p, 1)`
+task one-below
+  take e, like expression
+  take p, like text
+  like boolean
+  mark private
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case minus
+          back and(is-variable-named(left, p), is-one-literal(right))
+        miss
+          back false
+    case call
+      link callee
+      link args
+      fork test, and(is-variable-named(callee, <subtract>), is-equal(args/length, 2))
+        hold
+          back and(is-variable-named(get(args, 0), p), is-one-literal(get(args, 1)))
+      back false
+    miss
+      back false
+
+form fine-flag
+  mark shared
+  link fine, like boolean
+
+# every call of the task inside its step passes the counter as `p - 1`
+task calls-only-down
+  take e, like expression
+  take task-name, like text
+  take params, like list, like text
+  take counter, like number
+  like boolean
+  mark private
+
+  save flag
+    make fine-flag
+      bind fine, true
+  visit-down(e, task-name, params, counter, flag)
+  back flag/fine
+
+task visit-down
+  take x, like expression
+  take task-name, like text
+  take params, like list, like text
+  take counter, like number
+  take flag, like fine-flag
+  mark private
+
+  sift x
+    case call
+      link callee
+      link args
+      fork test, is-variable-named(callee, task-name)
+        hold
+          fork test, flag/fine
+            hold
+              save flag/fine, and(is-equal(args/length, params/length), one-below(get(args, counter), get(params, counter)))
+      walk args
+        take arg
+        visit-down(arg, task-name, params, counter, flag)
+    case binary
+      visit-down(left, task-name, params, counter, flag)
+      visit-down(right, task-name, params, counter, flag)
+    case unary
+      visit-down(operand, task-name, params, counter, flag)
+    miss
+      save nothing, 0
+
+task is-natural
+  take param, like function-param
+  like boolean
+  mark private
+
+  sift param/refine
+    case some
+      link refinement
+      back true
+    case none
+      back false
+
+# the program's recursive tasks recognized as recurrences over a counting parameter
+task recurrences-of
+  take program, like list, like statement
+  like hash, like text, like recurrence
+
+  save out, recurrence-table()
+  walk program
+    take s
+    sift s
+      case function
+        link task-name
+        link params
+        link body
+        fork test, or(theorem, claim)
+          hold
+            turn next
+        save names, texts()
+        walk params
+          take param
+          push(names, param/name)
+        save counter, 0
+        walk test
+          hook test, is-below(counter, params/length)
+          hook hold
+            save param, get(params, counter)
+            fork test, is-natural(param)
+              hold
+                sift recurrence-branches(body, param/name)
+                  case some
+                    link found
+                    save every, true
+                    walk found/steps
+                      take step
+                      fork test, not(calls-only-down(step/value, task-name, names, counter))
+                        hold
+                          save every, false
+                          halt
+                      walk step/guards
+                        take guard
+                        fork test, not(calls-only-down(guard, task-name, names, counter))
+                          hold
+                            save every, false
+                            halt
+                      fork test, not(every)
+                        hold
+                          halt
+                    fork test, every
+                      hold
+                        save made
+                          make recurrence
+                            bind params, names
+                            bind counter, counter
+                            bind base, found/base
+                            bind steps, found/steps
+                        save out/{task-name}, made
+                        halt
+                  case none
+                    save nothing, 0
+            save counter, add(counter, 1)
+      miss
+        save nothing, 0
+  back out
+
+task recurrence-table
+  like hash, like text, like recurrence
+  mark private
+
+  back make hash
+
+# the parameters replaced by the arguments, a callee among them (`f(n)` read at `h` is `h(n)`)
+task bound
+  take e, like expression
+  take given, like hash, like text, like expression
+  like expression
+  mark private
+
+  sift e
+    case variable
+      link variable-name
+      fork test, given/has(variable-name)
+        hold
+          back given/get(variable-name)
+      back e
+    case binary
+      save copy, shallow-copy(e)
+      save new-left, bound(left, given)
+      save new-right, bound(right, given)
+      sift copy
+        case binary
+          save copy/left, new-left
+          save copy/right, new-right
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      save new-operand, bound(operand, given)
+      sift copy
+        case unary
+          save copy/operand, new-operand
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save copy, shallow-copy(e)
+      save new-callee, callee
+      sift callee
+        case variable
+          link callee-name
+          fork test, given/has(callee-name)
+            hold
+              sift given/get(callee-name)
+                case variable
+                  save new-callee, given/get(callee-name)
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+      save new-args, expressions()
+      walk args
+        take arg
+        push(new-args, bound(arg, given))
+      sift copy
+        case call
+          save copy/callee, new-callee
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+# A CITED RULE WITH NO HYPOTHESES HOLDS AT EVERY VALUE OF ITS MARKS, so inside an induction it is a "for every" fact.
+# A natural-number mark is guarded (`m < 0 ||`), since the rule says nothing below zero, and so is each of its
+# hypotheses, negated. Only a rule over numbers, proven above this one, with no universal hypothesis, is read this way
+task cited-everywhere
+  take state, like hold-state
+  take calls, like hold-calls
+  take steps, like list, like proof
+  like list, like binder-fact
+
+  save out, binder-list()
+  walk steps
+    take step
+    fork test, or(is-unequal(step/head, <cite>), not(filled-text(step/arg)))
+      hold
+        turn next
+    save rule-name, step/arg
+    fork test, not(state/theorems/has(rule-name))
+      hold
+        turn next
+    save rule, state/theorems/get(rule-name)
+    fork test, not(state/proven-theorems/has(rule-name))
+      hold
+        turn next
+    sift calls/theorem-parts(rule)
+      case some
+        link parts
+        sift rule
+          case function
+            link rule-name-again
+            link params
+            fork test, has-universals(rule)
+              hold
+                turn next
+            save numbers, true
+            walk params
+              take param
+              fork test, not(or(is-natural(param), is-number-param(param)))
+                hold
+                  save numbers, false
+            fork test, not(numbers)
+              hold
+                turn next
+            save goal, parts/goal
+            save with-hypotheses, goal
+            save at, parts/hypotheses/length
+            walk test
+              hook test, is-above(at, 0)
+              hook hold
+                save at, subtract(at, 1)
+                save with-hypotheses, binary-node(<||>, negated-condition(get(parts/hypotheses, at)), with-hypotheses, goal)
+            save guarded-expr, with-hypotheses
+            walk params
+              take param
+              fork test, is-natural(param)
+                hold
+                  save below-zero, binary-node(<\<>, variable-node(param/name, goal), integer-node(0, goal), goal)
+                  save guarded-expr, binary-node(<||>, below-zero, guarded-expr, goal)
+            save binders, texts()
+            walk params
+              take param
+              push(binders, param/name)
+            save fact
+              make binder-fact
+                bind binders, binders
+                bind expr, guarded-expr
+            push(out, fact)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  back out
+
+task binder-list
+  like list, like binder-fact
+  mark private
+
+  back make list
+
+task is-number-param
+  take param, like function-param
+  like boolean
+  mark private
+
+  sift param/type
+    case some
+      link known
+      sift known
+        case number
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# the universal hypotheses in force widened by `more` while `run` decides, and as they were afterwards
+task with-universals
+  take state, like hold-state
+  take more, like list, like binder-fact
+  take run
+    like task
+      like boolean
+  like boolean
+
+  save before, state/universal-hypotheses
+  save widened, binder-list()
+  walk before
+    take one
+    push(widened, one)
+  walk more
+    take one
+    push(widened, one)
+  save state/universal-hypotheses, widened
+  save answer, run()
+  save state/universal-hypotheses, before
+  back answer
+
+form at-counter
+  link call, like expression
+  link given, like hash, like text, like expression
+
+# the call with its counter argument replaced, and the parameters bound to the arguments
+task at-counter-of
+  take x, like expression
+  take r, like recurrence
+  take counter-value, like expression
+  like at-counter
+  mark private
+
+  save copy, shallow-copy(x)
+  save new-args, expressions()
+  sift x
+    case call
+      link call-callee
+      link call-args
+      save i, 0
+      walk call-args
+        take arg
+        fork test, is-equal(i, r/counter)
+          hold
+            push(new-args, counter-value)
+          miss
+            push(new-args, arg)
+        save i, add(i, 1)
+    miss
+      save nothing, 0
+  sift copy
+    case call
+      save copy/args, new-args
+    miss
+      save nothing, 0
+  save given, expression-table()
+  save i, 0
+  walk r/params
+    take p
+    save given/{p}, get(new-args, i)
+    save i, add(i, 1)
+  back
+    make at-counter
+      bind call, copy
+      bind given, given
+
+# the equations of every recursive task the goal applies, at the arguments it applies them to: the base, and the step
+# for every m (guarded `m < 1 ||`, so it says nothing below the base)
+task recurrence-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take goal, like expression
+  like list, like binder-fact
+
+  save out, binder-table()
+  visit-recurrences(state, calls, goal, goal, out)
+  save found, binder-list()
+  walk out/values()
+    take one
+    push(found, one)
+  back found
+
+task binder-table
+  like hash, like text, like binder-fact
+  mark private
+
+  back make hash
+
+task visit-recurrences
+  take state, like hold-state
+  take calls, like hold-calls
+  take x, like expression
+  take goal, like expression
+  take out, like hash, like text, like binder-fact
+  mark private
+
+  sift x
+    case call
+      link callee
+      link args
+      save recurring, false
+      save r-name, <>
+      sift callee
+        case variable
+          link callee-name
+          save r-name, callee-name
+          save recurring, state/recurrences/has(callee-name)
+        miss
+          save nothing, 0
+      fork test, recurring
+        hold
+          save r, state/recurrences/get(r-name)
+          fork test, is-equal(args/length, r/params/length)
+            hold
+              save m, <__step>
+              save zero, at-counter-of(x, r, integer-node(0, goal))
+              save step, at-counter-of(x, r, variable-node(m, goal))
+              save below-one, binary-node(<\<>, variable-node(m, goal), integer-node(1, goal), goal)
+              save cases, expressions()
+              walk r/steps
+                take one
+                save acc, binary-node(<==>, step/call, calls/unfold(bound(one/value, step/given)), goal)
+                save at, one/guards/length
+                walk test
+                  hook test, is-above(at, 0)
+                  hook hold
+                    save at, subtract(at, 1)
+                    save acc, binary-node(<&&>, calls/unfold(bound(get(one/guards, at), step/given)), acc, goal)
+                push(cases, acc)
+              save base-key, <{print-expression(zero/call, 0)} base>
+              save base-fact
+                make binder-fact
+                  bind binders, texts()
+                  bind expr, binary-node(<==>, zero/call, calls/unfold(bound(r/base, zero/given)), goal)
+              save out/{base-key}, base-fact
+              save step-key, <{print-expression(step/call, 0)} step>
+              save chained, get(cases, subtract(cases/length, 1))
+              save at, subtract(cases/length, 1)
+              walk test
+                hook test, is-above(at, 0)
+                hook hold
+                  save at, subtract(at, 1)
+                  save chained, binary-node(<||>, get(cases, at), chained, goal)
+              save step-binders, texts()
+              push(step-binders, m)
+              save step-fact
+                make binder-fact
+                  bind binders, step-binders
+                  bind expr, binary-node(<||>, below-one, chained, goal)
+              save out/{step-key}, step-fact
+      walk args
+        take arg
+        visit-recurrences(state, calls, arg, goal, out)
+    case binary
+      visit-recurrences(state, calls, left, goal, out)
+      visit-recurrences(state, calls, right, goal, out)
+    case unary
+      visit-recurrences(state, calls, operand, goal, out)
+    miss
+      save nothing, 0
+
+# ---- universal hypotheses, by instantiation ----
+
+# a polynomial's canonical text, `c*key` per term other than zero, sorted, joined by `+`, or `0`
+task argument-key
+  take poly, like hash, like text, like float
+  like text
+  mark private
+
+  save parts, texts()
+  walk poly/keys()
+    take key
+    save c, poly/get(key)
+    fork test, is-unequal(c, 0.0)
+      hold
+        push(parts, <{js-text(c)}*{key}>)
+  save joined, join(sort(parts, utf16-order), <+>)
+  fork test, is-equal(joined, <>)
+    hold
+      back <0>
+  back joined
+
+task reads-application
+  take state, like hold-state
+  take poly, like hash, like text, like float
+  like boolean
+  mark private
+
+  walk poly/keys()
+    take key
+    walk monomial-vars(key)
+      take v
+      fork test, is-application(state, v)
+        hold
+          back true
+  back false
+
+# the arguments quantified functions are applied to, keyed canonically so one term is counted once
+task applied-arguments
+  take state, like hold-state
+  take e, like expression
+  take into, like hash, like text, like expression
+
+  sift e
+    case call
+      link callee
+      link args
+      save callee-name, <>
+      save is-variable, false
+      sift callee
+        case variable
+          link name
+          save callee-name, name
+          save is-variable, true
+        miss
+          save nothing, 0
+      save recurring, and(is-variable, state/recurrences/has(callee-name))
+      save indices, expressions()
+      fork test, and(is-variable, state/applied-functions/has(callee-name))
+        hold
+          save indices, args
+        miss
+          fork test, recurring
+            hold
+              save counter, state/recurrences/get(callee-name)/counter
+              fork test, is-below(counter, args/length)
+                hold
+                  push(indices, get(args, counter))
+      walk indices
+        take arg
+        sift expand-polynomial(state, arg)
+          case some
+            link poly
+            fork test, not(reads-application(state, poly))
+              hold
+                save key, argument-key(poly)
+                save into/{key}, arg
+          case none
+            save nothing, 0
+      fork test, and(recurring, state/generalizing)
+        hold
+          save counter, state/recurrences/get(callee-name)/counter
+          save at, 0
+          walk args
+            take arg
+            fork test, is-unequal(at, counter)
+              hold
+                sift expand-polynomial(state, arg)
+                  case some
+                    link poly
+                    save key, argument-key(poly)
+                    save into/{key}, arg
+                  case none
+                    save nothing, 0
+            save at, add(at, 1)
+      walk args
+        take arg
+        applied-arguments(state, arg, into)
+    case binary
+      applied-arguments(state, left, into)
+      applied-arguments(state, right, into)
+    case unary
+      applied-arguments(state, operand, into)
+    miss
+      save nothing, 0
+
+# every instance of the universals over the candidate terms, as expressions
+task instances
+  take state, like hold-state
+  take candidates, like list, like expression
+  like list, like expression
+
+  save out, expressions()
+  walk state/universal-hypotheses
+    take u
+    save tuples, tuple-list()
+    save none-yet, expressions()
+    push(tuples, none-yet)
+    walk u/binders
+      take binder
+      save next, tuple-list()
+      walk tuples
+        take t
+        walk candidates
+          take c
+          push(next, with-expression(t, c))
+      save tuples, next
+    fork test, is-above(tuples/length, 512)
+      hold
+        turn next
+    walk tuples
+      take tuple
+      save e, u/expr
+      save i, 0
+      walk u/binders
+        take binder
+        save e, substitute-name(e, binder, get(tuple, i))
+        save i, add(i, 1)
+      push(out, e)
+  back out
+
+task tuple-list
+  like list, like list, like expression
+  mark private
+
+  back make list
+
+# `{ ...part, op }`
+task with-op
+  take part, like expression
+  take wanted, like text
+  like expression
+  mark private
+
+  save copy, shallow-copy(part)
+  sift copy
+    case binary
+      fork test, is-equal(wanted, <==>)
+        hold
+          save copy/op, make equal
+      fork test, is-equal(wanted, <\<>)
+        hold
+          save copy/op, make below
+      fork test, is-equal(wanted, <\>>)
+        hold
+          save copy/op, make above
+    miss
+      save nothing, 0
+  back copy
+
+task flatten-either
+  take x, like expression
+  take parts, like list, like expression
+  mark private
+
+  sift x
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case either
+          flatten-either(left, parts)
+          flatten-either(right, parts)
+          back
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  push(parts, x)
+
+# the one disjunct of `a || b || ...` the facts do not refute, when exactly one is left, else none
+task open-disjunct
+  take calls, like hold-calls
+  take e, like expression
+  take available, like list, like inequality
+  like maybe, like expression
+
+  save parts, expressions()
+  flatten-either(e, parts)
+  save open, expressions()
+  walk parts
+    take part
+    save kept, true
+    sift part
+      case binary
+        link op
+        sift op
+          case unequal
+            save kept, not(calls/product-goal-linear(with-op(part, <==>), available))
+          case equal
+            save kept, not(or(calls/product-goal-linear(with-op(part, <\<>), available), calls/product-goal-linear(with-op(part, <\>>), available)))
+          case below
+            save negation, negated-condition(part)
+            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+          case at-most
+            save negation, negated-condition(part)
+            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+          case above
+            save negation, negated-condition(part)
+            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+          case at-least
+            save negation, negated-condition(part)
+            save kept, not(or(calls/product-goal-linear(negation, available), calls/product-goal(negation, available)))
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+    fork test, kept
+      hold
+        push(open, part)
+  fork test, is-equal(open/length, 1)
+    hold
+      save only, get(open, 0)
+      back make(some, only)
+  back make none
+
+# the facts an instance contributes: a conjunction both sides, a disjunction its one disjunct the others are refuted
+# for, and a comparison its linear or polynomial facts, AS STATED
+task instance-facts
+  take calls, like hold-calls
+  take e, like expression
+  take available, like list, like inequality
+  like list, like inequality
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case both
+          back both-facts(instance-facts(calls, left, available), instance-facts(calls, right, available))
+        case either
+          sift open-disjunct(calls, e, available)
+            case some
+              link open
+              back instance-facts(calls, open, available)
+            case none
+              back facts()
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save side, facts()
+  save linear-facts, calls/assumption-inequalities(e, false, side)
+  fork test, is-above(linear-facts/length, 0)
+    hold
+      back both-facts(side, linear-facts)
+  back calls/polynomial-facts(e, false)
+
+form ring-atoms
+  mark shared
+  link names, like hash, like text, like text
+  link atoms, like list, like text
+  link count, like number
+
+# a call as the atom its key names, or none when an argument is outside the polynomial fragment
+task atomized
+  take state, like hold-state
+  take e, like expression
+  take table, like ring-atoms
+  like maybe, like expression
+  mark private
+
+  sift e
+    case call
+      sift application-key(state, e)
+        case some
+          link key
+          fork test, not(table/names/has(key))
+            hold
+              save fresh, <atom_{table/count}>
+              save table/names/{key}, fresh
+              save table/count, add(table/count, 1)
+              add-text(table/atoms, fresh)
+          save made, variable-node(table/names/get(key), e)
+          back make(some, made)
+        case none
+          back make none
+    case binary
+      save left-read, atomized(state, left, table)
+      save right-read, atomized(state, right, table)
+      sift left-read
+        case some
+          link new-left
+          sift right-read
+            case some
+              link new-right
+              save copy, shallow-copy(e)
+              sift copy
+                case binary
+                  save copy/left, new-left
+                  save copy/right, new-right
+                miss
+                  save nothing, 0
+              back make(some, copy)
+            case none
+              back make none
+        case none
+          back make none
+    case unary
+      sift atomized(state, operand, table)
+        case some
+          link new-operand
+          save copy, shallow-copy(e)
+          sift copy
+            case unary
+              save copy/operand, new-operand
+            miss
+              save nothing, 0
+          back make(some, copy)
+        case none
+          back make none
+    miss
+      back make(some, e)
+
+task collect-equations
+  take state, like hold-state
+  take calls, like hold-calls
+  take e, like expression
+  take available, like list, like inequality
+  take table, like ring-atoms
+  take equations, like list, like equation
+  mark private
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case both
+          collect-equations(state, calls, left, available, table, equations)
+          collect-equations(state, calls, right, available, table, equations)
+        case either
+          sift open-disjunct(calls, e, available)
+            case some
+              link open
+              collect-equations(state, calls, open, available, table, equations)
+            case none
+              save nothing, 0
+        case equal
+          save left-read, atomized(state, left, table)
+          save right-read, atomized(state, right, table)
+          sift left-read
+            case some
+              link new-left
+              sift right-read
+                case some
+                  link new-right
+                  save one
+                    make equation
+                      bind left, new-left
+                      bind right, new-right
+                  push(equations, one)
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# AN EQUATION FROM EQUATIONS, by algebra rather than search: the instances' equations, a lone atom on one side
+# substituted away first, and what is left reduced modulo the rest (check/ring.tree). Each call is an atom of its own,
+# named by its canonical key, so `f(n + 1 - 1)` and `f(n)` are one
+task ring-from-equations
+  take state, like hold-state
+  take calls, like hold-calls
+  take goal, like expression
+  take statements, like list, like expression
+  take available, like list, like inequality
+  like boolean
+
+  sift goal
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case equal
+          save table
+            make ring-atoms
+              bind names, name-table()
+              bind atoms, texts()
+              bind count, 0
+          save equations, equation-list()
+          walk statements
+            take statement
+            collect-equations(state, calls, statement, available, table, equations)
+          save left-read, atomized(state, left, table)
+          save right-read, atomized(state, right, table)
+          sift left-read
+            case some
+              link new-left
+              sift right-read
+                case some
+                  link new-right
+                  back ring-equal-by-equations(new-left, new-right, equations, table/atoms)
+                case none
+                  back false
+            case none
+              back false
+        miss
+          back false
+    miss
+      back false
+
+task name-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task equation-list
+  like list, like equation
+  mark private
+
+  back make list
+
+# the plain variables an expression reads (not the quantified functions it calls)
+task plain-variables
+  take state, like hold-state
+  take e, like expression
+  like list, like text
+
+  save out, texts()
+  collect-plain(state, e, out)
+  back out
+
+task collect-plain
+  take state, like hold-state
+  take x, like expression
+  take out, like list, like text
+  mark private
+
+  sift x
+    case variable
+      link name
+      fork test, not(state/applied-functions/has(name))
+        hold
+          add-text(out, name)
+    case binary
+      collect-plain(state, left, out)
+      collect-plain(state, right, out)
+    case unary
+      collect-plain(state, operand, out)
+    case call
+      walk args
+        take arg
+        collect-plain(state, arg, out)
+    miss
+      save nothing, 0
+
+# how deep `by-cases` splits: two disjunctions at most, each into its open cases
+task case-depth
+  like number
+
+  back 2
+
+# how many disjunctions `by-cases` tries at each level
+task case-instances
+  like number
+  mark private
+
+  back 6
+
+task universal-goal
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take available, like list, like inequality
+  take seeds, like list, like expression
+  like boolean
+
+  sift expr
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case both
+          back and(universal-goal(state, calls, left, available, seeds), universal-goal(state, calls, right, available, seeds))
+        case either
+          # either side, or the case split, still over an ordered field: assuming one side false proves the other
+          fork test, or(universal-goal(state, calls, left, available, seeds), universal-goal(state, calls, right, available, seeds))
+            hold
+              back true
+          save not-left, or-polynomial(calls, calls/assumption-inequalities(left, true, facts()), left)
+          save not-right, or-polynomial(calls, calls/assumption-inequalities(right, true, facts()), right)
+          fork test, and(is-above(not-left/length, 0), universal-goal(state, calls, right, both-facts(available, not-left), seeds))
+            hold
+              back true
+          back and(is-above(not-right/length, 0), universal-goal(state, calls, left, both-facts(available, not-right), seeds))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+  # the candidate terms: the goal's applied arguments and the seeds', its plain variables, and 0
+  save terms, expression-table()
+  applied-arguments(state, expr, terms)
+  walk seeds
+    take seed
+    applied-arguments(state, seed, terms)
+  walk plain-variables(state, expr)
+    take name
+    save key, <1*{name}>
+    save terms/{key}, variable-node(name, expr)
+  fork test, not(terms/has(<0>))
+    hold
+      save zero-key, <0>
+      save terms/{zero-key}, integer-node(0, expr)
+
+  # a first round over the goal's own terms, and a second over the terms its instances name
+  save round, 0
+  walk test
+    hook test, is-below(round, 2)
+    hook hold
+      save cap, 10
+      fork test, is-equal(round, 0)
+        hold
+          save cap, 8
+      save candidates, expressions()
+      walk terms/values()
+        take term
+        fork test, is-below(candidates/length, cap)
+          hold
+            push(candidates, term)
+      save made, instances(state, candidates)
+      save known, both-facts(available, facts())
+      fork test, ring-from-equations(state, calls, expr, both-expressions(made, seeds), available)
+        hold
+          back true
+      walk made
+        take instance
+        walk instance-facts(calls, instance, available)
+          take fact
+          push(known, fact)
+      fork test, calls/product-goal-linear(expr, known)
+        hold
+          back true
+      fork test, calls/product-goal(expr, known)
+        hold
+          back true
+      fork test, product-goal-bridged(state, calls, expr, known)
+        hold
+          back true
+      fork test, integer-goal(state, calls, expr, known)
+        hold
+          back true
+      fork test, by-cases(state, calls, expr, known, made, case-depth(), both-expressions(made, seeds), goal-applications(state, expr))
+        hold
+          back true
+      walk made
+        take instance
+        applied-arguments(state, instance, terms)
+      save round, add(round, 1)
+  back false
+
+# the applications a goal speaks of, where proof by cases begins to look
+task goal-applications
+  take state, like hold-state
+  take expr, like expression
+  like list, like text
+  mark private
+
+  save out, texts()
+  collect-applications(state, expr, out)
+  back out
+
+task collect-applications
+  take state, like hold-state
+  take e, like expression
+  take out, like list, like text
+  mark private
+
+  sift e
+    case call
+      sift application-key(state, e)
+        case some
+          link key
+          add-text(out, key)
+        case none
+          save nothing, 0
+      walk args
+        take arg
+        collect-applications(state, arg, out)
+    case binary
+      collect-applications(state, left, out)
+      collect-applications(state, right, out)
+    case unary
+      collect-applications(state, operand, out)
+    miss
+      save nothing, 0
+
+# is an atom an integer: a mark declared one, a task declaring an integer result, a length, or a product of integers
+task integer-key
+  take state, like hold-state
+  take key, like text
+  like boolean
+
+  fork test, starts-with(key, poly-prefix())
+    hold
+      walk monomial-vars(substring(key, 6))
+        take v
+        fork test, not(integer-key(state, v))
+          hold
+            back false
+      back true
+  fork test, starts-with(key, <@length:>)
+    hold
+      back true
+  fork test, state/applications/has(key)
+    hold
+      back state/integer-tasks/has(state/applications/get(key)/function)
+  back state/integer-names/has(key)
+
+task integer-fact
+  take state, like hold-state
+  take q, like inequality
+  like boolean
+
+  walk q/linear/terms/keys()
+    take key
+    save c, q/linear/terms/get(key)
+    fork test, is-equal(c, 0.0)
+      hold
+        turn next
+    fork test, not(and(integer-key(state, key), whole-float(c)))
+      hold
+        back false
+  back whole-float(q/linear/constant)
+
+# THE GOAL OVER THE INTEGERS, when every atom it reads is an integer: the linear engine rounds, so `r < b` gives
+# `r + 1 <= b`, which no ordered field allows. Only the facts over integers alone are given to it
+task integer-goal
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  like boolean
+
+  save side, facts()
+  save goal, calls/assumption-inequalities(expr, false, side)
+  fork test, is-equal(goal/length, 0)
+    hold
+      back false
+  walk goal
+    take g
+    fork test, not(integer-fact(state, g))
+      hold
+        back false
+  save over-integers, facts()
+  walk both-facts(known, side)
+    take q
+    fork test, integer-fact(state, q)
+      hold
+        push(over-integers, q)
+  walk goal
+    take g
+    fork test, not(calls/proves(over-integers, g))
+      hold
+        back false
+  back true
+
+# the disjuncts of `a || b || ...`
+task disjuncts
+  take e, like expression
+  like list, like expression
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case either
+          back both-expressions(disjuncts(left), disjuncts(right))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save out, expressions()
+  push(out, e)
+  back out
+
+# the conjuncts of `a && b && ...`
+task conjuncts
+  take e, like expression
+  like list, like expression
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case both
+          back both-expressions(conjuncts(left), conjuncts(right))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save out, expressions()
+  push(out, e)
+  back out
+
+task fact-ways
+  like list, like list, like inequality
+  mark private
+
+  back make list
+
+# the ways one conjunct may hold, each a set of facts. A comparison holds one way. `a != b`, or `!(a == b)`, holds two
+task conjunct-ways
+  take calls, like hold-calls
+  take c, like expression
+  like list, like list, like inequality
+  mark private
+
+  save unequal, false
+  save unequal-node, c
+  sift c
+    case binary
+      link op
+      sift op
+        case unequal
+          save unequal, true
+        miss
+          save nothing, 0
+    case unary
+      link op
+      link operand
+      sift op
+        case not
+          sift operand
+            case binary
+              link inner-op
+              sift inner-op
+                case equal
+                  save unequal, true
+                  save unequal-node, operand
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save out, fact-ways()
+  fork test, unequal
+    hold
+      sift unequal-node
+        case binary
+          link left
+          link right
+          save side, facts()
+          save left-read, calls/to-linear(left, side)
+          save right-read, calls/to-linear(right, side)
+          sift left-read
+            case some
+              link l
+              sift right-read
+                case some
+                  link r
+                  push(out, with-fact(side, below(l, r)))
+                  push(out, with-fact(side, above(l, r)))
+                  back out
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      push(out, facts())
+      back out
+  save side, facts()
+  save stated, calls/assumption-inequalities(c, false, side)
+  fork test, is-above(stated/length, 0)
+    hold
+      push(out, both-facts(side, stated))
+    miss
+      push(out, both-facts(side, calls/polynomial-facts(c, false)))
+  back out
+
+form way
+  link facts, like list, like inequality
+  link said, like list, like expression
+
+# the ways a disjunct may hold: every combination of its conjuncts' ways, each with the equations the disjunct states
+task disjunct-ways
+  take calls, like hold-calls
+  take d, like expression
+  like list, like way
+  mark private
+
+  save parts, conjuncts(d)
+  save said, expressions()
+  walk parts
+    take c
+    sift c
+      case binary
+        link op
+        sift op
+          case equal
+            push(said, c)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  save ways, fact-ways()
+  push(ways, facts())
+  walk parts
+    take c
+    save next, fact-ways()
+    walk ways
+      take one-way
+      walk conjunct-ways(calls, c)
+        take more
+        push(next, both-facts(one-way, more))
+    save ways, next
+  save out, way-list()
+  walk ways
+    take found
+    save made
+      make way
+        bind facts, found
+        bind said, said
+    push(out, made)
+  back out
+
+task way-list
+  like list, like way
+  mark private
+
+  back make list
+
+# a set of facts that contradicts itself: some fact, negated, follows from the rest
+task contradictory
+  take state, like hold-state
+  take calls, like hold-calls
+  take known, like list, like inequality
+  like boolean
+  mark private
+
+  save over-integers, facts()
+  walk known
+    take q
+    fork test, integer-fact(state, q)
+      hold
+        push(over-integers, q)
+  save one
+    make inequality
+      bind linear, constant-linear(1.0)
+      bind strict, false
+  fork test, calls/proves(over-integers, one)
+    hold
+      back true
+  back calls/refuted-by-products(known)
+
+# the application atoms a fact reads, alone or inside a monomial
+task fact-applications
+  take state, like hold-state
+  take q, like inequality
+  like list, like text
+
+  save out, texts()
+  walk q/linear/terms/keys()
+    take key
+    fork test, starts-with(key, poly-prefix())
+      hold
+        walk monomial-vars(substring(key, 6))
+          take v
+          fork test, is-application(state, v)
+            hold
+              push(out, v)
+      miss
+        fork test, is-application(state, key)
+          hold
+            push(out, key)
+  back out
+
+task reads-focus
+  take state, like hold-state
+  take one-way, like way
+  take focus, like list, like text
+  like boolean
+  mark private
+
+  walk one-way/facts
+    take q
+    walk fact-applications(state, q)
+      take a
+      fork test, has-text(focus, a)
+        hold
+          back true
+  back false
+
+form instance-ways
+  link instance, like expression
+  link ways, like list, like way
+
+# PROOF BY CASES. An instance that is a disjunction says one of its disjuncts holds: each way it may hold is taken in
+# turn, with that way's facts added, and the goal must follow in every way that does not contradict the facts.
+# Bounded by `case-depth` nested splits, and by the FOCUS: only an instance that speaks of an application the goal or a
+# way already taken speaks of is split, at most `case-instances` of them at each level
+task by-cases
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  take made, like list, like expression
+  take depth, like number
+  take said, like list, like expression
+  take focus, like list, like text
+  like boolean
+
+  fork test, is-maximum(depth, 0)
+    hold
+      back false
+  save every, instance-ways-list()
+  walk made
+    take instance
+    save ways, way-list()
+    walk disjuncts(instance)
+      take d
+      walk disjunct-ways(calls, d)
+        take one
+        push(ways, one)
+    save one-instance
+      make instance-ways
+        bind instance, instance
+        bind ways, ways
+    push(every, one-instance)
+  save relevant, instance-ways-list()
+  walk every
+    take entry
+    fork test, is-below(disjuncts(entry/instance)/length, 2)
+      hold
+        turn next
+    save reaching, false
+    walk entry/ways
+      take one-way
+      fork test, reads-focus(state, one-way, focus)
+        hold
+          save reaching, true
+          halt
+    fork test, and(reaching, is-below(relevant/length, case-instances()))
+      hold
+        push(relevant, entry)
+  walk relevant
+    take entry
+    save ways, way-list()
+    walk entry/ways
+      take one-way
+      fork test, not(contradictory(state, calls, both-facts(known, one-way/facts)))
+        hold
+          push(ways, one-way)
+    save rest, expressions()
+    walk made
+      take other
+      fork test, not(same-node(other, entry/instance))
+        hold
+          push(rest, other)
+    # no way left: the facts contradict a true disjunction, so this case cannot happen and holds vacuously
+    fork test, is-equal(ways/length, 0)
+      hold
+        back true
+    # ONE way left is FORCED: its facts hold, and the goal is asked again with them
+    fork test, is-equal(ways/length, 1)
+      hold
+        fork test, decided(state, calls, expr, known, rest, said, focus, get(ways, 0), depth)
+          hold
+            back true
+        turn next
+    save every-way, true
+    walk ways
+      take one-way
+      fork test, not(decided(state, calls, expr, known, rest, said, focus, one-way, subtract(depth, 1)))
+        hold
+          save every-way, false
+          halt
+    fork test, every-way
+      hold
+        back true
+  back false
+
+task instance-ways-list
+  like list, like instance-ways
+  mark private
+
+  back make list
+
+task decided
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  take rest, like list, like expression
+  take said, like list, like expression
+  take focus, like list, like text
+  take one-way, like way
+  take deeper, like number
+  like boolean
+  mark private
+
+  save here, both-facts(known, one-way/facts)
+  save saying-more, both-expressions(said, one-way/said)
+  fork test, calls/product-goal-linear(expr, here)
+    hold
+      back true
+  fork test, integer-goal(state, calls, expr, here)
+    hold
+      back true
+  fork test, ring-from-equations(state, calls, expr, saying-more, here)
+    hold
+      back true
+  save widened, texts()
+  walk focus
+    take a
+    add-text(widened, a)
+  walk one-way/facts
+    take q
+    walk fact-applications(state, q)
+      take a
+      add-text(widened, a)
+  back by-cases(state, calls, expr, here, rest, deeper, saying-more, widened)
+
+form bridge-at
+  link q, like inequality
+  link at, like number
+  link score, like number
+
+task by-score
+  take a, like bridge-at
+  take b, like bridge-at
+  like ordering
+  mark private
+
+  fork test, is-unequal(a/score, b/score)
+    hold
+      fork test, is-above(a/score, b/score)
+        hold
+          back make less
+      back make greater
+  fork test, is-below(a/at, b/at)
+    hold
+      back make less
+  fork test, is-above(a/at, b/at)
+    hold
+      back make greater
+  back make equal
+
+task fact-key
+  take q, like inequality
+  like text
+  mark private
+
+  save parts, texts()
+  walk q/linear/terms/keys()
+    take key
+    save c, q/linear/terms/get(key)
+    fork test, is-unequal(c, 0.0)
+      hold
+        push(parts, <{key}:{js-text(c)}>)
+  save strict-text, <false>
+  fork test, q/strict
+    hold
+      save strict-text, <true>
+  back <{join(sort(parts, utf16-order), <,>)}|{js-text(q/linear/constant)}|{strict-text}>
+
+task inequality-table
+  like hash, like text, like inequality
+  mark private
+
+  back make hash
+
+task bridge-list
+  like list, like bridge-at
+  mark private
+
+  back make list
+
+task shared-count
+  take state, like hold-state
+  take q, like inequality
+  take goal-apps, like list, like text
+  like number
+  mark private
+
+  save count-of, 0
+  walk fact-applications(state, q)
+    take a
+    fork test, has-text(goal-apps, a)
+      hold
+        save count-of, add(count-of, 1)
+  back count-of
+
+# PRODUCTS over a small fact set chosen around one BRIDGE: an instance that shares an application with the goal. The
+# set is the bridge and every fact whose applications all lie among the goal's and the bridge's, so the products stay
+# few. Tried for each bridge in turn, the most tied to the goal first, and a fixed few of them
+task product-goal-bridged
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take known, like list, like inequality
+  like boolean
+
+  save goal-apps, texts()
+  save goal-facts, or-polynomial(calls, calls/assumption-inequalities(expr, true, facts()), expr)
+  walk goal-facts
+    take q
+    walk fact-applications(state, q)
+      take a
+      add-text(goal-apps, a)
+  save unique, inequality-table()
+  walk known
+    take q
+    save key, fact-key(q)
+    save unique/{key}, q
+  save all, facts()
+  walk unique/values()
+    take q
+    push(all, q)
+  save scored, bridge-list()
+  save at, 0
+  walk all
+    take q
+    save score, shared-count(state, q, goal-apps)
+    fork test, is-above(score, 0)
+      hold
+        save one
+          make bridge-at
+            bind q, q
+            bind at, at
+            bind score, score
+        push(scored, one)
+        save at, add(at, 1)
+  save tried, 0
+  walk sort(scored, by-score)
+    take bridge
+    fork test, is-minimum(tried, 6)
+      hold
+        halt
+    save tried, add(tried, 1)
+    save allowed, texts()
+    walk goal-apps
+      take a
+      add-text(allowed, a)
+    walk fact-applications(state, bridge/q)
+      take a
+      add-text(allowed, a)
+    save chosen, facts()
+    walk all
+      take q
+      save inside, true
+      walk fact-applications(state, q)
+        take a
+        fork test, not(has-text(allowed, a))
+          hold
+            save inside, false
+            halt
+      fork test, inside
+        hold
+          push(chosen, q)
+    fork test, and(is-maximum(chosen/length, 13), calls/product-goal(expr, chosen))
+      hold
+        back true
+  back false
+
+# ---- induction ----
+
+# does an atom key read the variable n: the name itself, a monomial holding it, or an application whose arguments
+# read it
+task key-mentions
+  take state, like hold-state
+  take key, like text
+  take n, like text
+  like boolean
+
+  fork test, is-equal(key, n)
+    hold
+      back true
+  fork test, starts-with(key, poly-prefix())
+    hold
+      walk monomial-vars(substring(key, 6))
+        take v
+        fork test, key-mentions(state, v, n)
+          hold
+            back true
+      back false
+  back has-text(application-variables(state, key), n)
+
+task fact-mentions
+  take state, like hold-state
+  take q, like inequality
+  take n, like text
+  like boolean
+  mark private
+
+  walk q/linear/terms/keys()
+    take key
+    fork test, key-mentions(state, key, n)
+      hold
+        back true
+  back false
+
+task copy-terms
+  take terms, like hash, like text, like float
+  like hash, like text, like float
+  mark private
+
+  save out, number-terms()
+  walk terms/keys()
+    take key
+    save out/{key}, terms/get(key)
+  back out
+
+# a guard on the counter moved by `by`: `{ terms, constant + terms[n] * by }`
+task shifted
+  take q, like inequality
+  take n, like text
+  take by, like float
+  like inequality
+  mark private
+
+  save at-n, 0.0
+  fork test, q/linear/terms/has(n)
+    hold
+      save at-n, q/linear/terms/get(n)
+  save moved
+    make linear
+      bind terms, copy-terms(q/linear/terms)
+      bind constant, add(q/linear/constant, multiply(at-n, by))
+  back
+    make inequality
+      bind linear, moved
+      bind strict, q/strict
+
+# a guard on the counter read at 0: the counter's term dropped
+task at-zero-guard
+  take q, like inequality
+  take n, like text
+  like inequality
+  mark private
+
+  save terms, number-terms()
+  walk q/linear/terms/keys()
+    take key
+    fork test, is-unequal(key, n)
+      hold
+        save terms/{key}, q/linear/terms/get(key)
+  save moved
+    make linear
+      bind terms, terms
+      bind constant, q/linear/constant
+  back
+    make inequality
+      bind linear, moved
+      bind strict, q/strict
+
+task guards-at
+  take state, like hold-state
+  take calls, like hold-calls
+  take general, like maybe, like generalized
+  take n, like text
+  take value, like expression
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  sift general
+    case some
+      link known
+      fork test, is-equal(known/others/length, 0)
+        hold
+          back out
+      walk known/hypotheses
+        take h
+        fork test, has-text(names-in(h), n)
+          hold
+            save side, facts()
+            save stated, calls/assumption-inequalities(substitute-name(h, n, value), false, side)
+            walk side
+              take q
+              push(out, q)
+            walk stated
+              take q
+              push(out, q)
+    case none
+      save nothing, 0
+  back out
+
+# PEANO INDUCTION over n >= 0 for a goal about quantified functions, whose recurrences are universal hypotheses: the
+# base is the goal at 0, and the step is the goal at n + 1 from the goal at n (as facts) and n >= 0. A BOUNDED
+# induction keeps a guard on the counter that reads it only as itself, shifted to each case, where the guards at n + 1
+# imply the guards at n. GENERALIZED, the step assumes the goal at n for EVERY value of the theorem's other marks the
+# guards allow
+task universal-induction
+  take state, like hold-state
+  take calls, like hold-calls
+  take goal, like expression
+  take available, like list, like inequality
+  take n, like text
+  take general, like maybe, like generalized
+  like boolean
+
+  save zero, integer-node(0, goal)
+  save next, binary-node(<+>, variable-node(n, goal), integer-node(1, goal), goal)
+
+  # a fact about n is not a fact about 0 or n + 1, so the cases start from the facts that do not read n
+  save fixed, facts()
+  walk available
+    take q
+    fork test, not(fact-mentions(state, q, n))
+      hold
+        push(fixed, q)
+  save range, at-least(linear-of(n, 1.0, 0.0), constant-linear(0.0))
+
+  save counter-guards, facts()
+  walk available
+    take q
+    save mentions, false
+    save only-n, true
+    walk q/linear/terms/keys()
+      take key
+      fork test, key-mentions(state, key, n)
+        hold
+          save mentions, true
+          fork test, is-unequal(key, n)
+            hold
+              save only-n, false
+    fork test, and(mentions, only-n)
+      hold
+        push(counter-guards, q)
+  save at-next, facts()
+  walk counter-guards
+    take q
+    push(at-next, shifted(q, n, 1.0))
+  save downward, true
+  save before-next, with-fact(fixed, range)
+  walk at-next
+    take q
+    push(before-next, q)
+  walk counter-guards
+    take g
+    fork test, not(calls/proves(before-next, g))
+      hold
+        save downward, false
+        halt
+  save guards-at-zero, facts()
+  fork test, downward
+    hold
+      walk counter-guards
+        take q
+        push(guards-at-zero, at-zero-guard(q, n))
+  walk guards-at(state, calls, general, n, zero)
+    take q
+    push(guards-at-zero, q)
+  save guards-at-next, facts()
+  fork test, downward
+    hold
+      walk at-next
+        take q
+        push(guards-at-next, q)
+  walk guards-at(state, calls, general, n, next)
+    take q
+    push(guards-at-next, q)
+
+  # THE BASE CASE: the goal at 0. Without it this would prove anything the step carries
+  fork test, not(universal-goal(state, calls, substitute-name(goal, n, zero), both-facts(fixed, guards-at-zero), expressions()))
+    hold
+      back false
+
+  save hypothesis, instance-facts(calls, goal, both-facts(with-fact(fixed, range), guards-at-next))
+  save step-facts, both-facts(both-facts(with-fact(fixed, range), guards-at-next), hypothesis)
+  save step-goal, substitute-name(goal, n, next)
+  save seeds, expressions()
+  push(seeds, goal)
+
+  save others, texts()
+  save hypotheses, expressions()
+  sift general
+    case some
+      link known
+      save others, known/others
+      save hypotheses, known/hypotheses
+    case none
+      save nothing, 0
+  fork test, is-equal(others/length, 0)
+    hold
+      back universal-goal(state, calls, step-goal, step-facts, seeds)
+
+  # the goal at n, for every value of the other marks: each guard that reads one of them, negated, or the goal
+  save chain, expressions()
+  walk hypotheses
+    take h
+    save reads, false
+    save read-names, names-in(h)
+    walk others
+      take name
+      fork test, has-text(read-names, name)
+        hold
+          save reads, true
+          halt
+    fork test, reads
+      hold
+        push(chain, negated-condition(h))
+  push(chain, goal)
+  save generalized-expr, get(chain, subtract(chain/length, 1))
+  save at, subtract(chain/length, 1)
+  walk test
+    hook test, is-above(at, 0)
+    hook hold
+      save at, subtract(at, 1)
+      save generalized-expr, binary-node(<||>, get(chain, at), generalized-expr, goal)
+
+  save before, state/generalizing
+  save state/generalizing, true
+  save more, binder-list()
+  save fact
+    make binder-fact
+      bind binders, others
+      bind expr, generalized-expr
+  push(more, fact)
+  save hypotheses-before, state/universal-hypotheses
+  save widened, binder-list()
+  walk hypotheses-before
+    take one
+    push(widened, one)
+  push(widened, fact)
+  save state/universal-hypotheses, widened
+  save answer, universal-goal(state, calls, step-goal, step-facts, seeds)
+  save state/universal-hypotheses, hypotheses-before
+  save state/generalizing, before
+  back answer

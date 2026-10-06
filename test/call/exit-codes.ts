@@ -288,7 +288,7 @@ test <a stacked and of ands holds>
 {
   const grammar = mkdtempSync(join(tmpdir(), 'term-grammar-'))
   mkdirSync(join(grammar, 'code/version'), { recursive: true })
-  writeFileSync(join(grammar, 'deck.tree'), 'deck @probe/grammar\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\nlink @term/feed, mark <0.0.x>\n')
+  writeFileSync(join(grammar, 'deck.tree'), 'deck @probe/grammar\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\nlink @term/mill, mark <0.0.x>\n')
   writeFileSync(
     join(grammar, 'code/version/mine.tree'),
     `mine version

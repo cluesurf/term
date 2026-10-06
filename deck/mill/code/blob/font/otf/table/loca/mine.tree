@@ -1,0 +1,33 @@
+mark draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-loca-table, proven by deck/mill/test/feed/otf-loca.tree. `short-format` comes from `head`'s own
+# `index-to-loc-format` (0 = short, 1 = long) — resolved by whatever reads `loca` after `head`, not carried here,
+# same single-responsibility split every other table in this package keeps. `mine case` here branches on a plain
+# boolean, so the real reader uses `fork test`/a bare read instead (the same open notation question cmap's own
+# mine.tree flags for a numeric branch — `feedback_term_fork_case_needs_form`, memory). The short entry's real
+# value is the stored `ushort` doubled back into a byte offset (`code.tree`'s `multiply(..., code 2)`) — real
+# processing beyond a raw field extraction, the same open "does the spec notation need a dedicated word" question
+# gzip's own `mine.tree` already leaves unresolved for its trailer-length arithmetic.
+
+mine loca-table
+  take num-glyphs, like number
+  take short-format, like boolean
+
+  mine list
+    bind
+      count
+      call add
+        read num-glyphs
+        code 1
+    mine case, read short-format
+      case true
+        mine int
+          bind width, code 2
+          bind order, term big
+          bind sign, term unsigned
+      case false
+        mine int
+          bind width, code 4
+          bind order, term big
+          bind sign, term unsigned
+    send offsets

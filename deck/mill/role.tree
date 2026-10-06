@@ -1,15 +1,26 @@
 # Which reader reads the files of @term/mill (call/code/role-of.ts reads this file: a manifest `role` line, else
 # base/role.tree, else role.tree here).
 #
-# Every `.tree` under code/ DEFINES a dialect: `code/<dialect>/base.tree` names it (`mill fork` / `bind mine, load
-# ./mine`), and its `mine.tree` and `mint.tree` hold the rules the toolchain reads with readMineGrammar and
-# readMintGrammar (deck/make/code/compile/mill-load.ts). None of them is a program. Without this file every one was
-# milled as Term code, so each `mine` rule read as a call to an undefined task and the editor showed over a
-# thousand errors on one open grammar file.
+# Every `.tree` under code/tree/ DEFINES a tree dialect: `code/tree/<dialect>/base.tree` names it (`mill fork` /
+# `bind mine, load ./mine`), and its `mine.tree` and `mint.tree` hold the rules the toolchain reads with
+# readMineGrammar and readMintGrammar (deck/make/code/compile/mill-load.ts). None of them is a program. Without this
+# file every one was milled as Term code, so each `mine` rule read as a call to an undefined task and the editor
+# showed over a thousand errors on one open grammar file.
+#
+# code/text/ and code/blob/ hold the format grammars (what @term/feed held until 2026-10-06), and those are NOT this
+# role: `term make` builds each `mine.tree` there into a reader (call/code/make.ts), so they are left to the code
+# role. note/term/plan/mill-merge-and-role-scopes.md.
 #
 # The `mill` role is read by deck/make/code/compile/mill-check.ts: the file parses, every `load` resolves, every
 # `find` names something its target declares, and every `mint <x>, like <form>` names a form a load brings in.
 # test/compile/mill-grammar.ts holds all 344 files to the same function.
 
 role mill
-  take @/code/**/*.tree
+  take @/code/tree/**/*.tree
+
+# the `note` grammar's reader is Term the compiler runs (deck/make/code/compile/scope.tree hands it a grammar scope's
+# text), written lean like every other module of the toolchain
+role code
+  mark lean
+  take @/code/text/note/**/*.tree
+  take @/test/note/**/*.tree

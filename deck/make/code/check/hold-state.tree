@@ -10,12 +10,46 @@
 #   - `recurrences`: the program's tasks recognized as recurrences over a counting parameter
 #   - `pure-tasks`: the program's pure tasks, whose calls are atoms too
 #   - `text-params`: the parameters of the task being walked that are declared text
+#   - `universal-hypotheses`: the theorem's UNIVERSAL hypotheses (`have h / seat t / <proposition>`), each true for every
+#     value of its binders, widened while an induction or a recurrence's equations are in force
+#   - `generalizing`: while a generalized induction runs, a recursive task's every argument is a term the hypothesis may
+#     be needed at
+#   - `integer-names` and `integer-tasks`: THE INTEGERS among the atoms, the number marks of the theorem being walked
+#     and the pure tasks returning a number. Both empty for a theorem with universal hypotheses of its own
+#   - `theorems`: the program's rules by name, a carried rule as its stub's body
+#   - `proven-theorems`: the rules proven so far, and how (`field` or `integer`)
+#   - the linear translation's own: `mod-counter` numbers each fresh atom it makes (`__was`, `__ext`, `__and`, `__mod`,
+#     `__div`), `mod-dividends` and `mod-divisors` hold each remainder atom's dividend and divisor as snapshots,
+#     `quotients` each quotient atom's dividend and constant divisor, and `extremum-arguments` each max or min atom's
+#     two arguments. None of these is ever cleared, as none was
+#   - `result-widths`: the program's tasks with a width-typed result, and `width-atoms` the count behind the fresh atom
+#     each reading of an impure one gets
+#   - `extrema`: the extremum (`max` or `min`) each name computes in the program
+#   - `number-fields`: each record form's number fields, and `param-forms` the record form of each parameter of the task
+#     being walked
+#   - `list-pushes` and `list-pops`: the program's tasks that ARE a list's push or pop, recognized by shape
+#   - `program`: the program being walked, whose single-expression tasks a goal is unfolded through, and `aliases` its
+#     transparent aliases, so a mark typed by an alias of a task is a function mark
+#   - `theorem-scope`: the names the theorem being walked binds, its marks and its finds, which a cited rule's marks are
+#     read by. `kernel-only`: the rules only the kernel proved. `cased-forms`: the forms with cases, which `fold`
+#     splits. `small-tasks`: the tasks whose whole body is one `back`, which the counterexample search runs
+#   - `memo`: what each task's walk added to the tally, by everything the walk reads, for a task asked again
 
 load @term/base/list
   find list
 
 load ../compile/node
   find expression
+  find statement
+
+load ./certificate
+  find linear
+
+load ./alias
+  find type-alias
+
+load ./explain
+  find small-task
 
 # an atom: the function an application calls, and the variables its arguments read, through nested applications
 form hold-atom
@@ -34,6 +68,11 @@ form recurrence
   link base, like expression
   link steps, like list, like guarded
 
+# a statement true for every value of its binders
+form binder-fact
+  link binders, like list, like text
+  link expr, like expression
+
 form hold-state
   mark shared
   link applications, like hash, like text, like hold-atom
@@ -41,6 +80,55 @@ form hold-state
   link recurrences, like hash, like text, like recurrence
   link pure-tasks, like hash, like text, like boolean
   link text-params, like hash, like text, like boolean
+  link universal-hypotheses, like list, like binder-fact
+  link generalizing, like boolean
+  link integer-names, like hash, like text, like boolean
+  link integer-tasks, like hash, like text, like boolean
+  link theorems, like hash, like text, like statement
+  link proven-theorems, like hash, like text, like text
+  link mod-counter, like number
+  link mod-dividends, like hash, like text, like linear
+  link mod-divisors, like hash, like text, like linear
+  link quotients, like hash, like text, like quotient
+  link extremum-arguments, like hash, like text, like extremum-pair
+  link result-widths, like hash, like text, like text
+  # each width-typed field, `<form>/<field>` to its width, under the switch: a read of one is a value inside the width
+  link field-widths, like hash, like text, like text
+  link width-atoms, like number
+  link extrema, like hash, like text, like text
+  link number-fields, like hash, like text, like list, like text
+  link param-forms, like hash, like text, like text
+  link list-pushes, like hash, like text, like boolean
+  link list-pops, like hash, like text, like boolean
+  link program, like list, like statement
+  link aliases, like hash, like text, like type-alias
+  link theorem-scope, like hash, like text, like boolean
+  link kernel-only, like hash, like text, like boolean
+  link cased-forms, like hash, like text, like boolean
+  link small-tasks, like hash, like text, like small-task
+  link memo, like hash, like text, like hold-delta
+
+# what a kept walk added to the tally: replayed when the same task is asked the same question
+form hold-delta
+  link total, like number
+  link proven, like number
+  link kinds, like hash, like text, like delta-count
+  link uncertified, like number
+
+form delta-count
+  link total, like number
+  link proven, like number
+
+# a quotient atom's dividend, as a snapshot, and its constant divisor
+form quotient
+  link dividend, like linear
+  link k, like float
+
+# a max or min atom's two arguments, as snapshots taken where it was read
+form extremum-pair
+  link kind, like text
+  link a, like linear
+  link b, like linear
 
 task fresh-hold-state
   like hold-state
@@ -50,6 +138,11 @@ task fresh-hold-state
   save recurrences, recurrence-table()
   save pure, flag-table()
   save texts, flag-table()
+  save hypotheses, binder-facts()
+  save names, flag-table()
+  save tasks, flag-table()
+  save rules, rule-table()
+  save proven, proven-table()
   back
     make hold-state
       bind applications, applications
@@ -57,6 +150,104 @@ task fresh-hold-state
       bind recurrences, recurrences
       bind pure-tasks, pure
       bind text-params, texts
+      bind universal-hypotheses, hypotheses
+      bind generalizing, false
+      bind integer-names, names
+      bind integer-tasks, tasks
+      bind theorems, rules
+      bind proven-theorems, proven
+      bind mod-counter, 0
+      bind mod-dividends, linear-table()
+      bind mod-divisors, linear-table()
+      bind quotients, quotient-table()
+      bind extremum-arguments, extremum-table()
+      bind result-widths, text-table()
+      bind field-widths, text-table()
+      bind width-atoms, 0
+      bind extrema, text-table()
+      bind number-fields, fields-table()
+      bind param-forms, text-table()
+      bind list-pushes, flag-table()
+      bind list-pops, flag-table()
+      bind program, statements()
+      bind aliases, alias-table()
+      bind theorem-scope, flag-table()
+      bind kernel-only, flag-table()
+      bind cased-forms, flag-table()
+      bind small-tasks, small-table()
+      bind memo, memo-table()
+
+task statements
+  like list, like statement
+  mark private
+
+  back make list
+
+task alias-table
+  like hash, like text, like type-alias
+  mark private
+
+  back make hash
+
+task small-table
+  like hash, like text, like small-task
+  mark private
+
+  back make hash
+
+task memo-table
+  like hash, like text, like hold-delta
+  mark private
+
+  back make hash
+
+task linear-table
+  like hash, like text, like linear
+  mark private
+
+  back make hash
+
+task quotient-table
+  like hash, like text, like quotient
+  mark private
+
+  back make hash
+
+task extremum-table
+  like hash, like text, like extremum-pair
+  mark private
+
+  back make hash
+
+task text-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task fields-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task binder-facts
+  like list, like binder-fact
+  mark private
+
+  back make list
+
+task rule-table
+  like hash, like text, like statement
+  mark private
+
+  back make hash
+
+task proven-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
 
 task atom-table
   like hash, like text, like hold-atom

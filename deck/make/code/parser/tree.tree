@@ -83,6 +83,11 @@ form node
     link raw
       like maybe, like text
       need false
+    # a GRAMMAR SCOPE (token.tree, `role note, x + y`): how it was written, `line`, `paren` or `block`. `raw` holds its
+    # text as written, and a printer writes it back the same way rather than as a literal
+    link scope
+      like maybe, like text
+      need false
     link comments
       like maybe, like list, like comment
       need false
@@ -173,6 +178,7 @@ form draft
   link optional, like boolean
   link comments, like list, like comment
   link raw, like maybe, like text
+  link scope, like maybe, like text
   link depth, like number
   link group, like maybe, like draft
   link call, like boolean
@@ -319,6 +325,10 @@ task read-event
           fork test, is-equal(read(text), <\<\<>)
             hold
               save literal/raw, make(some, raw-after)
+          fork test, is-scope-open(read(text))
+            hold
+              save literal/raw, make(some, raw-after)
+              save literal/scope, make(some, read(text))
           take-pending(b, literal)
           push(here/children, literal)
           push(top(b)/line, literal)
@@ -381,6 +391,14 @@ task read-event
       save frame, top(b)
       save frame/level, subtract(frame/level, 1)
       save frame/line, line-of(level-at(b, frame/levels, frame/level))
+
+# the open token of a grammar scope names how it was written (token.tree `scope-at`)
+task is-scope-open
+  take text, like text
+  like boolean
+  mark private
+
+  back or(is-equal(text, <line>), or(is-equal(text, <paren>), is-equal(text, <block>)))
 
 task open-group-under
   take b, like tree-builder
@@ -770,6 +788,7 @@ task blank-draft
       bind optional, false
       bind comments, make list
       bind raw, make none
+      bind scope, make none
       bind depth, 0
       bind group, make none
       bind call, false
@@ -871,6 +890,7 @@ task realize
         make text
           bind parts, realize-all(one/children)
           bind raw, one/raw
+          bind scope, one/scope
           bind comments, comments-or-none(one/comments)
     case hole-draft
       back
@@ -1249,9 +1269,15 @@ task render-head
   sift one
     case name
       back render-parts(parts, false)
+    # a grammar scope prints as the literal it stands for, which the mill reads the same way: raw when its text allows
+    # one (one line, no `>>`), else an ordinary literal with its angles escaped. The formatter writes a scope back in
+    # its own spelling, where it can see the line around it
     case text
       sift raw
         case some
+          fork test, or(contains(value, <\n>), contains(value, <\>\>>))
+            hold
+              back <\<{render-parts(parts, true)}\>>
           back <\<\<{value}\>\>>
         miss
           back <\<{render-parts(parts, true)}\>>

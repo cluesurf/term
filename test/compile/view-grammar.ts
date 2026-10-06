@@ -1,6 +1,6 @@
 // The `view` reader and the `view` grammar agree.
 //
-// `deck/mill/code/view/` says what the dialect is, declaratively. `deck/make/code/compile/view.ts` is what
+// `deck/mill/code/tree/view/` says what the dialect is, declaratively. `deck/make/code/compile/view.ts` is what
 // actually reads a file today, because the mill executor does not exist yet (note/term/project/mill-self-hosting).
 // Two statements of one grammar drift, and the drift is silent, which is the whole reason the root CLAUDE.md
 // forbids a hand-rolled reader. This is the gate that keeps them together until the executor makes it one.
@@ -16,7 +16,7 @@ import { parse } from '@term/make/code/parser/tree'
 import { readView, VIEW_REFUSED_HEAD } from '@term/make/code/compile/view'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const MILL = join(HERE, '../../deck/mill/code/view')
+const MILL = join(HERE, '../../deck/mill/code/tree/view')
 
 let pass = 0
 let fail = 0

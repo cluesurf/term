@@ -1,0 +1,48 @@
+load @term/mill/tree/code/like/mint
+  find like
+
+load @term/mill/tree/code/seed/mint
+  find seed
+
+load @term/mill/tree/code/fork/mint
+  find fork-arm
+  find fork-arm-hook
+  find fork-arm-bare
+
+# the match giving a saved name its value, lowered by the bridge
+mint save-match
+  case name
+    site name
+  case seed
+    site seed
+  case arm
+    site arm
+  hook make
+    make save-match
+      bind name, read name
+      bind seed, read seed
+      bind arm, read arm
+
+# a `make hash` entry whose key is any value, a text or a computed one
+mint save-key
+  case key
+    site key
+  case seed
+    site seed
+  hook make
+    make save-key
+      bind key, read key
+      bind seed, read seed
+
+mint save
+  case name
+    site name
+  case like
+    site like
+  case seed
+    site seed
+  hook make
+    make save
+      bind name, read name
+      bind like, read like
+      bind seed, read seed

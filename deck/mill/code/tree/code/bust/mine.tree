@@ -1,0 +1,8 @@
+
+load @term/mill/tree/code/seed/mine
+  find seed
+
+mine bust
+  mine term, term bust
+    mine form, like seed
+      site seed

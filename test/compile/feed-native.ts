@@ -1,6 +1,6 @@
 // The @term/feed package on the native backends: hex, json, gzip and three flat OTF tables (head/hhea/maxp),
 // plus each dialect's @term/base closure, compiled for Rust, Swift and Kotlin, built with the real toolchain, and
-// run against fixed fixtures matching deck/feed/test/*.tree's own expectations. A backend whose toolchain is not
+// run against fixed fixtures matching deck/mill/test/feed/*.tree's own expectations. A backend whose toolchain is not
 // installed is skipped, never failed. Adapted directly from host-native.ts, whose compiler-API plumbing
 // (parse/mill/resolve/check/emit) is package-agnostic. Run: npx tsx test/compile/feed-native.ts
 // (HN_ONLY=rust|swift|kotlin runs one backend.)
@@ -57,7 +57,7 @@ function have(tool: string): boolean {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), mill: join(TERM, 'deck/mill') }
 
 // the stdlib and the package by name, and relative loads from the file that makes them
 const resolver = (path: string, from: string): Source | undefined => {
@@ -73,7 +73,7 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  const found = /^@term\/(base|feed)\/(.*)$/.exec(path)
+  const found = /^@term\/(base|mill)\/(.*)$/.exec(path)
 
   if (!found) {
     return undefined
@@ -135,12 +135,12 @@ interface Suite {
 }
 
 // hex/code.tree's read-hex/write-hex composed into one round trip, the same shape host-native.ts's round-long
-// entry uses. Fixtures: deck/feed/test/hex.tree's own.
+// entry uses. Fixtures: deck/mill/test/feed/hex.tree's own.
 const HEX: Suite = {
   id: 'hex',
   label: 'hex',
   root: 'round-hex',
-  entry: `load @term/feed/code/hex/code
+  entry: `load @term/mill/text/hex/code
   find read-hex
   find write-hex
 
@@ -161,12 +161,12 @@ task round-hex
 // json/code.tree's read-json/write-json, a real stress test beyond hex: recursive descent through a tagged
 // union (json-value's 6 cases) rather than a flat loop, the one dialect with a form that refers to itself
 // through a list, and the one with a real `like float` accumulator (feedback_term_decimal_vs_number_no_implicit_conversion).
-// Fixtures: deck/feed/test/json.tree's own, compact (write-json always produces no spaces).
+// Fixtures: deck/mill/test/feed/json.tree's own, compact (write-json always produces no spaces).
 const JSON_SUITE: Suite = {
   id: 'json',
   label: 'json',
   root: 'round-json',
-  entry: `load @term/feed/code/json/code
+  entry: `load @term/mill/text/json/code
   find read-json
   find write-json
 
@@ -185,7 +185,7 @@ task round-json
 }
 
 // gzip/code.tree's read-gzip/write-gzip, bridged through the already-proven read-hex/write-hex so the driver
-// codegen doesn't need a second byte-array-literal shape per backend. The fixture is deck/feed/test/gzip.tree's
+// codegen doesn't need a second byte-array-literal shape per backend. The fixture is deck/mill/test/feed/gzip.tree's
 // own minimal-gzip-bytes (flags 0x00: no extra/name/comment/header-crc16), so a correct round trip reproduces
 // the input byte for byte -- proves feed-cursor's mutation workaround (base.tree, 02-cursor.md) under gzip's own
 // read/write, not just json's.
@@ -193,11 +193,11 @@ const GZIP: Suite = {
   id: 'gzip',
   label: 'gzip',
   root: 'round-gzip',
-  entry: `load @term/feed/code/hex/code
+  entry: `load @term/mill/text/hex/code
   find read-hex
   find write-hex
 
-load @term/feed/code/gzip/code
+load @term/mill/blob/gzip/code
   find read-gzip
   find write-gzip
 
@@ -210,7 +210,7 @@ task round-gzip
   cases: [['a minimal header+trailer round trips byte for byte', '1f8b08000000000000ffaabb7856341202000000', '1f8b08000000000000ffaabb7856341202000000']],
 }
 
-// deck/feed/test/otf-head.tree's own sample-head-table, byte-count plus three fields already proven on
+// deck/mill/test/feed/otf-head.tree's own sample-head-table, byte-count plus three fields already proven on
 // TypeScript (units-per-em, the signed x-min, the 8-byte created timestamp) -- `input` is unused, the fixture
 // is fixed, kept as a parameter only so the driver codegen below stays one shape for every suite.
 const OTF_HEAD: Suite = {
@@ -220,13 +220,13 @@ const OTF_HEAD: Suite = {
   entry: `load @term/base/code/list
   find size
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/head/form
+load @term/mill/blob/font/otf/table/head/form
   find otf-head-table
 
-load @term/feed/code/font/otf/table/head/code
+load @term/mill/blob/font/otf/table/head/code
   find read-otf-head-table
   find write-otf-head-table
 
@@ -265,7 +265,7 @@ task round-otf-head
   cases: [['write then read agrees with the fixed sample', '', '54|1000|-100|3610281600']],
 }
 
-// deck/feed/test/otf-hhea-maxp.tree's own sample-hhea-table.
+// deck/mill/test/feed/otf-hhea-maxp.tree's own sample-hhea-table.
 const OTF_HHEA: Suite = {
   id: 'otf-hhea',
   label: 'otf hhea',
@@ -273,13 +273,13 @@ const OTF_HHEA: Suite = {
   entry: `load @term/base/code/list
   find size
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/hhea/form
+load @term/mill/blob/font/otf/table/hhea/form
   find otf-hhea-table
 
-load @term/feed/code/font/otf/table/hhea/code
+load @term/mill/blob/font/otf/table/hhea/code
   find read-otf-hhea-table
   find write-otf-hhea-table
 
@@ -314,7 +314,7 @@ task round-otf-hhea
   cases: [['write then read agrees with the fixed sample', '', '36|-500|230']],
 }
 
-// deck/feed/test/otf-hhea-maxp.tree's own sample-maxp-table.
+// deck/mill/test/feed/otf-hhea-maxp.tree's own sample-maxp-table.
 const OTF_MAXP: Suite = {
   id: 'otf-maxp',
   label: 'otf maxp',
@@ -322,13 +322,13 @@ const OTF_MAXP: Suite = {
   entry: `load @term/base/code/list
   find size
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/maxp/form
+load @term/mill/blob/font/otf/table/maxp/form
   find otf-maxp-table
 
-load @term/feed/code/font/otf/table/maxp/code
+load @term/mill/blob/font/otf/table/maxp/code
   find read-otf-maxp-table
   find write-otf-maxp-table
 
@@ -364,7 +364,7 @@ task round-otf-maxp
   cases: [['write then read agrees with the fixed sample', '', '32|500']],
 }
 
-// deck/feed/test/otf-os2.tree's own version-0-table (no version-1/version-2 tail: every `maybe` field `none`).
+// deck/mill/test/feed/otf-os2.tree's own version-0-table (no version-1/version-2 tail: every `maybe` field `none`).
 const OTF_OS2: Suite = {
   id: 'otf-os2',
   label: 'otf os2',
@@ -376,13 +376,13 @@ const OTF_OS2: Suite = {
 load @term/base/code/maybe
   find none
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/os2/form
+load @term/mill/blob/font/otf/table/os2/form
   find otf-os2-table
 
-load @term/feed/code/font/otf/table/os2/code
+load @term/mill/blob/font/otf/table/os2/code
   find read-otf-os2-table
   find write-otf-os2-table
 
@@ -475,7 +475,7 @@ task round-otf-os2
   cases: [['a version-0 table round trips its always-present fields', '', '78|400|-200']],
 }
 
-// deck/feed/test/otf-loca.tree's own sample-offsets fixture, short format (4 entries, so 8 bytes: entries are
+// deck/mill/test/feed/otf-loca.tree's own sample-offsets fixture, short format (4 entries, so 8 bytes: entries are
 // stored as offset/2 and doubled back on read).
 const OTF_LOCA: Suite = {
   id: 'otf-loca',
@@ -486,13 +486,13 @@ const OTF_LOCA: Suite = {
   find get
   find size
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/loca/form
+load @term/mill/blob/font/otf/table/loca/form
   find otf-loca-table
 
-load @term/feed/code/font/otf/table/loca/code
+load @term/mill/blob/font/otf/table/loca/code
   find read-otf-loca-table
   find write-otf-loca-table
 
@@ -522,7 +522,7 @@ task round-otf-loca
   cases: [['a short-format table round trips, including the middle empty-glyph span', '', '8|96']],
 }
 
-// deck/feed/test/otf-glyf.tree's own triangle fixture: one contour, three on-curve points, no instructions. The
+// deck/mill/test/feed/otf-glyf.tree's own triangle fixture: one contour, three on-curve points, no instructions. The
 // writer always emits the long (2-byte) coordinate form (see code.tree's own comment), so the byte count is
 // exact and known ahead of time: 10 header + 2 end-points + 2 instruction-length + 3 flags + 6 x-deltas + 6
 // y-deltas = 29.
@@ -535,14 +535,14 @@ const OTF_GLYF: Suite = {
   find get
   find size
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/glyf/form
+load @term/mill/blob/font/otf/table/glyf/form
   find otf-glyph
   find otf-glyph-point
 
-load @term/feed/code/font/otf/table/glyf/code
+load @term/mill/blob/font/otf/table/glyf/code
   find read-otf-glyph
   find write-otf-glyph
 
@@ -611,7 +611,7 @@ task round-otf-glyf
   cases: [['a simple triangle round trips its byte count and third point', '', '29|250']],
 }
 
-// deck/feed/test/otf-cmap.tree's own cmap-bytes fixture (one encoding record pointing at a format-12 subtable
+// deck/mill/test/feed/otf-cmap.tree's own cmap-bytes fixture (one encoding record pointing at a format-12 subtable
 // with one group), bridged through the already-proven read-hex so the driver doesn't need a byte-array-literal
 // shape for a third dialect. The hardest shape in the package: `mine at` (offset relative to the cmap table's
 // own start, proven by the group surviving a read at all) composed with a format-discriminated union. Proves
@@ -624,19 +624,19 @@ const OTF_CMAP: Suite = {
   find get
   find size
 
-load @term/feed/code/hex/code
+load @term/mill/text/hex/code
   find read-hex
 
-load @term/feed/code/base
+load @term/mill/feed
   find make-cursor
 
-load @term/feed/code/font/otf/table/cmap/form
+load @term/mill/blob/font/otf/table/cmap/form
   find otf-cmap-table
   find otf-cmap-encoding-record
   find otf-cmap-subtable
   find otf-cmap-group
 
-load @term/feed/code/font/otf/table/cmap/code
+load @term/mill/blob/font/otf/table/cmap/code
   find read-otf-cmap-table
   find write-otf-cmap-table
 
@@ -682,7 +682,7 @@ task round-otf-cmap
   ],
 }
 
-// deck/feed/test/pdf-object.tree's own fixtures: a dictionary (the number-vs-reference lookahead does not fire),
+// deck/mill/test/feed/pdf-object.tree's own fixtures: a dictionary (the number-vs-reference lookahead does not fire),
 // an array of two indirect references (it does, twice), and a negative decimal (the same `like float`
 // accumulator shape json's own number parser needed — see feedback_term_decimal_vs_number_no_implicit_
 // conversion).
@@ -690,7 +690,7 @@ const PDF_OBJECT: Suite = {
   id: 'pdf-object',
   label: 'pdf object',
   root: 'round-pdf-value',
-  entry: `load @term/feed/code/pdf/1.7/object/code
+  entry: `load @term/mill/blob/pdf/1.7/object/code
   find make-text-cursor
   find parse-pdf-value
   find write-pdf-value

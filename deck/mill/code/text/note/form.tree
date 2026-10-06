@@ -1,0 +1,85 @@
+# What the `note` grammar reads a scope's text to (note/term/mill/03-note-grammar.md): one expression, as a tree of
+# these nodes. Every node carries `at`, the code point in the scope's text where it begins, so a mistake found later
+# (a unit, an operator nothing lowers) is reported where it was written.
+
+load @term/base/unit
+  find unit-entry
+
+# one factor of a quantity's unit: `s` to -2 in `m/s^2`, with the registered unit it names
+form unit-factor
+  link entry, like unit-entry
+  link power, like number
+
+form note-node
+  mark tag, name kind
+  # `42`, `3.14`, `0xff`, `1e-9`. `literal` is the number as Term writes it: `1e-9` is `0.000000001`
+  case number-node
+    link at, like number
+    link literal, like text
+    link decimal, like boolean
+  # a number and a registered unit: `9.81m/s^2`, `20MB/s`, `$20`. `value` is a decimal literal, `unit` the unit as
+  # written (a currency by its code), and `factors` what each part of it names
+  case quantity-node
+    link at, like number
+    link value, like text
+    link unit, like text
+    link factors, like list, like unit-factor
+  # `"text"`, its escapes read
+  case text-node
+    link at, like number
+    link value, like text
+  case name-node
+    link at, like number
+    link name, like text
+  # `-x`, `not x`. The operator in its one spelling: `-`, `+`, `not`
+  case unary-node
+    link at, like number
+    link operator, like text
+    link operand, like note-node
+  # `x + y`. The operator in its one spelling: `≤` is `<=`, `==` is `=`, `&&` is `and`, `×` is `*`
+  case binary-node
+    link at, like number
+    link operator, like text
+    link left, like note-node
+    link right, like note-node
+  # `sin(x)`, `a.b(x)`
+  case call-node
+    link at, like number
+    link callee, like note-node
+    link arguments, like list, like note-node
+  # `x[4]`
+  case index-node
+    link at, like number
+    link target, like note-node
+    link index, like note-node
+  # `foo.bar`
+  case member-node
+    link at, like number
+    link target, like note-node
+    link name, like text
+  # `[1, 2, 3]`
+  case list-node
+    link at, like number
+    link items, like list, like note-node
+  # `{x, y, z}`
+  case set-node
+    link at, like number
+    link items, like list, like note-node
+  # `1..10` (both ends in), `0..<100` (the end out), and the intervals `[0, 1)`, `(0, 1]`, `(0, 1)`
+  case range-node
+    link at, like number
+    link from, like note-node
+    link to, like note-node
+    link from-open, like boolean
+    link to-open, like boolean
+
+# a mistake in a scope's text, at the code point `at`
+form note-problem
+  link at, like number
+  link message, like text
+  link hint, like text
+
+# what reading gives: the expression, or none and the first mistake that stopped it
+form note-read
+  link node, like maybe, like note-node
+  link problems, like list, like note-problem

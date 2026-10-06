@@ -1,5 +1,5 @@
 // The `view` reader: a real document reads into the forms, and every bound the dialect claims is refused with a
-// message that names it. See note/term/view/ and deck/mill/code/view/.
+// message that names it. See note/term/view/ and deck/mill/code/tree/view/.
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView, lowerView, viewManifest, checkView } from '@term/make/code/compile/view'

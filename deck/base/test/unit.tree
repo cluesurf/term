@@ -1,0 +1,143 @@
+
+load @term/base/unit
+  find quantity
+  find unit-table
+  find same-dimension
+  find quantity-add
+  find quantity-subtract
+  find quantity-multiply
+  find quantity-divide
+  find quantity-compare
+  find convert
+
+load @term/base/hash
+  find hash
+
+# a quantity of one base unit to the first power, as the compiler builds the literal `<value><unit>`
+task one
+  take value, like float
+  take unit, like text
+  take scale, like float
+  take base, like text
+  like quantity
+  save dimension
+    make hash
+  call dimension/set, read(base), code(1)
+  send back
+    make quantity
+      bind value, read value
+      bind unit, read unit
+      bind scale, read scale
+      bind dimension, read dimension
+
+test <the registry holds each symbol once>
+  save seen
+    make hash
+  save twice, 0
+  walk list, call(unit-table)
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call seen/has, read(entry/symbol)
+        hook hold
+          save twice, call(add, read(twice), code(1))
+      call seen/set, read(entry/symbol), true
+  want hold
+    call is-equal, read(twice), code(0)
+
+test <casing is meaning: MB and Mb are both registered and differ by eight, and mb is no unit>
+  save byte-scale, text <>
+  save bit-scale, text <>
+  save lower, false
+  walk list, call(unit-table)
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal, read(entry/symbol), text(<MB>)
+        hook hold
+          save byte-scale, read entry/scale
+      fork test
+        hook test
+          call is-equal, read(entry/symbol), text(<Mb>)
+        hook hold
+          save bit-scale, read entry/scale
+      fork test
+        hook test
+          call is-equal, read(entry/symbol), text(<mb>)
+        hook hold
+          save lower, true
+  want hold
+    call is-equal, read(byte-scale), text(<8000000.0>)
+  want hold
+    call is-equal, read(bit-scale), text(<1000000.0>)
+  want hold
+    call not, read(lower)
+
+test <a sum is given in the left one's unit>
+  save total
+    call quantity-add
+      call one, 1.0, text(<km>), 1000.0, text(<m>)
+      call one, 500.0, text(<m>), 1.0, text(<m>)
+  want hold
+    call is-equal, read(total/value), 1.5
+  want hold
+    call is-equal, read(total/unit), text(<km>)
+
+test <a quotient combines the dimensions>
+  save speed
+    call quantity-divide
+      call one, 100.0, text(<m>), 1.0, text(<m>)
+      call one, 10.0, text(<s>), 1.0, text(<s>)
+  want hold
+    call is-equal, read(speed/value), 10.0
+  want hold
+    call is-equal, read(speed/unit), text(<m/s>)
+  want hold
+    call is-equal, call(speed/dimension/get-or-default, text(<s>), code(0)), code(-1)
+
+test <a length over a length has no dimension left>
+  save ratio
+    call quantity-divide
+      call one, 3.0, text(<m>), 1.0, text(<m>)
+      call one, 2.0, text(<m>), 1.0, text(<m>)
+  want hold
+    call is-equal, read(ratio/dimension/size), code(0)
+
+test <scaling by a number keeps the unit>
+  save twice
+    call quantity-multiply
+      call one, 3.0, text(<m>), 1.0, text(<m>)
+      2.0
+  want hold
+    call is-equal, read(twice/value), 6.0
+
+test <a comparison reads both in the base unit>
+  want hold
+    call is-equal
+      call quantity-compare
+        call one, 5.0, text(<m>), 1.0, text(<m>)
+        call one, 2.0, text(<km>), 1000.0, text(<m>)
+      code -1
+
+test <two lengths are the same dimension, a length and a time are not>
+  want hold
+    call same-dimension
+      call one, 5.0, text(<m>), 1.0, text(<m>)
+      call one, 2.0, text(<km>), 1000.0, text(<m>)
+  want hold
+    call not
+      call same-dimension
+        call one, 5.0, text(<m>), 1.0, text(<m>)
+        call one, 2.0, text(<s>), 1.0, text(<s>)
+
+test <convert gives the value in the other unit>
+  save small
+    call convert
+      call one, 2.0, text(<km>), 1000.0, text(<m>)
+      call one, 1.0, text(<m>), 1.0, text(<m>)
+  want hold
+    call is-equal, read(small/value), 2000.0
+  want hold
+    call is-equal, read(small/unit), text(<m>)

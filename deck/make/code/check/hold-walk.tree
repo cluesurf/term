@@ -1,0 +1,3646 @@
+# THE HOLD WALK: every `hold` of a program checked, each task's body walked in order, threading what is known. A
+# branch condition refines its branch and its negation the next, a binding or assignment contributes its defining
+# equality, every write first forgets what it changes, a loop forgets before its body what a later turn changes, and
+# what follows a branch is what every path into it shows (check/hold-facts.tree). Each hold's goal is then decided from
+# what is known there (check/inequality.tree, check/universal.tree), a theorem's after its citations' conclusions are
+# added, and an unproven one is reported, a tier-0 obligation counted instead.
+#
+#   - A TASK WHOSE EVERY HOLD WAS PROVEN BEFORE, ASKED THE SAME QUESTION, IS PROVEN AGAIN: the walk's key is the task as
+#     checked without its places and every whole-program fact about a name it mentions, and only a walk that refused
+#     nothing is kept, as the counts it added
+#   - a rule that did not hold says what it was asked, and, when small values of its marks satisfy every hypothesis and
+#     break the goal, that it is false there (check/explain.tree)
+#
+# Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
+#   - what the face still holds is handed in as `walk-calls`: the proof budget of check/product.ts, the width switch,
+#     the counter of uncertified answers, the replay counter the tests read, and the profile a run may ask for
+#   - the program's sets the caller already knows (pure, state-free, length-keeping, fresh-returning, the functions) are
+#     the face's, cached per program by check/facts.ts, and arrive as hashes
+#   - a memo key is the original's JSON text, written part by part through binds, and hashed by term/hash.tree
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find diagnostic-name
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find expression-type
+  find expression-span
+  find function-param
+  find hold-origin
+  find proof
+  find universal
+  find type
+  find binary-op
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ../term/hash
+  find hash-text
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find at-least
+  find at-most
+  find utf16-order
+
+load ./explain
+  find print-expression
+  find counterexample
+  find print-assignment
+  find search-name
+  find small-task
+
+load ./alias
+  find type-alias
+  find through-alias
+  find transparent-aliases
+
+load ./nonlinear
+  find unconstrained-call
+  find plain-path
+
+load ./universal
+  find hold-calls
+  find binder-fact
+  find generalized
+  find substitute-name
+  find instance-facts
+  find universal-goal
+  find universal-induction
+  find recurrence-facts
+  find cited-everywhere
+  find with-universals
+  find recurrences-of
+
+load ./inequality
+  find to-linear
+  find atom-linear
+  find constant-linear
+  find add-linear
+  find scale-linear
+  find signed-remainders
+  find assumption-inequalities
+  find condition-facts
+  find goal-provable
+  find goal-verdict
+  find linearly-provable
+  find field-provable
+  find theorem-parts
+  find written-alike
+
+load ./hold-state
+  find hold-state
+  find hold-delta
+  find delta-count
+
+load ./hold-facts
+  find forget
+  find join-facts
+  find literal-length
+  find unreachable-facts
+  find contradiction
+  find mentions-atom
+  find is-state-atom
+  find key-root
+  find row-key
+  find has-text
+  find add-text
+  find length-prefix
+  find field-prefix
+  find after-prefix
+  find exact-value
+  find both-facts
+
+load ./hold-reach
+  find hold-walk
+  find hold-tally
+  find kind-count
+  find failed-obligation
+  find handles
+  find flags
+  find expression-handle-of
+  find statement-handle-of
+  find block-parts
+  find statement-parts
+  find expression-parts
+  find impure-in
+  find written-in-block
+  find root-of
+  find kind-of
+  find is-array-typed
+  find scalar-value
+  find scalar-locals
+  find impure-effect
+  find forget-writes
+  find closures-in
+  find popped-path
+  find pushed-path
+  find list-pushes-of
+  find list-pops-of
+  find exits-early
+  find skip-plain
+
+load ./hold-loops
+  find keep-across-turns
+  find bound-invariant
+  find shift-facts
+  find binding-aliases
+  find defining-equalities
+  find field-write-equalities
+  find reads-volatile
+
+load ./purity
+  find written-names
+  find read-names
+  find local-names
+  find volatile-names
+  find fresh-names
+  find only-statement
+  find everything
+  find read-only-list-methods
+  find root-name
+
+# ---- what the face still holds ----
+
+form walk-calls
+  # THE PROOF BUDGET: the exact search's work one goal may spend, read per goal
+  link proof-budget
+    like task
+      like float
+  link open-budget
+    like task
+      take units, like float
+  link budget-spent
+    like task
+      like boolean
+  # whether width-typed values are checked (check/width-range.ts)
+  link width-ranges
+    like task
+      like boolean
+  # each width-typed field, `<form>/<field>` to its width (holds.ts `fieldWidthsOf`)
+  link field-widths
+    like task
+      take program, like list, like statement
+      like hash, like text, like text
+  link uncertified-count
+    like task
+      like number
+  # a kept walk was answered from the memo
+  link replayed
+    like task
+  # `TERM_PRODUCT_PROFILE=1`: a theorem goal's time and its share of the product search
+  link profile-begin
+    like task
+      like unknown
+  link profile-end
+    like task
+      take began, like unknown
+      take name, like text
+      take verdict, like text
+
+# what one program's check is handed: the program, its file, the sets the caller knows, and what to check
+form hold-program
+  link program, like list, like statement
+  link file, like text
+  link origin-only, like boolean
+  link tally, like maybe, like hold-tally
+  link limited, like boolean
+  link only, like hash, like text, like boolean
+  link skip, like hash, like text, like boolean
+  link pure, like hash, like text, like boolean
+  link state-free, like hash, like text, like boolean
+  link keeping, like hash, like text, like boolean
+  link returning, like hash, like text, like boolean
+  link functions, like hash, like text, like boolean
+  link kernel-proven, like list, like text
+
+# what a rule that did not hold was asked, whether it is false, and what to try
+form told
+  link asked, like text
+  link false-at, like maybe, like text
+  link hint, like maybe, like text
+
+form key-found
+  link text, like text
+  link names, like list, like text
+
+# ---- the host's reads ----
+
+# a hold's name, `\u0001` for one with none (no rule is named that)
+bind hold-label
+  take s, like statement
+  like text
+  case node
+    text <(($s as any).name ?? '\\u0001')>
+  case browser
+    text <(($s as any).name ?? '\\u0001')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# a hold's proof steps, none when it has none
+bind proof-steps
+  take s, like statement
+  like list, like proof
+  case node
+    text <(($s as any).proof ?? [])>
+  case browser
+    text <(($s as any).proof ?? [])>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <listOf()>
+
+bind universals-of
+  take s, like statement
+  like list, like universal
+  case node
+    text <(($s as any).universals ?? [])>
+  case browser
+    text <(($s as any).universals ?? [])>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <listOf()>
+
+# a stub that carries no body of its rule's
+bind stub-without-body
+  take s, like statement
+  like boolean
+  case node
+    text <(Boolean(($s as any).stub) && !($s as any).stubBody)>
+  case browser
+    text <(Boolean(($s as any).stub) && !($s as any).stubBody)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# a rule from another unit as its stub's body, which carries the rule's `show hold`
+bind with-stub-body
+  take s, like statement
+  like statement
+  case node
+    text <(($s as any).stub && ($s as any).stubBody ? \{ ...$s, body: ($s as any).stubBody \} : $s)>
+  case browser
+    text <(($s as any).stub && ($s as any).stubBody ? \{ ...$s, body: ($s as any).stubBody \} : $s)>
+  case rust
+    text <$s>
+  case swift
+    text <$s>
+  case kotlin
+    text <$s>
+
+bind is-carried-rule
+  take s, like statement
+  like boolean
+  case node
+    text <Boolean(($s as any).theorem && ($s as any).stub && ($s as any).stubBody)>
+  case browser
+    text <Boolean(($s as any).theorem && ($s as any).stub && ($s as any).stubBody)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+bind stub-fact
+  take s, like statement
+  take fact, like text
+  like boolean
+  case node
+    text <((($s as any).stubFacts ?? []).includes($fact))>
+  case browser
+    text <((($s as any).stubFacts ?? []).includes($fact))>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# the task a walk names: `form/name` for a method
+bind task-label
+  take s, like statement
+  like text
+  case node
+    text <(($s as any).method ? ($s as any).method.form + '/' + ($s as any).method.name : ($s as any).name)>
+  case browser
+    text <(($s as any).method ? ($s as any).method.form + '/' + ($s as any).method.name : ($s as any).name)>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+bind param-width
+  take p, like function-param
+  like text
+  case node
+    text <($p.width ?? '')>
+  case browser
+    text <($p.width ?? '')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# a task as checked without its places, as JSON, and every text in it
+bind key-text
+  take statement, like statement
+  like key-found
+  case node
+    text <(() =\> \{ const names = new Set(); const text = JSON.stringify($statement, (key, value) =\> \{ if (key === 'span') \{ return undefined \} if (typeof value === 'string') \{ names.add(value) \} return typeof value === 'bigint' ? String(value) + 'n' : value \}); return \{ text, names: [...names] as string[] \} \})()>
+  case browser
+    text <(() =\> \{ const names = new Set(); const text = JSON.stringify($statement, (key, value) =\> \{ if (key === 'span') \{ return undefined \} if (typeof value === 'string') \{ names.add(value) \} return typeof value === 'bigint' ? String(value) + 'n' : value \}); return \{ text, names: [...names] as string[] \} \})()>
+  case rust
+    text <unimplemented!()>
+  case swift
+    text <fatalError()>
+  case kotlin
+    text <TODO()>
+
+bind theorem-json
+  take statement, like statement
+  like text
+  case node
+    text <JSON.stringify($statement, (key, value) =\> (key === 'span' ? undefined : typeof value === 'bigint' ? String(value) + 'n' : value))>
+  case browser
+    text <JSON.stringify($statement, (key, value) =\> (key === 'span' ? undefined : typeof value === 'bigint' ? String(value) + 'n' : value))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+bind json-text
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+  case browser
+    text <JSON.stringify($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind json-number
+  take value, like float
+  like text
+  case node
+    text <JSON.stringify($value)>
+  case browser
+    text <JSON.stringify($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+bind js-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+bind starts-vowel
+  take value, like text
+  like boolean
+  case node
+    text </^[aeiou]/.test($value)>
+  case browser
+    text </^[aeiou]/.test($value)>
+  case rust
+    text <$value.starts_with(|c| "aeiou".contains(c))>
+  case swift
+    text <("aeiou".contains($value.first ?? " "))>
+  case kotlin
+    text <("aeiou".contains($value.firstOrNull() ?: ' '))>
+
+# is this statement one of the program's own, by identity
+bind same-statement
+  take a, like statement
+  take b, like statement
+  like boolean
+  case node
+    text <($a === $b)>
+  case browser
+    text <($a === $b)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# ---- small makers ----
+
+task facts
+  like list, like inequality
+  mark private
+
+  back make list
+
+task texts
+  like list, like text
+  mark private
+
+  back make list
+
+task statements
+  like list, like statement
+  mark private
+
+  back make list
+
+task expressions
+  like list, like expression
+  mark private
+
+  back make list
+
+task unproven-name
+  like diagnostic-name
+  mark private
+
+  back make diagnostic-name/unproven
+
+task unchecked-name
+  like diagnostic-name
+  mark private
+
+  back make diagnostic-name/unchecked-hold
+
+task task-of
+  take statement, like statement
+  like maybe, like text
+  mark private
+
+  save label, task-label(statement)
+  back make(some, label)
+
+task names-of-params
+  take params, like list, like function-param
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk params
+    take p
+    push(out, p/name)
+  back out
+
+task flags-of
+  take names, like list, like text
+  like hash, like text, like boolean
+
+  save out, flags()
+  walk names
+    take name
+    save out/{name}, true
+  back out
+
+task names-in-flags
+  take table, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk table/keys()
+    take name
+    push(out, name)
+  back out
+
+# the `p >= 0` a natural-number mark assumes, spanned where the hold is
+task natural-bound
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  save left
+    make variable
+      bind name, name
+      bind span, at
+  save right
+    make integer
+      bind value, 0
+      bind span, at
+  back
+    make binary
+      bind op, make at-least
+      bind left, left
+      bind right, right
+      bind span, at
+
+task is-natural-param
+  take p, like function-param
+  like boolean
+  mark private
+
+  sift p/refine
+    case some
+      link refinement
+      back true
+    case none
+      back false
+
+task is-number-param
+  take p, like function-param
+  like boolean
+  mark private
+
+  back is-equal(kind-of(p/type), <number>)
+
+# a task type, written as one or named through an alias
+task is-function-type
+  take state, like hold-state
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case function
+          back true
+        miss
+          save read, through-alias(known, state/aliases)
+          sift read/type
+            case function
+              back true
+            miss
+              back false
+    case none
+      back false
+
+# a task's parameters that nothing in its body rebinds, so each still holds what it was handed
+task steady-params
+  take params, like list, like function-param
+  take body, like list, like statement
+  like hash, like text, like boolean
+
+  save written, written-in-block(body)
+  save out, flags()
+  walk params
+    take p
+    fork test, not(has-text(written, p/name))
+      hold
+        save out/{p/name}, true
+  back out
+
+# ---- tier-0 obligations ----
+
+task owed-for
+  take origin, like hold-origin
+  like text
+
+  sift origin
+    case must
+      back <this task's `must` is not proven where it sends back>
+    case need
+      back <the called task's `have` is not proven at this call>
+    case keep-entry
+      back <this walk's `must` is not proven before the walk>
+    case keep-turn
+      back <this walk's `must` is not proven at the end of a turn>
+    case down
+      back <this `down` measure is not shown to stay a natural number and fall>
+    case index
+      back <this read is not shown to be inside the list>
+    case zero
+      back <this division is not shown to be by something other than zero>
+    case ends
+      back <this walk is not shown to end (give it a `down` measure, or `mark roam` on a task meant to run forever)>
+    case width
+      back <this value is not shown to fit the width of the parameter it is passed to (check it with `to-u8` and its kin, or bound it first)>
+    case given
+      back <a promised fact>
+
+task is-tier-zero
+  take origin, like hold-origin
+  like boolean
+  mark private
+
+  sift origin
+    case index
+      back true
+    case zero
+      back true
+    case ends
+      back true
+    case width
+      back true
+    miss
+      back false
+
+# ---- the closures an expression builds ----
+
+# the holds inside the closures an expression builds: each checked with nothing assumed about the world around it, and
+# with its own parameters and writes as its locals
+task holds-in-expression
+  take state, like hold-state
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take expression, like expression
+  take walk, like hold-walk
+
+  walk closures-in(expression)
+    take closure
+    sift closure
+      case closure
+        link closure-params
+        link closure-body
+        save local, texts()
+        walk written-in-block(closure-body)
+          take name
+          add-text(local, name)
+        walk closure-params
+          take param
+          add-text(local, param/name)
+        walk walk/local/keys()
+          take name
+          add-text(local, name)
+        save inner, walk-with(walk, flags-of(local), flags-of(volatile-names(closure-body)), walk/fresh, walk/params)
+        walk-holds(state, calls, wc, closure-body, facts(), inner)
+      miss
+        save nothing, 0
+
+# a walk with its own locals, volatile names, fresh names and steady parameters
+task walk-with
+  take walk, like hold-walk
+  take local, like hash, like text, like boolean
+  take volatile, like hash, like text, like boolean
+  take fresh, like hash, like text, like boolean
+  take params, like hash, like text, like boolean
+  like hold-walk
+
+  back
+    make hold-walk
+      bind diagnostics, walk/diagnostics
+      bind file, walk/file
+      bind pure, walk/pure
+      bind functions, walk/functions
+      bind local, local
+      bind volatile, volatile
+      bind origin-only, walk/origin-only
+      bind tally, walk/tally
+      bind task, walk/task
+      bind globals, walk/globals
+      bind state-free, walk/state-free
+      bind keeping, walk/keeping
+      bind fresh, fresh
+      bind returning, walk/returning
+      bind params, params
+      bind constants, walk/constants
+      bind scalars, walk/scalars
+
+# ---- explaining a rule ----
+
+# what a rule that did not hold was asked, `(goal: ..., given: ...)`, and, when small values of its marks satisfy every
+# hypothesis and break the goal, the sentence saying it is false there
+task explain-rule
+  take state, like hold-state
+  take name, like text
+  take goal, like expression
+  like maybe, like told
+
+  fork test, not(state/theorems/has(name))
+    hold
+      back make none
+  save rule, state/theorems/get(name)
+  save parts-read, theorem-parts(rule)
+  save hypotheses, expressions()
+  sift parts-read
+    case some
+      link parts
+      save hypotheses, parts/hypotheses
+    case none
+      save nothing, 0
+  save facts-text, texts()
+  walk hypotheses
+    take h
+    push(facts-text, print-expression(h, 0))
+  save universals, universals-of(rule)
+  walk universals
+    take u
+    push(facts-text, <for every {join(u/binders, <, >)}: {print-expression(u/expr, 0)}>)
+  save given, <>
+  fork test, is-above(facts-text/length, 0)
+    hold
+      save given, <, given: {join(facts-text, <, >)}>
+  save asked, < (goal: {print-expression(goal, 0)}{given})>
+  save params, function-params-of(rule)
+  # a mark whose type is a FORM WITH CASES: a goal about it usually stops at that unknown value
+  save form-mark, <>
+  save form-name, <>
+  save has-form-mark, false
+  walk params
+    take p
+    sift p/type
+      case some
+        link known
+        sift known
+          case named
+            link named-name
+            fork test, state/cased-forms/has(named-name)
+              hold
+                save form-mark, p/name
+                save form-name, named-name
+                save has-form-mark, true
+                halt
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  # a hypothesis FOR EVERY value is used a bounded number of times: a goal that needs it over and over needs induction
+  save count-mark, <>
+  save has-count-mark, false
+  walk params
+    take p
+    fork test, or(is-number-param(p), is-natural-param(p))
+      hold
+        save count-mark, p/name
+        save has-count-mark, true
+        halt
+  save cited, cited-name(rule)
+  save hint, make none
+  fork test, is-unequal(cited, <>)
+    hold
+      save text-hint, <`cite {cited}` closes a goal that is an instance of it: each side must compute to one side of {cited}, at some values of its seats. A law that holds only in some cases needs `fold` on the value it splits on (/guides/proofs/start)>
+      save hint, make(some, text-hint)
+    miss
+      fork test, has-form-mark
+        hold
+          save article, <a>
+          fork test, starts-vowel(form-name)
+            hold
+              save article, <an>
+          save text-hint, <a goal about `{form-mark}`, {article} {form-name}, stops where its value is unknown. `fold {form-mark}` under the `show` proves it one case at a time (/guides/proofs/induction)>
+          save hint, make(some, text-hint)
+        miss
+          fork test, and(is-above(universals/length, 0), has-count-mark)
+            hold
+              save text-hint, <a hypothesis for every value is used a few times, at the terms the goal names. If the goal needs it {count-mark} times over, `fold {count-mark}` under the `show` proves it by induction on {count-mark} (/guides/proofs/inequalities)>
+              save hint, make(some, text-hint)
+  save only-asked
+    make told
+      bind asked, asked
+      bind false-at, make none
+      bind hint, hint
+  sift parts-read
+    case none
+      back make(some, only-asked)
+    case some
+      link parts
+      save nothing, 0
+  fork test, is-above(universals/length, 0)
+    hold
+      back make(some, only-asked)
+  save names, search-names()
+  walk params
+    take p
+    fork test, or(is-number-param(p), is-natural-param(p))
+      hold
+        save one
+          make search-name
+            bind name, p/name
+            bind natural, is-natural-param(p)
+        push(names, one)
+  # every mark must be one the search can give a value to, or a hypothesis about the others could be ignored
+  fork test, is-unequal(names/length, params/length)
+    hold
+      back make(some, only-asked)
+  save search, counterexample(names, hypotheses, goal, state/small-tasks)
+  save no-hint
+    make told
+      bind asked, asked
+      bind false-at, make none
+      bind hint, make none
+  fork test, search/found
+    hold
+      save fails, <the goal does not hold>
+      fork test, is-above(hypotheses/length, 0)
+        hold
+          save fails, <every hypothesis holds and the goal does not>
+      save sentence, <this rule is FALSE: at {print-assignment(search/at)} {fails}{asked}>
+      save found
+        make told
+          bind asked, asked
+          bind false-at, make(some, sentence)
+          bind hint, make none
+      back make(some, found)
+  back make(some, no-hint)
+
+task search-names
+  like list, like search-name
+  mark private
+
+  back make list
+
+task function-params-of
+  take rule, like statement
+  like list, like function-param
+  mark private
+
+  sift rule
+    case function
+      link rule-name
+      link params
+      back params
+    miss
+      back make list
+
+# the rule the first `hold` of a rule's body cites first, `''` when none
+task cited-name
+  take rule, like statement
+  like text
+  mark private
+
+  sift rule
+    case function
+      link rule-name
+      link params
+      link rule-body
+      walk rule-body
+        take s
+        sift s
+          case hold
+            walk proof-steps(s)
+              take step
+              fork test, is-equal(step/head, <cite>)
+                hold
+                  back step-arg(step)
+            back <>
+          miss
+            save nothing, 0
+      back <>
+    miss
+      back <>
+
+# a proof step's argument, `''` when it has none
+bind step-arg
+  take step, like proof
+  like text
+  case node
+    text <($step.arg ?? '')>
+  case browser
+    text <($step.arg ?? '')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# ---- citations ----
+
+task refuse-cite
+  take walk, like hold-walk
+  take name, like text
+  take at, like span
+  take why, like text
+  like list, like inequality
+  mark private
+
+  save message, <cite {name}: {why}>
+  save input
+    make diagnostic-input
+      bind file, walk/file
+      bind span, at
+      bind message, make(some, message)
+  save kind, make diagnostic-name/unproven
+  push(walk/diagnostics, diagnose(kind, input))
+  back facts()
+
+# the facts `cite <name>` contributes at this point, or none with a diagnostic saying why
+task cited-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take name, like text
+  take available, like list, like inequality
+  take walk, like hold-walk
+  take at, like span
+  # an equation the kernel alone proved, cited under an equation: its verdict stands, and this pass only says so
+  take kernel-verdict, like boolean
+  like list, like inequality
+
+  save has-rule, state/theorems/has(name)
+  save has-how, state/proven-theorems/has(name)
+  # a stub carries its rule's hypotheses and goal, and one without them is a declaration with nothing to use
+  fork test, has-rule
+    hold
+      fork test, stub-without-body(state/theorems/get(name))
+        hold
+          back refuse-cite(walk, name, at, <it was compiled separately, and this build holds only its signature, not its hypotheses and goal. Build the two files together to cite it>)
+  # an EQUATION the kernel proved is one the kernel rewrites with: it already tried this goal as an instance of it
+  fork test, and(has-rule, or(not(has-how), kernel-verdict))
+    hold
+      sift theorem-parts(state/theorems/get(name))
+        case some
+          link parts
+          sift parts/goal
+            case binary
+              link op
+              sift op
+                case equal
+                  back refuse-cite(walk, name, at, <the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its seats, makes the two sides the same>)
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+  fork test, or(not(has-rule), not(has-how))
+    hold
+      back refuse-cite(walk, name, at, <it is not a rule proven above this one by the arithmetic provers. A rule may cite only a rule proven earlier in the program>)
+  save rule, state/theorems/get(name)
+  save how, state/proven-theorems/get(name)
+  # a theorem with universal hypotheses claims its result over every ordered field, so it may not rest on a rule whose
+  # proof used integer reasoning
+  fork test, and(is-above(state/universal-hypotheses/length, 0), is-unequal(how, <field>))
+    hold
+      back refuse-cite(walk, name, at, <it was proven with integer reasoning, and this rule, having universal hypotheses, is decided over an ordered field>)
+  sift theorem-parts(rule)
+    case some
+      link parts
+      save params, function-params-of(rule)
+      walk params
+        take mark
+        save here, state/theorem-scope/has(mark/name)
+        fork test, is-function-type(state, mark/type)
+          hold
+            save here, state/applied-functions/has(mark/name)
+        fork test, not(here)
+          hold
+            back refuse-cite(walk, name, at, <its seat {mark/name} names nothing in this rule. A cited rule's seats are read by name: give this rule a seat or a find called {mark/name}>)
+      walk universals-of(rule)
+        take universal
+        save matched, false
+        walk state/universal-hypotheses
+          take mine
+          fork test, and(is-equal(join(mine/binders, <,>), join(universal/binders, <,>)), written-alike(mine/expr, universal/expr))
+            hold
+              save matched, true
+              halt
+        fork test, not(matched)
+          hold
+            back refuse-cite(walk, name, at, <its universal hypothesis {universal/name} is not one of this rule's, written the same>)
+      # a natural-number mark is a hypothesis too: the cited rule assumed it
+      save natural-names, texts()
+      save stated, expressions()
+      walk params
+        take mark
+        fork test, is-natural-param(mark)
+          hold
+            push(natural-names, mark/name)
+            push(stated, natural-bound(mark/name, at))
+      walk parts/hypotheses
+        take h
+        push(stated, h)
+      # A MARK THE CITING RULE BINDS BY `find` is the found value, written into the cited rule
+      save found-names, texts()
+      save found, found-table()
+      sift walk/task
+        case some
+          link task-name
+          fork test, state/theorems/has(task-name)
+            hold
+              sift state/theorems/get(task-name)
+                case function
+                  link citing-name
+                  link citing-params
+                  link citing-body
+                  walk citing-body
+                    take s
+                    sift s
+                      case let
+                        link let-name
+                        link init
+                        link mutable
+                        fork test, and(not(mutable), has-text(names-of-params(params), let-name))
+                          hold
+                            add-text(found-names, let-name)
+                            save found/{let-name}, init
+                      miss
+                        save nothing, 0
+                miss
+                  save nothing, 0
+        case none
+          save nothing, 0
+      save rewritten, expressions()
+      walk stated
+        take e
+        save x, e
+        walk found-names
+          take found-name
+          save x, substitute-name(x, found-name, found/get(found-name))
+        push(rewritten, x)
+      save index, 0
+      walk rewritten
+        take hypothesis
+        fork test, not(linearly-provable(state, calls, hypothesis, available))
+          hold
+            sift goal-provable(state, calls, hypothesis, available)
+              case proven
+                save nothing, 0
+              miss
+                fork test, is-below(index, natural-names/length)
+                  hold
+                    back refuse-cite(walk, name, at, <{get(natural-names, index)} \>= 0, which its natural-number seat assumes, does not follow here>)
+                back refuse-cite(walk, name, at, <its hypothesis {print-expression(hypothesis, 0)} does not follow from what is known here>)
+        save index, add(index, 1)
+      save goal, parts/goal
+      walk found-names
+        take found-name
+        save goal, substitute-name(goal, found-name, found/get(found-name))
+      back instance-facts(calls, goal, available)
+    case none
+      back refuse-cite(walk, name, at, <only a rule stated as hypotheses and one goal, with no find, can be cited>)
+
+task found-table
+  like hash, like text, like expression
+  mark private
+
+  back make hash
+
+# ---- one hold ----
+
+task with-fact-list
+  take a, like list, like inequality
+  take q, like inequality
+  like list, like inequality
+  mark private
+
+  save out, facts()
+  walk a
+    take item
+    push(out, item)
+  push(out, q)
+  back out
+
+task binder-list
+  like list, like binder-fact
+  mark private
+
+  back make list
+
+task both-binders
+  take a, like list, like binder-fact
+  take b, like list, like binder-fact
+  like list, like binder-fact
+  mark private
+
+  save out, binder-list()
+  walk a
+    take item
+    push(out, item)
+  walk b
+    take item
+    push(out, item)
+  back out
+
+task verdict-text
+  take verdict, like goal-verdict
+  like text
+  mark private
+
+  sift verdict
+    case proven
+      back <true>
+    case unproven
+      back <false>
+    case outside
+      back <null>
+
+task proven-verdict
+  take found, like boolean
+  like goal-verdict
+  mark private
+
+  fork test, found
+    hold
+      back make goal-verdict/proven
+  back make goal-verdict/unproven
+
+task is-proven
+  take verdict, like goal-verdict
+  like boolean
+  mark private
+
+  sift verdict
+    case proven
+      back true
+    miss
+      back false
+
+# a theorem's goal is asked the fast path first: a yes there is a yes
+task decide-goal
+  take state, like hold-state
+  take calls, like hold-calls
+  take theorem, like boolean
+  take expr, like expression
+  take given, like list, like inequality
+  like goal-verdict
+  mark private
+
+  fork test, theorem
+    hold
+      fork test, linearly-provable(state, calls, expr, given)
+        hold
+          back make goal-verdict/proven
+  back goal-provable(state, calls, expr, given)
+
+task unsplit-message
+  take stopped, like boolean
+  take owed, like maybe, like text
+  take budget, like float
+  take asked, like text
+  like text
+  mark private
+
+  save owed-text, <this hold>
+  sift owed
+    case some
+      link known
+      save owed-text, <{known}: it>
+    case none
+      save nothing, 0
+  back <{owed-text} was not proven within the proof budget ({js-text(budget)} units of exact search): the search stopped, so it may still be true{asked}>
+
+# check one `hold`: decide it from what is known, and report it unproven, unchecked, or (a tier-0 obligation) counted
+task check-hold
+  take state, like hold-state
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take statement, like statement
+  take current, like list, like inequality
+  take walk, like hold-walk
+
+  save rule-name, hold-label(statement)
+  save steps, proof-steps(statement)
+  sift statement
+    case hold
+      link expr
+      link hold-name-field
+      link proof-field
+      link at
+      link origin
+      # a callee's `must`, assumed where the call returns: a fact, in line
+      sift origin
+        case some
+          link known-origin
+          sift known-origin
+            case given
+              back
+            miss
+              save nothing, 0
+        case none
+          # in a pass over the checker's copy, a hold the programmer wrote was already checked in the real program
+          fork test, walk/origin-only
+            hold
+              back
+      save folds, false
+      save fold-arg, <>
+      fork test, is-above(steps/length, 0)
+        hold
+          save folds, is-equal(get(steps, 0)/head, <fold>)
+          save fold-arg, step-arg(get(steps, 0))
+      save recurrent, binder-list()
+      fork test, folds
+        hold
+          save recurrent, recurrence-facts(state, calls, expr)
+      save induction, <>
+      fork test, and(or(is-above(state/universal-hypotheses/length, 0), is-above(recurrent/length, 0)), folds)
+        hold
+          save induction, fold-arg
+      save inducts, is-unequal(induction, <>)
+      save theorem, false
+      save task-name, <>
+      sift walk/task
+        case some
+          link known-task
+          save task-name, known-task
+          save theorem, and(state/theorems/has(known-task), is-equal(rule-name, known-task))
+        case none
+          save nothing, 0
+      save refused-before, walk/diagnostics/length
+      # one budget for this goal, its citations included
+      save budget, wc/proof-budget()
+      wc/open-budget(budget)
+      save given, current
+      save equation, false
+      sift expr
+        case binary
+          link op
+          sift op
+            case equal
+              save equation, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      # under a `fold`, a cited rule `cited-everywhere` reads is used at every step, so not also once at the marks
+      save everywhere, texts()
+      fork test, inducts
+        hold
+          walk steps
+            take s
+            save arg, step-arg(s)
+            fork test, and(is-equal(s/head, <cite>), is-unequal(arg, <>))
+              hold
+                save one, make list
+                push(one, s)
+                fork test, is-above(cited-everywhere(state, calls, one)/length, 0)
+                  hold
+                    push(everywhere, arg)
+      fork test, theorem
+        hold
+          walk steps
+            take s
+            save arg, step-arg(s)
+            fork test, or(is-unequal(s/head, <cite>), is-equal(arg, <>))
+              hold
+                turn next
+            fork test, has-text(everywhere, arg)
+              hold
+                turn next
+            fork test, and(equation, state/kernel-only/has(arg))
+              hold
+                save given, both-facts(given, cited-facts(state, calls, arg, given, walk, at, true))
+                turn next
+            fork test, state/theorems/has(arg)
+              hold
+                save given, both-facts(given, cited-facts(state, calls, arg, given, walk, at, false))
+                turn next
+            fork test, not(equation)
+              hold
+                # the kernel pass reads a step only under an equality, where it refuses a name that names nothing
+                save message, <cite {arg}: there is no rule of that name in this build>
+                save input
+                  make diagnostic-input
+                    bind file, walk/file
+                    bind span, at
+                    bind message, make(some, message)
+                push(walk/diagnostics, diagnose(unproven-name(), input))
+      save citations-held, is-equal(walk/diagnostics/length, refused-before)
+      save began, wc/profile-begin()
+      save impure, impure-outside-masks(state, calls, expr, walk)
+      # a theorem with no universal hypothesis of its own inducts with its other number marks generalized
+      save general, make none
+      fork test, and(theorem, inducts)
+        hold
+          save rule, state/theorems/get(task-name)
+          fork test, not(has-universals-of(rule))
+            hold
+              save others, texts()
+              walk function-params-of(rule)
+                take p
+                fork test, or(is-equal(p/name, induction), is-function-type(state, p/type))
+                  hold
+                    turn next
+                fork test, or(is-natural-param(p), is-number-param(p))
+                  hold
+                    push(others, p/name)
+              save hypotheses, expressions()
+              sift theorem-parts(rule)
+                case some
+                  link parts
+                  save hypotheses, parts/hypotheses
+                case none
+                  save nothing, 0
+              save made
+                make generalized
+                  bind others, others
+                  bind hypotheses, hypotheses
+              save general, make(some, made)
+      save verdict, make goal-verdict/outside
+      fork test, not(impure)
+        hold
+          fork test, inducts
+            hold
+              save more, recurrent
+              fork test, theorem
+                hold
+                  save more, both-binders(recurrent, cited-everywhere(state, calls, steps))
+              save run
+                task
+                  like boolean
+                  back universal-induction(state, calls, expr, given, induction, general)
+              save verdict, proven-verdict(with-universals(state, more, run))
+            miss
+              save verdict, decide-goal(state, calls, theorem, expr, given)
+      # AND ONCE MORE THROUGH THE DEFINITIONS, when the goal names a task the provers read as an atom
+      fork test, and(and(not(is-proven(verdict)), not(impure)), not(inducts))
+        hold
+          save unfolded, calls/unfold(expr)
+          fork test, is-unequal(print-expression(unfolded, 0), print-expression(expr, 0))
+            hold
+              fork test, is-proven(decide-goal(state, calls, theorem, unfolded, given))
+                hold
+                  save verdict, make goal-verdict/proven
+      # A CALL NO FACT SPEAKS OF is an unknown the goal cannot be decided over
+      sift verdict
+        case unproven
+          fork test, unconstrained-call(state, expr, given)
+            hold
+              save verdict, make goal-verdict/outside
+        miss
+          save nothing, 0
+      # and through the equations of the recursive tasks it applies, with no induction
+      fork test, and(and(not(is-proven(verdict)), not(impure)), and(not(inducts), theorem))
+        hold
+          save equations, recurrence-facts(state, calls, expr)
+          fork test, is-above(equations/length, 0)
+            hold
+              save run
+                task
+                  like boolean
+                  back universal-goal(state, calls, expr, given, expressions())
+              fork test, with-universals(state, equations, run)
+                hold
+                  save verdict, make goal-verdict/proven
+      fork test, theorem
+        hold
+          wc/profile-end(began, rule-name, verdict-text(verdict))
+      # whether the search stopped at the budget, read before the classification below opens its own
+      save stopped, and(not(is-proven(verdict)), wc/budget-spent())
+      sift origin
+        case none
+          fork test, and(and(theorem, is-proven(verdict)), citations-held)
+            hold
+              # how it holds: decided over an ordered field alone, or with integer reasoning too, measured
+              wc/open-budget(budget)
+              save how, <integer>
+              fork test, is-above(state/universal-hypotheses/length, 0)
+                hold
+                  save how, <field>
+                miss
+                  fork test, field-provable(state, calls, expr, given)
+                    hold
+                      save how, <field>
+              save state/proven-theorems/{rule-name}, how
+        case some
+          link known-origin
+          save nothing, 0
+      save owed, make none
+      save tier0, false
+      sift origin
+        case some
+          link known-origin
+          save owed-text, owed-for(known-origin)
+          save owed, make(some, owed-text)
+          save tier0, is-tier-zero(known-origin)
+        case none
+          save nothing, 0
+      save ordinal, 0
+      sift walk/tally
+        case some
+          link tally
+          fork test, tier0
+            hold
+              sift origin
+                case some
+                  link known-origin
+                  save kind-key, <{task-name} {to-text(known-origin)}>
+                  save tally/has-seen, true
+                  fork test, tally/seen/has(kind-key)
+                    hold
+                      save ordinal, tally/seen/get(kind-key)
+                  save tally/seen/{kind-key}, add(ordinal, 1)
+                  save tally/has-kinds, true
+                  save origin-key, to-text(known-origin)
+                  fork test, not(tally/kinds/has(origin-key))
+                    hold
+                      save fresh
+                        make kind-count
+                          bind total, 0
+                          bind proven, 0
+                      save tally/kinds/{origin-key}, fresh
+                  save kind, tally/kinds/get(origin-key)
+                  save tally/total, add(tally/total, 1)
+                  save kind/total, add(kind/total, 1)
+                  fork test, is-proven(verdict)
+                    hold
+                      save tally/proven, add(tally/proven, 1)
+                      save kind/proven, add(kind/proven, 1)
+                case none
+                  save nothing, 0
+        case none
+          save nothing, 0
+      # A RULE THAT DID NOT HOLD says what it was asked, and whether it is false
+      save told-read, make none
+      fork test, and(theorem, not(is-proven(verdict)))
+        hold
+          save told-read, explain-rule(state, task-name, expr)
+      save asked, <>
+      save told-hint, make none
+      save told-false, make none
+      sift told-read
+        case some
+          link told-value
+          save asked, told-value/asked
+          save told-hint, told-value/hint
+          save told-false, told-value/false-at
+        case none
+          save nothing, 0
+      save budget-hint, <split it into smaller rules and `cite` them, or run once with TERM_PROOF_BUDGET=Infinity to search without a limit>
+      save hint, told-hint
+      fork test, stopped
+        hold
+          save hint, make(some, budget-hint)
+      save reported, make none
+      sift told-false
+        case some
+          link sentence
+          save false-hint, <the values are where it fails: correct the statement, or add a `have` that rules them out>
+          save input
+            make diagnostic-input
+              bind file, walk/file
+              bind span, at
+              bind message, make(some, sentence)
+              bind hint, make(some, false-hint)
+          save one, diagnose(unproven-name(), input)
+          save reported, make(some, one)
+        case none
+          sift verdict
+            case outside
+              save message, <this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true{asked}>
+              fork test, stopped
+                hold
+                  save message, unsplit-message(stopped, owed, budget, asked)
+                miss
+                  sift owed
+                    case some
+                      link owed-text
+                      save message, <{owed-text}, and it is outside what the provers decide>
+                    case none
+                      sift told-hint
+                        case some
+                          link hint-text
+                          save message, <this rule is not proven: computing its two sides stops at a value that is not known, so it was neither proven nor refuted{asked}>
+                        case none
+                          save nothing, 0
+              save input
+                make diagnostic-input
+                  bind file, walk/file
+                  bind span, at
+                  bind message, make(some, message)
+                  bind hint, hint
+              save one, diagnose(unchecked-name(), input)
+              save reported, make(some, one)
+            case unproven
+              save message, <this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state{asked}>
+              fork test, stopped
+                hold
+                  save message, unsplit-message(stopped, owed, budget, asked)
+                miss
+                  sift owed
+                    case some
+                      link owed-text
+                      save message, <{owed-text}: it does not follow from what is known here>
+                    case none
+                      save nothing, 0
+              save input
+                make diagnostic-input
+                  bind file, walk/file
+                  bind span, at
+                  bind message, make(some, message)
+                  bind hint, hint
+              save one, diagnose(unproven-name(), input)
+              save reported, make(some, one)
+            case proven
+              save nothing, 0
+      sift reported
+        case some
+          link diagnostic-made
+          save counted, false
+          sift walk/tally
+            case some
+              link tally
+              fork test, tier0
+                hold
+                  sift origin
+                    case some
+                      link known-origin
+                      save failure
+                        make failed-obligation
+                          bind task, task-name
+                          bind origin, known-origin
+                          bind ordinal, ordinal
+                          bind diagnostic, diagnostic-made
+                      push(tally/failed, failure)
+                      save counted, true
+                    case none
+                      save nothing, 0
+            case none
+              save nothing, 0
+          fork test, not(counted)
+            hold
+              push(walk/diagnostics, diagnostic-made)
+        case none
+          save nothing, 0
+      wc/open-budget(infinity())
+    miss
+      save nothing, 0
+
+bind infinity
+  like float
+  case node
+    text <Infinity>
+  case browser
+    text <Infinity>
+  case rust
+    text <f64::INFINITY>
+  case swift
+    text <Double.infinity>
+  case kotlin
+    text <Double.POSITIVE_INFINITY>
+
+bind has-universals-of
+  take rule, like statement
+  like boolean
+  case node
+    text <(($rule as any).universals !== undefined && ($rule as any).universals.length \> 0)>
+  case browser
+    text <(($rule as any).universals !== undefined && ($rule as any).universals.length \> 0)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# a callee's `must` assumed where the call returns
+task given-facts
+  take state, like hold-state
+  take calls, like hold-calls
+  take statement, like statement
+  take walk, like hold-walk
+  like list, like inequality
+  mark private
+
+  sift statement
+    case hold
+      link expr
+      fork test, impure-in(expression-parts(expr), walk)
+        hold
+          back facts()
+      save side, facts()
+      save stated, assumption-inequalities(state, calls, expr, false, side)
+      back both-facts(side, stated)
+    miss
+      back facts()
+
+task is-given
+  take statement, like statement
+  like boolean
+  mark private
+
+  sift statement
+    case hold
+      link expr
+      link hold-name-field
+      link proof-field
+      link at
+      link origin
+      sift origin
+        case some
+          link known
+          sift known
+            case given
+              back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# ---- the walk ----
+
+task leaves
+  take s, like statement
+  like boolean
+  mark private
+
+  sift s
+    case return
+      back true
+    case throw
+      back true
+    case break
+      back true
+    case continue
+      back true
+    case exit
+      back true
+    miss
+      back false
+
+# walk a body in order, threading what is known: none when the body's last statement leaves it, or what is known
+# carries a plain contradiction, so that no path through it reaches what follows
+task walk-holds
+  take state, like hold-state
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take body, like list, like statement
+  take assumptions, like list, like inequality
+  take walk, like hold-walk
+  like maybe, like list, like inequality
+
+  save current, forget(assumptions, names-in-flags(walk/volatile))
+  walk body
+    take statement
+    # what was known before this statement, for the effects that depend on it
+    save before, current
+    sift statement
+      case hold
+        fork test, is-given(statement)
+          hold
+            save current, both-facts(current, given-facts(state, calls, statement, walk))
+          miss
+            check-hold(state, calls, wc, statement, current, walk)
+      case let
+        link let-name
+        link init
+        save current, forget(current, one-name(let-name))
+        save defining, defining-equalities(state, calls, let-name, init, walk)
+        save aliased, binding-aliases(current, let-name, init, walk)
+        save current, both-facts(both-facts(current, defining), aliased)
+        holds-in-expression(state, calls, wc, init, walk)
+      case assign
+        link target
+        link op
+        link value
+        save root, everything()
+        sift root-of(target)
+          case some
+            link known-root
+            save root, known-root
+          case none
+            save nothing, 0
+        save is-variable, false
+        sift target
+          case variable
+            save is-variable, true
+          miss
+            save nothing, 0
+        save is-set, false
+        sift op
+          case set
+            save is-set, true
+          miss
+            save nothing, 0
+        # `x = x + c` does not lose what was known about x: every fact about the old value is rewritten
+        save shifted, make none
+        fork test, is-variable
+          hold
+            save shifted, shift-facts(state, calls, current, root, statement, walk)
+        save not-shifted, true
+        sift shifted
+          case some
+            link moved
+            save not-shifted, false
+          case none
+            save nothing, 0
+        # `x = e` where e reads the OLD x: the old x is renamed to a fresh atom, e's facts added, and the old projected out
+        save reread, false
+        fork test, and(and(not-shifted, is-set), and(is-variable, not(walk/volatile/has(root))))
+          hold
+            save reread, has-text(read-names(expression-parts(value)), root)
+        save done, false
+        fork test, reread
+          hold
+            save old, <{root}#was{state/mod-counter}>
+            save state/mod-counter, add(state/mod-counter, 1)
+            save side, facts()
+            sift to-linear(state, calls, value, side)
+              case some
+                link v
+                save now, atom-linear(root)
+                save new-value, renamed-linear(v, root, old)
+                save gathered, facts()
+                walk current
+                  take q
+                  push(gathered, renamed(q, root, old))
+                walk side
+                  take q
+                  push(gathered, renamed(q, root, old))
+                push(gathered, at-most(now, new-value))
+                push(gathered, at-least(now, new-value))
+                save current, forget(gathered, one-name(old))
+                holds-in-expression(state, calls, wc, value, walk)
+                save done, true
+              case none
+                save nothing, 0
+        fork test, not(done)
+          hold
+            save is-member, false
+            sift target
+              case member
+                save is-member, true
+              miss
+                save nothing, 0
+            fork test, is-member
+              hold
+                save start, handles()
+                push(start, statement-handle-of(statement))
+                save current, forget-writes(current, start)
+              miss
+                sift shifted
+                  case some
+                    link moved
+                    save current, moved
+                  case none
+                    save current, forget(current, one-name(root))
+            fork test, and(is-member, is-set)
+              hold
+                save current, both-facts(current, field-write-equalities(state, calls, target, value, walk))
+            fork test, and(and(not-shifted, is-set), is-variable)
+              hold
+                save current, both-facts(current, defining-equalities(state, calls, root, value, walk))
+            holds-in-expression(state, calls, wc, value, walk)
+      case expression
+        link expr
+        holds-in-expression(state, calls, wc, expr, walk)
+      case return
+        link value
+        sift value
+          case some
+            link returned
+            holds-in-expression(state, calls, wc, returned, walk)
+          case none
+            save nothing, 0
+      case if
+        link branches
+        link otherwise
+        # the conditions run before any branch: what their impure calls may change goes first
+        walk branches
+          take branch
+          save start, handles()
+          push(start, expression-handle-of(branch/cond))
+          save current, impure-effect(state, current, start, expression-parts(branch/cond), walk, state/list-pushes)
+        save negations, facts()
+        save ends, path-list()
+        walk branches
+          take branch
+          save side, facts()
+          save conditions, walk-conditions(state, calls, branch/cond, false, side, walk, both-facts(current, negations))
+          sift walk-holds(state, calls, wc, branch/body, both-facts(both-facts(both-facts(current, negations), side), conditions), walk)
+            case some
+              link end
+              push(ends, end)
+            case none
+              save nothing, 0
+          walk walk-conditions(state, calls, branch/cond, true, facts(), walk, both-facts(current, negations))
+            take q
+            push(negations, q)
+        sift otherwise
+          case some
+            link else-body
+            sift walk-holds(state, calls, wc, else-body, both-facts(current, negations), walk)
+              case some
+                link end
+                push(ends, end)
+              case none
+                save nothing, 0
+          case none
+            # no `else`: the path that took no branch reaches the join with every condition false
+            push(ends, both-facts(current, negations))
+        save written, written-names(statement-parts(statement))
+        fork test, is-equal(ends/length, 0)
+          hold
+            # NO path reaches the join: what follows is unreachable, and every goal there holds
+            save current, unreachable-facts()
+          miss
+            fork test, is-equal(ends/length, 1)
+              hold
+                save current, get(ends, 0)
+              miss
+                save augmented, path-list()
+                walk ends
+                  take end
+                  push(augmented, both-facts(end, signed-remainders(state, calls, end, facts())))
+                save joined, facts()
+                walk forget(current, written)
+                  take q
+                  fork test, not(mentions-atom(q))
+                    hold
+                      push(joined, q)
+                walk current
+                  take q
+                  fork test, stable(q, written)
+                    hold
+                      turn next
+                  save every, true
+                  walk augmented
+                    take path
+                    fork test, not(calls/proves(path, q))
+                      hold
+                        save every, false
+                        halt
+                  fork test, every
+                    hold
+                      push(joined, q)
+                walk join-facts(state, calls, ends, written)
+                  take q
+                  push(joined, q)
+                save current, joined
+      case while
+        link cond
+        link loop-body
+        # the loop body runs only when the condition holds, about the values at the top of THIS turn
+        save kept, keep-across-turns(state, calls, current, loop-body, walk)
+        save loop-before, both-facts(kept, bound-invariant(state, calls, current, statement, walk))
+        save side, facts()
+        save conditions, walk-conditions(state, calls, cond, false, side, walk, facts())
+        walk-holds(state, calls, wc, loop-body, both-facts(both-facts(loop-before, side), conditions), walk)
+        # a walk that never leaves a turn early ends only when its condition is false
+        save ended, facts()
+        fork test, not(exits-early(loop-body))
+          hold
+            save ended, walk-conditions(state, calls, cond, true, facts(), walk, facts())
+        save current, both-facts(loop-before, ended)
+      case for-each
+        link item
+        link index
+        link iterable
+        link loop-body
+        save forgotten, texts()
+        push(forgotten, item)
+        sift for-each-index-of(statement)
+          case some
+            link index-name
+            push(forgotten, index-name)
+          case none
+            save nothing, 0
+        save loop-before, forget(keep-across-turns(state, calls, current, loop-body, walk), forgotten)
+        walk-holds(state, calls, wc, loop-body, loop-before, walk)
+        save current, loop-before
+      case match
+        link subject
+        link cases
+        link otherwise
+        # whether any arm reaches the statement after the match
+        save reached, false
+        walk cases
+          take branch
+          save end, walk-holds(state, calls, wc, branch/body, forget(current, match-binds(branch)), walk)
+          sift end
+            case some
+              link end-facts
+              save reached, true
+            case none
+              save nothing, 0
+        sift otherwise
+          case some
+            link else-body
+            fork test, not(reached)
+              hold
+                sift walk-holds(state, calls, wc, else-body, current, walk)
+                  case some
+                    link end-facts
+                    save reached, true
+                  case none
+                    save nothing, 0
+          case none
+            save nothing, 0
+        fork test, reached
+          hold
+            save start, handles()
+            push(start, statement-handle-of(statement))
+            save current, forget-writes(current, start)
+          miss
+            save current, unreachable-facts()
+      case guard
+        link guard-body
+        link handler
+        # the body may stop at any statement and land in the handler, which knows only what was true before less
+        # whatever the body may have written
+        walk-holds(state, calls, wc, guard-body, current, walk)
+        save after, forget-writes(current, block-handles(guard-body))
+        sift handler
+          case some
+            link clause
+            walk-holds(state, calls, wc, clause/body, forget(after, one-name(clause/name)), walk)
+          case none
+            save nothing, 0
+        save start, handles()
+        push(start, statement-handle-of(statement))
+        save current, forget-writes(current, start)
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        # a nested task is its own scope: its holds are checked from its own parameters
+        save outer, state/param-forms
+        save widened, text-table()
+        walk outer/keys()
+          take key
+          save widened/{key}, outer/get(key)
+        save own, param-forms-of(fn-params)
+        walk own/keys()
+          take key
+          save widened/{key}, own/get(key)
+        save state/param-forms, widened
+        save inner, walk-with(walk, flags-of(local-names(statement)), flags-of(volatile-names(fn-body)), fresh-of(statement, walk), steady-params(fn-params, fn-body))
+        walk-holds(state, calls, wc, fn-body, facts(), inner)
+        save state/param-forms, outer
+      miss
+        save nothing, 0
+    # a pop off a list the facts show is not empty takes exactly one item off: the old length is the new one plus one
+    sift popped-path(statement, state/list-pops)
+      case some
+        link shrunk
+        save shrunk-key, <{length-prefix()}{shrunk}>
+        fork test, calls/proves(before, at-least(atom-linear(shrunk-key), constant-linear(1.0)))
+          hold
+            save moved, facts()
+            walk current
+              take q
+              save keep, true
+              walk q/linear/terms/keys()
+                take k
+                fork test, and(and(is-unequal(k, shrunk-key), is-state-atom(k)), not(starts-with(k, field-prefix())))
+                  hold
+                    save keep, false
+                    halt
+              fork test, not(keep)
+                hold
+                  turn next
+              push(moved, shifted-constant(q, shrunk-key, 1.0))
+            save current, moved
+            turn next
+      case none
+        save nothing, 0
+    sift pushed-path(state, statement, walk, state/list-pushes)
+      case some
+        link grown
+        save key, <{length-prefix()}{grown}>
+        save moved, facts()
+        walk current
+          take q
+          save keep, true
+          walk q/linear/terms/keys()
+            take k
+            fork test, and(and(is-unequal(k, key), is-state-atom(k)), and(not(starts-with(k, field-prefix())), not(apart(k, grown, walk))))
+              hold
+                save keep, false
+                halt
+          fork test, not(keep)
+            hold
+              turn next
+          push(moved, shifted-constant(q, key, -1.0))
+        # and whatever it was before, a list just pushed onto holds at least one item
+        push(moved, at-least(atom-linear(key), constant-linear(1.0)))
+        save current, moved
+      case none
+        save effects, true
+        sift statement
+          case function
+            save effects, false
+          case if
+            save effects, false
+          miss
+            save nothing, 0
+        fork test, effects
+          hold
+            save start, handles()
+            push(start, statement-handle-of(statement))
+            save current, impure-effect(state, current, start, statement-parts(statement), walk, state/list-pushes)
+  save leaves-last, false
+  fork test, is-above(body/length, 0)
+    hold
+      save leaves-last, leaves(get(body, subtract(body/length, 1)))
+  fork test, leaves-last
+    hold
+      back make none
+  walk current
+    take q
+    fork test, contradiction(q)
+      hold
+        back make none
+  back make(some, current)
+
+# what a condition lets a branch assume, with what the walk calls impure
+task walk-conditions
+  take state, like hold-state
+  take calls, like hold-calls
+  take cond, like expression
+  take negated, like boolean
+  take side, like list, like inequality
+  take walk, like hold-walk
+  take known, like list, like inequality
+  like list, like inequality
+
+  back
+    call condition-facts
+      read state
+      read calls
+      read cond
+      read negated
+      read side
+      task
+        take e, like expression
+        like boolean
+        back impure-in(expression-parts(e), walk)
+      read known
+
+task path-list
+  like list, like list, like inequality
+  mark private
+
+  back make list
+
+task text-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task one-name
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, name)
+  back out
+
+# a fact untouched by any branch: it reads no state and no written name
+task stable
+  take q, like inequality
+  take written, like list, like text
+  like boolean
+  mark private
+
+  fork test, mentions-atom(q)
+    hold
+      back false
+  walk q/linear/terms/keys()
+    take key
+    fork test, has-text(written, key-root(key))
+      hold
+        back false
+  back true
+
+# `{ ...q, linear: { ...q.linear, constant: constant + a * by } }` for the key's coefficient a, or q when it is zero
+task shifted-constant
+  take q, like inequality
+  take key, like text
+  take by, like float
+  like inequality
+  mark private
+
+  save a, 0.0
+  fork test, q/linear/terms/has(key)
+    hold
+      save a, q/linear/terms/get(key)
+  fork test, is-equal(a, 0.0)
+    hold
+      back q
+  save moved
+    make linear
+      bind terms, q/linear/terms
+      bind constant, add(q/linear/constant, multiply(a, by))
+  back
+    make inequality
+      bind linear, moved
+      bind strict, q/strict
+
+# a push to a name bound only to fresh lists leaves the length of every list that is not that one
+task apart
+  take k, like text
+  take grown, like text
+  take walk, like hold-walk
+  like boolean
+  mark private
+
+  sift after-prefix(k, length-prefix())
+    case some
+      link other
+      fork test, is-unequal(split(other, <.>)/length, 1)
+        hold
+          back false
+      fork test, or(is-equal(other, grown), not(walk/fresh/has(grown)))
+        hold
+          back false
+      back or(or(walk/fresh/has(other), walk/params/has(other)), and(walk/constants/has(other), not(walk/local/has(other))))
+    case none
+      back false
+
+# the old name renamed in a fact: its coefficient moved to the fresh atom, set after every other term
+task renamed
+  take q, like inequality
+  take root, like text
+  take old, like text
+  like inequality
+  mark private
+
+  fork test, not(q/linear/terms/has(root))
+    hold
+      back q
+  save made
+    make linear
+      bind terms, renamed-terms(q/linear/terms, root, old)
+      bind constant, q/linear/constant
+  back
+    make inequality
+      bind linear, made
+      bind strict, q/strict
+
+task renamed-linear
+  take v, like linear
+  take root, like text
+  take old, like text
+  like linear
+  mark private
+
+  fork test, not(v/terms/has(root))
+    hold
+      back v
+  back
+    make linear
+      bind terms, renamed-terms(v/terms, root, old)
+      bind constant, v/constant
+
+# `new Map(terms)`, the old name set at the end and the root deleted
+task renamed-terms
+  take terms, like hash, like text, like float
+  take root, like text
+  take old, like text
+  like hash, like text, like float
+  mark private
+
+  save out, number-terms()
+  walk terms/keys()
+    take key
+    save out/{key}, terms/get(key)
+  save out/{old}, terms/get(root)
+  out/remove(root)
+  back out
+
+task number-terms
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task match-binds
+  take branch, like match-case
+  like list, like text
+  mark private
+
+  back match-case-binds(branch)
+
+bind match-case-binds
+  take branch, like match-case
+  like list, like text
+  case node
+    text <($branch.binds ?? [])>
+  case browser
+    text <($branch.binds ?? [])>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <listOf()>
+
+bind for-each-index-text
+  take s, like statement
+  like text
+  case node
+    text <(($s as any).index ? ($s as any).index : '')>
+  case browser
+    text <(($s as any).index ? ($s as any).index : '')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+task for-each-index-of
+  take s, like statement
+  like maybe, like text
+  mark private
+
+  save name, for-each-index-text(s)
+  fork test, is-equal(name, <>)
+    hold
+      back make none
+  back make(some, name)
+
+task fresh-of
+  take statement, like statement
+  take walk, like hold-walk
+  like hash, like text, like boolean
+  mark private
+
+  save is-returning
+    task
+      take name, like text
+      like boolean
+      back walk/returning/has(name)
+  back flags-of(fresh-names(statement, is-returning))
+
+
+# the record form of each parameter typed by one
+task param-forms-of
+  take params, like list, like function-param
+  like hash, like text, like text
+
+  save out, text-table()
+  walk params
+    take p
+    sift p/type
+      case some
+        link known
+        sift known
+          case named
+            link named-name
+            save out/{p/name}, named-name
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  back out
+
+# ---- impure goals ----
+
+# does an expression call something impure OUTSIDE a masked value? `bitwise-and(x, k)` with a constant mask is read as
+# a fresh atom whatever x is, so an impure call inside x is never compared with anything
+task impure-outside-masks
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take walk, like hold-walk
+  like boolean
+
+  back impure-outside(state, calls, expression-handle-of(expr), walk)
+
+task impure-outside
+  take state, like hold-state
+  take calls, like hold-calls
+  take handle, like node-handle
+  take walk, like hold-walk
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      sift node
+        case call
+          link callee
+          link args
+          sift callee
+            case variable
+              link callee-name
+              fork test, and(is-equal(callee-name, <bitwise-and>), is-equal(args/length, 2))
+                hold
+                  sift to-linear(state, calls, get(args, 1), facts())
+                    case some
+                      link mask
+                      sift constant-of(mask)
+                        case some
+                          link k
+                          fork test, and(whole-mask(k), and(is-minimum(k, 0.0), is-maximum(k, 9007199254740991.0)))
+                            hold
+                              back false
+                        case none
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+              # a call to a task with a width-typed result is a fresh atom inside the width: its arguments still count
+              fork test, state/result-widths/has(callee-name)
+                hold
+                  walk args
+                    take a
+                    fork test, impure-outside(state, calls, expression-handle-of(a), walk)
+                      hold
+                        back true
+                  back false
+            miss
+              save nothing, 0
+          fork test, impure-in(expression-parts(without-call-arguments(node)), walk)
+            hold
+              back true
+        # an impure task named as a value, unless a local of the same name
+        case variable
+          link variable-name
+          fork test, and(and(walk/functions/has(variable-name), not(walk/pure/has(variable-name))), not(walk/local/has(variable-name)))
+            hold
+              back true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, skip-plain())
+    take child
+    fork test, impure-outside(state, calls, child, walk)
+      hold
+        back true
+  back false
+
+bind whole-mask
+  take value, like float
+  like boolean
+  case node
+    text <Number.isInteger($value)>
+  case browser
+    text <Number.isInteger($value)>
+  case rust
+    text <($value.fract() == 0.0)>
+  case swift
+    text <($value.truncatingRemainder(dividingBy: 1) == 0)>
+  case kotlin
+    text <($value % 1.0 == 0.0)>
+
+bind without-call-arguments
+  take call, like expression
+  like expression
+  case node
+    text <(\{ ...$call, args: [] \})>
+  case browser
+    text <(\{ ...$call, args: [] \})>
+  case rust
+    text <$call>
+  case swift
+    text <$call>
+  case kotlin
+    text <$call>
+
+# ---- the program ----
+
+# the extremum each name computes in the program: the intrinsics `max` and `min` when the program does not define a
+# task of that name, and any task whose whole body is `send back, call max (or min) a b` of its own two parameters in
+# order, or a native module's `min` / `max` handed them
+task extrema-of
+  take program, like list, like statement
+  like hash, like text, like text
+
+  save defined, statement-table()
+  save order, texts()
+  walk program
+    take s
+    sift s
+      case function
+        link fn-name
+        add-text(order, fn-name)
+        save defined/{fn-name}, s
+      miss
+        save nothing, 0
+  save table, text-table()
+  walk two-extrema()
+    take intrinsic
+    fork test, not(defined/has(intrinsic))
+      hold
+        save table/{intrinsic}, intrinsic
+  # twice, so a task over a task recognized in the first pass is found
+  save pass, 0
+  walk test
+    hook test, is-below(pass, 2)
+    hook hold
+      save pass, add(pass, 1)
+      walk order
+        take name
+        save fn, defined/get(name)
+        fork test, table/has(name)
+          hold
+            turn next
+        sift fn
+          case function
+            link fn-name
+            link fn-params
+            fork test, is-unequal(fn-params/length, 2)
+              hold
+                turn next
+            sift only-statement(fn)
+              case some
+                link only
+                sift only
+                  case return
+                    link value
+                    sift value
+                      case some
+                        link returned
+                        sift returned
+                          case call
+                            link callee
+                            link args
+                            fork test, is-unequal(args/length, 2)
+                              hold
+                                turn next
+                            save inner, <>
+                            sift callee
+                              case variable
+                                link callee-name
+                                fork test, table/has(callee-name)
+                                  hold
+                                    save inner, table/get(callee-name)
+                              miss
+                                save inner, host-extremum(callee, fn-params, defined)
+                            fork test, and(is-unequal(inner, <>), and(names-param(get(args, 0), get(fn-params, 0)), names-param(get(args, 1), get(fn-params, 1))))
+                              hold
+                                save table/{name}, inner
+                          miss
+                            save nothing, 0
+                      case none
+                        save nothing, 0
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+  back table
+
+task two-extrema
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, <max>)
+  push(out, <min>)
+  back out
+
+task statement-table
+  like hash, like text, like statement
+  mark private
+
+  back make hash
+
+task names-param
+  take e, like expression
+  take p, like function-param
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      link variable-name
+      back is-equal(variable-name, p/name)
+    miss
+      back false
+
+# a native module's `min` / `max`: the target is a module name, neither a task of the program nor one of the task's
+# own parameters
+task host-extremum
+  take callee, like expression
+  take params, like list, like function-param
+  take defined, like hash, like text, like statement
+  like text
+  mark private
+
+  sift callee
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          link at
+          back <>
+        case none
+          save nothing, 0
+      fork test, and(is-unequal(member-name, <min>), is-unequal(member-name, <max>))
+        hold
+          back <>
+      sift member-target
+        case variable
+          link target-name
+          fork test, defined/has(target-name)
+            hold
+              back <>
+          walk params
+            take p
+            fork test, is-equal(p/name, target-name)
+              hold
+                back <>
+          back member-name
+        miss
+          back <>
+    miss
+      back <>
+
+# each record form's number fields
+task number-fields-of
+  take program, like list, like statement
+  like hash, like text, like list, like text
+
+  save out, fields-table()
+  walk program
+    take s
+    sift s
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        save numbers, texts()
+        walk form-fields
+          take field
+          fork test, is-equal(field/type/kind, <number>)
+            hold
+              push(numbers, field/name)
+        save out/{form-name}, numbers
+      miss
+        save nothing, 0
+  back out
+
+task fields-table
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+# The lengths of the program's CONSTANT TABLES: a module-level `host` bound to a list literal, or built by a task that
+# promises its length, that nothing anywhere could change: nothing writes it, passes it to a call that is not pure, or
+# calls a method on it. Every task may assume those lengths from its first line
+task constant-table-lengths
+  take state, like hold-state
+  take calls, like hold-calls
+  take program, like list, like statement
+  take pure, like hash, like text, like boolean
+  take functions, like hash, like text, like boolean
+  like list, like inequality
+
+  save tables, number-table()
+  save order, texts()
+  walk program
+    take s
+    sift s
+      case let
+        link let-name
+        link init
+        link mutable
+        fork test, mutable
+          hold
+            turn next
+        sift init
+          case array
+            link items
+            add-text(order, let-name)
+            save tables/{let-name}, items/length
+          case call
+            link callee
+            sift callee
+              case variable
+                link callee-name
+                sift promised-length(state, calls, program, callee-name)
+                  case some
+                    link n
+                    add-text(order, let-name)
+                    save tables/{let-name}, n
+                  case none
+                    save nothing, 0
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  fork test, is-equal(order/length, 0)
+    hold
+      back facts()
+  save touched, texts()
+  save stack, block-handles(program)
+  save seen, fresh-node-seen()
+  save scalar, scalar-kind-list()
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save handle, stack/pop()
+      fork test, not(node-seen-first(seen, handle))
+        hold
+          turn next
+      sift handle
+        case statement-handle
+          sift node
+            case assign
+              link target
+              sift root-of(target)
+                case some
+                  link root
+                  add-text(touched, root)
+                case none
+                  save nothing, 0
+            # a let of the same name elsewhere is a different binding, and shadows the table where it is in scope
+            case let
+              link let-name
+              fork test, tables/has(let-name)
+                hold
+                  save top, false
+                  walk program
+                    take s
+                    fork test, same-statement(s, node)
+                      hold
+                        save top, true
+                        halt
+                  fork test, not(top)
+                    hold
+                      add-text(touched, let-name)
+            miss
+              save nothing, 0
+        case expression-handle
+          sift node
+            case call
+              link callee
+              link args
+              # a pure task of the program reads its arguments and never writes them, and when it answers a SCALAR it
+              # cannot hand the table back under another name. Anything else might
+              save reads, false
+              sift callee
+                case variable
+                  link callee-name
+                  save reads, and(and(functions/has(callee-name), pure/has(callee-name)), has-text(scalar, kind-of(expression-type(node))))
+                miss
+                  save nothing, 0
+              fork test, not(reads)
+                hold
+                  walk args
+                    take argument
+                    # one number read out of the table is not the table
+                    fork test, scalar-value(argument, flags())
+                      hold
+                        turn next
+                    sift argument
+                      case variable
+                        sift root-of(argument)
+                          case some
+                            link root
+                            add-text(touched, root)
+                          case none
+                            save nothing, 0
+                      case member
+                        sift root-of(argument)
+                          case some
+                            link root
+                            add-text(touched, root)
+                          case none
+                            save nothing, 0
+                      miss
+                        save nothing, 0
+              # a method on the table touches it, unless it only reads one position or reads the list whole
+              sift callee
+                case member
+                  link callee-target
+                  link callee-name
+                  link callee-index
+                  save reads-one, false
+                  sift callee-index
+                    case none
+                      fork test, is-array-typed(callee-target)
+                        hold
+                          save reads-one, or(or(is-equal(callee-name, <get>), is-equal(callee-name, <at>)), has-text(read-only-list-methods(), callee-name))
+                    case some
+                      link at
+                      save nothing, 0
+                  fork test, not(reads-one)
+                    hold
+                      sift root-of(callee)
+                        case some
+                          link root
+                          add-text(touched, root)
+                        case none
+                          save nothing, 0
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk node-children(handle, skip-plain())
+        take child
+        push(stack, child)
+  save out, facts()
+  walk order
+    take name
+    fork test, not(has-text(touched, name))
+      hold
+        walk literal-length(name, tables/get(name))
+          take q
+          push(out, q)
+  back out
+
+task number-table
+  like hash, like text, like float
+  mark private
+
+  back make hash
+
+task scalar-kind-list
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, <number>)
+  push(out, <float>)
+  push(out, <boolean>)
+  push(out, <string>)
+  push(out, <unit>)
+  push(out, <bytes>)
+  back out
+
+bind fresh-node-seen
+  like unknown
+  case node
+    text <new Set()>
+  case browser
+    text <new Set()>
+  case rust
+    text <std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <(NSMutableSet() as Any)>
+  case kotlin
+    text <(java.util.IdentityHashMap\<Any, Boolean\>() as Any)>
+
+bind node-seen-first
+  take seen, like unknown
+  take handle, like node-handle
+  like boolean
+  case node
+    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
+  case browser
+    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+# a task's promised constant length, `must back/length == K`, which its own check proves
+task promised-length
+  take state, like hold-state
+  take calls, like hold-calls
+  take program, like list, like statement
+  take name, like text
+  like maybe, like float
+  mark private
+
+  walk program
+    take s
+    sift s
+      case function
+        link fn-name
+        fork test, is-equal(fn-name, name)
+          hold
+            walk musts-of(s)
+              take m
+              save stated, assumption-inequalities(state, calls, m, false, facts())
+              sift exact-value(calls, stated, <{length-prefix()}back>)
+                case some
+                  link n
+                  back make(some, n)
+                case none
+                  save nothing, 0
+            back make none
+      miss
+        save nothing, 0
+  back make none
+
+bind musts-of
+  take s, like statement
+  like list, like expression
+  case node
+    text <(($s as any).must ?? [])>
+  case browser
+    text <(($s as any).must ?? [])>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <listOf()>
+
+# ---- the memo ----
+
+task json-list
+  take parts, like list, like text
+  like text
+  mark private
+
+  back <[{join(parts, <,>)}]>
+
+task json-texts
+  take values, like list, like text
+  like text
+  mark private
+
+  save parts, texts()
+  walk values
+    take value
+    push(parts, json-text(value))
+  back json-list(parts)
+
+# the names a task mentions that a set holds, sorted
+task mentioned
+  take names, like list, like text
+  take table, like hash, like text, like boolean
+  like text
+  mark private
+
+  save out, texts()
+  walk names
+    take name
+    fork test, table/has(name)
+      hold
+        push(out, name)
+  back json-texts(sort(out, utf16-order))
+
+task mentioned-names
+  take names, like list, like text
+  take keys, like list, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk names
+    take name
+    fork test, has-text(keys, name)
+      hold
+        push(out, name)
+  back sort(out, utf16-order)
+
+task keys-of-texts
+  take table, like hash, like text, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  walk table/keys()
+    take key
+    push(out, key)
+  back out
+
+# everything a task's walk reads, as one key: the task as checked, without its places, and every whole-program fact
+# about a name it mentions
+task hold-key
+  take state, like hold-state
+  take wc, like walk-calls
+  take statement, like statement
+  take given, like hold-program
+  take tables, like list, like inequality
+  take globals, like hash, like text, like boolean
+  take constants, like hash, like text, like boolean
+  like text
+
+  save found, key-text(statement)
+  save names, found/names
+  save parts, texts()
+  push(parts, json-text(found/text))
+  push(parts, mentioned(names, given/pure))
+  push(parts, mentioned(names, given/state-free))
+  push(parts, mentioned(names, given/keeping))
+  push(parts, mentioned(names, given/returning))
+  push(parts, mentioned(names, given/functions))
+  push(parts, mentioned(names, globals))
+  push(parts, mentioned(names, constants))
+  push(parts, mentioned(names, state/list-pushes))
+  push(parts, mentioned(names, state/list-pops))
+  save pairs, texts()
+  walk mentioned-names(names, keys-of-texts(state/extrema))
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-text(state/extrema/get(name)))))
+  push(parts, json-list(pairs))
+  save field-keys, texts()
+  walk state/number-fields/keys()
+    take key
+    push(field-keys, key)
+  save pairs, texts()
+  walk mentioned-names(names, field-keys)
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-texts(sort(state/number-fields/get(name), utf16-order)))))
+  push(parts, json-list(pairs))
+  save rule-keys, texts()
+  walk state/theorems/keys()
+    take key
+    push(rule-keys, key)
+  save pairs, texts()
+  walk mentioned-names(names, rule-keys)
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-text(theorem-json(state/theorems/get(name))))))
+  push(parts, json-list(pairs))
+  save pairs, texts()
+  walk mentioned-names(names, keys-of-texts(state/proven-theorems))
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-text(state/proven-theorems/get(name)))))
+  push(parts, json-list(pairs))
+  save rows, texts()
+  walk tables
+    take q
+    save reads, false
+    walk q/linear/terms/keys()
+      take term
+      fork test, has-text(names, key-root(term))
+        hold
+          save reads, true
+          halt
+    fork test, reads
+      hold
+        push(rows, row-key(q))
+  push(parts, json-texts(sort(rows, utf16-order)))
+  push(parts, boolean-json(given/origin-only))
+  save has-tally, false
+  sift given/tally
+    case some
+      link tally
+      save has-tally, true
+    case none
+      save nothing, 0
+  push(parts, boolean-json(has-tally))
+  push(parts, json-number(wc/proof-budget()))
+  back hash-text(json-list(parts))
+
+task two-texts
+  take a, like text
+  take b, like text
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, a)
+  push(out, b)
+  back out
+
+task boolean-json
+  take value, like boolean
+  like text
+  mark private
+
+  fork test, value
+    hold
+      back <true>
+  back <false>
+
+task kinds-copy
+  take tally, like hold-tally
+  like hash, like text, like delta-count
+  mark private
+
+  save out, delta-table()
+  walk tally/kinds/keys()
+    take kind
+    save count, tally/kinds/get(kind)
+    save made
+      make delta-count
+        bind total, count/total
+        bind proven, count/proven
+    save out/{kind}, made
+  back out
+
+task delta-table
+  like hash, like text, like delta-count
+  mark private
+
+  back make hash
+
+# what the walk added to the tally's kinds
+task kinds-added
+  take before, like hash, like text, like delta-count
+  take tally, like hold-tally
+  like hash, like text, like delta-count
+  mark private
+
+  save out, delta-table()
+  walk tally/kinds/keys()
+    take kind
+    save count, tally/kinds/get(kind)
+    save was-total, 0
+    save was-proven, 0
+    fork test, before/has(kind)
+      hold
+        save was-total, before/get(kind)/total
+        save was-proven, before/get(kind)/proven
+    fork test, or(is-unequal(count/total, was-total), is-unequal(count/proven, was-proven))
+      hold
+        save made
+          make delta-count
+            bind total, subtract(count/total, was-total)
+            bind proven, subtract(count/proven, was-proven)
+        save out/{kind}, made
+  back out
+
+# what a kept walk added, added again
+task replay-holds
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take delta, like hold-delta
+  take given, like hold-program
+
+  wc/replayed()
+  save at, 0
+  walk test
+    hook test, is-below(at, delta/uncertified)
+    hook hold
+      calls/note-uncertified()
+      save at, add(at, 1)
+  sift given/tally
+    case some
+      link tally
+      save tally/total, add(tally/total, delta/total)
+      save tally/proven, add(tally/proven, delta/proven)
+      walk delta/kinds/keys()
+        take kind
+        save count, delta/kinds/get(kind)
+        save tally/has-kinds, true
+        fork test, not(tally/kinds/has(kind))
+          hold
+            save fresh
+              make kind-count
+                bind total, 0
+                bind proven, 0
+            save tally/kinds/{kind}, fresh
+        save into, tally/kinds/get(kind)
+        save into/total, add(into/total, count/total)
+        save into/proven, add(into/proven, count/proven)
+    case none
+      save nothing, 0
+
+task remember-holds
+  take state, like hold-state
+  take key, like text
+  take delta, like hold-delta
+  mark private
+
+  # one answer per task text and context: past this the memo starts over rather than grow for a whole session
+  fork test, is-minimum(state/memo/keys()/length, 50000)
+    hold
+      save state/memo, memo-table()
+  save state/memo/{key}, delta
+
+task memo-table
+  like hash, like text, like hold-delta
+  mark private
+
+  back make hash
+
+# ---- every hold of a program ----
+
+task universal-facts
+  take statement, like statement
+  like list, like binder-fact
+  mark private
+
+  save out, binder-list()
+  walk universals-of(statement)
+    take u
+    save made
+      make binder-fact
+        bind binders, u/binders
+        bind expr, u/expr
+    push(out, made)
+  back out
+
+task tally-failed
+  take given, like hold-program
+  like number
+  mark private
+
+  sift given/tally
+    case some
+      link tally
+      back tally/failed/length
+    case none
+      back 0
+
+task tally-total
+  take given, like hold-program
+  like number
+  mark private
+
+  sift given/tally
+    case some
+      link tally
+      back tally/total
+    case none
+      back 0
+
+task tally-proven
+  take given, like hold-program
+  like number
+  mark private
+
+  sift given/tally
+    case some
+      link tally
+      back tally/proven
+    case none
+      back 0
+
+task tally-kinds
+  take given, like hold-program
+  like hash, like text, like delta-count
+  mark private
+
+  sift given/tally
+    case some
+      link tally
+      back kinds-copy(tally)
+    case none
+      back delta-table()
+
+task small-tasks-of
+  take program, like list, like statement
+  like hash, like text, like small-task
+  mark private
+
+  save out, small-table()
+  walk program
+    take s
+    sift s
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, or(is-theorem(s), is-unequal(fn-body/length, 1))
+          hold
+            turn next
+        sift get(fn-body, 0)
+          case return
+            link value
+            sift value
+              case some
+                link returned
+                save made
+                  make small-task
+                    bind params, names-of-params(fn-params)
+                    bind body, returned
+                save out/{fn-name}, made
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task small-table
+  like hash, like text, like small-task
+  mark private
+
+  back make hash
+
+bind is-theorem
+  take s, like statement
+  like boolean
+  case node
+    text <Boolean(($s as any).theorem)>
+  case browser
+    text <Boolean(($s as any).theorem)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+bind result-width-of
+  take s, like statement
+  like text
+  case node
+    text <(($s as any).resultWidth ?? '')>
+  case browser
+    text <(($s as any).resultWidth ?? '')>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+task result-kind
+  take s, like statement
+  like text
+  mark private
+
+  sift s
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      back kind-of(fn-result)
+    miss
+      back <>
+
+# every `hold` of a program checked, each task's body walked from its parameters' facts
+task check-program-holds
+  take state, like hold-state
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take given, like hold-program
+  like list, like diagnostic
+
+  save diagnostics, diagnostic-list()
+  save program, given/program
+  save tables, constant-table-lengths(state, calls, program, given/pure, given/functions)
+  save state/extrema, extrema-of(program)
+  save state/number-fields, number-fields-of(program)
+  save state/list-pops, list-pops-of(program)
+  save state/list-pushes, list-pushes-of(program)
+  save globals, flags()
+  save constants, flags()
+  walk program
+    take s
+    sift s
+      case let
+        link let-name
+        link init
+        link mutable
+        save globals/{let-name}, true
+        fork test, not(mutable)
+          hold
+            save constants/{let-name}, true
+      miss
+        save nothing, 0
+  # a rule from another unit is its stub, which carries the rule's `show hold` as its body
+  save rules, statement-table()
+  walk program
+    take s
+    fork test, is-theorem(s)
+      hold
+        sift s
+          case function
+            link fn-name
+            save rules/{fn-name}, with-stub-body(s)
+          miss
+            save nothing, 0
+  save state/theorems, rules
+  save state/program, program
+  # the tasks whose result is width-typed, under the switch: a call to one is a value inside the width
+  save widths, text-table()
+  fork test, wc/width-ranges()
+    hold
+      walk program
+        take s
+        sift s
+          case function
+            link fn-name
+            save width, result-width-of(s)
+            fork test, is-unequal(width, <>)
+              hold
+                save widths/{fn-name}, width
+          miss
+            save nothing, 0
+  save state/result-widths, widths
+  # and the width-typed fields: a read of one is a value inside the width, as every construction owes
+  save state/field-widths, text-table()
+  fork test, wc/width-ranges()
+    hold
+      save state/field-widths, wc/field-widths(program)
+  # a pure task that returns a NUMBER: arithmetic is about numbers
+  save pure-tasks, flags()
+  walk program
+    take s
+    sift s
+      case function
+        link fn-name
+        fork test, and(given/pure/has(fn-name), is-equal(result-kind(s), <number>))
+          hold
+            save pure-tasks/{fn-name}, true
+      miss
+        save nothing, 0
+  save state/pure-tasks, pure-tasks
+  save state/aliases, transparent-aliases(program)
+  save state/recurrences, recurrences-of(program)
+  save cased, flags()
+  walk program
+    take s
+    sift s
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, is-above(form-variants/length, 0)
+          hold
+            save cased/{form-name}, true
+      miss
+        save nothing, 0
+  save state/cased-forms, cased
+  save state/small-tasks, small-tasks-of(program)
+  # the pass limited to the file's own tasks keeps what the unlimited pass before it proved
+  fork test, not(given/limited)
+    hold
+      save state/proven-theorems, proven-table()
+      save state/kernel-only, flags()
+  walk given/kernel-proven
+    take name
+    fork test, not(state/proven-theorems/has(name))
+      hold
+        save state/proven-theorems/{name}, <integer>
+        save state/kernel-only/{name}, true
+  # and how its own unit proved it, which it carries as a fact
+  walk program
+    take s
+    fork test, is-carried-rule(s)
+      hold
+        sift s
+          case function
+            link fn-name
+            fork test, stub-fact(s, <proven-field>)
+              hold
+                save state/proven-theorems/{fn-name}, <field>
+              miss
+                fork test, stub-fact(s, <proven-integer>)
+                  hold
+                    save state/proven-theorems/{fn-name}, <integer>
+                  miss
+                    fork test, not(state/proven-theorems/has(fn-name))
+                      hold
+                        save state/proven-theorems/{fn-name}, <integer>
+                        save state/kernel-only/{fn-name}, true
+          miss
+            save nothing, 0
+  walk program
+    take statement
+    sift statement
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, and(given/limited, not(given/only/has(fn-name)))
+          hold
+            turn next
+        fork test, given/skip/has(fn-name)
+          hold
+            turn next
+        check-task(state, calls, wc, given, statement, tables, globals, constants, diagnostics)
+      case hold
+        # a top-level `hold`, proven with no assumptions
+        fork test, given/limited
+          hold
+            turn next
+        save module-walk
+          make hold-walk
+            bind diagnostics, diagnostics
+            bind file, given/file
+            bind pure, given/pure
+            bind functions, given/functions
+            bind local, flags()
+            bind volatile, flags()
+            bind origin-only, given/origin-only
+            bind tally, make none
+            bind task, make none
+            bind globals, globals
+            bind state-free, given/state-free
+            bind keeping, given/keeping
+            bind fresh, flags()
+            bind returning, flags()
+            bind params, flags()
+            bind constants, flags()
+            bind scalars, flags()
+        save one, statements()
+        push(one, statement)
+        walk-holds(state, calls, wc, one, facts(), module-walk)
+      miss
+        save nothing, 0
+  back diagnostics
+
+task diagnostic-list
+  like list, like diagnostic
+  mark private
+
+  back make list
+
+task proven-table
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task check-task
+  take state, like hold-state
+  take calls, like hold-calls
+  take wc, like walk-calls
+  take given, like hold-program
+  take statement, like statement
+  take tables, like list, like inequality
+  take globals, like hash, like text, like boolean
+  take constants, like hash, like text, like boolean
+  take diagnostics, like list, like diagnostic
+  mark private
+
+  sift statement
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      save theorem, is-theorem(statement)
+      # base assumptions from parameter refinements, widths, and the constant tables a parameter does not shadow
+      save base, facts()
+      walk fn-params
+        take p
+        fork test, is-natural-param(p)
+          hold
+            push(base, at-least(atom-linear(p/name), constant-linear(0.0)))
+      fork test, wc/width-ranges()
+        hold
+          walk fn-params
+            take p
+            walk calls/width-facts(p/name, param-width(p))
+              take q
+              push(base, q)
+      save shadowed, names-of-params(fn-params)
+      walk tables
+        take q
+        save shaded, false
+        walk q/linear/terms/keys()
+          take k
+          fork test, has-text(shadowed, key-root(k))
+            hold
+              save shaded, true
+              halt
+        fork test, not(shaded)
+          hold
+            push(base, q)
+      save applied, flags()
+      fork test, theorem
+        hold
+          walk fn-params
+            take p
+            fork test, is-function-type(state, p/type)
+              hold
+                save applied/{p/name}, true
+      save state/applied-functions, applied
+      save state/universal-hypotheses, binder-list()
+      fork test, theorem
+        hold
+          save state/universal-hypotheses, universal-facts(statement)
+      save field-only, and(theorem, has-universals-of(statement))
+      save integer-names, flags()
+      fork test, not(field-only)
+        hold
+          walk fn-params
+            take p
+            fork test, or(is-natural-param(p), is-number-param(p))
+              hold
+                save integer-names/{p/name}, true
+      save state/integer-names, integer-names
+      save state/integer-tasks, flags()
+      fork test, not(field-only)
+        hold
+          save state/integer-tasks, state/pure-tasks
+      save scope, flags()
+      fork test, theorem
+        hold
+          walk fn-params
+            take p
+            save scope/{p/name}, true
+          walk fn-body
+            take s
+            sift s
+              case let
+                link let-name
+                save scope/{let-name}, true
+              miss
+                save nothing, 0
+      save state/theorem-scope, scope
+      save forms, param-forms-of(fn-params)
+      sift fn-result
+        case some
+          link result-type
+          sift result-type
+            case named
+              link named-name
+              save back-name, <back>
+              save forms/{back-name}, named-name
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save state/param-forms, forms
+      save texts-table, flags()
+      walk fn-params
+        take p
+        fork test, is-equal(kind-of(p/type), <string>)
+          hold
+            save texts-table/{p/name}, true
+      fork test, is-equal(kind-of(fn-result), <string>)
+        hold
+          save back-name, <back>
+          save texts-table/{back-name}, true
+      save state/text-params, texts-table
+      # A TASK WHOSE EVERY HOLD WAS PROVEN BEFORE, ASKED THE SAME QUESTION, IS PROVEN AGAIN
+      save key, <>
+      fork test, not(theorem)
+        hold
+          save key, hold-key(state, wc, statement, given, tables, globals, constants)
+          fork test, state/memo/has(key)
+            hold
+              replay-holds(calls, wc, state/memo/get(key), given)
+              back
+      save before-diagnostics, diagnostics/length
+      save before-failed, tally-failed(given)
+      save before-total, tally-total(given)
+      save before-proven, tally-proven(given)
+      save before-kinds, tally-kinds(given)
+      save before-uncertified, wc/uncertified-count()
+      # a theorem's quantified functions are pure applications, not locals that may hold anything
+      save local, flags()
+      walk local-names(statement)
+        take name
+        fork test, not(state/applied-functions/has(name))
+          hold
+            save local/{name}, true
+      save is-returning
+        task
+          take name, like text
+          like boolean
+          back given/returning/has(name)
+      save task-walk
+        make hold-walk
+          bind diagnostics, diagnostics
+          bind file, given/file
+          bind pure, given/pure
+          bind functions, given/functions
+          bind local, local
+          bind volatile, flags-of(volatile-names(fn-body))
+          bind origin-only, given/origin-only
+          bind tally, given/tally
+          bind task, task-of(statement)
+          bind globals, globals
+          bind state-free, given/state-free
+          bind keeping, given/keeping
+          bind fresh, flags-of(fresh-names(statement, is-returning))
+          bind returning, given/returning
+          bind params, steady-params(fn-params, fn-body)
+          bind constants, constants
+          bind scalars, scalar-locals(fn-body, fn-params)
+      walk-holds(state, calls, wc, fn-body, base, task-walk)
+      # kept only when the walk refused nothing: its answer is then counts alone
+      fork test, and(is-unequal(key, <>), and(is-equal(diagnostics/length, before-diagnostics), is-equal(tally-failed(given), before-failed)))
+        hold
+          save delta-kinds, delta-table()
+          sift given/tally
+            case some
+              link tally
+              save delta-kinds, kinds-added(before-kinds, tally)
+            case none
+              save nothing, 0
+          save delta
+            make hold-delta
+              bind total, subtract(tally-total(given), before-total)
+              bind proven, subtract(tally-proven(given), before-proven)
+              bind kinds, delta-kinds
+              bind uncertified, subtract(wc/uncertified-count(), before-uncertified)
+          remember-holds(state, key, delta)
+    miss
+      save nothing, 0
