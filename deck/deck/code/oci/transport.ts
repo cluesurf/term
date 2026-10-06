@@ -31,8 +31,13 @@ const ACCEPT_MANIFEST = [
 // The common registry limit on a manifest, and so the most any well-behaved registry will hand back.
 export const MANIFEST_LIMIT = 4 * 1024 * 1024
 
-// Above this a blob is uploaded in PATCH chunks rather than one PUT.
-const DEFAULT_CHUNK_SIZE = 16 * 1024 * 1024
+// Up to this a blob is uploaded in one PUT, and above it in PATCH chunks. GHCR takes a 17 MB PUT
+const MONOLITHIC_LIMIT = 16 * 1024 * 1024
+
+// The size of one PATCH chunk. GHCR refuses a chunk over 4 MiB (`416 REQUESTED_RANGE_NOT_SATISFIABLE: the request
+// body is too large and exceeds the maximum permissible limit of 4.00MiB`), which is how the 17.4 MB windows-x64
+// payload of @term/code 2.7.4 failed to push, twice, when the chunk was the same 16 MiB as the limit above
+const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024
 
 const MAX_REDIRECTS = 5
 
@@ -140,7 +145,10 @@ export function httpTransport(input: {
   credentials?: () => Promise<OciCredentials | undefined>
   insecure?: boolean
   fetch?: Fetch
+  // the size of one PATCH chunk, and, when `monolithic` is not given, also the size above which a blob is chunked
   chunkSize?: number
+  // the size up to which a blob goes up in one PUT
+  monolithic?: number
   retries?: number
   env?: NodeJS.ProcessEnv
 }): OciTransport {
@@ -151,6 +159,7 @@ export function httpTransport(input: {
   const origin = new URL(base).origin
   const doFetch: Fetch = input.fetch ?? fetch
   const chunkSize = input.chunkSize ?? DEFAULT_CHUNK_SIZE
+  const monolithic = input.monolithic ?? input.chunkSize ?? MONOLITHIC_LIMIT
   const retries = input.retries ?? 4
   const tokens = new Map<string, TokenEntry>()
   let credentials: Promise<OciCredentials | undefined> | undefined
@@ -429,7 +438,7 @@ export function httpTransport(input: {
     await opened.body?.cancel()
     let location = uploadLocation(opened, base)
 
-    if (args.bytes.length > chunkSize) {
+    if (args.bytes.length > monolithic) {
       for (let at = 0; at < args.bytes.length; at += chunkSize) {
         const part = args.bytes.subarray(at, Math.min(at + chunkSize, args.bytes.length))
         const patched = await send(location, {
@@ -453,7 +462,7 @@ export function httpTransport(input: {
 
     const finish = new URL(location)
     finish.searchParams.set('digest', args.digest)
-    const whole = args.bytes.length <= chunkSize
+    const whole = args.bytes.length <= monolithic
     const closed = await send(finish, {
       method: 'PUT',
       scope,

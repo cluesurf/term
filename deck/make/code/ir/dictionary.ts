@@ -357,9 +357,10 @@ export function passDictionaries(program: Program): Program {
   }
 }
 
+// a position is a line and a column (parser/diagnostic.tree); the `offset` this carried was read by nothing
 const zeroSpan = {
-  start: { line: 0, column: 0, offset: 0 },
-  end: { line: 0, column: 0, offset: 0 },
+  start: { line: 0, column: 0 },
+  end: { line: 0, column: 0 },
 }
 
 // walk every expression in a body, invoking `visit` on each (callee and args are visited after the node itself, so a

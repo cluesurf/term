@@ -939,30 +939,21 @@ function applicationKey(expr: Expression): string | undefined {
   }
 
   const args: string[] = []
+  const variables = new Set<string>()
 
   for (const arg of expr.args) {
     const poly = expandPolynomial(arg)
 
-    if (!poly) {
-      return undefined
-    }
+    if (poly) {
+      args.push(
+        [...poly]
+          .filter(([, c]) => c !== 0)
+          .map(([key, c]) => `${c}*${monomialVars(key).join('.')}`)
+          .sort()
+          .join('+') || '0',
+      )
 
-    args.push(
-      [...poly]
-        .filter(([, c]) => c !== 0)
-        .map(([key, c]) => `${c}*${monomialVars(key).join('.')}`)
-        .sort()
-        .join('+') || '0',
-    )
-  }
-
-  const key = `@apply:${expr.callee.name}(${args.join(',')})`
-
-  if (!applications.has(key)) {
-    const variables = new Set<string>()
-
-    for (const arg of expr.args) {
-      for (const monomial of expandPolynomial(arg)!.keys()) {
+      for (const monomial of poly.keys()) {
         for (const v of monomialVars(monomial)) {
           if (isApplication(v)) {
             applicationVariables(v).forEach(inner => variables.add(inner))
@@ -971,12 +962,82 @@ function applicationKey(expr: Expression): string | undefined {
           }
         }
       }
+    } else if (pureTasks.has(expr.callee.name) || recurrences.has(expr.callee.name)) {
+      // AN ARGUMENT THAT IS NO NUMBER, of a task's call (`count(plus(a, b))`, a natural): spelled as printed, braced so it
+      // cannot read as a polynomial, and the names it mentions recorded for the induction that asks which atoms read n
+      args.push(`{${printExpression(arg)}}`)
+      namesIn(arg).forEach(name => variables.add(name))
+    } else {
+      return undefined
     }
+  }
 
+  const key = `@apply:${expr.callee.name}(${args.join(',')})`
+
+  if (!applications.has(key)) {
     applications.set(key, { function: expr.callee.name, variables })
   }
 
   return key
+}
+
+// does the goal call a pure task (not a function mark, not a recurrence) that no fact in hand mentions
+function unconstrainedCall(goal: Expression, facts: Inequality[]): boolean {
+  const mentioned = new Set(facts.flatMap(f => [...f.linear.terms.keys()].flatMap(k => [k, ...monomialVars(k)])))
+  let found = false
+
+  const visit = (e: Expression): void => {
+    if (found) {
+      return
+    }
+
+    if (e.form === 'call') {
+      const name = e.callee.form === 'variable' ? e.callee.name : ''
+
+      if (pureTasks.has(name) && !appliedFunctions.has(name) && !recurrences.has(name)) {
+        const key = applicationKey(e)
+
+        found = key === undefined || !mentioned.has(key)
+      }
+
+      e.args.forEach(visit)
+    } else if (e.form === 'binary') {
+      visit(e.left)
+      visit(e.right)
+    } else if (e.form === 'unary') {
+      visit(e.operand)
+    }
+  }
+
+  visit(goal)
+
+  return found
+}
+
+// the variable names an expression reads, as written
+function namesIn(e: Expression): Set<string> {
+  const out = new Set<string>()
+
+  const visit = (x: Expression): void => {
+    if (x.form === 'variable') {
+      out.add(x.name)
+    } else if (x.form === 'binary') {
+      visit(x.left)
+      visit(x.right)
+    } else if (x.form === 'unary') {
+      visit(x.operand)
+    } else if (x.form === 'call') {
+      x.args.forEach(visit)
+    } else if (x.form === 'record') {
+      x.fields.forEach(f => visit(f.value))
+    } else if (x.form === 'member') {
+      visit(x.target)
+    }
+  }
+
+  visit(e)
+
+  return out
 }
 
 function expandPolynomial(expr: Expression): Poly | null {
@@ -3631,7 +3692,11 @@ function checkProgramHolds(
     ),
   )
   holdsProgram = program
-  pureTasks = pure
+  // a pure task that returns a NUMBER: arithmetic is about numbers, and `plus(a, b)` over naturals returns a form, whose
+  // calls as numeric unknowns would turn a goal about forms into a wrong claim of falsity
+  pureTasks = new Set(
+    program.flatMap(s => (s.form === 'function' && pure.has(s.name) && s.result?.kind === 'number' ? [s.name] : [])),
+  )
   holdsAliases = transparentAliases(program)
   recurrences = recurrencesOf(program)
   casedForms = new Set(program.flatMap(s => (s.form === 'record-type' && s.variants.length > 0 ? [s.name] : [])))
@@ -5182,6 +5247,13 @@ function walkHolds(
               verdict = true
             }
           }
+        }
+
+        // A CALL NO FACT SPEAKS OF is an unknown the goal cannot be decided over: `double-checked(n) == n + n`, with the
+        // task's body a branch, is out of reach, not shown false. The call is an atom only so a fact a `cite` brings
+        // about it can be used (`applicationKey`), so with no such fact the verdict is the one before atoms existed
+        if (verdict === false && unconstrainedCall(statement.expr, given)) {
+          verdict = null
         }
 
         // and through the equations of the recursive tasks it applies, with no induction: one step of a sum,

@@ -103,115 +103,19 @@ function typeKey(type: Type | undefined): string {
   }
 }
 
-// visit every call expression in a body, in place
+// visit every call expression in a body, in place, each before the expressions inside it. Every place an expression
+// can stand in a body is reached, as compile/node-rewrite.tree reaches them: until 2026-10-05 a generic call inside a
+// closure, a guarded block, a member's index, a record's positional values or a loop's contract was left unspecialized,
+// and a monomorphic backend met a generic it cannot write
 function visitCalls(
   body: Statement[],
   onCall: (node: Extract<Expression, { form: 'call' }>) => void,
 ): void {
-  const expr = (node: Expression): void => {
-    switch (node.form) {
-      case 'call':
-        onCall(node)
-        expr(node.callee)
-        node.args.forEach(expr)
-        break
-      case 'binary':
-        expr(node.left)
-        expr(node.right)
-        break
-      case 'unary':
-        expr(node.operand)
-        break
-      case 'member':
-        expr(node.target)
-        break
-      case 'await':
-        expr(node.expr)
-        break
-      case 'template':
-        for (const part of node.parts) {
-          if (part.form === 'value') {
-            expr(part.value)
-          }
-        }
-
-        break
-      case 'array':
-        node.items.forEach(expr)
-        break
-      case 'map':
-        node.entries.forEach(e => {
-          expr(e.key)
-          expr(e.value)
-        })
-        break
-      case 'record':
-        node.fields.forEach(f => expr(f.value))
-        break
-      case 'conditional':
-        node.branches.forEach(b => {
-          expr(b.cond)
-          expr(b.value)
-        })
-
-        if (node.otherwise) {
-          expr(node.otherwise)
-        }
-
-        break
-      default:
-        break
+  visitExpressions(body, node => {
+    if (node.form === 'call') {
+      onCall(node)
     }
-  }
-
-  const stmt = (node: Statement): void => {
-    switch (node.form) {
-      case 'let':
-        expr(node.init)
-        break
-      case 'assign':
-        expr(node.target)
-        expr(node.value)
-        break
-      case 'expression':
-      case 'hold':
-        expr(node.expr)
-        break
-      case 'return':
-        if (node.value) {
-          expr(node.value)
-        }
-
-        break
-      case 'throw':
-        expr(node.value)
-        break
-      case 'while':
-        expr(node.cond)
-        node.body.forEach(stmt)
-        break
-      case 'for-each':
-        expr(node.iterable)
-        node.body.forEach(stmt)
-        break
-      case 'if':
-        node.branches.forEach(b => {
-          expr(b.cond)
-          b.body.forEach(stmt)
-        })
-        node.otherwise?.forEach(stmt)
-        break
-      case 'match':
-        expr(node.subject)
-        node.cases.forEach(c => c.body.forEach(stmt))
-        node.otherwise?.forEach(stmt)
-        break
-      default:
-        break
-    }
-  }
-
-  body.forEach(stmt)
+  })
 }
 
 // every expression in a body, for in-place rewrites (type substitution, trait-call resolution)

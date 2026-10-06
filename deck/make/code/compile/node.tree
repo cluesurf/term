@@ -1001,6 +1001,52 @@ task statement-span
     case tell
       back span
 
+# every expression's type, the checker's answer where it has given one: a pass reads it here, since a field is read
+# off a union only inside an arm
+task expression-type
+  take one, like expression
+  like maybe, like type
+
+  sift one
+    case integer
+      back type
+    case float
+      back type
+    case boolean
+      back type
+    case string
+      back type
+    case template
+      back type
+    case unit
+      back type
+    case null
+      back type
+    case variable
+      back type
+    case binary
+      back type
+    case unary
+      back type
+    case call
+      back type
+    case array
+      back type
+    case map
+      back type
+    case record
+      back type
+    case member
+      back type
+    case await
+      back type
+    case closure
+      back type
+    case conditional
+      back type
+    case hole
+      back type
+
 # ---- the view (component) AST ----
 
 form view-attribute

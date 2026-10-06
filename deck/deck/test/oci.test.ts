@@ -174,6 +174,26 @@ describe('OCI transport', () => {
     expect(server.leakedAuth).toEqual([])
   })
 
+  // GHCR refuses a PATCH chunk over 4 MiB, and the 17.4 MB windows-x64 payload of @term/code 2.7.4 failed on exactly
+  // that while the chunk was 16 MiB. With the defaults a blob up to 16 MiB goes up in one PUT, and a larger one in
+  // chunks of 4 MiB, so 17 MB is five
+  it('uploads a blob over 16 MiB in chunks of at most 4 MiB, the most GHCR takes', async () => {
+    const defaults = httpTransport({ host: server.host, credentials: async () => ({ kind: 'basic', username: 'tester', password: 'secret' }), retries: 0 })
+    const payload = Buffer.alloc(17 * 1000 * 1000, 3)
+    const before = server.requests.filter(request => request.method === 'PATCH').length
+
+    expect(await defaults.putBlob({ repository: 't/big', digest: sha256Digest(payload), bytes: payload })).toBe('uploaded')
+    expect(server.requests.filter(request => request.method === 'PATCH').length - before).toBe(5)
+    // compared as bytes: `toEqual` on 17 MB walks it key by key and runs the worker out of memory
+    expect((await defaults.getBlob({ repository: 't/big', digest: sha256Digest(payload), limit: 32 << 20 })).equals(payload)).toBe(true)
+
+    const below = Buffer.alloc(15 * 1000 * 1000, 4)
+    const patches = server.requests.filter(request => request.method === 'PATCH').length
+
+    expect(await defaults.putBlob({ repository: 't/big', digest: sha256Digest(below), bytes: below })).toBe('uploaded')
+    expect(server.requests.filter(request => request.method === 'PATCH').length).toBe(patches)
+  })
+
   it('mounts across repositories without sending bytes', async () => {
     const bytes = Buffer.from('mount me')
     await transport.putBlob({ repository: 't/a', digest: sha256Digest(bytes), bytes })

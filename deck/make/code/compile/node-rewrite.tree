@@ -12,9 +12,13 @@
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/maybe
   find maybe
+
+load ../parser/diagnostic
+  find span
 
 load ./node
   find closure-param
@@ -22,10 +26,39 @@ load ./node
   find dock-component
   find dock-route
   find expression
+  find expression-type
   find field-value
   find form-extend
   find statement
+  find type
   find view-node
+
+# a trait method, and a trait declaring it, in the order the traits and their methods are declared (ir/dictionary.tree)
+form method-mask
+  link method, like text
+  link mask, like text
+
+# a bounded generic's dictionary parameter: the generic, the trait bounding it, and the parameter's name
+form dictionary-param
+  link generic, like text
+  link mask, like text
+  link name, like text
+
+# one bound of a task bounded by a trait
+form dictionary-bound
+  link task, like text
+  link generic, like text
+  link mask, like text
+
+# a bounded task's parameter types as written, before its dictionary parameters were added
+form task-param-types
+  link task, like text
+  link types, like list, like maybe, like type
+
+# the instance dictionaries the call sites name, `<mask>:<target>`, each once, in the order first named
+form dictionary-needs
+  mark shared
+  link keys, like list, like text
 
 # what a rewrite changes
 form rewrite-rule
@@ -34,6 +67,20 @@ form rewrite-rule
   case rename-tasks
     link names, like list, like text
     link suffix, like text
+  # inside a task bounded by a trait: a call of a trait method on a value of a bounded generic goes through that
+  # generic's dictionary parameter (ir/dictionary.tree)
+  case trait-calls
+    link method-masks, like list, like method-mask
+    link params, like list, like dictionary-param
+  # every call of a bounded task passes one dictionary per bound: the enclosing task's own parameter where the type
+  # argument is still its bounded generic, the instance's constant where it is a form with an instance, a hole else
+  case dictionary-arguments
+    link bounds, like list, like dictionary-bound
+    link originals, like list, like task-param-types
+    link enclosing, like text
+    link params, like list, like dictionary-param
+    link instances, like list, like text
+    link needed, like dictionary-needs
 
 # a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
 bind copy-program
@@ -556,6 +603,10 @@ task rule-expression
     case rename-tasks
       save renamed, names
       back rename-in-expression(given, renamed, suffix)
+    case trait-calls
+      back trait-call(given, method-masks, params)
+    case dictionary-arguments
+      back with-dictionaries(given, rule)
 
 # what a rule does to one statement, once its blocks are rewritten
 task rule-statement
@@ -573,6 +624,8 @@ task rule-statement
               save one/name, <{name}{suffix}>
         miss
           back one
+      back one
+    miss
       back one
 
 # a reference the checker bound to a renamed task, and a call's callee of that name: a dock is reached only through a
@@ -620,3 +673,265 @@ task binds-task
           back false
     case none
       back false
+
+# a trait-method call on a value of a bounded generic, through the generic's dictionary parameter: `m(x, ...)` becomes
+# `<dictionary>/m(x, ...)`, at the callee's own place
+task trait-call
+  take given, like expression
+  take method-masks, like list, like method-mask
+  take dictionaries, like list, like dictionary-param
+  like expression
+  mark private
+
+  sift given
+    case call
+      save target, callee
+      save called, <>
+      save callee-span, span
+      sift target
+        case variable
+          save called, name
+          save callee-span, span
+        miss
+          back given
+      fork test, is-equal(args/length, 0)
+        hold
+          back given
+      save receiver, expression-type(get(args, 0))
+      save generic, <>
+      sift receiver
+        case some
+          link received
+          sift received
+            case named
+              save generic, name
+            miss
+              back given
+        case none
+          back given
+      # the first trait declaring the method, in declaration order, that bounds this generic
+      save dictionary, <>
+      walk method-masks
+        take pair
+        fork test, and(is-equal(dictionary, <>), is-equal(pair/method, called))
+          hold
+            walk dictionaries
+              take one
+              fork test, and(is-equal(dictionary, <>), and(is-equal(one/generic, generic), is-equal(one/mask, pair/mask)))
+                hold
+                  save dictionary, one/name
+      fork test, is-equal(dictionary, <>)
+        hold
+          back given
+      save holder
+        make expression/variable
+          bind name, dictionary
+          bind span, callee-span
+      save through
+        make expression/member
+          bind target, holder
+          bind name, called
+          bind span, callee-span
+      save given/callee, through
+      back given
+    miss
+      back given
+
+# the generic names a declared type binds against a concrete one, the first binding of each kept (the shape rule the
+# monomorphizer uses)
+form type-bindings
+  mark shared
+  link names, like list, like text
+  link types, like list, like type
+
+task match-type
+  take declared, like maybe, like type
+  take actual, like maybe, like type
+  take generics, like list, like text
+  take found, like type-bindings
+  like void
+  mark private
+
+  sift declared
+    case some
+      link written
+      sift actual
+        case some
+          link given
+          match-known(written, given, generics, found)
+        case none
+          back
+    case none
+      back
+
+task match-known
+  take written, like type
+  take given, like type
+  take generics, like list, like text
+  take found, like type-bindings
+  like void
+  mark private
+
+  sift written
+    case named
+      fork test, has-text(generics, name)
+        hold
+          fork test, not(has-text(found/names, name))
+            hold
+              push(found/names, name)
+              push(found/types, given)
+    case array
+      save written-element, element
+      sift given
+        case array
+          match-known(written-element, element, generics, found)
+        miss
+          back
+    case map
+      save written-key, key
+      save written-value, value
+      sift given
+        case map
+          match-known(written-key, key, generics, found)
+          match-known(written-value, value, generics, found)
+        miss
+          back
+    case function
+      save written-params, params
+      save written-result, result
+      sift given
+        case function
+          walk written-params
+            take param
+            take at
+            fork test, is-below(at, params/length)
+              hold
+                match-known(param, get(params, at), generics, found)
+          match-known(written-result, result, generics, found)
+        miss
+          back
+    miss
+      back
+
+# a call of a bounded task, given one dictionary per bound
+task with-dictionaries
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift rule
+    case dictionary-arguments
+      sift given
+        case call
+          save called, <>
+          sift callee
+            case variable
+              save called, name
+            miss
+              back given
+          save task-bounds, make list
+          save generic-names, make list
+          walk bounds
+            take bound
+            fork test, is-equal(bound/task, called)
+              hold
+                push(task-bounds, bound)
+                push(generic-names, bound/generic)
+          fork test, is-equal(task-bounds/length, 0)
+            hold
+              back given
+
+          save found
+            make type-bindings
+              bind names, make list
+              bind types, make list
+          walk originals
+            take original
+            fork test, is-equal(original/task, called)
+              hold
+                walk original/types
+                  take declared
+                  take at
+                  fork test, is-below(at, args/length)
+                    hold
+                      match-type(declared, expression-type(get(args, at)), generic-names, found)
+
+          save handed, make list
+          walk args
+            take arg
+            push(handed, arg)
+          walk task-bounds
+            take bound
+            save concrete, make none
+            walk found/names
+              take bound-name
+              take at
+              fork test, is-equal(bound-name, bound/generic)
+                hold
+                  save chosen, get(found/types, at)
+                  save concrete, make(some, chosen)
+            push(handed, dictionary-argument(bound/mask, concrete, rule, span))
+          save given/args, handed
+          back given
+        miss
+          back given
+    miss
+      back given
+
+# the dictionary a call passes for one bound: the enclosing task's own parameter when the type argument is still one
+# of its bounded generics (forwarding through a generic call chain), the instance's constant when it is a form with an
+# instance, and a hole otherwise, so the gap shows rather than an argument going missing
+task dictionary-argument
+  take mask, like text
+  take concrete, like maybe, like type
+  take rule, like rewrite-rule
+  take at, like span
+  like expression
+  mark private
+
+  save missing
+    make expression/hole
+      bind name, <trait-{mask}>
+      bind span, at
+  sift rule
+    case dictionary-arguments
+      sift concrete
+        case some
+          link given
+          sift given
+            case named
+              save target, name
+              save forwarded, false
+              walk bounds
+                take bound
+                fork test, and(is-equal(bound/task, enclosing), and(is-equal(bound/generic, target), is-equal(bound/mask, mask)))
+                  hold
+                    save forwarded, true
+              fork test, forwarded
+                hold
+                  walk params
+                    take param
+                    fork test, and(is-equal(param/generic, target), is-equal(param/mask, mask))
+                      hold
+                        back
+                          make expression/variable
+                            bind name, param/name
+                            bind span, at
+              save key, <{mask}:{target}>
+              fork test, has-text(instances, key)
+                hold
+                  fork test, not(has-text(needed/keys, key))
+                    hold
+                      push(needed/keys, key)
+                  back
+                    make expression/variable
+                      bind name, <trait-dict-{mask}-{target}>
+                      bind span, at
+              back missing
+            miss
+              back missing
+        case none
+          back missing
+    miss
+      back missing

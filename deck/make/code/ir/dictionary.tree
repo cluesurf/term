@@ -1,0 +1,346 @@
+# Trait-instance dictionary passing: the lowering that makes generic trait-bounded dispatch real. A generic function
+# bounded by a trait (`head t, need sizer`) cannot resolve a trait-method call (`call measure / read x`, x: t) to a
+# concrete instance, because the concrete type is only known at the call site. This pass threads the instance as a
+# hidden value (the "dictionary"): each bounded function gains one dictionary parameter per bound, every trait-method
+# call inside its body becomes a member call through that dictionary, and every call site passes the concrete instance
+# (or forwards its own dictionary when the argument is still bound by the same trait). The result is ordinary code --
+# records of functions, member calls, extra parameters -- so every backend emits it through machinery it already has,
+# with no per-backend trait support. Concrete dispatch (a trait-method call on a known form) is already resolved by
+# the checker, so this pass only fires when a program actually has trait-bounded generic functions; otherwise it
+# returns the program untouched. See note/research/vibe/computation/plans/05-ir.md and code/check/traits.ts. Pure
+# and browser-safe.
+#
+# Ported from ir/dictionary.ts (self-hosting, 2026-10-05). Its two body rewrites are compile/node-rewrite's
+# `trait-calls` and `dictionary-arguments` rules. The program it is handed is the caller's own copy, rewritten where
+# it stands, as the original did.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ../compile/node
+  find expression
+  find field-value
+  find function-param
+  find statement
+  find type
+
+load ../compile/node-rewrite
+  find dictionary-bound
+  find dictionary-needs
+  find dictionary-param
+  find method-mask
+  find rewrite-program
+  find rewrite-rule
+  find task-param-types
+
+# one instance's dictionary: its key `<mask>:<target>`, and each method beside the task implementing it
+form instance-dictionary
+  link key, like text
+  link mask, like text
+  link target, like text
+  link methods, like list, like text
+  link tasks, like list, like text
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the bounds of a task: each generic carrying a `need` that names a trait, in the order written
+task bounds-of
+  take one, like statement
+  take masks, like list, like text
+  like list, like dictionary-bound
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      save task, name
+      walk generics
+        take generic
+        save need, generic/need
+        fork test, and(is-unequal(need, <>), has-text(masks, need))
+          hold
+            save bound
+              make dictionary-bound
+                bind task, task
+                bind generic, generic/name
+                bind mask, need
+            push(out, bound)
+    miss
+      back out
+  back out
+
+task zero-span
+  like span
+  mark private
+
+  save at
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, at
+      bind end, at
+
+task pass-dictionaries
+  take program, like list, like statement
+  like list, like statement
+
+  # masks: name and declared method names, in order
+  save mask-names, make list
+  save method-masks, make list
+  walk program
+    take one
+    sift one
+      case mask
+        push(mask-names, name)
+        walk methods
+          take method
+          save pair
+            make method-mask
+              bind method, method
+              bind mask, name
+          push(method-masks, pair)
+      miss
+        turn next
+  fork test, is-equal(mask-names/length, 0)
+    hold
+      back program
+
+  # the functions this pass exists for: generics carrying a real trait bound. With none, the program is left exactly
+  # as it was (the common case: stdlib defines masks and concrete instances but no trait-bounded generics).
+  save bounds, make list
+  save originals, make list
+  walk program
+    take one
+    save own, bounds-of(one, mask-names)
+    fork test, is-above(own/length, 0)
+      hold
+        walk own
+          take bound
+          push(bounds, bound)
+        sift one
+          case function
+            save types, make list
+            walk params
+              take param
+              push(types, param/type)
+            save written
+              make task-param-types
+                bind task, name
+                bind types, types
+            push(originals, written)
+          miss
+            turn next
+  fork test, is-equal(bounds/length, 0)
+    hold
+      back program
+
+  # instance dictionaries: `<mask>:<target>` -> each method and the task implementing it. An instance's method bodies
+  # were already desugared to tasks tagged with `method = { form: target, name }`
+  save instances, make list
+  save instance-keys, make list
+  walk program
+    take one
+    sift one
+      case instance
+        save method-names, make list
+        save task-names, make list
+        walk methods
+          take method
+          save found, implementing(program, target, method)
+          fork test, is-unequal(found, <>)
+            hold
+              push(method-names, method)
+              push(task-names, found)
+        save entry
+          make instance-dictionary
+            bind key, <{mask}:{target}>
+            bind mask, mask
+            bind target, target
+            bind methods, method-names
+            bind tasks, task-names
+        push(instances, entry)
+        push(instance-keys, entry/key)
+      miss
+        turn next
+
+  # 1. give each bounded function its dictionary parameters and rewrite the trait-method calls in its body
+  save all-params, make list
+  save steps, make list
+  walk program
+    take one
+    save own, bounds-of(one, mask-names)
+    fork test, is-equal(own/length, 0)
+      hold
+        push(steps, one)
+        turn next
+    save dictionaries, make list
+    sift one
+      case function
+        save params-out, make list
+        walk params
+          take param
+          push(params-out, param)
+        walk own
+          take bound
+          save param-name, <trait-arg-{bound/mask}-{bound/generic}>
+          save dictionary
+            make dictionary-param
+              bind generic, bound/generic
+              bind mask, bound/mask
+              bind name, param-name
+          push(dictionaries, dictionary)
+          push(all-params, dictionary)
+          save kind
+            make type/named
+              bind name, bound/mask
+          save added
+            make function-param
+              bind name, param-name
+              bind type, make(some, kind)
+          push(params-out, added)
+        save one/params, params-out
+        save rule
+          make trait-calls
+            bind method-masks, method-masks
+            bind params, dictionaries
+        save one/body, rewrite-program(body, rule)
+        push(steps, one)
+      miss
+        push(steps, one)
+
+  # 2. rewrite every call site of a bounded function to pass the dictionary argument(s)
+  save needed
+    make dictionary-needs
+      bind keys, make list
+  save rewritten, make list
+  walk steps
+    take one
+    sift one
+      case function
+        save own-params, make list
+        walk all-params
+          take param
+          walk bounds
+            take bound
+            fork test, and(is-equal(bound/task, name), and(is-equal(bound/generic, param/generic), is-equal(bound/mask, param/mask)))
+              hold
+                fork test, not(has-param(own-params, param))
+                  hold
+                    push(own-params, param)
+        save rule
+          make dictionary-arguments
+            bind bounds, bounds
+            bind originals, originals
+            bind enclosing, name
+            bind params, own-params
+            bind instances, instance-keys
+            bind needed, needed
+        save one/body, rewrite-program(body, rule)
+        push(rewritten, one)
+      miss
+        push(rewritten, one)
+
+  # 3. materialise the instance dictionaries actually used, as top-level constants. They reference the (hoisted)
+  # instance-method functions, so placing them ahead of everything is safe on every backend.
+  save out, make list
+  walk needed/keys
+    take key
+    save at, -1
+    walk instances
+      take entry
+      take index
+      fork test, is-equal(entry/key, key)
+        hold
+          save at, index
+    fork test, is-below(at, 0)
+      hold
+        turn next
+    save entry, get(instances, at)
+    save fields, make list
+    walk entry/methods
+      take method
+      take index
+      save implemented
+        make expression/variable
+          bind name, get(entry/tasks, index)
+          bind span, zero-span()
+      save field
+        make field-value
+          bind name, method
+          bind value, implemented
+      push(fields, field)
+    save record
+      make expression/record
+        bind name, entry/mask
+        bind span, zero-span()
+        bind fields, fields
+    save constant
+      make statement/let
+        bind name, <trait-dict-{entry/mask}-{entry/target}>
+        bind mutable, false
+        bind span, zero-span()
+        bind init, record
+    push(out, constant)
+  walk rewritten
+    take one
+    push(out, one)
+  back out
+
+task has-param
+  take params, like list, like dictionary-param
+  take param, like dictionary-param
+  like boolean
+  mark private
+
+  walk params
+    take one
+    fork test, and(is-equal(one/generic, param/generic), is-equal(one/mask, param/mask))
+      hold
+        back true
+  back false
+
+# the task implementing an instance's method: the first tagged with the instance's form and the method's name
+task implementing
+  take program, like list, like statement
+  take target, like text
+  # not `method`: a task's own field of that name would hide it inside the task's arm
+  take method-name, like text
+  like text
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        sift read(method)
+          case some
+            link of
+            fork test, and(is-equal(of/form, target), is-equal(of/name, method-name))
+              hold
+                back name
+          case none
+            turn next
+      miss
+        turn next
+  back <>
