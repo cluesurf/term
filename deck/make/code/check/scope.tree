@@ -1,0 +1,626 @@
+# MODULE SCOPE FOR FORMS (module-scope-0003). A form belongs to the module that defines it and reaches another module
+# only through `load ... / find` (note/term/project/module-scope.md). The build merges every module into one flat
+# program, so two forms of one name from two files met in it and the one merged last took the other's place: a field
+# read off the wrong record, a variant matched against the wrong enum, with the error surfacing in a third file.
+#
+# So every form (and mask) name defined in two or more files is split BY FILE before anything reads a form by name:
+# each file's takes a name of its own (`<name>__in<g>_<k>`), the entry file's keeping the original, and with it its
+# methods (`<form>_<method>` functions, whose `method.form` names it). Then every reference in a file is bound by WHAT
+# THAT FILE IMPORTED: its own form, else the one its `find` reached (or that file's `bear` chain). A reference is any
+# place a form is named:
+#
+#   a named type      a `like` on a parameter, a result, a field, a let, a closure, an `extend` base, an alias
+#   a construction    `make <form>`
+#   a raise           `halt <form>`
+#   a method          the form a method belongs to
+#   a mask instance   the mask, and the form it is worn on
+#
+# A reference whose imports reach exactly one of them is that one. One that reaches NONE (unimported), or SEVERAL (an
+# import whose `bear` chain re-exports two forms of the name), gets what the flat program gave it: the definition merged
+# last, among those it reaches when it reaches any. So nothing that builds today stops building: the generated `bind`
+# package names forms it never imports thousands of times, and imports `function` through a chain that reaches three
+# (`pnpm term:scope-census`). The strict step (module-scope-0006) refuses both. A type parameter of the enclosing
+# definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
+#
+# Ported from check/scope.ts (self-hosting, 2026-10-05). Its three reflective walks are three rules of
+# compile/node-rewrite.tree (`separate-case`, `bind-forms`, `shared-cases`), which enter every type, and each statement
+# is handed back rewritten (D1). The original moved first: it takes the import scope as a list (compile/import-scope)
+# and answers the program beside the diagnostics. A match over a caught exception is found as the rewrite passes the
+# guards around it, where the original marked such matches by identity before renaming.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load ../parser/diagnostic
+  find diagnostic
+  find span
+
+load ./import-scope
+  find file-scope
+  find targets-of
+  find scope-of
+  find gather-exported
+  find new-file-set
+  find holds-file
+
+load ../compile/node
+  find statement
+  find statement-span
+
+load ../compile/node-rewrite
+  find rewrite-statement
+  find rewrite-rule
+  find rebind-form
+  find case-apart
+  find case-owner
+  find case-sharing
+  find file-order
+  find form-binding
+  find form-group
+  find renamed-file
+  find shared-case
+
+form scope-result
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+# a name and the program indices of its definitions, in program order
+form named-indices
+  link name, like text
+  link indices, like list, like number
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the type parameters a top-level statement declares, which shadow every form of the same name inside it
+task type-parameters
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      walk generics
+        take generic
+        push(out, generic/name)
+    case record-type
+      walk params
+        take param
+        push(out, param)
+    miss
+      save nothing, 0
+  back out
+
+task defined-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      back name
+    case mask
+      back name
+    miss
+      back <>
+
+task with-name
+  take one, like statement
+  take renamed, like text
+  like statement
+  mark private
+
+  sift one
+    case record-type
+      save one/name, renamed
+    case mask
+      save one/name, renamed
+    miss
+      save nothing, 0
+  back one
+
+# where `name` is in `entries`, -1 when it is not
+task place-of
+  take entries, like list, like named-indices
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk entries
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+task place-of-case
+  take entries, like list, like shared-case
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk entries
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# a method's form and an instance's mask and target, renamed where `rename` says (the method's task takes the form's
+# new name, `<form>_<method>`)
+task with-owner-renamed
+  take one, like statement
+  take from, like text
+  take to, like text
+  like statement
+  mark private
+
+  sift one
+    case function
+      sift method
+        case some
+          link owner
+          fork test, is-equal(owner/form, from)
+            hold
+              save owner/form, to
+              save one/method, make(some, owner)
+              save one/name, <{to}_{owner/name}>
+        case none
+          save nothing, 0
+    case instance
+      fork test, is-equal(mask, from)
+        hold
+          save one/mask, to
+      fork test, is-equal(target, from)
+        hold
+          save one/target, to
+    miss
+      save nothing, 0
+  back one
+
+# A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
+# construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
+# and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
+# form's case takes a name of its own (`<name>__form`), unless it is the entry file's, and the case keeps its name, which
+# reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a method
+# and a mask instance can only mean the form; a construction means the case where its file defines that case's form or
+# imports it, the form where its file defines or imports the form, and otherwise whichever's fields the construction
+# names, the case where that does not decide
+task separate-case-names
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take entry, like text
+  like list, like statement
+  mark private
+
+  save cases, make list
+  save forms, make list
+  save index, 0
+  walk program
+    take one
+    save file, file-of(one)
+    fork test, is-unequal(file, <>)
+      hold
+        sift one
+          case record-type
+            walk variants
+              take variant
+              save field-names, make list
+              walk variant/fields
+                take field
+                push(field-names, field/name)
+              save owner
+                make case-owner
+                  bind file, file
+                  bind form, name
+                  bind fields, field-names
+              save at, place-of-case(cases, variant/name)
+              fork test, is-below(at, 0)
+                hold
+                  save owners, make list
+                  push(owners, owner)
+                  save entry-made
+                    make shared-case
+                      bind name, variant/name
+                      bind owners, owners
+                  push(cases, entry-made)
+                miss
+                  save known, get(cases, at)
+                  push(known/owners, owner)
+                  save cases/{at}, known
+          miss
+            save nothing, 0
+        save defined, defined-name(one)
+        fork test, is-unequal(defined, <>)
+          hold
+            save at, place-of(forms, defined)
+            fork test, is-below(at, 0)
+              hold
+                save indices, make list
+                push(indices, index)
+                save made
+                  make named-indices
+                    bind name, defined
+                    bind indices, indices
+                push(forms, made)
+              miss
+                save known, get(forms, at)
+                push(known/indices, index)
+                save forms/{at}, known
+    save index, add(index, 1)
+
+  walk forms
+    take form
+    save at, place-of-case(cases, form/name)
+    fork test, is-below(at, 0)
+      hold
+        turn next
+    save found-case, get(cases, at)
+    save owners, found-case/owners
+    save in-entry, false
+    save form-files, make list
+    save form-fields, make list
+    walk form/indices
+      take i
+      save defining, get(program, i)
+      save home, file-of(defining)
+      fork test, is-equal(home, entry)
+        hold
+          save in-entry, true
+      fork test, not(has-text(form-files, home))
+        hold
+          push(form-files, home)
+      sift defining
+        case record-type
+          walk fields
+            take field
+            fork test, not(has-text(form-fields, field/name))
+              hold
+                push(form-fields, field/name)
+        miss
+          save nothing, 0
+    fork test, in-entry
+      hold
+        turn next
+    save renamed, <{form/name}__form>
+    walk form/indices
+      take i
+      save program/{i}, with-name(get(program, i), renamed)
+    save position, 0
+    walk program
+      take one
+      save file, file-of(one)
+      fork test, has-text(type-parameters(one), form/name)
+        hold
+          save position, add(position, 1)
+          turn next
+      save owned, with-owner-renamed(one, form/name, renamed)
+      save apart
+        make case-apart
+          bind name, form/name
+          bind renamed, renamed
+          bind file, file
+          bind scopes, scopes
+          bind owners, owners
+          bind form-files, form-files
+          bind form-fields, form-fields
+          bind caught, make list
+      save rule
+        make separate-case
+          bind apart, apart
+      save program/{position}, rewrite-statement(owned, rule)
+      save position, add(position, 1)
+  back program
+
+# the file of each form or mask name defined in two or more files, and every reference to one bound by import
+task bind-forms-by-import
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take entry, like text
+  like scope-result
+
+  save program, separate-case-names(program, scopes, entry)
+
+  # each name's definitions by file, files in the order first met, and each file's last place in the program
+  save by-name, make list
+  save files-of, make list
+  save last-file, make list
+  save order, make list
+  save index, 0
+  walk program
+    take one
+    save file, file-of(one)
+    fork test, is-unequal(file, <>)
+      hold
+        save placed
+          make file-order
+            bind file, file
+            bind index, index
+        save order, with-order(order, placed)
+        save defined, defined-name(one)
+        fork test, is-unequal(defined, <>)
+          hold
+            save at, place-of(by-name, defined)
+            fork test, is-below(at, 0)
+              hold
+                save indices, make list
+                push(indices, index)
+                save made
+                  make named-indices
+                    bind name, defined
+                    bind indices, indices
+                push(by-name, made)
+                save files, make list
+                push(files, file)
+                push(files-of, files)
+                push(last-file, file)
+              miss
+                save known, get(by-name, at)
+                push(known/indices, index)
+                save by-name/{at}, known
+                save files, get(files-of, at)
+                fork test, not(has-text(files, file))
+                  hold
+                    push(files, file)
+                save files-of/{at}, files
+                save last-file/{at}, file
+    save index, add(index, 1)
+
+  save groups, make list
+  save at, 0
+  walk by-name
+    take named
+    save files, get(files-of, at)
+    fork test, is-above(files/length, 1)
+      hold
+        save sorted, sort-texts(files)
+        save renamed, make list
+        save k, 0
+        walk sorted
+          take file
+          save given, <{named/name}__in0_{k}>
+          fork test, is-equal(file, entry)
+            hold
+              save given, named/name
+          save entry-renamed
+            make renamed-file
+              bind file, file
+              bind renamed, given
+          push(renamed, entry-renamed)
+          save k, add(k, 1)
+        save group
+          make form-group
+            bind name, named/name
+            bind files, sorted
+            bind renamed, renamed
+            bind last, get(last-file, at)
+        push(groups, group)
+        # every definition takes its file's name for the form
+        walk named/indices
+          take i
+          save defining, get(program, i)
+          save program/{i}, with-name(defining, renamed-for(renamed, file-of(defining)))
+    save at, add(at, 1)
+
+  save position, 0
+  walk program
+    take one
+    save file, file-of(one)
+    save shadowed, type-parameters(one)
+    save binding
+      make form-binding
+        bind groups, groups
+        bind file, file
+        bind shadowed, shadowed
+        bind scopes, scopes
+        bind order, order
+    save owned, with-owners-bound(one, binding)
+    save rule
+      make bind-forms
+        bind binding, binding
+    save program/{position}, rewrite-statement(owned, rule)
+    save position, add(position, 1)
+
+  save program, bind-shared-cases(program, scopes)
+  back
+    make scope-result
+      bind program, program
+      bind diagnostics, make list
+
+task renamed-for
+  take renamed, like list, like renamed-file
+  take file, like text
+  like text
+  mark private
+
+  walk renamed
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/renamed
+  back <>
+
+# the order with `placed` as its file's last place: a file met again moves to where it was first met, as a map's set
+# keeps a key's place
+task with-order
+  take order, like list, like file-order
+  take placed, like file-order
+  like list, like file-order
+  mark private
+
+  save at, 0
+  walk order
+    take one
+    fork test, is-equal(one/file, placed/file)
+      hold
+        save order/{at}, placed
+        back order
+    save at, add(at, 1)
+  push(order, placed)
+  back order
+
+# a method, by the form it belongs to (the function's own name follows), and a mask instance's mask and the form it is
+# worn on, each bound where it names a form two files define
+task with-owners-bound
+  take one, like statement
+  take binding, like form-binding
+  like statement
+  mark private
+
+  sift one
+    case function
+      sift method
+        case some
+          link owner
+          sift bound-name(binding, owner/form)
+            case some
+              link bound
+              save owner/form, bound
+              save one/method, make(some, owner)
+              save one/name, <{bound}_{owner/name}>
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+    case instance
+      sift bound-name(binding, mask)
+        case some
+          link bound
+          save one/mask, bound
+        case none
+          save nothing, 0
+      sift bound-name(binding, target)
+        case some
+          link bound
+          save one/target, bound
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back one
+
+# the name `name` binds to where it is a form two files define, written with no alias
+task bound-name
+  take binding, like form-binding
+  take name, like text
+  like maybe, like text
+  mark private
+
+  back rebind-form(binding, name, make none)
+
+# file names in order, by code point where the original's `sort()` ordered UTF-16 units: the two agree below U+D800,
+# which every path is
+task sort-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  back sort(values, from-texts)
+
+# A CASE NAME TWO MODULES' FORMS SHARE. `make number` in node.tree, which builds its own `type`'s case, built
+# surface.tree's `primitive` case of the same name once both were in one program. Renaming the case per file would
+# change what the output carries, since a case's tag IS its name, so the construction is told its owner instead
+# (`owner`, which the checker reads first), ONLY where nothing else could be meant: the construction's file defines one
+# owner and imports no other owner's form
+task bind-shared-cases
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  like list, like statement
+  mark private
+
+  save owners, make list
+  walk program
+    take one
+    save file, file-of(one)
+    fork test, is-unequal(file, <>)
+      hold
+        sift one
+          case record-type
+            walk variants
+              take variant
+              save owner
+                make case-owner
+                  bind file, file
+                  bind form, name
+                  bind fields, make list
+              save at, place-of-case(owners, variant/name)
+              fork test, is-below(at, 0)
+                hold
+                  save listed, make list
+                  push(listed, owner)
+                  save made
+                    make shared-case
+                      bind name, variant/name
+                      bind owners, listed
+                  push(owners, made)
+                miss
+                  save known, get(owners, at)
+                  push(known/owners, owner)
+                  save owners/{at}, known
+          miss
+            save nothing, 0
+  save shared, make list
+  walk owners
+    take named
+    save files, make list
+    walk named/owners
+      take owner
+      fork test, not(has-text(files, owner/file))
+        hold
+          push(files, owner/file)
+    fork test, is-above(files/length, 1)
+      hold
+        push(shared, named)
+  fork test, is-equal(shared/length, 0)
+    hold
+      back program
+  save position, 0
+  walk program
+    take one
+    save sharing
+      make case-sharing
+        bind shared, shared
+        bind file, file-of(one)
+        bind scopes, scopes
+    save rule
+      make shared-cases
+        bind sharing, sharing
+    save program/{position}, rewrite-statement(one, rule)
+    save position, add(position, 1)
+  back program

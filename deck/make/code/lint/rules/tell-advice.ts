@@ -16,8 +16,9 @@
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
-import { GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
+import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 
 type RecordType = Extract<Statement, { form: 'record-type' }>
 type Tell = Extract<Statement, { form: 'tell' }>
@@ -101,7 +102,7 @@ function facts(context: LintContext): Facts {
       return undefined
     }
 
-    return GENERIC_EXCEPTIONS.has(name) ? name : above
+    return isGenericException(name) ? name : above
   }
 
   for (const name of records.keys()) {

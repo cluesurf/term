@@ -1,0 +1,104 @@
+# A build's import scope as data: for each file, what each of its `find`s reached, and the files it re-exports with
+# `bear`. compile/load.ts builds it as maps (`ImportScope`); compile.ts hands it to a Term pass as a list of
+# `file-scope`, in the map's order, each map a list of `scope-find`.
+#
+# Written for self-hosting, 2026-10-05: check/private.tree and check/scope (through compile/node-rewrite.tree) read it.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
+# one entry of a file's finds: a name, the files it was found in, and where its first `find` line is
+form scope-find
+  link name, like text
+  link targets, like list, like text
+  link at
+    like maybe, like span
+    need false
+
+# a file's import scope. `aliases`: the files each ALIAS a find names reached (`find to-number, name decimal-to-number`).
+# `plain`: the files a name was found in WITHOUT an alias, what a reference written as the bare name reaches
+form file-scope
+  link file, like text
+  link finds, like list, like scope-find
+  link bears, like list, like text
+  link aliases
+    like list, like scope-find
+    need false
+  link plain
+    like list, like scope-find
+    need false
+
+# files gathered so far, each once
+form file-set
+  mark shared
+  link files, like list, like text
+
+task new-file-set
+  like file-set
+
+  back
+    make file-set
+      bind files, make list
+
+task holds-file
+  take set, like file-set
+  take file, like text
+  like boolean
+
+  walk set/files
+    take one
+    fork test, is-equal(one, file)
+      hold
+        back true
+  back false
+
+# the scope of one file, if the build has one
+task scope-of
+  take scopes, like list, like file-scope
+  take file, like text
+  like maybe, like file-scope
+
+  walk scopes
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back make(some, one)
+  back make none
+
+# the files one entry of a find list names, if it has that entry
+task targets-of
+  take entries, like list, like scope-find
+  take name, like text
+  like maybe, like list, like text
+
+  walk entries
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one/targets)
+  back make none
+
+# a file and every file its `bear` chain re-exports, added to `into`
+task gather-exported
+  take scopes, like list, like file-scope
+  take file, like text
+  take into, like file-set
+
+  fork test, holds-file(into, file)
+    hold
+      back
+  push(into/files, file)
+  sift scope-of(scopes, file)
+    case some
+      link own
+      walk own/bears
+        take next
+        gather-exported(scopes, next, into)
+    case none
+      back

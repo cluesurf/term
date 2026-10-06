@@ -1,5 +1,9 @@
 
-# Set: a collection of unique values, backed by the native map for O(1) membership.
+# Set: a collection of unique values, backed by the native map for O(1) membership. It KEEPS INSERTION ORDER, on every
+# backend, because the map does (note/term/optimize/meaning.md, question 1): `to-list` and a walk give the values in the
+# order they were first inserted, and a value inserted again stays where it was. So `set` is the ordered set as well,
+# and `list/ordered-set` is the same structure under a second name (note/term/plan/decisions-2026-10.md, D13).
+# test/stdlib/ordered-collections.ts holds the order on all four backends.
 
 mark stable
 
@@ -41,12 +45,17 @@ form set
         read self/items
         read item
 
+  # how many values it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, read self/items/size
+
+  # the older name of `length`
   task size
     take self
     like number
-    send back
-      call size
-        read self/items
+    send back, read self/items/size
 
   task is-empty
     take self
@@ -57,7 +66,7 @@ form set
           read self/items
         code 0
 
-  # the canonical length verb (alias of size)
+  # the older name of `length`
   task count
     take self
     like number

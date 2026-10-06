@@ -1218,8 +1218,10 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
   // no form or case of that name it is refused where every such `make` is (check/type-names.ts), so the native map
   // takes only `save` entries
   if (name === 'hash' && fields.length === 0) {
+    // a key is the `save` line's word, or under `save-key` any value: a text with a space, a capital or a leading
+    // digit, or a computed one (`<{k}>`), which the word cannot be (decisions-2026-10.md, D14)
     const entries = formsAt(value, 'save').map(entry => ({
-      key: {
+      key: (firstAt(entry, 'key') ? expressionOf(bridge, firstAt(entry, 'key')) : undefined) ?? {
         form: 'string' as const,
         value: wordAt(entry, 'name') ?? '',
         span: spanOf(value),

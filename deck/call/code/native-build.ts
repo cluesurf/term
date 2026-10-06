@@ -16,8 +16,10 @@
 import path from 'path'
 import { execFileSync, spawnSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { buildSync } from 'esbuild'
 import { cratesNamed, entryOf, nativeMain } from '@term/make/code/compile/native-main'
+import { hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import type { EmitTarget } from '@term/make/code/compile/emit-target'
 import { swiftFlags } from '@term/call/code/cask'
 import { stdlibBase } from '@term/make/code/resolve'
@@ -129,11 +131,37 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
   }
 
   const file = `${stem}.kt`
-  writeFileSync(file, `${input.source}\n${nativeMain('kotlin', input.source, entry)}\n`)
+  writeFileSync(file, hoistKotlinImports(`${input.source}\n${nativeMain('kotlin', input.source, entry)}\n`))
   const artifact = `${stem}.jar`
-  const failed = tool('kotlinc', [file, '-include-runtime', '-nowarn', '-d', artifact])
+  const classpath = kotlinClasspath()
+  const failed = tool('kotlinc', [file, ...(classpath ? ['-classpath', classpath] : []), '-include-runtime', '-nowarn', '-d', artifact])
 
-  return failed ? { ok: false, reason: failed } : { ok: true, command: ['java', '-jar', artifact], artifact }
+  if (failed) {
+    return { ok: false, reason: failed }
+  }
+
+  // with the runtime's jars beside it the main class is named, since `-jar` reads no classpath but the jar's own
+  return {
+    ok: true,
+    command: classpath ? ['java', '-cp', `${artifact}:${classpath}`, kotlinMainClass(input.name)] : ['java', '-jar', artifact],
+    artifact,
+  }
+}
+
+// the classpath the Kotlin backend's runtime needs (coroutines, ktor), where task/term/native/kotlin.sh `deps` keeps
+// it: the same cache the Swift flags are read from. Absent, a program that reaches neither still builds
+function kotlinClasspath(): string | undefined {
+  const cache = process.env.TERM_NATIVE_CACHE ?? path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
+  const file = path.join(cache, 'kotlin', 'classpath.txt')
+
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() || undefined : undefined
+}
+
+// the class kotlinc puts a file's top-level `main` in: `term-test.kt` is `Term_testKt`
+function kotlinMainClass(name: string): string {
+  const stem = name.replace(/[^A-Za-z0-9_]/g, '_')
+
+  return `${stem.charAt(0).toUpperCase()}${stem.slice(1)}Kt`
 }
 
 // THE TWO TARGETS THROUGH RUST (note/term/plan/backends-complete.md, step 4): the program's Rust, and then

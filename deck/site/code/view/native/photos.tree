@@ -1,0 +1,12 @@
+# the photo library where there is none (device-layer-0025): the abstract module beside the env dirs, reached by every
+# env with no device (node, the server, the memory host, Rust, a browser). Conforms to ../photos.
+
+task newest-photos
+  take count, like number
+  like text
+  send back, text <unavailable>
+
+task export-photo
+  take id, like text
+  like text
+  send back, text <unavailable>

@@ -2,10 +2,17 @@
 # whole number: until 2026-10-05 they were `number`s, and a product of two numerators past i64 stopped the program. Kept
 # in lowest terms with the denominator positive, so two equal fractions have equal terms. Every operation is big-integer
 # multiply, add and subtract plus a greatest-common-divisor reduction, whose divisions are exact, so the result is the
-# same on every backend. The combiners are named `plus` / `minus` / `times` / `divided-by` because a method named `add`
-# loses to the number intrinsic (note/term/plan/decisions-2026-10.md, D5). test/stdlib/rational-native.ts.
+# same on every backend. A rational wears the arithmetic masks, so `add`, `subtract`, `multiply` and `divide` take two
+# rationals as they take two numbers (note/term/plan/decisions-2026-10.md, D5). test/stdlib/rational-native.ts.
 
 mark unstable
+
+load @term/base/arithmetic
+  find addition
+  find subtraction
+  find multiplication
+  find division
+  find negation
 
 load @term/base/integer/big
   find big-integer
@@ -35,45 +42,79 @@ form rational
     like big-integer
     send back, read self/denominator
 
-  task negate
-    take self
-    like rational
-    send back
-      make rational
-        bind numerator, big-negate(self/numerator)
-        bind denominator, read self/denominator
+  wear negation
+    task negate
+      take self
+      like rational
+      send back
+        make rational
+          bind numerator, big-negate(self/numerator)
+          bind denominator, read self/denominator
 
-  # a/b + c/d = (a*d + c*b) / (b*d), reduced
+  # a/b + c/d = (a*d + c*b) / (b*d), reduced: `add(a, b)` on two rationals
+  wear addition
+    task add
+      take self
+      take other, like rational
+      like rational
+      send back
+        call reduced(big-add(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
+
+  # a/b - c/d = (a*d - c*b) / (b*d), reduced
+  wear subtraction
+    task subtract
+      take self
+      take other, like rational
+      like rational
+      send back
+        call reduced(big-subtract(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
+
+  # a/b * c/d = (a*c) / (b*d), reduced
+  wear multiplication
+    task multiply
+      take self
+      take other, like rational
+      like rational
+      send back
+        call reduced(big-multiply(self/numerator, other/numerator), big-multiply(self/denominator, other/denominator))
+
+  # a/b ÷ c/d = (a*d) / (b*c), reduced. A division by zero raises `defect`
+  wear division
+    task divide
+      take self
+      take other, like rational
+      like rational
+      send back
+        call reduced(big-multiply(self/numerator, other/denominator), big-multiply(self/denominator, other/numerator))
+
+  # the names before `add` reached a rational (decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like rational
     like rational
-    send back
-      call reduced(big-add(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
+    mark deprecated
+    back self/add(other)
 
-  # a/b - c/d = (a*d - c*b) / (b*d), reduced
   task minus
     take self
     take other, like rational
     like rational
-    send back
-      call reduced(big-subtract(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
+    mark deprecated
+    back self/subtract(other)
 
-  # a/b * c/d = (a*c) / (b*d), reduced
   task times
     take self
     take other, like rational
     like rational
-    send back
-      call reduced(big-multiply(self/numerator, other/numerator), big-multiply(self/denominator, other/denominator))
+    mark deprecated
+    back self/multiply(other)
 
-  # a/b ÷ c/d = (a*d) / (b*c), reduced. A division by zero raises `defect`
   task divided-by
     take self
     take other, like rational
     like rational
-    send back
-      call reduced(big-multiply(self/numerator, other/denominator), big-multiply(self/denominator, other/numerator))
+    mark deprecated
+    back self/divide(other)
 
   # equal: in lowest terms with a positive denominator, equal fractions have equal terms
   task is-equal-to

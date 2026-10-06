@@ -77,6 +77,68 @@ task run
 
 const EXPECTED = 'whole 42 fraction text of ada yes other 42 0'
 
+// FLOW TYPING AFTER A TEST (decisions-2026-10.md, D10): `is-text(value)` as a branch's test narrows an `unknown` in
+// the branch it guards, exactly as the `sift` arm does, in a chain of tests where each later test sits in the miss of
+// the one before, and in a test with no miss that the task carries on after
+const FLOW = `task kind-of
+  take value, like unknown
+
+  like text
+
+  fork test
+    hook test
+      call is-text
+        read value
+    hook hold
+      back <text {value}>
+    hook test
+      call is-number
+        read value
+    hook hold
+      back <number {add(value, 1)}>
+    hook miss
+      back <other>
+
+task flag
+  take value, like unknown
+
+  like text
+
+  fork test, is-boolean(value)
+    hold
+      fork test, value
+        hold
+          back <on>
+      back <off>
+  back <none>
+
+task sized
+  take value, like unknown
+  take big, like boolean
+
+  like text
+
+  fork test
+    hook test
+      read big
+    hook hold
+      back <big>
+    hook test
+      call is-number
+        read value
+    hook hold
+      back <n {add(value, 1)}>
+    hook miss
+      back <no>
+
+task run
+  like text
+
+  back <{kind-of(<ada>)} {kind-of(41)} {kind-of(2.5)} {flag(true)} {flag(false)} {flag(3)} {sized(1, true)} {sized(4, false)} {sized(<a>, false)}>
+`
+
+const FLOW_EXPECTED = 'text ada number 42 other on off none big n 5 no'
+
 const dir = mkdtempSync(join(tmpdir(), 'term-narrow-'))
 const only = process.env.NARROW_ONLY ?? ''
 
@@ -92,6 +154,14 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     `${backend}: an unknown is narrowed by a type arm, its subject typed inside it, a link names it apart, and a miss takes the rest`,
     ran.form === 'ran' && ran.output === EXPECTED,
     ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+  )
+
+  const flow = runOn({ backend, program: FLOW, resolve: env => projectResolver(process.cwd(), env), dir, name: 'flow' })
+
+  ok(
+    `${backend}: a test of what an unknown holds narrows it in the branch it guards, through a chain and with no miss`,
+    flow.form === 'ran' && flow.output === FLOW_EXPECTED,
+    flow.form === 'ran' ? `got ${JSON.stringify(flow.output)}` : flow.form === 'skipped' ? flow.reason : `${flow.stage}: ${flow.reason}`,
   )
 }
 
@@ -123,6 +193,9 @@ if (!only || only === 'typescript') {
 
   const fine = refused(`task same\n  take a, like unknown\n  take b, like unknown\n\n  like boolean\n\n  back is-equal(a, b)\n\ntask use\n  like boolean\n\n  back same(1, <a>)\n`)
   ok('any value into an unknown, and an unknown into an unknown, still build', fine.length === 0, fine.join(' | '))
+
+  const typed = refused(`task f\n  take value, like text\n\n  like text\n\n  fork test, is-text(value)\n    hold\n      back value\n  back <>\n`)
+  ok('a type test over a value already typed is refused, saying there is nothing to narrow', typed.some(m => m.includes('"value" is text already')), typed.join(' | '))
 
   const native = refused(`dock load\n  load <global:host>, name host\n\ntask f\n  take value, like dynamic\n\n  like number\n\n  back value\n`)
   ok('a dynamic, the FFI any, still passes both ways', native.length === 0, native.join(' | '))

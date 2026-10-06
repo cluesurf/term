@@ -8,7 +8,7 @@
 
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
-import type { Type } from '@term/make/code/compile/node'
+import type { Expression, Type } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/type-text'
 import { resolveType } from '@term/make/code/check/substitution'
 import type { Substitution } from '@term/make/code/check/substitution'
@@ -19,8 +19,34 @@ export function setUnknownSeam(seam: boolean): void {
   on = seam
 }
 
+// whether the seam is on: part of every compile cache key, since it decides what the checker refuses
+export function unknownSeamOn(): boolean {
+  return on
+}
+
 // the types an arm of a `sift` over an `unknown` can name, which every backend can tell apart in its dynamic value
 const NARROWABLE = ['number', 'float', 'text', 'boolean']
+
+// THE TESTS THAT NARROW AN `unknown` in the branch they guard, each to the `sift` arm it is the same as:
+// `fork test, is-text(value)` is `sift value / case text` (check/infer.ts `narrowsUnknown`). They have no definition:
+// the resolver lets one through only as a branch's whole test of one local (check/resolve.ts), and the checker
+// rewrites it there, or refuses it
+export const TYPE_TESTS = new Map(NARROWABLE.map(type => [`is-${type}`, type]))
+
+// a branch test that is one of them applied to one local, `is-text(value)`, by its name and the local's
+export function typeTestOf(cond: Expression): { test: string; label: string; subject: string } | undefined {
+  const subject = cond.form === 'call' && cond.args.length === 1 ? cond.args[0] : undefined
+
+  if (cond.form !== 'call' || cond.callee.form !== 'variable' || subject?.form !== 'variable') {
+    return undefined
+  }
+
+  // an overload renamed by arity or type keeps its written name before the suffix (check/overload.ts)
+  const test = cond.callee.name.replace(/__\d+(__\d+)?$/, '')
+  const label = TYPE_TESTS.get(test)
+
+  return label ? { test, label, subject: subject.name } : undefined
+}
 
 // a type a value of its own goes into: not the gradual pair, and not a variable still being solved
 const typed = (type: Type): boolean => type.kind !== 'unknown' && type.kind !== 'dynamic' && type.kind !== 'variable'

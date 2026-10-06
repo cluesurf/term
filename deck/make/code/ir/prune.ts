@@ -58,8 +58,11 @@ const PRUNABLE = new Set(['function', 'record-type'])
  */
 export function pruneToReachable(
   program: Program,
-  roots: Set<string>,
+  rootList: Iterable<string>,
 ): Program {
+  // a list, as ir/prune.tree takes them; read into a set once
+  const roots = new Set(rootList)
+
   // index prunable definitions by name (a name may have several: overloads)
   const defsByName = new Map<string, Statement[]>()
 

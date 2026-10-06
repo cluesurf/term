@@ -6,7 +6,8 @@
 //
 // Each answer is printed with console.log and read from the protocol, and judged against what a desktop Chrome can
 // answer. The photo is checked IN the page: its blob is fetched and must be a JPEG of some size. The battery is
-// checked against `pmset`, since Chrome reads the Mac's own.
+// checked against `pmset`, since Chrome reads the Mac's own. The fake microphone plays a 440 Hz tone this test writes,
+// and the recording is brought out of the page and must hold it.
 //
 // Skipped, with the reason, without Chrome. Run: npx tsx test/compile/device-browser-features.ts
 import { spawn, spawnSync } from 'node:child_process'
@@ -46,8 +47,13 @@ const TOKEN = `term-clipboard-${process.pid}-${Date.now()}`
 const PLACE = { latitude: 48.85837, longitude: 2.294481 }
 const TITLE = `Term device ${process.pid}`
 
-// one call: the step it prints under, the contract task, and its text arguments
-type Call = [step: string, task: string, args: string[]]
+// the tone Chrome's fake microphone plays (`--use-file-for-fake-audio-capture`), found again in the recording by its
+// zero crossings, and how long the recording runs
+const TONE = 440
+const RECORDING = 1
+
+// one call: the step it prints under, the contract task, and its arguments, a number written as one
+type Call = [step: string, task: string, args: (string | number)[]]
 
 const CALLS: Call[] = [
   ['clipboard-write', 'write-clipboard', [TOKEN]],
@@ -65,6 +71,8 @@ const CALLS: Call[] = [
   ['share', 'share-text', ['shared by device-browser-features']],
   ['motion', 'read-motion', []],
   ['camera', 'take-photo', []],
+  ['permission-microphone', 'permission-status', ['microphone']],
+  ['microphone', 'record-audio', [RECORDING]],
 ]
 
 const LOADS = [
@@ -79,6 +87,7 @@ const LOADS = [
   ['open', ['share-text']],
   ['motion', ['read-motion', 'watch-motion']],
   ['camera', ['take-photo']],
+  ['microphone', ['record-audio']],
 ] as const
 
 // the watchers the page starts after its calls (device-layer-0016), each saying every answer under its own name. The
@@ -106,7 +115,7 @@ const PROGRAM = [
   ...CALLS.flatMap(([step, task, args]) => [
     `  save said-${step}`,
     `    call ${task}`,
-    ...args.map(arg => `      text <${arg}>`),
+    ...args.map(arg => (typeof arg === 'number' ? `      code ${arg}` : `      text <${arg}>`)),
     '  call info',
     `    text <step ${step} {said-${step}}>`,
   ]),
@@ -185,6 +194,84 @@ class Protocol {
 
 const pause = (ms: number) => new Promise(settle => setTimeout(settle, ms))
 
+// a sine of `hertz` at half scale, `seconds` long, as a 16-bit mono WAV: what Chrome's fake microphone is told to play
+function sineWave(hertz: number, rate: number, seconds: number): Buffer {
+  const count = rate * seconds
+  const out = Buffer.alloc(44 + count * 2)
+  out.write('RIFF', 0, 'ascii')
+  out.writeUInt32LE(36 + count * 2, 4)
+  out.write('WAVEfmt ', 8, 'ascii')
+  out.writeUInt32LE(16, 16)
+  out.writeUInt16LE(1, 20)
+  out.writeUInt16LE(1, 22)
+  out.writeUInt32LE(rate, 24)
+  out.writeUInt32LE(rate * 2, 28)
+  out.writeUInt16LE(2, 32)
+  out.writeUInt16LE(16, 34)
+  out.write('data', 36, 'ascii')
+  out.writeUInt32LE(count * 2, 40)
+
+  for (let index = 0; index < count; index++) out.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hertz * index) / rate) * 16_000), 44 + index * 2)
+
+  return out
+}
+
+// a WAV's format and its samples, read from its RIFF chunks. Undefined when the bytes are not a WAV
+function readWave(bytes: Buffer): { format: number; channels: number; rate: number; bits: number; samples: Int16Array } | undefined {
+  if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') return undefined
+
+  let at = 12
+  let format: { format: number; channels: number; rate: number; bits: number } | undefined
+
+  while (at + 8 <= bytes.length) {
+    const id = bytes.toString('ascii', at, at + 4)
+    const size = bytes.readUInt32LE(at + 4)
+
+    if (id === 'fmt ') {
+      format = { format: bytes.readUInt16LE(at + 8), channels: bytes.readUInt16LE(at + 10), rate: bytes.readUInt32LE(at + 12), bits: bytes.readUInt16LE(at + 22) }
+    } else if (id === 'data' && format) {
+      const count = Math.floor(Math.min(size, bytes.length - at - 8) / 2)
+      const samples = new Int16Array(count)
+
+      for (let index = 0; index < count; index++) samples[index] = bytes.readInt16LE(at + 8 + index * 2)
+
+      return { ...format, samples }
+    }
+
+    at += 8 + size + (size % 2)
+  }
+
+  return undefined
+}
+
+// the pitch of a pure tone: the rises through zero a second, counted over the loud part only, since a recording starts
+// and may end in silence while the codec settles. A rise is counted where the wave crosses a small band around zero,
+// so noise in a quiet stretch is not read as cycles
+function pitchOf(samples: Int16Array, rate: number): number {
+  const loud = (index: number) => Math.abs(samples[index]!) > 2000
+  const first = samples.findIndex((_, index) => loud(index))
+  let last = samples.length - 1
+
+  while (last > first && !loud(last)) last--
+
+  let rises = 0
+  let low = false
+  let start = -1
+  let end = -1
+
+  for (let index = Math.max(0, first); index <= last; index++) {
+    if (samples[index]! < -500) low = true
+    else if (low && samples[index]! > 500) {
+      low = false
+      rises++
+      if (start < 0) start = index
+      end = index
+    }
+  }
+
+  return rises > 1 ? ((rises - 1) * rate) / (end - start) : 0
+}
+
 async function main(): Promise<void> {
   const site = await buildPage()
   ok('the page builds for the browser env', existsSync(join(site, 'app.js')))
@@ -205,6 +292,8 @@ async function main(): Promise<void> {
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
   const profile = join(dir, 'profile')
+  const tone = join(dir, 'tone.wav')
+  writeFileSync(tone, sineWave(TONE, 48_000, 5))
   const chrome = spawn(
     CHROME,
     [
@@ -213,6 +302,10 @@ async function main(): Promise<void> {
       '--remote-debugging-port=0',
       '--use-fake-device-for-media-stream',
       '--use-fake-ui-for-media-stream',
+      `--use-file-for-fake-audio-capture=${tone}`,
+      // the audio service in the browser's own process: sandboxed apart, it cannot open the tone's file, and the fake
+      // microphone gives silence while every frame still arrives
+      '--disable-features=AudioServiceOutOfProcess,AudioServiceSandbox',
       '--no-first-run',
       '--no-default-browser-check',
       'about:blank',
@@ -238,7 +331,7 @@ async function main(): Promise<void> {
     // what a person's browser would hold for this origin
     await protocol.send('Browser.grantPermissions', {
       origin,
-      permissions: ['geolocation', 'videoCapture', 'clipboardReadWrite', 'clipboardSanitizedWrite', 'notifications'],
+      permissions: ['geolocation', 'videoCapture', 'audioCapture', 'clipboardReadWrite', 'clipboardSanitizedWrite', 'notifications'],
     })
     const { targetId } = await protocol.send('Target.createTarget', { url: 'about:blank' })
     const { sessionId } = (await protocol.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string }
@@ -299,6 +392,34 @@ async function main(): Promise<void> {
       )) as { result: { value?: string } }
       const [type = '', size = '0'] = (result.value ?? '').split(' ')
       ok('chrome: and it is a JPEG of some size', type === 'image/jpeg' && Number(size) > 1000, result.value ?? '')
+    }
+
+    // the recording, its bytes brought out of the page and read here: a WAV in the contract's format, the length asked
+    // for, and the fake microphone's tone found again by counting the times the wave rises through zero
+    ok('chrome: the microphone grant Chrome was given reads granted', said('permission-microphone') === 'granted', said('permission-microphone'))
+    const recording = said('microphone')
+    ok('chrome: the microphone records from the fake device', recording.startsWith('audio blob:'), recording)
+
+    if (recording.startsWith('audio blob:')) {
+      const { result } = (await protocol.send(
+        'Runtime.evaluate',
+        {
+          expression: `fetch(${JSON.stringify(recording.slice('audio '.length))}).then(r => r.arrayBuffer()).then(b => { let s = ''; for (const x of new Uint8Array(b)) s += String.fromCharCode(x); return btoa(s) })`,
+          awaitPromise: true,
+          returnByValue: true,
+        },
+        sessionId,
+      )) as { result: { value?: string } }
+      const wave = readWave(Buffer.from(result.value ?? '', 'base64'))
+      const seconds = wave ? wave.samples.length / wave.rate : 0
+      ok(
+        'chrome: and it is a WAV of 16-bit PCM, mono, 16,000 a second, about as long as asked',
+        wave !== undefined && wave.format === 1 && wave.channels === 1 && wave.rate === 16_000 && wave.bits === 16 && Math.abs(seconds - RECORDING) < 0.25,
+        JSON.stringify(wave && { ...wave, samples: wave.samples.length, seconds }),
+      )
+      const heard = wave ? pitchOf(wave.samples, wave.rate) : 0
+      const peak = wave ? wave.samples.reduce((most, one) => Math.max(most, Math.abs(one)), 0) : 0
+      ok(`chrome: and it holds the ${TONE} Hz tone the fake microphone played`, Math.abs(heard - TONE) < 10, `${heard.toFixed(1)} Hz, loudest sample ${peak}`)
     }
 
     // the watchers: Chrome is moved, then taken offline and back, as the platform would be, and each watcher must hear

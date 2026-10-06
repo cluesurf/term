@@ -1035,7 +1035,9 @@ export function lengthKeepingFunctions(program: Program): Set<string> {
 // still counts as reaching it. None takes a function, which could change anything.
 export const READ_ONLY_LIST_METHODS = new Set([
   'get',
+  'length',
   'size',
+  'count',
   'is-empty',
   'slice',
   'copy',

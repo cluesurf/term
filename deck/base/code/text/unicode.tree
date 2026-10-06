@@ -221,9 +221,5 @@ task from-runes
   walk list, read runes
     hook next
       take site, name code
-      save result
-        call add
-          read result
-          call rune-to-text
-            read code
+      save result, text <{result}{rune-to-text(code)}>
   send back, read result

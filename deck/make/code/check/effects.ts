@@ -16,7 +16,9 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
+import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 
 // the inferred effect row of each function: the set of effects it may perform. `async` is the marker effect
 // (resolved at an await, so it does not propagate). `throw` propagates transitively through the call graph (a
@@ -1195,10 +1197,10 @@ export function checkRaiseBounds(
           diagnose('raise-bound', {
             file: at,
             span: s.span,
-            message: GENERIC_EXCEPTIONS.has(name)
+            message: isGenericException(name)
               ? `"${s.name}" declares "halt ${name}" on its signature, but nothing it calls raises "${name}"`
               : `"${s.name}" declares "halt ${name}" on its signature, but "${name}" is not an exception form`,
-            ...(GENERIC_EXCEPTIONS.has(name)
+            ...(isGenericException(name)
               ? {}
               : { hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions' }),
           }),

@@ -50,6 +50,8 @@ export type UnitExplain = {
 import { contentHash, hashFields, reviveBigint, storeBigint } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { awaitsOutsideTasks } from '@term/make/code/check/effects'
+import { unknownSeamOn } from '@term/make/code/check/seam'
+import { checkerSwitchKey } from '@term/make/code/check/strict'
 import { checkTwins } from '@term/make/code/check/twin'
 import type { Tally } from '@term/make/code/check/holds'
 
@@ -379,8 +381,9 @@ export function compileSeparate(
       usesTemplates ? templateKey : '',
       options.env ?? '',
       checkedAs === asImport ? '' : `entry:${portable.out(checkedAs)}`,
-      // the await switch decides whether an un-ticked async call outside a task is refused (check/effects.ts)
-      awaitsOutsideTasks() ? 'await-outside' : '',
+      // the checker's switches: the await switch decides whether an un-ticked async call outside a task is refused
+      // (check/effects.ts), and the seam and the strict switch two more refusals (check/seam.ts, check/strict.ts)
+      checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
       ...files.map(f => {
         const role = options.roleOf?.(f) ?? ''
         const lean = options.leanOf?.(f) ? '#lean' : ''

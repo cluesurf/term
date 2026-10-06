@@ -1,6 +1,10 @@
-# Duration: a span of elapsed time, held as a whole number of nanoseconds. Pure integer arithmetic, identical on every backend. The `from-*` forms build a duration from a unit count; the `to-*` forms read it back in a coarser unit (truncating); `plus` / `minus` / `negate` / `absolute` compose spans. The combiners are named `plus` / `minus` rather than `add` / `subtract` because those names are the `number` arithmetic primitives.
+# Duration: a span of elapsed time, held as a whole number of nanoseconds. Pure integer arithmetic, identical on every backend. The `from-*` forms build a duration from a unit count; the `to-*` forms read it back in a coarser unit (truncating); `add` / `subtract` / `negate` / `absolute` compose spans, `add(a, b)` on two durations as on two numbers (it wears `addition` and `subtraction`).
 
 mark stable
+
+load @term/base/arithmetic
+  find addition
+  find subtraction
 
 form duration
   link nanoseconds, like number
@@ -50,27 +54,44 @@ form duration
         read self/nanoseconds
         code 86400000000000
 
+  wear addition
+    task add
+      take self
+      take other, like duration
+      like duration
+      send back
+        make duration
+          bind nanoseconds
+            call add
+              read self/nanoseconds
+              read other/nanoseconds
+
+  wear subtraction
+    task subtract
+      take self
+      take other, like duration
+      like duration
+      send back
+        make duration
+          bind nanoseconds
+            call subtract
+              read self/nanoseconds
+              read other/nanoseconds
+
+  # the names before `add` reached a duration (note/term/plan/decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like duration
     like duration
-    send back
-      make duration
-        bind nanoseconds
-          call add
-            read self/nanoseconds
-            read other/nanoseconds
+    mark deprecated
+    back self/add(other)
 
   task minus
     take self
     take other, like duration
     like duration
-    send back
-      make duration
-        bind nanoseconds
-          call subtract
-            read self/nanoseconds
-            read other/nanoseconds
+    mark deprecated
+    back self/subtract(other)
 
   task negate
     take self

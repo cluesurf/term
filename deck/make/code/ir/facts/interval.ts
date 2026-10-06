@@ -39,6 +39,7 @@
 // own list. TypeScript 286 ms to 212 with those checks gone (`tmp/ts-particle-ab.ts`), the hand version 135.
 
 import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
 
 type Loose = Record<string, unknown> & { form?: string; name?: string }
 // a side past the safe integers is infinite, which is unknown on that side only: `[0, Infinity)` is "not negative"
@@ -1164,7 +1165,7 @@ function elementsOf(
 
         if (callee.form === 'variable' && callee.name === 'list_push' && i === 0) {
           put(args[1]!)
-        } else if (callee.form === 'variable' && callee.name === 'list_size' && i === 0) {
+        } else if (callee.form === 'variable' && LIST_LENGTH_TASKS.has(callee.name as string) && i === 0) {
           // its size, read
         } else if (!(callee.form === 'variable' && lend.get(callee.name as string)?.get(i) === 'read')) {
           unknown()

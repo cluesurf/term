@@ -753,7 +753,9 @@ function scalar(data: Data): string {
   }
 }
 
-function escapeText(value: string): string {
+// a value written as the inside of a text literal, every character it holds read back as itself by `unescape-text`
+// (compile/surface.tree). `term test` writes a stored snapshot into a test this way (call/code/test-preprocess.ts)
+export function escapeText(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/</g, '\\<')

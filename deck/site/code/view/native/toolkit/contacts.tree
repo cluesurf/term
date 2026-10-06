@@ -1,0 +1,15 @@
+# contacts on the platform's own toolkit (device-layer-0023): CNContactStore on macOS and iOS, the ContactsContract provider on Android, unavailable under Compose on the desktop.
+# Conforms to ../contacts. The runtime is native-contacts.swift, native-contacts.kt (both Android hosts) and compose/native-contacts.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-contacts>, name native-contacts
+  load <global:native-permission>, name native-permission
+
+task search-contacts
+  take query, like text
+  like text
+  send back
+    call native-contacts/find
+      read query
+      wait true

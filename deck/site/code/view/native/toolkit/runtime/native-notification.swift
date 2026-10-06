@@ -5,7 +5,30 @@
 import Foundation
 import UserNotifications
 
+// the notification grant, brought by notifications (native-permission.swift), run when the program starts. It needs a
+// bundle and no usage string
+nativePermission.register(
+    "notification",
+    declaration: nil,
+    status: { await nativeNotification.grant() },
+    request: {
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        return await nativeNotification.grant()
+    }
+)
+
 enum nativeNotification {
+    // the center's status as a grant, or unavailable with no bundle to notify as
+    static func grant() async -> String {
+        guard nativePermission.bundled else { return "unavailable" }
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .authorized, .provisional, .ephemeral: return "granted"
+        case .denied: return "denied"
+        case .notDetermined: return "not-determined"
+        @unknown default: return "unavailable"
+        }
+    }
+
     // kept for the life of the process: the center holds its delegate weakly
     private static let presenter = NotificationPresenter()
 

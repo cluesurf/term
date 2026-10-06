@@ -51,9 +51,14 @@ form stack
       call last
         read self/items
 
+  # how many items it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, read self/items/length
+
+  # the older name of `length`
   task size
     take self
     like number
-    send back
-      call size
-        read self/items
+    send back, read self/items/length

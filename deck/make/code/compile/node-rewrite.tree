@@ -28,12 +28,25 @@ load @term/base/text
 load ../parser/diagnostic
   find span
 
+load ./import-scope
+  find file-scope
+  find file-set
+  find gather-exported
+  find holds-file
+  find new-file-set
+  find scope-of
+  find targets-of
+
 load ./node
   find binding
   find closure-param
+  find declared-param
+  find declared-signature
   find dock-call
   find dock-component
   find dock-route
+  find dock-take
+  find function-param
   find expression
   find expression-type
   find with-type
@@ -127,6 +140,74 @@ form rewrite-rule
     link slots, like hash, like text, like list, like boolean
     link item-slots, like hash, like text, like list, like boolean
     link lists, like list, like text
+  # module scope (check/scope): a form named like some form's case takes a name of its own, and so does every named
+  # type, raise and construction that means it, and every arm of a match over a caught exception that names it
+  case separate-case
+    link apart, like case-apart
+  # module scope: every named type, raise and construction of a form two files define bound by what its file imported,
+  # and the alias it was written with dropped
+  case bind-forms
+    link binding, like form-binding
+  # module scope: a construction of a case two modules' forms share, told its owner where its file says which
+  case shared-cases
+    link sharing, like case-sharing
+
+# ---- module scope's data (check/scope) ----
+
+# a form whose case is named `name`: its file, its name and the case's fields
+form case-owner
+  link file, like text
+  link form, like text
+  link fields, like list, like text
+
+form case-apart
+  mark shared
+  link name, like text
+  link renamed, like text
+  # the file of the statement being rewritten, `<>` for none
+  link file, like text
+  link scopes, like list, like file-scope
+  link owners, like list, like case-owner
+  link form-files, like list, like text
+  link form-fields, like list, like text
+  # the names the guards around this point bind their caught exception to, innermost last: a match over one of them
+  # is over a caught exception, and its arms name raised forms
+  link caught, like list, like text
+
+form renamed-file
+  link file, like text
+  link renamed, like text
+
+# a form name two or more files define: the files in sorted order, each file's own name for it, and the file whose
+# definition was merged last
+form form-group
+  link name, like text
+  link files, like list, like text
+  link renamed, like list, like renamed-file
+  link last, like text
+
+# the place of a file's last statement in the program
+form file-order
+  link file, like text
+  link index, like number
+
+form form-binding
+  link groups, like list, like form-group
+  # the file of the statement being rewritten, `<>` for none
+  link file, like text
+  # the type parameters of the statement being rewritten, which shadow a form of the same name
+  link shadowed, like list, like text
+  link scopes, like list, like file-scope
+  link order, like list, like file-order
+
+form shared-case
+  link name, like text
+  link owners, like list, like case-owner
+
+form case-sharing
+  link shared, like list, like shared-case
+  link file, like text
+  link scopes, like list, like file-scope
 
 # a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
 bind copy-program
@@ -256,6 +337,15 @@ task rewrite-expression
     case call
       save given/callee, rewrite-expression(callee, rule)
       save given/args, rewrite-list(args, rule)
+      fork test, rewrites-types(rule)
+        hold
+          sift into
+            case some
+              link target-type
+              save written-into, rewrite-type(target-type, rule)
+              save given/into, make(some, written-into)
+            case none
+              save nothing, 0
     case array
       save given/items, rewrite-list(items, rule)
     case map
@@ -288,6 +378,16 @@ task rewrite-expression
       save given/expr, rewrite-expression(expr, rule)
     case closure
       save given/body, rewrite-block(body, rule)
+      fork test, rewrites-types(rule)
+        hold
+          save given/params, rewrite-closure-params(params, rule)
+          sift result
+            case some
+              link result-type
+              save written-result, rewrite-type(result-type, rule)
+              save given/result, make(some, written-result)
+            case none
+              save nothing, 0
     case conditional
       save branches-out, make list
       walk branches
@@ -305,6 +405,9 @@ task rewrite-expression
           save nothing, 0
     miss
       save nothing, 0
+  fork test, and(rewrites-types(rule), enters-type-key(rule))
+    hold
+      save given, rewrite-own-type(given, rule)
   back rule-expression(given, rule)
 
 task rewrite-statement
@@ -386,7 +489,9 @@ task rewrite-statement
       sift catch
         case some
           link clause
+          enter-catch(rule, clause/name)
           save clause/body, rewrite-block(clause/body, rule)
+          leave-catch(rule)
           save one/catch, make(some, clause)
         case none
           save nothing, 0
@@ -482,6 +587,9 @@ task rewrite-statement
       save one/route, rewrite-route(route, rule)
     miss
       save nothing, 0
+  fork test, rewrites-types(rule)
+    hold
+      save one, rewrite-statement-types(one, rule)
   back rule-statement(one, rule)
 
 task rewrite-extend
@@ -637,6 +745,411 @@ task rewrite-route
   save route/children, children-out
   back route
 
+# ---- types, for a rule that rewrites them ----
+
+# whether a rule enters every type and every field a reflective walk would: module scope's rules rename names inside
+# types, and their originals walked every key but `span`, a separate build's `stubBody` included. Every other rule
+# walks as before, so it pays nothing for the types it never reads and writes no field it was not asked to
+task rewrites-types
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case separate-case
+      back true
+    case bind-forms
+      back true
+    case shared-cases
+      back true
+    miss
+      back false
+
+# whether a rule enters a field named `type`: check/scope.ts's `bindSharedCases` walked every key but `span` and
+# `type`, its other two walks every key but `span`
+task enters-type-key
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case shared-cases
+      back false
+    miss
+      back true
+
+# a guard's handler binds its caught exception to `name` for the handler's body
+task enter-catch
+  take rule, like rewrite-rule
+  take name, like text
+  mark private
+
+  sift rule
+    case separate-case
+      push(apart/caught, name)
+    miss
+      back
+
+task leave-catch
+  take rule, like rewrite-rule
+  mark private
+
+  sift rule
+    case separate-case
+      apart/caught/pop()
+    miss
+      back
+
+# a type and every type and expression inside it, rewritten
+task rewrite-type
+  take given, like type
+  take rule, like rewrite-rule
+  like type
+  mark private
+
+  save one, rule-type(given, rule)
+  sift one
+    case array
+      save one/element, rewrite-type(element, rule)
+    case map
+      save one/key, rewrite-type(key, rule)
+      save one/value, rewrite-type(value, rule)
+    case named
+      fork test, is-above(args/length, 0)
+        hold
+          save args-out, make list
+          walk args
+            take arg
+            push(args-out, rewrite-type(arg, rule))
+          save one/args, args-out
+      fork test, is-above(value-args/length, 0)
+        hold
+          save values-out, make list
+          walk value-args
+            take arg
+            push(values-out, rewrite-expression(arg, rule))
+          save one/value-args, values-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, rewrite-type(param, rule))
+      save one/params, params-out
+      save one/result, rewrite-type(result, rule)
+    miss
+      save nothing, 0
+  back one
+
+# a type held under a field named `type`, which one rule does not enter
+task rewrite-typed
+  take given, like type
+  take rule, like rewrite-rule
+  like type
+  mark private
+
+  fork test, enters-type-key(rule)
+    hold
+      back rewrite-type(given, rule)
+  back given
+
+task rewrite-own-type
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift expression-type(given)
+    case some
+      link own
+      back with-type(given, rewrite-type(own, rule))
+    case none
+      back given
+
+task rewrite-closure-params
+  take params, like list, like closure-param
+  take rule, like rewrite-rule
+  like list, like closure-param
+  mark private
+
+  save out, make list
+  walk params
+    take param
+    sift param/type
+      case some
+        link param-type
+        save written, rewrite-typed(param-type, rule)
+        save param/type, make(some, written)
+      case none
+        save nothing, 0
+    push(out, param)
+  back out
+
+task rewrite-declared-params
+  take params, like list, like declared-param
+  take rule, like rewrite-rule
+  like list, like declared-param
+  mark private
+
+  save out, make list
+  walk params
+    take param
+    sift param/type
+      case some
+        link param-type
+        save written, rewrite-typed(param-type, rule)
+        save param/type, make(some, written)
+      case none
+        save nothing, 0
+    push(out, param)
+  back out
+
+task rewrite-signature
+  take signature, like declared-signature
+  take rule, like rewrite-rule
+  like declared-signature
+  mark private
+
+  save signature/params, rewrite-declared-params(signature/params, rule)
+  sift signature/result
+    case some
+      link result-type
+      save written, rewrite-type(result-type, rule)
+      save signature/result, make(some, written)
+    case none
+      save nothing, 0
+  back signature
+
+task rewrite-takes
+  take takes, like list, like dock-take
+  take rule, like rewrite-rule
+  like list, like dock-take
+  mark private
+
+  save out, make list
+  walk takes
+    take one-take
+    sift one-take/type
+      case some
+        link take-type
+        save written, rewrite-typed(take-type, rule)
+        save one-take/type, make(some, written)
+      case none
+        save nothing, 0
+    push(out, one-take)
+  back out
+
+task rewrite-route-types
+  take route, like dock-route
+  take rule, like rewrite-rule
+  like dock-route
+  mark private
+
+  save route/takes, rewrite-takes(route/takes, rule)
+  save methods-out, make list
+  walk route/methods
+    take method
+    save method/takes, rewrite-takes(method/takes, rule)
+    push(methods-out, method)
+  save route/methods, methods-out
+  save children-out, make list
+  walk route/children
+    take child
+    push(children-out, rewrite-route-types(child, rule))
+  save route/children, children-out
+  back route
+
+# every type a statement holds outside its expressions, and a separate build's `stubBody`, for a rule that rewrites
+# types. A `need false` list is written back only when it holds something, and a maybe only when it is there, so a
+# field left out stays out
+task rewrite-statement-types
+  take one, like statement
+  take rule, like rewrite-rule
+  like statement
+  mark private
+
+  sift one
+    case let
+      sift type
+        case some
+          link let-type
+          save written, rewrite-typed(let-type, rule)
+          save one/type, make(some, written)
+        case none
+          save nothing, 0
+    case function
+      save params-out, make list
+      walk params
+        take param
+        sift param/type
+          case some
+            link param-type
+            save written, rewrite-typed(param-type, rule)
+            save param/type, make(some, written)
+          case none
+            save nothing, 0
+        push(params-out, param)
+      save one/params, params-out
+      sift result
+        case some
+          link result-type
+          save written-result, rewrite-type(result-type, rule)
+          save one/result, make(some, written-result)
+        case none
+          save nothing, 0
+      # `need false` lists, walked where they are read: one handed to a call is written `??= []` into the program
+      fork test, is-above(stub-body/length, 0)
+        hold
+          save stub-out, make list
+          walk stub-body
+            take inner
+            push(stub-out, rewrite-statement(inner, rule))
+          save one/stub-body, stub-out
+      fork test, is-above(universals/length, 0)
+        hold
+          save universals-out, make list
+          walk universals
+            take universal
+            fork test, is-above(universal/types/length, 0)
+              hold
+                save types-out, make list
+                walk universal/types
+                  take param
+                  sift param/type
+                    case some
+                      link param-type
+                      save written-param, rewrite-typed(param-type, rule)
+                      save param/type, make(some, written-param)
+                    case none
+                      save nothing, 0
+                  push(types-out, param)
+                save universal/types, types-out
+            push(universals-out, universal)
+          save one/universals, universals-out
+      sift declared
+        case some
+          link signature
+          save written-signature, rewrite-signature(signature, rule)
+          save one/declared, make(some, written-signature)
+        case none
+          save nothing, 0
+    case record-type
+      fork test, is-above(indices/length, 0)
+        hold
+          save indices-out, make list
+          walk indices
+            take index
+            save index/type, rewrite-typed(index/type, rule)
+            push(indices-out, index)
+          save one/indices, indices-out
+      save fields-out, make list
+      walk fields
+        take field
+        save field/type, rewrite-typed(field/type, rule)
+        push(fields-out, field)
+      save one/fields, fields-out
+      save variants-out, make list
+      walk variants
+        take variant
+        save variant-fields, make list
+        walk variant/fields
+          take field
+          save field/type, rewrite-typed(field/type, rule)
+          push(variant-fields, field)
+        save variant/fields, variant-fields
+        push(variants-out, variant)
+      save one/variants, variants-out
+      sift alias
+        case some
+          link alias-type
+          save written-alias, rewrite-type(alias-type, rule)
+          save one/alias, make(some, written-alias)
+        case none
+          save nothing, 0
+      sift extend
+        case some
+          link extended
+          save extended/base, rewrite-type(extended/base, rule)
+          save heads-out, make list
+          walk extended/heads
+            take head
+            sift head/type
+              case some
+                link head-type
+                save written-head, rewrite-typed(head-type, rule)
+                save head/type, make(some, written-head)
+              case none
+                save nothing, 0
+            fork test, is-above(head/links/length, 0)
+              hold
+                save head-links, make list
+                walk head/links
+                  take head-link
+                  save head-link/type, rewrite-typed(head-link/type, rule)
+                  push(head-links, head-link)
+                save head/links, head-links
+            push(heads-out, head)
+          save extended/heads, heads-out
+          save links-out, make list
+          walk extended/links
+            take link-one
+            save link-one/type, rewrite-typed(link-one/type, rule)
+            push(links-out, link-one)
+          save extended/links, links-out
+          save one/extend, make(some, extended)
+        case none
+          save nothing, 0
+    case mask
+      fork test, is-above(tasks/length, 0)
+        hold
+          save tasks-out, make list
+          walk tasks
+            take mask-task
+            save mask-task/signature, rewrite-signature(mask-task/signature, rule)
+            push(tasks-out, mask-task)
+          save one/tasks, tasks-out
+    case bind
+      save bind-params, make list
+      walk params
+        take param
+        sift param/type
+          case some
+            link param-type
+            save written, rewrite-typed(param-type, rule)
+            save param/type, make(some, written)
+          case none
+            save nothing, 0
+        push(bind-params, param)
+      save one/params, bind-params
+      sift result
+        case some
+          link result-type
+          save written-result, rewrite-type(result-type, rule)
+          save one/result, make(some, written-result)
+        case none
+          save nothing, 0
+    case view
+      save one/params, rewrite-closure-params(params, rule)
+    case dock
+      save one/route, rewrite-route-types(route, rule)
+    miss
+      save nothing, 0
+  back one
+
+# what a rule does to one type, before the types inside it are rewritten
+task rule-type
+  take given, like type
+  take rule, like rewrite-rule
+  like type
+  mark private
+
+  sift rule
+    case separate-case
+      back apart-type(given, apart)
+    case bind-forms
+      back bind-type(given, binding)
+    miss
+      back given
+
 # ---- the rules ----
 
 # what a rule does to one expression, once the expressions inside it are rewritten
@@ -662,6 +1175,12 @@ task rule-expression
       back renamed-local(given, rule)
     case async-slots
       back async-slot-expression(given, slots, item-slots, lists)
+    case separate-case
+      back apart-expression(given, apart)
+    case bind-forms
+      back bind-expression(given, binding)
+    case shared-cases
+      back share-expression(given, sharing)
     miss
       back given
 
@@ -699,6 +1218,10 @@ task rule-statement
       back renamed-statement(one, rule)
     case async-slots
       back async-slot-statement(one, lists)
+    case separate-case
+      back apart-statement(one, apart)
+    case bind-forms
+      back bind-statement(one, binding)
     miss
       back one
 
@@ -1800,3 +2323,414 @@ task all-in
       hold
         back false
   back true
+
+# ---- module scope (check/scope.tree) ----
+
+# the files a reference in `file` reaches through its finds of `name`, and every file those re-export: none for a
+# reference in no file, or in one with no scope or no such find
+task reached-files
+  take scopes, like list, like file-scope
+  take file, like text
+  take name, like text
+  like file-set
+  mark private
+
+  save reach, new-file-set()
+  fork test, is-equal(file, <>)
+    hold
+      back reach
+  sift scope-of(scopes, file)
+    case some
+      link own
+      sift targets-of(own/finds, name)
+        case some
+          link targets
+          walk targets
+            take target
+            gather-exported(scopes, target, reach)
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  back reach
+
+task any-held
+  take reach, like file-set
+  take files, like list, like text
+  like boolean
+  mark private
+
+  walk files
+    take one
+    fork test, holds-file(reach, one)
+      hold
+        back true
+  back false
+
+# whether a construction in the rewritten statement's file, naming `fields`, means the form and not the case
+task means-form
+  take apart, like case-apart
+  take fields, like list, like text
+  like boolean
+  mark private
+
+  save case-files, make list
+  save case-forms, make list
+  walk apart/owners
+    take owner
+    push(case-files, owner/file)
+    push(case-forms, owner/form)
+  save file, apart/file
+  fork test, is-unequal(file, <>)
+    hold
+      fork test, has-text(case-files, file)
+        hold
+          back false
+      fork test, has-text(apart/form-files, file)
+        hold
+          back true
+  walk case-forms
+    take case-form
+    fork test, any-held(reached-files(apart/scopes, file, case-form), case-files)
+      hold
+        back false
+  fork test, any-held(reached-files(apart/scopes, file, apart/name), apart/form-files)
+    hold
+      back true
+  save case-fit, false
+  walk apart/owners
+    take owner
+    fork test, all-in(fields, owner/fields)
+      hold
+        save case-fit, true
+  back and(all-in(fields, apart/form-fields), not(case-fit))
+
+task apart-type
+  take given, like type
+  take apart, like case-apart
+  like type
+  mark private
+
+  sift given
+    case named
+      fork test, is-equal(name, apart/name)
+        hold
+          save given/name, apart/renamed
+    miss
+      save nothing, 0
+  back given
+
+task apart-expression
+  take given, like expression
+  take apart, like case-apart
+  like expression
+  mark private
+
+  sift given
+    case record
+      fork test, is-equal(name, apart/name)
+        hold
+          save field-names, make list
+          walk fields
+            take field
+            push(field-names, field/name)
+          fork test, means-form(apart, field-names)
+            hold
+              save given/name, apart/renamed
+    miss
+      save nothing, 0
+  back given
+
+# a raise of the form, and an arm of a match over a caught exception naming it: the names the guards around bind it to
+task apart-statement
+  take one, like statement
+  take apart, like case-apart
+  like statement
+  mark private
+
+  sift one
+    case throw
+      fork test, is-equal(raise, apart/name)
+        hold
+          save one/raise, apart/renamed
+    case match
+      sift subject
+        case variable
+          link subject-name
+          fork test, has-text(apart/caught, subject-name)
+            hold
+              save arms, make list
+              walk cases
+                take arm
+                fork test, is-equal(arm/label, apart/name)
+                  hold
+                    save arm/label, apart/renamed
+                push(arms, arm)
+              save one/cases, arms
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back one
+
+task renamed-in
+  take group, like form-group
+  take file, like text
+  like text
+  mark private
+
+  walk group/renamed
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/renamed
+  back <>
+
+task order-of
+  take order, like list, like file-order
+  take file, like text
+  like number
+  mark private
+
+  walk order
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/index
+  back -1
+
+# the name a reference to `group` in the rewritten statement's file binds to. A reference written through an alias
+# reaches the files ITS find named, and a bare one the plain finds only, each falling back to every find of the name.
+# Exactly one reached is that one; none is the definition merged last; several the one of them merged last
+task bind-group
+  take binding, like form-binding
+  take group, like form-group
+  take alias, like maybe, like text
+  like text
+  mark private
+
+  save file, binding/file
+  save aliased, false
+  save alias-text, <>
+  sift alias
+    case some
+      link written
+      save aliased, true
+      save alias-text, written
+    case none
+      save nothing, 0
+  fork test, and(is-unequal(file, <>), and(has-text(group/files, file), not(aliased)))
+    hold
+      back renamed-in(group, file)
+  save reach, new-file-set()
+  fork test, is-unequal(file, <>)
+    hold
+      sift scope-of(binding/scopes, file)
+        case some
+          link own
+          save targets, make list
+          save chosen, make none
+          fork test, aliased
+            hold
+              save chosen, targets-of(read(own/aliases), alias-text)
+            miss
+              save chosen, targets-of(read(own/plain), group/name)
+          sift chosen
+            case some
+              link these
+              save targets, these
+            case none
+              sift targets-of(own/finds, group/name)
+                case some
+                  link these
+                  save targets, these
+                case none
+                  save nothing, 0
+          walk targets
+            take target
+            gather-exported(binding/scopes, target, reach)
+        case none
+          save nothing, 0
+  save hits, make list
+  walk group/files
+    take one
+    fork test, holds-file(reach, one)
+      hold
+        push(hits, one)
+  fork test, is-equal(hits/length, 1)
+    hold
+      back renamed-in(group, get(hits, 0))
+  fork test, is-equal(hits/length, 0)
+    hold
+      back renamed-in(group, group/last)
+  save latest, get(hits, 0)
+  walk hits
+    take one
+    fork test, is-above(order-of(binding/order, one), order-of(binding/order, latest))
+      hold
+        save latest, one
+  back renamed-in(group, latest)
+
+# the name a reference to `name` binds to, where it names a form two files define and no type parameter hides it.
+# check/scope.tree binds a method's form and an instance's mask and target by it too
+task rebind-form
+  take binding, like form-binding
+  take name, like text
+  take alias, like maybe, like text
+  like maybe, like text
+
+  fork test, has-text(binding/shadowed, name)
+    hold
+      back make none
+  walk binding/groups
+    take group
+    fork test, is-equal(group/name, name)
+      hold
+        save bound, bind-group(binding, group, alias)
+        back make(some, bound)
+  back make none
+
+task bind-type
+  take given, like type
+  take binding, like form-binding
+  like type
+  mark private
+
+  sift given
+    case named
+      # the alias the `like` was written with is read here, then dropped
+      save written-alias, read(alias)
+      sift written-alias
+        case some
+          save given/alias, make none
+        case none
+          save nothing, 0
+      sift rebind-form(binding, name, written-alias)
+        case some
+          link bound
+          save given/name, bound
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back given
+
+task bind-expression
+  take given, like expression
+  take binding, like form-binding
+  like expression
+  mark private
+
+  sift given
+    case record
+      save written-alias, read(alias)
+      sift written-alias
+        case some
+          save given/alias, make none
+        case none
+          save nothing, 0
+      sift rebind-form(binding, name, written-alias)
+        case some
+          link bound
+          save given/name, bound
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back given
+
+task bind-statement
+  take one, like statement
+  take binding, like form-binding
+  like statement
+  mark private
+
+  sift one
+    case throw
+      sift rebind-form(binding, raise, make none)
+        case some
+          link bound
+          save one/raise, bound
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back one
+
+# the owner of a case two modules' forms share, ONLY where nothing else could be meant: the construction's file defines
+# one owner and imports no other owner's form
+task owner-for
+  take sharing, like case-sharing
+  take name, like text
+  like maybe, like text
+  mark private
+
+  save file, sharing/file
+  fork test, is-equal(file, <>)
+    hold
+      back make none
+  save owners, make list
+  walk sharing/shared
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save owners, one/owners
+  save own, make list
+  walk owners
+    take owner
+    fork test, is-equal(owner/file, file)
+      hold
+        push(own, owner)
+  save imports-another, false
+  sift scope-of(sharing/scopes, file)
+    case some
+      link scope
+      walk owners
+        take owner
+        fork test, is-unequal(owner/file, file)
+          hold
+            sift targets-of(scope/finds, owner/form)
+              case some
+                save imports-another, true
+              case none
+                save nothing, 0
+    case none
+      save nothing, 0
+  fork test, and(is-equal(own/length, 1), not(imports-another))
+    hold
+      save only, get(own, 0)
+      back make(some, only/form)
+  back make none
+
+task shares-case
+  take sharing, like case-sharing
+  take name, like text
+  like boolean
+  mark private
+
+  walk sharing/shared
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
+
+task share-expression
+  take given, like expression
+  take sharing, like case-sharing
+  like expression
+  mark private
+
+  sift given
+    case record
+      fork test, and(shares-case(sharing, name), is-equal(owner, <>))
+        hold
+          sift owner-for(sharing, name)
+            case some
+              link found
+              save given/owner, found
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back given

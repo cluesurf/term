@@ -9,7 +9,9 @@ import type {
   Statement,
 } from '@term/make/code/compile/node'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
+import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 import { showType } from '@term/make/code/compile/type-text'
 
 export type RollEntry = {
@@ -207,7 +209,7 @@ export function buildRoll(
     const chain = s.chain ?? []
     const under = [...chain]
       .reverse()
-      .find(name => GENERIC_EXCEPTIONS.has(name))
+      .find(name => isGenericException(name))
     const props = s.props ? types.get(s.props) : undefined
     const link: Record<string, string> = {}
 

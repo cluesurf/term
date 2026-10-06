@@ -40,6 +40,9 @@ export type ImportScan = {
   hasZone: boolean
   // a top-level web route (`hook /path`), whose lowering calls the route runtime (ROUTE_RUNTIME_MODULE)
   hasRoute: boolean
+  // the built-in bit words the module names (BIT_WORDS), which reach @term/base/bit with no `load`. Absent in a scan
+  // kept from before they were built in, which is read as none
+  bits?: string[]
   // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for, with where each
   // `find` line is, and the name each is bound under here when the line aliases it (`find x, name y` -> `y`)
   finds: {
@@ -67,6 +70,29 @@ export type ImportScope = Map<
   // `plain`: the files a name was found in WITHOUT an alias, what a reference written as the bare name reaches
   { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span>; aliases?: Map<string, string[]>; plain?: Map<string, string[]> }
 >
+
+// one entry of a file's finds, as a Term pass takes it (compile/import-scope.tree)
+export type ScopeFind = { name: string; targets: string[]; at?: Span }
+
+// a file's import scope as a Term pass takes it: each map a list, in the map's order
+export type FileScope = { file: string; finds: ScopeFind[]; bears: string[]; aliases?: ScopeFind[]; plain?: ScopeFind[] }
+
+// the import scope as the ported passes take it (check/private.tree, check/scope.tree), none for none
+export function scopeList(scope: ImportScope | undefined): FileScope[] {
+  const entries = (map: Map<string, string[]>): ScopeFind[] => [...map].map(([name, targets]) => ({ name, targets }))
+
+  return [...(scope ?? [])].map(([file, own]) => ({
+    file,
+    finds: [...own.finds].map(([name, targets]) => {
+      const at = own.at?.get(name)
+
+      return at ? { name, targets, at } : { name, targets }
+    }),
+    bears: own.bears,
+    ...(own.aliases ? { aliases: entries(own.aliases) } : {}),
+    ...(own.plain ? { plain: entries(own.plain) } : {}),
+  }))
+}
 
 // the parser's own renderer, so an interpolated path keeps its braces: `load @term/base/code/native/{platform}/float`
 // has to reach the resolver with `{platform}` intact for `withNativeEnv` to fill it in. Reading only the chunks drops
@@ -148,12 +174,45 @@ export function importFindsOf(source: Source, parsed: ParseMemo): ImportScan['fi
 function scanImports(tree: RootNode): ImportScan {
   const paths: string[] = []
   const finds: ImportScan['finds'] = []
+  const bits = new Set<string>()
 
   let hasZone = false
   let hasRoute = false
 
+  // every bit word named anywhere in the module, at any depth: a call in longhand (`call shift-left`), in lean
+  // (`shift-left(x, 2)`), the task passed as a value, and inside a text literal's `{...}` or a path's `x/{...}`, which
+  // each hold a tree of their own
+  const visit = (node: unknown): void => {
+    const one = node as { kind?: string; nodes?: unknown[]; parts?: unknown[]; group?: unknown }
+
+    if (one.kind === 'group') {
+      const word = headName(node as GroupNode)
+
+      if (word !== undefined && BIT_WORDS.has(word)) {
+        bits.add(word)
+      }
+
+      one.nodes?.forEach(visit)
+    } else if (one.kind === 'text' || one.kind === 'name') {
+      one.parts?.forEach(visit)
+    } else if (one.kind === 'interpolation' && one.group) {
+      visit(one.group)
+    }
+  }
+
+  tree.nodes.forEach(visit)
+
   for (const group of groupsOf(tree.nodes)) {
     const keyword = headName(group)
+
+    // a module that defines a task by a bit word's name means its own
+    if (keyword === 'task') {
+      const named = group.nodes[1]
+
+      if (named?.kind === 'group') {
+        bits.delete(headName(named) ?? '')
+      }
+    }
 
     // `view` is the component head in both roles, and means the emitter will synthesize render-runtime calls. A
     // top-level `view` is only ever a document, because the code role's own `view` head is a stale grammar nothing
@@ -230,7 +289,7 @@ function scanImports(tree: RootNode): ImportScan {
     }
   }
 
-  return { paths, hasZone, hasRoute, finds }
+  return { paths, hasZone, hasRoute, finds, ...(bits.size > 0 ? { bits: [...bits] } : {}) }
 }
 
 // how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root, where a package path
@@ -255,6 +314,22 @@ const VIEW_RUNTIME_MODULE = '@cluesurf/site/code/view/render'
 // what a lowered route table calls (compile/route-lower.ts): the env's `host`, the page's `set-title` / `set-meta` /
 // `set-proxy`, and the navigation contract's `route-matches` / `route-param`. Injected like the render runtime
 const ROUTE_RUNTIME_MODULE = '@cluesurf/site/code/view/route-runtime'
+
+// THE BIT WORDS ARE BUILT IN (decisions-2026-10.md, D3): `bitwise-and` and the rest need no `load`, as `add` needs
+// none. Each is the library's own task (@term/base/bit), 64-bit on every backend through each backend's bit runtime,
+// so a built-in name means exactly what the imported one did. A module naming one is given the module and a `find` of
+// each word it names, as if it had written them, unless it loads the module itself or IS it. The library's words
+// rather than a shorter second set (`bit-xor`): one vocabulary, and no abbreviation
+const BIT_MODULE = '@term/base/bit'
+const BIT_WORDS = new Set([
+  'bitwise-and',
+  'bitwise-or',
+  'bitwise-exclusive-or',
+  'bitwise-not',
+  'shift-left',
+  'shift-right',
+  'unsigned-shift-right',
+])
 
 // One module's own part of an import walk (`collectModules`), for the text it was walked at: its import scope, the
 // modules it loads in order, the files they are, and the loads nothing answers. The scope is read, never written,
@@ -378,12 +453,28 @@ export function collectModules(
       paths.push(ROUTE_RUNTIME_MODULE)
     }
 
+    // a module naming a built-in bit word is given the bit module and a `find` of each word, unless it loads the module
+    // itself or is the module, or one of its per-backend files (BIT_WORDS)
+    const finds = [...scan.finds]
+    const bits = scan.bits ?? []
+
+    if (
+      bits.length > 0 &&
+      !paths.some(p => p === BIT_MODULE || p.endsWith('/base/code/bit')) &&
+      !source.file.endsWith('/base/code/bit.tree') &&
+      !/\/base\/code\/native\/[^/]+\/bit\.tree$/.test(source.file)
+    ) {
+      paths.push(BIT_MODULE)
+      // no spans: nothing was written, so a refusal of one of them points at its use, never at a `find` line
+      finds.push({ path: BIT_MODULE, bear: false, names: bits, spans: [], aliases: bits.map(() => undefined) })
+    }
+
     for (const path of paths) {
-      const base = scan.finds.find(f => f.path === path && f.base !== undefined)?.base
+      const base = finds.find(f => f.path === path && f.base !== undefined)?.base
       const dependency = resolve(path, source.file, base !== undefined ? { base } : undefined)
 
       if (dependency) {
-        for (const entry of scan.finds.filter(f => f.path === path)) {
+        for (const entry of finds.filter(f => f.path === path)) {
           if (entry.bear) {
             own.bears.push(dependency.file)
           }

@@ -1,9 +1,13 @@
-# Vector-4D: a 4-component 32-bit-float vector (homogeneous coordinates). Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
+# Vector-4D: a 4-component 32-bit-float vector (homogeneous coordinates). Pure float math. `add` / `subtract` combine (it wears `addition` and `subtraction`), `scale` by a scalar, `dot` is the scalar product, `magnitude` the norm, `normalize` the unit vector, `distance` the gap.
 
 mark unstable
 
 load @term/base/float
   find square-root
+
+load @term/base/arithmetic
+  find addition
+  find subtraction
 
 form vector-4
   link x, like decimal
@@ -11,51 +15,68 @@ form vector-4
   link z, like decimal
   link w, like decimal
 
+  wear addition
+    task add
+      take self
+      take other, like vector-4
+      like vector-4
+      send back
+        make vector-4
+          bind x
+            call add
+              read self/x
+              read other/x
+          bind y
+            call add
+              read self/y
+              read other/y
+          bind z
+            call add
+              read self/z
+              read other/z
+          bind w
+            call add
+              read self/w
+              read other/w
+
+  wear subtraction
+    task subtract
+      take self
+      take other, like vector-4
+      like vector-4
+      send back
+        make vector-4
+          bind x
+            call subtract
+              read self/x
+              read other/x
+          bind y
+            call subtract
+              read self/y
+              read other/y
+          bind z
+            call subtract
+              read self/z
+              read other/z
+          bind w
+            call subtract
+              read self/w
+              read other/w
+
+  # the names before `add` reached a vector (note/term/plan/decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like vector-4
     like vector-4
-    send back
-      make vector-4
-        bind x
-          call add
-            read self/x
-            read other/x
-        bind y
-          call add
-            read self/y
-            read other/y
-        bind z
-          call add
-            read self/z
-            read other/z
-        bind w
-          call add
-            read self/w
-            read other/w
+    mark deprecated
+    back self/add(other)
 
   task minus
     take self
     take other, like vector-4
     like vector-4
-    send back
-      make vector-4
-        bind x
-          call subtract
-            read self/x
-            read other/x
-        bind y
-          call subtract
-            read self/y
-            read other/y
-        bind z
-          call subtract
-            read self/z
-            read other/z
-        bind w
-          call subtract
-            read self/w
-            read other/w
+    mark deprecated
+    back self/subtract(other)
 
   task scale
     take self
@@ -101,7 +122,8 @@ form vector-4
           read self/w
           read other/w
 
-  task length
+  # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
+  task magnitude
     take self
     like decimal
     send back
@@ -110,11 +132,17 @@ form vector-4
           read self
           read self
 
+  # the older name of `magnitude`
+  task length
+    take self
+    like decimal
+    back magnitude(self)
+
   task normalize
     take self
     like vector-4
     save magnitude
-      call length
+      call magnitude
         read self
     send back
       make vector-4
@@ -140,7 +168,7 @@ form vector-4
     take other, like vector-4
     like decimal
     send back
-      call length
+      call magnitude
         call minus
           read self
           read other

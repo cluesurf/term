@@ -67,6 +67,7 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 import { integerText } from '@term/make/code/compile/type-text'
+import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -1882,9 +1883,29 @@ export function emitSwift(
 
   // a protocol method requirement: `func measure() -> Int` (the receiver is implicit `self`, so the first parameter is
   // dropped; remaining parameters keep their types with the receiver type as `Self`)
+  // A REQUIREMENT THROWS WHEN ANY CONFORMING TASK DOES. Taken from one instance alone, a mask worn by a big integer and
+  // a rational declared `divide` not throwing, the rational's conformance called its throwing task with `try!`, and a
+  // raise a caller's guard should have caught ended the program (decisions-2026-10.md, D5, test/compile/arithmetic-masks.ts)
+  const maskOf = new Map<string, string>()
+
+  for (const node of program) {
+    if (node.form === 'mask') {
+      node.methods.forEach(m => maskOf.set(m, node.name))
+    }
+  }
+
+  const requirementThrows = (mask: string | undefined, method: string): boolean =>
+    mask !== undefined &&
+    (instanceTargets.get(mask) ?? []).some(target => {
+      const fn = implFn.get(`${target}:${method}`)
+
+      return fn !== undefined && throwingFns.has(fn.name)
+    })
+
   const protocolMethod = (
     fn: Fn | undefined,
     target: string,
+    mask: string,
   ): string => {
     if (!fn) {
       return ''
@@ -1897,15 +1918,14 @@ export function emitSwift(
           `_ ${camel(p.name)}: ${swiftType(subSelf(p.type, target))}`,
       )
 
-    return `func ${camel(fn.method!.name)}(${rest.join(', ')}) -> ${swiftType(
-      subSelf(fn.result, target),
-    )}`
+    return protocolMethod0(fn, target, rest, requirementThrows(mask, fn.method!.name))
   }
 
   // a conformance method that delegates to the free implementation function: `func measure() -> Int { return boxMeasure(self) }`
   const extensionMethod = (
     fn: Fn | undefined,
     target: string,
+    mask: string,
   ): string => {
     if (!fn) {
       return ''
@@ -1919,13 +1939,14 @@ export function emitSwift(
           `_ ${camel(p.name)}: ${swiftType(subSelf(p.type, target))}`,
       )
 
-    // the free task takes its inputs labeled (`labeled`), the receiver first
+    // the free task takes its inputs labeled (`labeled`), the receiver first. A throwing requirement passes a raise on
     const callArgs = ['self', ...restNames].map((argument, i) => labeledArgument(fn.params[i]?.name, argument)).join(', ')
+    const throws = requirementThrows(mask, fn.method!.name)
     const invoke = throwingFns.has(fn.name)
-      ? `try! ${camel(fn.name)}(${callArgs})`
+      ? `${throws ? 'try' : 'try!'} ${camel(fn.name)}(${callArgs})`
       : `${camel(fn.name)}(${callArgs})`
 
-    return `${protocolMethod0(fn, target, rest)} { return ${invoke} }`
+    return `${protocolMethod0(fn, target, rest, throws)} { return ${invoke} }`
   }
 
   // shared header builder so the extension method matches the protocol method exactly
@@ -1933,8 +1954,9 @@ export function emitSwift(
     fn: Fn,
     target: string,
     rest: string[],
+    throws: boolean,
   ): string =>
-    `func ${camel(fn.method!.name)}(${rest.join(', ')}) -> ${swiftType(
+    `func ${camel(fn.method!.name)}(${rest.join(', ')})${throws ? ' throws' : ''} -> ${swiftType(
       subSelf(fn.result, target),
     )}`
 
@@ -2129,13 +2151,13 @@ export function emitSwift(
         // a push onto, or the size of, an owned list local is the array's own (F1)
         if (
           node.callee.form === 'variable' &&
-          (node.callee.name === 'list_push' || node.callee.name === 'list_size') &&
+          (node.callee.name === 'list_push' || LIST_LENGTH_TASKS.has(node.callee.name)) &&
           node.args[0]?.form === 'variable' &&
           ownedNames.has(node.args[0].name)
         ) {
           const list = expr(node.args[0], bind)
 
-          return node.callee.name === 'list_size'
+          return LIST_LENGTH_TASKS.has(node.callee.name)
             ? `${list}.count`
             : `({ () -> Int in ${list}.append(${expr(node.args[1]!, bind)}); return ${list}.count })()`
         }
@@ -2238,10 +2260,10 @@ export function emitSwift(
           node.args.length >= 1
         ) {
           const rest = node.args.slice(1).map(a => expr(a, bind))
+          const call = `${expr(node.args[0]!, bind)}.${camel(node.callee.name)}(${rest.join(', ')})`
 
-          return `${expr(node.args[0]!, bind)}.${camel(
-            node.callee.name,
-          )}(${rest.join(', ')})`
+          // a throwing requirement is called as any throwing task is
+          return requirementThrows(maskOf.get(node.callee.name), node.callee.name) ? `(${tryWord()} ${call})` : call
         }
 
         // a trailing `need false` parameter left out at the call site still exists in the native signature:
@@ -3240,7 +3262,9 @@ export function emitSwift(
 
             return `${pad(d + 1)}case ${pattern}:\n${armBlock(b.body, d + 2, bind)}`
           })
-          arms.push(`${pad(d + 1)}default:\n${node.otherwise ? block(node.otherwise, d + 2, bind) : `${pad(d + 2)}break`}`)
+          // an empty `miss` (a type test with no else, check/infer.ts `narrowsUnknown`) is a `break`: Swift refuses a
+          // `default:` with no statement
+          arms.push(`${pad(d + 1)}default:\n${armBlock(node.otherwise ?? [], d + 2, bind)}`)
 
           return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
         }
@@ -3265,7 +3289,7 @@ export function emitSwift(
           })
           // the checker holds the arms to the guarded body's raise set, so the default cannot be reached; it ends the
           // program with the form and note, which also tells Swift every path answers
-          arms.push(`${pad(d + 1)}default:${node.otherwise ? `\n${block(node.otherwise, d + 2, bind)}` : `\n${pad(d + 2)}fatalError("\\(${subject}.form): \\(${subject}.note)")`}`)
+          arms.push(`${pad(d + 1)}default:${node.otherwise ? `\n${armBlock(node.otherwise, d + 2, bind)}` : `\n${pad(d + 2)}fatalError("\\(${subject}.form): \\(${subject}.note)")`}`)
 
           return `switch ${subject}.form {\n${arms.join('\n')}\n${pad(d)}}`
         }
@@ -3283,11 +3307,7 @@ export function emitSwift(
           )
 
           arms.push(
-            `${pad(d + 1)}default:${
-              node.otherwise
-                ? `\n${block(node.otherwise, d + 2, bind)}`
-                : '\n' + pad(d + 2) + 'break'
-            }`,
+            `${pad(d + 1)}default:\n${armBlock(node.otherwise ?? [], d + 2, bind)}`,
           )
 
           return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
@@ -3747,6 +3767,7 @@ export function emitSwift(
                   `${pad(d + 1)}${protocolMethod(
                     implFn.get(`${target}:${m}`),
                     target,
+                    node.name,
                   )}`,
               )
               .filter(line => line.trim())
@@ -3764,6 +3785,7 @@ export function emitSwift(
             extensionMethod(
               implFn.get(`${node.target}:${m}`),
               node.target,
+              node.mask,
             ),
           )
           .filter(Boolean)

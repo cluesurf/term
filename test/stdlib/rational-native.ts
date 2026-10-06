@@ -40,15 +40,15 @@ function fraction(n: bigint, d: bigint): string {
 }
 
 const CASES: [string, string][] = [
-  ['rational-text(plus(make-rational(1, 2), make-rational(1, 3)))', '5/6'],
-  ['rational-text(minus(make-rational(1, 3), make-rational(1, 2)))', '-1/6'],
-  ['rational-text(divided-by(make-rational(3, 4), make-rational(-9, 8)))', '-2/3'],
+  ['rational-text(add(make-rational(1, 2), make-rational(1, 3)))', '5/6'],
+  ['rational-text(subtract(make-rational(1, 3), make-rational(1, 2)))', '-1/6'],
+  ['rational-text(divide(make-rational(3, 4), make-rational(-9, 8)))', '-2/3'],
   ['rational-text(make-rational(10, -4))', '-5/2'],
   // past 2^53 a whole number is written as a big integer, from its text: a `number` literal that large is not exact on
   // TypeScript, whose number is a double
-  [`rational-text(times(big(<${BIG}>, <3>), big(<${BIG}>, <5>)))`, fraction(BIG * BIG, 15n)],
-  [`rational-text(plus(big(<${BIG}>, <7>), big(<${BIG}>, <11>)))`, fraction(BIG * 11n + BIG * 7n, 77n)],
-  [`rational-text(times(times(big(<${BIG}>, <1>), big(<${BIG}>, <1>)), big(<${BIG}>, <${BIG}>)))`, fraction(BIG * BIG, 1n)],
+  [`rational-text(multiply(big(<${BIG}>, <3>), big(<${BIG}>, <5>)))`, fraction(BIG * BIG, 15n)],
+  [`rational-text(add(big(<${BIG}>, <7>), big(<${BIG}>, <11>)))`, fraction(BIG * 11n + BIG * 7n, 77n)],
+  [`rational-text(multiply(multiply(big(<${BIG}>, <1>), big(<${BIG}>, <1>)), big(<${BIG}>, <${BIG}>)))`, fraction(BIG * BIG, 1n)],
 ]
 
 const PROGRAM = `load @term/base/rational
@@ -56,10 +56,6 @@ const PROGRAM = `load @term/base/rational
   find make-rational
   find make-big-rational
   find rational-text
-  find plus
-  find minus
-  find times
-  find divided-by
 
 load @term/base/integer/big
   find make-big-integer
@@ -78,7 +74,7 @@ task big
 task by-zero
   like text
   mark unsafe
-    save never, divided-by(make-rational(1, 2), make-rational(0, 3))
+    save never, divide(make-rational(1, 2), make-rational(0, 3))
     back rational-text(never)
   halt take
     take problem

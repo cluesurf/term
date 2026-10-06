@@ -1,0 +1,1718 @@
+# A write a task makes through a record parameter reaches somebody.
+#
+# A form's value is a value on every backend: a task handed a record writes its own copy (Rust and Swift pass a struct,
+# TypeScript passes a spread since D1, codegen-performance-0028). So `bump` below changed nothing its caller could see,
+# and nothing said so (guides: parsers/cursor, 2026-10-03):
+#
+#   task bump
+#     take box, like counter
+#     save box/count, add(box/count, 1)
+#
+# The write is lost exactly when the task gives back nothing and nothing reads that parameter after the write: there is
+# no way out for the copy. That is refused here, naming the two fixes: send the record back, or make the form `mark
+# shared`, one object every binding sees. A task that reads its copy after writing it (to compute a value, or in a
+# `hold` about it) is using the copy, and is left alone.
+#
+# And the same for a list or a hash under D1 (self-hosting-0026), warned until the corpus is clean: a collection
+# parameter written and never read afterwards, and one collection held by two names, written through one and read
+# through the other.
+#
+# Ported from check/lost-writes.ts (self-hosting, 2026-10-05). Its three reflective walks visit every field but `span`
+# and `type`, stop at a closure or a nested task, and compare places in the order they visit; here each is a walk over
+# `children`, a node's expressions, statements and types in the order node.tree declares its fields, every record
+# between them that holds none of its own events read through. The fixed point over the tasks is kept by program place
+# where the original keyed it by the task object.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find index-of
+  find last-index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find statement-span
+  find expression-span
+  find expression-type
+  find type
+
+# one direct child of a node, as the walks visit them
+form child
+  case of-expression
+    link node, like expression
+  case of-statement
+    link node, like statement
+  case of-type
+    link node, like type
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task push-expression
+  take out, like list, like child
+  take node, like expression
+  like list, like child
+  mark private
+
+  save made
+    make of-expression
+      bind node, node
+  push(out, made)
+  back out
+
+task push-statement
+  take out, like list, like child
+  take node, like statement
+  like list, like child
+  mark private
+
+  save made
+    make of-statement
+      bind node, node
+  push(out, made)
+  back out
+
+task push-type
+  take out, like list, like child
+  take node, like type
+  like list, like child
+  mark private
+
+  save made
+    make of-type
+      bind node, node
+  push(out, made)
+  back out
+
+task push-block
+  take out, like list, like child
+  take body, like list, like statement
+  like list, like child
+  mark private
+
+  walk body
+    take one
+    save out, push-statement(out, one)
+  back out
+
+# an expression's direct children, every field but `span` and `type`, in declared order
+task expression-children
+  take node, like expression
+  like list, like child
+  mark private
+
+  save out, make list
+  sift node
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save out, push-expression(out, inner)
+          miss
+            save nothing, 0
+    case binary
+      save out, push-expression(out, left)
+      save out, push-expression(out, right)
+    case unary
+      save out, push-expression(out, operand)
+    case call
+      save out, push-expression(out, callee)
+      walk args
+        take arg
+        save out, push-expression(out, arg)
+      sift into
+        case some
+          link target-type
+          save out, push-type(out, target-type)
+        case none
+          save nothing, 0
+    case array
+      walk items
+        take item
+        save out, push-expression(out, item)
+    case map
+      walk entries
+        take entry
+        save out, push-expression(out, entry/key)
+        save out, push-expression(out, entry/value)
+    case record
+      walk fields
+        take field
+        save out, push-expression(out, field/value)
+      walk positional
+        take one
+        save out, push-expression(out, one)
+    case member
+      save out, push-expression(out, target)
+      sift index
+        case some
+          link at
+          save out, push-expression(out, at)
+        case none
+          save nothing, 0
+    case await
+      save out, push-expression(out, expr)
+    case conditional
+      walk branches
+        take branch
+        save out, push-expression(out, branch/cond)
+        save out, push-expression(out, branch/value)
+      sift otherwise
+        case some
+          link other
+          save out, push-expression(out, other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# a statement's direct children, every field but `span` and `type`, in declared order (a task is never entered)
+task statement-children
+  take node, like statement
+  like list, like child
+  mark private
+
+  save out, make list
+  sift node
+    case let
+      save out, push-expression(out, init)
+    case assign
+      save out, push-expression(out, target)
+      save out, push-expression(out, read(value))
+    case expression
+      save out, push-expression(out, expr)
+    case if
+      walk branches
+        take branch
+        save out, push-expression(out, branch/cond)
+        save out, push-block(out, branch/body)
+      sift otherwise
+        case some
+          link other
+          save out, push-block(out, other)
+        case none
+          save nothing, 0
+    case while
+      save out, push-expression(out, cond)
+      save out, push-block(out, body)
+      walk read(must)
+        take one
+        save out, push-expression(out, one)
+      sift down
+        case some
+          link measure
+          save out, push-expression(out, measure)
+        case none
+          save nothing, 0
+    case match
+      save out, push-expression(out, subject)
+      walk cases
+        take arm
+        save out, push-block(out, arm/body)
+      sift otherwise
+        case some
+          link other
+          save out, push-block(out, other)
+        case none
+          save nothing, 0
+    case for-each
+      save out, push-expression(out, iterable)
+      save out, push-block(out, body)
+      walk read(must)
+        take one
+        save out, push-expression(out, one)
+    case return
+      sift read(value)
+        case some
+          link given
+          save out, push-expression(out, given)
+        case none
+          save nothing, 0
+    case guard
+      save out, push-block(out, body)
+      sift catch
+        case some
+          link clause
+          save out, push-block(out, clause/body)
+        case none
+          save nothing, 0
+    case throw
+      save out, push-expression(out, read(value))
+    case hold
+      save out, push-expression(out, expr)
+    miss
+      save nothing, 0
+  back out
+
+# a type's direct children: the types inside it, and a named type's value arguments
+task type-children
+  take node, like type
+  like list, like child
+  mark private
+
+  save out, make list
+  sift node
+    case array
+      save out, push-type(out, element)
+    case map
+      save out, push-type(out, key)
+      save out, push-type(out, value)
+    case named
+      walk args
+        take arg
+        save out, push-type(out, arg)
+      walk value-args
+        take one
+        save out, push-expression(out, one)
+    case function
+      walk params
+        take param
+        save out, push-type(out, param)
+      save out, push-type(out, result)
+    miss
+      save nothing, 0
+  back out
+
+task children-of
+  take one, like child
+  like list, like child
+  mark private
+
+  sift one
+    case of-expression
+      back expression-children(node)
+    case of-statement
+      back statement-children(node)
+    case of-type
+      back type-children(node)
+
+# ---- the shapes the walks read ----
+
+task variable-name
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task is-variable
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back true
+    miss
+      back false
+
+# a written field path, `box/inner/count`: its root parameter and the fields read on the way to the one written
+# (`inner`); `found` false when the target is not a plain field path (a member with no dynamic segment at its top)
+form field-path
+  link found, like boolean
+  link root, like text
+  link through, like list, like text
+
+task written-path
+  take target, like expression
+  like field-path
+  mark private
+
+  save missing
+    make field-path
+      bind found, false
+      bind root, <>
+      bind through, make list
+  sift target
+    case member
+      sift index
+        case some
+          back missing
+        case none
+          save nothing, 0
+    miss
+      back missing
+  save names, make list
+  save current, target
+  save walking, true
+  walk test
+    hook test, walking
+    hook hold
+      sift current
+        case member
+          save names, prepend(names, name)
+          save current, read(target)
+        miss
+          save walking, false
+  sift current
+    case variable
+      fork test, is-equal(name, <>)
+        hold
+          back missing
+      save through, make list
+      save at, 0
+      walk names
+        take one
+        fork test, is-below(at, subtract(names/length, 1))
+          hold
+            push(through, one)
+        save at, add(at, 1)
+      back
+        make field-path
+          bind found, true
+          bind root, name
+          bind through, through
+    miss
+      back missing
+
+task prepend
+  take values, like list, like text
+  take first, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, first)
+  walk values
+    take one
+    push(out, one)
+  back out
+
+# the root variable of an indexed write, `save xs/{i}, v`, `<>` for none
+task indexed-root
+  take target, like expression
+  like text
+  mark private
+
+  sift target
+    case member
+      sift index
+        case some
+          back variable-name(read(target))
+        case none
+          back <>
+    miss
+      back <>
+
+task returns-nothing
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      sift result
+        case some
+          link given
+          sift given
+            case unit
+              back true
+            case named
+              back or(is-equal(name, <void>), is-equal(name, <unit>))
+            miss
+              back false
+        case none
+          back true
+    miss
+      back false
+
+task file-is
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# the type a task's parameter was written with: the declared signature's, else the parameter's own
+task param-type
+  take one, like statement
+  take at, like number
+  like maybe, like type
+  mark private
+  mark private
+
+  sift one
+    case function
+      sift declared
+        case some
+          link signature
+          fork test, is-below(at, signature/params/length)
+            hold
+              save written, get(signature/params, at)
+              sift written/type
+                case some
+                  link given
+                  back make(some, given)
+                case none
+                  save nothing, 0
+        case none
+          save nothing, 0
+      fork test, is-below(at, params/length)
+        hold
+          save param, get(params, at)
+          back param/type
+      back make none
+    miss
+      back make none
+
+task task-display-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      sift method
+        case some
+          link owner-of
+          back owner-of/name
+        case none
+          back name
+    miss
+      back <>
+
+# ---- a record parameter's lost write ----
+
+form value-param
+  link name, like text
+  link form, like text
+
+form record-shape
+  link name, like text
+  link field-names, like list, like text
+  link field-types, like list, like type
+
+form first-write
+  link root, like text
+  link at, like number
+  link span, like span
+
+form copy-scan
+  mark shared
+  link clock, like number
+  link values, like list, like value-param
+  link shapes, like list, like record-shape
+  link shared, like list, like text
+  link writes, like list, like first-write
+  link read-names, like list, like text
+  link read-ats, like list, like number
+
+task value-form-of
+  take scan, like copy-scan
+  take name, like text
+  like text
+  mark private
+
+  save found, <>
+  walk scan/values
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one/form
+  back found
+
+task shape-of
+  take shapes, like list, like record-shape
+  take name, like text
+  like maybe, like record-shape
+  mark private
+
+  save found, make none
+  walk shapes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, make(some, one)
+  back found
+
+# The write stays inside the copy only while every container on its path is a value form. A path through a field that
+# is not one (an opaque `link handle, mark private`, a `mark shared` form, a list or a hash) reaches an object the caller
+# holds too: `save node/handle/text, read value` on a view writes the one element both bindings name
+task stays-in-copy
+  take scan, like copy-scan
+  take form, like text
+  take through, like list, like text
+  like boolean
+  mark private
+
+  save current, form
+  walk through
+    take name
+    save next, <>
+    sift shape-of(scan/shapes, current)
+      case some
+        link shape
+        save at, 0
+        walk shape/field-names
+          take field-name
+          fork test, is-equal(field-name, name)
+            hold
+              sift get(shape/field-types, at)
+                case named
+                  link named-name
+                  save next, named-name
+                miss
+                  save next, <>
+          save at, add(at, 1)
+      case none
+        save nothing, 0
+    fork test, or(is-equal(next, <>), or(not(is-shape(scan/shapes, next)), has-text(scan/shared, next)))
+      hold
+        back false
+    save current, next
+  back true
+
+task is-shape
+  take shapes, like list, like record-shape
+  take name, like text
+  like boolean
+  mark private
+
+  sift shape-of(shapes, name)
+    case some
+      back true
+    case none
+      back false
+
+task note-read
+  take scan, like copy-scan
+  take name, like text
+  mark private
+
+  save at, 0
+  walk scan/read-names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        save scan/read-ats/{at}, scan/clock
+        back
+    save at, add(at, 1)
+  push(scan/read-names, name)
+  push(scan/read-ats, scan/clock)
+
+task has-first-write
+  take scan, like copy-scan
+  take root, like text
+  like boolean
+  mark private
+
+  walk scan/writes
+    take one
+    fork test, is-equal(one/root, root)
+      hold
+        back true
+  back false
+
+task scan-copies
+  take scan, like copy-scan
+  take item, like child
+  mark private
+
+  sift item
+    case of-statement
+      link statement-node
+      sift statement-node
+        # a nested task has parameters of its own
+        case function
+          back
+        # an assignment's value is read before its write lands (`save box/count, add(box/count, 1)` reads the old
+        # count), so it is visited first
+        case assign
+          save value-item
+            make of-expression
+              bind node, read(value)
+          scan-copies(scan, value-item)
+          save path, written-path(target)
+          save form, value-form-of(scan, path/root)
+          fork test, and(path/found, and(is-unequal(form, <>), stays-in-copy(scan, form, path/through)))
+            hold
+              fork test, not(has-first-write(scan, path/root))
+                hold
+                  save written
+                    make first-write
+                      bind root, path/root
+                      bind at, scan/clock
+                      bind span, span
+                  push(scan/writes, written)
+            miss
+              save target-item
+                make of-expression
+                  bind node, target
+              scan-copies(scan, target-item)
+          save scan/clock, add(scan/clock, 1)
+          back
+        miss
+          save nothing, 0
+    case of-expression
+      link expression-node
+      sift expression-node
+        # a closure has parameters of its own
+        case closure
+          back
+        case variable
+          fork test, is-unequal(value-form-of(scan, name), <>)
+            hold
+              note-read(scan, name)
+        miss
+          save nothing, 0
+    case of-type
+      save nothing, 0
+  save scan/clock, add(scan/clock, 1)
+  walk children-of(item)
+    take inner
+    scan-copies(scan, inner)
+
+task last-read-of
+  take scan, like copy-scan
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk scan/read-names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back get(scan/read-ats, at)
+    save at, add(at, 1)
+  back -1
+
+task check-lost-writes
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save shapes, make list
+  # not `shared`: the form's own flag of that name is a field local in the arm below
+  save shared-names, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save names, make list
+        save types, make list
+        walk fields
+          take field
+          push(names, field/name)
+          push(types, field/type)
+        save shape
+          make record-shape
+            bind name, name
+            bind field-names, names
+            bind field-types, types
+        push(shapes, shape)
+        fork test, shared
+          hold
+            push(shared-names, name)
+      miss
+        save nothing, 0
+  # a later definition of a name is the one read, as a map's set keeps the last: `shape-of` keeps its last match
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(not(file-is(span, file)), or(is-equal(body/length, 0), not(returns-nothing(one))))
+          hold
+            turn next
+        save values, make list
+        save index, 0
+        walk params
+          take param
+          sift param-type(one, index)
+            case some
+              link given
+              sift given
+                case named
+                  link named-name
+                  fork test, and(is-shape(shapes, named-name), not(has-text(shared-names, named-name)))
+                    hold
+                      save values, with-value(values, param/name, named-name)
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          save index, add(index, 1)
+        fork test, is-equal(values/length, 0)
+          hold
+            turn next
+        save scan
+          make copy-scan
+            bind clock, 0
+            bind values, values
+            bind shapes, shapes
+            bind shared, shared-names
+            bind writes, make list
+            bind read-names, make list
+            bind read-ats, make list
+        walk body
+          take statement-one
+          save item
+            make of-statement
+              bind node, statement-one
+          scan-copies(scan, item)
+        save shown, task-display-name(one)
+        walk scan/writes
+          take written
+          fork test, is-above(last-read-of(scan, written/root), written/at)
+            hold
+              turn next
+          save form, value-form-of(scan, written/root)
+          save input
+            make diagnostic-input
+              bind file, file
+              bind span, written/span
+              bind message, make(some, <this writes `{written/root}`'s own copy: a {form} is a value, and `{shown}` sends nothing back, so the caller never sees the change>)
+              bind hint, make(some, <send `{written/root}` back and use what comes back, or make `{form}` `mark shared` so every binding sees one object>)
+          save kind, make type-mismatch
+          push(out, diagnose(kind, input))
+      miss
+        turn next
+  back out
+
+# a parameter's value form, a later parameter of the same name taking its place, as a map's set does
+task with-value
+  take values, like list, like value-param
+  take name, like text
+  take form, like text
+  like list, like value-param
+  mark private
+
+  save made
+    make value-param
+      bind name, name
+      bind form, form
+  save at, 0
+  walk values
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save values/{at}, made
+        back values
+    save at, add(at, 1)
+  push(values, made)
+  back values
+
+# ---- a collection's lost write (self-hosting-0026), WARNED ----
+
+# the native methods that change a list or a native map in place
+task is-mutator
+  take name, like text
+  like boolean
+  mark private
+
+  save known, make list
+  push(known, <push>)
+  push(known, <pop>)
+  push(known, <shift>)
+  push(known, <unshift>)
+  push(known, <splice>)
+  push(known, <sort>)
+  push(known, <reverse>)
+  push(known, <fill>)
+  push(known, <copyWithin>)
+  push(known, <set>)
+  push(known, <delete>)
+  push(known, <clear>)
+  back has-text(known, name)
+
+task is-collection-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link held
+      sift held
+        case array
+          back true
+        case map
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-collection
+  take node, like expression
+  like boolean
+  mark private
+
+  back is-collection-type(expression-type(node))
+
+form write-event
+  link name, like text
+  link at, like number
+  link span, like span
+
+form read-event
+  link name, like text
+  link at, like number
+
+# what a walk for collection writes holds: the positions each task writes (by program place), the tasks by name, the
+# task whose own parameters are marked (`-1` for none), and the writes and reads met, each at its place in the walk
+form write-scan
+  mark shared
+  link program, like list, like statement
+  link writes, like list, like list, like number
+  link name-keys, like list, like text
+  link name-places, like list, like list, like number
+  link marking, like number
+  link changed, like boolean
+  link clock, like number
+  link written, like list, like write-event
+  link reads, like list, like read-event
+
+task places-named
+  take scan, like write-scan
+  take name, like text
+  like list, like number
+  mark private
+
+  save at, 0
+  walk scan/name-keys
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back get(scan/name-places, at)
+    save at, add(at, 1)
+  back make list
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task param-count
+  take one, like statement
+  like number
+  mark private
+
+  sift one
+    case function
+      back params/length
+    miss
+      back -1
+
+# the position of a parameter by name, the last of a name, as a map from the parameters keeps
+task param-position
+  take one, like statement
+  # not `name`: the task's own name is a field local in the arm below
+  take wanted, like text
+  like number
+  mark private
+
+  save found, -1
+  sift one
+    case function
+      save at, 0
+      walk params
+        take param
+        fork test, is-equal(param/name, wanted)
+          hold
+            save found, at
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+  back found
+
+task on-write
+  take scan, like write-scan
+  take name, like text
+  take at, like span
+  mark private
+
+  fork test, is-minimum(scan/marking, 0)
+    hold
+      save task, get(scan/program, scan/marking)
+      save position, param-position(task, name)
+      fork test, is-minimum(position, 0)
+        hold
+          save found, get(scan/writes, scan/marking)
+          fork test, not(has-number(found, position))
+            hold
+              push(found, position)
+              save scan/writes/{scan/marking}, found
+              save scan/changed, true
+  save scan/clock, add(scan/clock, 1)
+  save event
+    make write-event
+      bind name, name
+      bind at, scan/clock
+      bind span, at
+  push(scan/written, event)
+
+task on-read
+  take scan, like write-scan
+  take name, like text
+  mark private
+
+  save scan/clock, add(scan/clock, 1)
+  save event
+    make read-event
+      bind name, name
+      bind at, scan/clock
+  push(scan/reads, event)
+
+task visit-expression
+  take scan, like write-scan
+  take node, like expression
+  mark private
+
+  save item
+    make of-expression
+      bind node, node
+  each-write(scan, item)
+
+# every write in a node to a variable, by its name: a mutator called on it, an indexed assignment, or the variable
+# handed to a task that writes that position. Every other read of a variable is a read, in the walk's order
+task each-write
+  take scan, like write-scan
+  take item, like child
+  mark private
+
+  sift item
+    case of-statement
+      link statement-node
+      sift statement-node
+        case function
+          back
+        case assign
+          visit-expression(scan, read(value))
+          save root, indexed-root(target)
+          fork test, is-unequal(root, <>)
+            hold
+              sift target
+                case member
+                  sift index
+                    case some
+                      link at
+                      visit-expression(scan, at)
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+              on-write(scan, root, span)
+            miss
+              visit-expression(scan, target)
+          back
+        miss
+          save nothing, 0
+    case of-expression
+      link expression-node
+      sift expression-node
+        case closure
+          back
+        case call
+          save call-span, span
+          sift callee
+            # `xs/push(1)`: the receiver is written, not read
+            case member
+              fork test, and(is-variable(read(target)), is-mutator(name))
+                hold
+                  save receiver, variable-name(read(target))
+                  walk args
+                    take arg
+                    visit-expression(scan, arg)
+                  on-write(scan, receiver, call-span)
+                  back
+            # `push(xs, 1)`: a variable in a position the callee writes
+            case variable
+              save called, name
+              save defs, make list
+              walk places-named(scan, called)
+                take place
+                fork test, is-equal(param-count(get(scan/program, place)), args/length)
+                  hold
+                    push(defs, place)
+              save at, 0
+              walk args
+                take arg
+                save written-here, false
+                fork test, is-variable(arg)
+                  hold
+                    walk defs
+                      take place
+                      fork test, has-number(get(scan/writes, place), at)
+                        hold
+                          save written-here, true
+                fork test, written-here
+                  hold
+                    on-write(scan, variable-name(arg), call-span)
+                  miss
+                    visit-expression(scan, arg)
+                save at, add(at, 1)
+              back
+            miss
+              save nothing, 0
+        case variable
+          on-read(scan, name)
+        miss
+          save nothing, 0
+    case of-type
+      save nothing, 0
+  walk children-of(item)
+    take inner
+    each-write(scan, inner)
+
+# the walk's program places of the tasks with a body, then of the separately compiled tasks that carry the positions
+# their own unit found (`stubWrites`), each place once, as the original's map holds them
+task write-places
+  take program, like list, like statement
+  like list, like number
+  mark private
+
+  save out, make list
+  save at, 0
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-above(body/length, 0)
+          hold
+            push(out, at)
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  save at, 0
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(stub, is-above(stub-writes/length, 0))
+          hold
+            fork test, not(has-number(out, at))
+              hold
+                push(out, at)
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  back out
+
+# for each task, the positions of the parameters it writes: directly, or by handing them to a task that does, to a
+# fixed point. A separately compiled task's are its own unit's, fixed, since its body is not here
+task collection-writes
+  take program, like list, like statement
+  like write-scan
+  mark private
+
+  save writes, make list
+  walk program
+    take one
+    push(writes, make list)
+  save scan
+    make write-scan
+      bind program, program
+      bind writes, writes
+      bind name-keys, make list
+      bind name-places, make list
+      bind marking, -1
+      bind changed, true
+      bind clock, 0
+      bind written, make list
+      bind reads, make list
+  save at, 0
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(stub, is-above(stub-writes/length, 0))
+          hold
+            save settled, make list
+            walk stub-writes
+              take position
+              push(settled, position)
+            save scan/writes/{at}, settled
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  walk write-places(program)
+    take place
+    add-name(scan, place)
+  walk test
+    hook test, scan/changed
+    hook hold
+      save scan/changed, false
+      save at, 0
+      walk program
+        take one
+        sift one
+          case function
+            fork test, is-above(body/length, 0)
+              hold
+                save scan/marking, at
+                # only the positions are kept from this walk, so its events start afresh for each task
+                reset-events(scan)
+                walk body
+                  take inner
+                  save item
+                    make of-statement
+                      bind node, inner
+                  each-write(scan, item)
+          miss
+            save nothing, 0
+        save at, add(at, 1)
+  save scan/marking, -1
+  back scan
+
+task add-name
+  take scan, like write-scan
+  take place, like number
+  mark private
+
+  save name, task-name(get(scan/program, place))
+  save at, 0
+  walk scan/name-keys
+    take one
+    fork test, is-equal(one, name)
+      hold
+        save places, get(scan/name-places, at)
+        push(places, place)
+        save scan/name-places/{at}, places
+        back
+    save at, add(at, 1)
+  push(scan/name-keys, name)
+  save places, make list
+  push(places, place)
+  push(scan/name-places, places)
+
+task task-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+task reset-events
+  take scan, like write-scan
+  mark private
+
+  save scan/clock, 0
+  save scan/written, make list
+  save scan/reads, make list
+
+# ONE COLLECTION, TWO HOLDERS (self-hosting-0026, the second and third value-semantics patterns). Inside one task:
+#
+#   save b, a           then a write through `b`, then a read of `a`: under values `a` never saw the write
+#   save r, make box    then a write to `xs`, then a read of `r`: the record kept the list as it was when stored
+#     bind items, xs
+#
+# Found in the walk's order: the alias or the store, then a write through one holder, then a read of the OTHER. A write
+# the other holder never reads afterwards changes nothing anybody sees, and is left alone
+
+form holder-pair
+  link one, like text
+  link other, like text
+  link at, like number
+  link alias, like boolean
+
+form rebind-event
+  link name, like text
+  link at, like number
+
+form holders
+  mark shared
+  link pairs, like list, like holder-pair
+  link rebinds, like list, like rebind-event
+
+task add-pair
+  take state, like holders
+  take one, like text
+  take other, like text
+  take at, like number
+  take alias, like boolean
+  mark private
+
+  save made
+    make holder-pair
+      bind one, one
+      bind other, other
+      bind at, at
+      bind alias, alias
+  push(state/pairs, made)
+
+# the collection variables a value stores into a container it builds: a record's fields, a list's items
+task stored-in
+  take value, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  sift value
+    case record
+      walk fields
+        take field
+        fork test, and(is-variable(field/value), is-collection(field/value))
+          hold
+            push(out, variable-name(field/value))
+    case array
+      walk items
+        take item
+        fork test, and(is-variable(item), is-collection(item))
+          hold
+            push(out, variable-name(item))
+    miss
+      save nothing, 0
+  back out
+
+task bind-holder
+  take scan, like write-scan
+  take state, like holders
+  take holder, like text
+  take value, like expression
+  mark private
+
+  save rebound
+    make rebind-event
+      bind name, holder
+      bind at, scan/clock
+  push(state/rebinds, rebound)
+  fork test, and(is-variable(value), and(is-unequal(variable-name(value), holder), is-collection(value)))
+    hold
+      add-pair(state, holder, variable-name(value), scan/clock, true)
+  walk stored-in(value)
+    take stored
+    add-pair(state, stored, holder, scan/clock, false)
+
+task visit-holders
+  take scan, like write-scan
+  take state, like holders
+  take item, like child
+  mark private
+
+  sift item
+    case of-statement
+      link statement-node
+      sift statement-node
+        case function
+          back
+        case let
+          visit-holder-expression(scan, state, init)
+          save scan/clock, add(scan/clock, 1)
+          bind-holder(scan, state, name, init)
+          back
+        case assign
+          fork test, is-variable(target)
+            hold
+              visit-holder-expression(scan, state, read(value))
+              save scan/clock, add(scan/clock, 1)
+              bind-holder(scan, state, variable-name(target), read(value))
+              back
+          # `save r/items, xs`: the collection stored into the record `r`
+          save path, written-path(target)
+          fork test, and(path/found, and(is-variable(read(value)), is-collection(read(value))))
+            hold
+              save scan/clock, add(scan/clock, 1)
+              add-pair(state, variable-name(read(value)), path/root, scan/clock, false)
+              back
+          # the writes and reads under it, as the first pattern reads them
+          each-write(scan, item)
+          back
+        miss
+          save nothing, 0
+    case of-expression
+      link expression-node
+      sift expression-node
+        case closure
+          back
+        case call
+          # a collection pushed or set into another: `list/push(xs)`, `m/set(k, xs)`
+          sift callee
+            case member
+              fork test, and(is-variable(read(target)), is-mutator(name))
+                hold
+                  save receiver, variable-name(read(target))
+                  walk args
+                    take arg
+                    fork test, and(is-variable(arg), is-collection(arg))
+                      hold
+                        save scan/clock, add(scan/clock, 1)
+                        add-pair(state, variable-name(arg), receiver, scan/clock, false)
+            miss
+              save nothing, 0
+          each-write(scan, item)
+          back
+        case variable
+          save scan/clock, add(scan/clock, 1)
+          save event
+            make read-event
+              bind name, name
+              bind at, scan/clock
+          push(scan/reads, event)
+        miss
+          save nothing, 0
+    case of-type
+      save nothing, 0
+  walk children-of(item)
+    take inner
+    visit-holders(scan, state, inner)
+
+task visit-holder-expression
+  take scan, like write-scan
+  take state, like holders
+  take node, like expression
+  mark private
+
+  save item
+    make of-expression
+      bind node, node
+  visit-holders(scan, state, item)
+
+# the first rebinding of `name` after `at`, `-1` for none (no end)
+task end-of
+  take state, like holders
+  take name, like text
+  take at, like number
+  like number
+  mark private
+
+  walk state/rebinds
+    take one
+    fork test, and(is-equal(one/name, name), is-above(one/at, at))
+      hold
+        back one/at
+  back -1
+
+task before-end
+  take at, like number
+  take end, like number
+  like boolean
+  mark private
+
+  fork test, is-below(end, 0)
+    hold
+      back true
+  back is-below(at, end)
+
+task same-span
+  take a, like span
+  take b, like span
+  like boolean
+  mark private
+
+  back and(and(is-equal(a/start/line, b/start/line), is-equal(a/start/column, b/start/column)), and(is-equal(a/end/line, b/end/line), is-equal(a/end/column, b/end/column)))
+
+task told-span
+  take told, like list, like span
+  take at, like span
+  like boolean
+  mark private
+
+  walk told
+    take one
+    fork test, same-span(one, at)
+      hold
+        back true
+  back false
+
+task holders-of
+  take scan, like write-scan
+  take task, like statement
+  take file, like text
+  like list, like diagnostic
+  mark private
+
+  reset-events(scan)
+  save state
+    make holders
+      bind pairs, make list
+      bind rebinds, make list
+  sift task
+    case function
+      walk body
+        take inner
+        save item
+          make of-statement
+            bind node, inner
+        visit-holders(scan, state, item)
+    miss
+      save nothing, 0
+
+  save out, make list
+  save told, make list
+  walk state/pairs
+    take pair
+    # an alias joins both ways: a write through either, then a read of the other. A store is one way: the stored
+    # collection written, then its container read
+    save throughs, make list
+    save others, make list
+    push(throughs, pair/one)
+    push(others, pair/other)
+    fork test, pair/alias
+      hold
+        push(throughs, pair/other)
+        push(others, pair/one)
+    save way, 0
+    walk throughs
+      take through
+      save other, get(others, way)
+      save way, add(way, 1)
+      # a pair lasts until either name is bound again
+      save through-end, end-of(state, through, pair/at)
+      save other-end, end-of(state, other, pair/at)
+      save found, false
+      save write-at, 0
+      save write-span, task-span(task)
+      walk scan/written
+        take written
+        fork test, and(not(found), and(is-equal(written/name, through), and(is-above(written/at, pair/at), before-end(written/at, through-end))))
+          hold
+            save found, true
+            save write-at, written/at
+            save write-span, written/span
+      fork test, or(not(found), told-span(told, write-span))
+        hold
+          turn next
+      save read-after, false
+      walk scan/reads
+        take read-one
+        fork test, and(is-equal(read-one/name, other), and(is-above(read-one/at, write-at), before-end(read-one/at, other-end)))
+          hold
+            save read-after, true
+      fork test, not(read-after)
+        hold
+          turn next
+      push(told, write-span)
+      save message, <this writes `{through}` after it was stored in `{other}`, and `{other}` is read afterwards: under value semantics (D1) `{other}` keeps the collection as it was stored>
+      save hint, <store `{through}` after its last write, or hold it in a `mark shared` form so both see one object>
+      fork test, pair/alias
+        hold
+          save message, <this writes `{through}`, which holds the same collection as `{other}`, and `{other}` is read afterwards: under value semantics (D1) `{other}` never sees the write>
+          save hint, <write through the one name that is read, or hold the collection in a `mark shared` form so both see one object>
+      push(out, warning(file, write-span, message, hint))
+  back out
+
+task task-span
+  take one, like statement
+  like span
+  mark private
+
+  back statement-span(one)
+
+task warning
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save kind, make type-mismatch
+  save made, diagnose(kind, input)
+  save made/severity, make warning
+  back made
+
+# the task under the name it was written with, not one it was split apart under (`replace__in4_2`) or an arity's
+task written-task-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      sift method
+        case some
+          link owner-of
+          back owner-of/name
+        case none
+          save cut, name
+          save stripping, true
+          walk test
+            hook test, stripping
+            hook hold
+              save stripping, false
+              save tail-at, last-index-of(cut, <__>)
+              fork test, is-minimum(tail-at, 0)
+                hold
+                  save tail, substring(cut, add(tail-at, 2), char-count(cut))
+                  fork test, and(is-above(char-count(tail), 0), all-digits(tail))
+                    hold
+                      save cut, substring(cut, 0, tail-at)
+                      save stripping, true
+          back strip-split(cut)
+    miss
+      back <>
+
+# `__in<g>_<k>` off the end, where it is
+task strip-split
+  take cut, like text
+  like text
+  mark private
+
+  save at, last-index-of(cut, <__in>)
+  fork test, is-below(at, 0)
+    hold
+      back cut
+  save rest, substring(cut, add(at, 4), char-count(cut))
+  save under, index-of(rest, <_>)
+  fork test, is-below(under, 1)
+    hold
+      back cut
+  save first, substring(rest, 0, under)
+  save second, substring(rest, add(under, 1), char-count(rest))
+  fork test, and(all-digits(first), and(is-above(char-count(second), 0), all-digits(second)))
+    hold
+      back substring(cut, 0, at)
+  back cut
+
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char-count(value), 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(value))
+    hook hold
+      save one, char-at(value, at)
+      fork test, not(has-text(digit-texts(), one))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task digit-texts
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <0>)
+  push(out, <1>)
+  push(out, <2>)
+  push(out, <3>)
+  push(out, <4>)
+  push(out, <5>)
+  push(out, <6>)
+  push(out, <7>)
+  push(out, <8>)
+  push(out, <9>)
+  back out
+
+task warn-lost-collection-writes
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save scan, collection-writes(program)
+  save out, make list
+  save places, write-places(program)
+  walk places
+    take place
+    save task, get(program, place)
+    fork test, file-is(task-span(task), file)
+      hold
+        walk holders-of(scan, task, file)
+          take found
+          push(out, found)
+
+  walk places
+    take place
+    save task, get(program, place)
+    save positions, get(scan/writes, place)
+    fork test, or(not(file-is(task-span(task), file)), or(not(returns-nothing(task)), is-equal(positions/length, 0)))
+      hold
+        turn next
+    # the collection parameters it writes
+    save written-names, make list
+    sift task
+      case function
+        save index, 0
+        walk params
+          take param
+          fork test, and(has-number(positions, index), is-collection-type(param-type(task, index)))
+            hold
+              fork test, not(has-text(written-names, param/name))
+                hold
+                  push(written-names, param/name)
+          save index, add(index, 1)
+        fork test, is-equal(written-names/length, 0)
+          hold
+            turn next
+        reset-events(scan)
+        walk body
+          take inner
+          save item
+            make of-statement
+              bind node, inner
+          each-write(scan, item)
+      miss
+        turn next
+    # the first write to each written parameter, in the walk's order, and whether it is read after
+    save shown, written-task-name(task)
+    save first-names, make list
+    walk scan/written
+      take written
+      fork test, and(has-text(written-names, written/name), not(has-text(first-names, written/name)))
+        hold
+          push(first-names, written/name)
+          save last-read, -1
+          walk scan/reads
+            take read-one
+            fork test, is-equal(read-one/name, written/name)
+              hold
+                save last-read, read-one/at
+          fork test, is-above(last-read, written/at)
+            hold
+              turn next
+          push(out, warning(file, written/span, <this writes `{written/name}`, a collection `{shown}` was handed and sends nothing back: under value semantics (D1) the write reaches a copy the caller never sees>, <send `{written/name}` back and use what comes back, or hold it in a `mark shared` form so every binding sees one object>))
+  back out

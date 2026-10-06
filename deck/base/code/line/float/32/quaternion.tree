@@ -1,4 +1,4 @@
-# Quaternion: a rotation as (x, y, z, w), 32-bit floats. Pure float math, with the algorithms taken from gl-matrix (the canonical reference). `times` is the Hamilton product (named `times` because `multiply` is the number primitive), `conjugate` negates the vector part, `length` / `normalize` give the unit quaternion, `from-axis-angle` builds a rotation, `slerp` does spherical linear interpolation.
+# Quaternion: a rotation as (x, y, z, w), 32-bit floats. Pure float math, with the algorithms taken from gl-matrix (the canonical reference). `multiply` is the Hamilton product (it wears `multiplication`), `conjugate` negates the vector part, `magnitude` is the norm and `normalize` gives the unit quaternion, `from-axis-angle` builds a rotation, `slerp` does spherical linear interpolation.
 
 mark unstable
 
@@ -8,17 +8,30 @@ load @term/base/float
   find cosine
   find arc-cosine
 
+load @term/base/arithmetic
+  find multiplication
+
 form quaternion
   link x, like decimal
   link y, like decimal
   link z, like decimal
   link w, like decimal
 
-  # the Hamilton product self * other (gl-matrix quat.multiply)
+  # the Hamilton product: `multiply(p, q)`, as on two numbers (note/term/plan/decisions-2026-10.md, D5)
+  wear multiplication
+    task multiply
+      take self
+      take other, like quaternion
+      like quaternion
+      back self/times(other)
+
+  # the Hamilton product self * other (gl-matrix quat.multiply), by its name before `multiply` reached a quaternion,
+  # kept for one release
   task times
     take self
     take other, like quaternion
     like quaternion
+    mark deprecated
     send back
       make quaternion
         bind x
@@ -126,7 +139,8 @@ form quaternion
           read self/w
           read other/w
 
-  task length
+  # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
+  task magnitude
     take self
     like decimal
     send back
@@ -135,11 +149,17 @@ form quaternion
           read self
           read self
 
+  # the older name of `magnitude`
+  task length
+    take self
+    like decimal
+    back magnitude(self)
+
   task normalize
     take self
     like quaternion
     save magnitude
-      call length
+      call magnitude
         read self
     send back
       make quaternion

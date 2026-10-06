@@ -1,0 +1,1839 @@
+# Form extension: `form x` that is `like <base>` with children extends the base. This pass resolves every such form
+# into an ordinary record before resolution, so the resolver, the checker and every backend see plain fields:
+#
+#   - `head <param>, like <t>` and `head <param>` over `link` lines supply the base's type arguments by name
+#   - `link` lines directly under the `like` add props to the base's single record parameter (the short form), or
+#     extend the record a previous extension already fixed it to
+#   - `bind <field>, <value>` pins a field: every instance carries that value, and a construction that gives it is
+#     refused
+#
+# It also finishes a raise. `halt <form>` mills to a `throw` of the record as written plus `raise: <form>`; here the form
+# is checked to descend from `exception`, the props are checked against the props record (a missing required prop, an
+# unknown one, or a pinned one is a diagnostic), fallbacks are filled, and the fields the runtime owns (`host`, `form`,
+# `code`, `time`) are added. See note/term/hive/03-exception.md.
+#
+# Ported from check/extend.ts (self-hosting, 2026-10-05). The original mutated the forms and constructions it was
+# handed; this hands every one back (D1). The forms are one `mark shared` table by name, in the order first met, and
+# each program place of a form's last definition is written once at the end. A construction's `positional` values, once
+# filled, are written empty where the original deleted the field: every reader asks for its length. What the build's
+# `deckOf` would answer is handed in as a list. The original moved first to the same arguments and answer.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find index-of
+  find substring
+  find char-count
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find field-value
+  find form-field
+  find statement
+  find statement-span
+  find expression-span
+  find type
+
+load ../compile/node-rewrite
+  find copy-expression
+
+# the deck a file belongs to, by its name, as the build knows it
+form deck-name
+  link file, like text
+  link name, like text
+
+form extend-result
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+# a base's type parameter and what supplies it
+form supplied
+  link name, like text
+  link type, like type
+
+form extend-state
+  mark shared
+  link file, like text
+  link decks, like list, like deck-name
+  link diagnostics, like list, like diagnostic
+  # every form by name, the last definition of each, in the order the names were first met
+  link names, like list, like text
+  link forms, like hash, like text, like statement
+  # the program place of each name's last definition, and whether the table still holds that one (a synthesized
+  # props record can take a name over)
+  link places, like hash, like text, like number
+  link from-program, like hash, like text, like boolean
+  link resolved, like hash, like text, like boolean
+  link resolving, like hash, like text, like boolean
+  # the props records synthesized, in order, appended to the program
+  link synthesized, like list, like statement
+
+task file-of
+  take one, like statement
+  take fallback, like text
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back fallback
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task flag
+  take table, like hash, like text, like boolean
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, table/has(name)
+    hold
+      back table/get(name)
+  back false
+
+task error
+  take state, like extend-state
+  take top, like statement
+  take at, like span
+  take message, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file-of(top, state/file)
+      bind span, at
+      bind message, make(some, message)
+  save kind, make type-mismatch
+  push(state/diagnostics, diagnose(kind, input))
+
+# ---- the forms ----
+
+form record-parts
+  link name, like text
+  link params, like list, like text
+  link fields, like list, like form-field
+  link variant-count, like number
+  link pins, like list, like field-value
+  link chain, like list, like text
+  link props, like text
+  link extending, like boolean
+  link span, like span
+
+task form-named
+  take state, like extend-state
+  take name, like text
+  like maybe, like statement
+  mark private
+
+  fork test, state/forms/has(name)
+    hold
+      back make(some, state/forms/get(name))
+  back make none
+
+task put-form
+  take state, like extend-state
+  take name, like text
+  take one, like statement
+  mark private
+
+  fork test, not(state/forms/has(name))
+    hold
+      push(state/names, name)
+  save state/forms/{name}, one
+
+task fields-of
+  take one, like statement
+  like list, like form-field
+  mark private
+
+  sift one
+    case record-type
+      back fields
+    miss
+      back make list
+
+task params-of
+  take one, like statement
+  like list, like text
+  mark private
+
+  sift one
+    case record-type
+      back params
+    miss
+      back make list
+
+task chain-of
+  take one, like statement
+  like list, like text
+  mark private
+
+  sift one
+    case record-type
+      save out, make list
+      walk chain
+        take link-name
+        push(out, link-name)
+      back out
+    miss
+      back make list
+
+task pins-of
+  take one, like statement
+  like list, like field-value
+  mark private
+
+  sift one
+    case record-type
+      save out, make list
+      walk pins
+        take pin
+        push(out, pin)
+      back out
+    miss
+      back make list
+
+task props-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      back props
+    miss
+      back <>
+
+task is-function-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case function
+      back true
+    miss
+      back false
+
+task free-of-functions
+  take fields, like list, like form-field
+  like boolean
+  mark private
+
+  walk fields
+    take field
+    fork test, is-function-type(field/type)
+      hold
+        back false
+  back true
+
+task supplied-type
+  take map, like list, like supplied
+  take name, like text
+  like maybe, like type
+  mark private
+
+  walk map
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one/type)
+  back make none
+
+task supply
+  take map, like list, like supplied
+  take name, like text
+  take given, like type
+  like list, like supplied
+  mark private
+
+  save made
+    make supplied
+      bind name, name
+      bind type, given
+  save at, 0
+  walk map
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save map/{at}, made
+        back map
+    save at, add(at, 1)
+  push(map, made)
+  back map
+
+task named-type
+  take name, like text
+  like type
+  mark private
+
+  back
+    make type/named
+      bind name, name
+
+# a base's type parameters substituted in a field type
+task subst
+  take given, like type
+  take map, like list, like supplied
+  like type
+  mark private
+
+  sift given
+    case named
+      sift supplied-type(map, name)
+        case some
+          link hit
+          fork test, is-equal(args/length, 0)
+            hold
+              back hit
+        case none
+          save nothing, 0
+      fork test, is-above(args/length, 0)
+        hold
+          save args-out, make list
+          walk args
+            take arg
+            push(args-out, subst(arg, map))
+          back named-with-args(given, args-out)
+      back given
+    case array
+      save element-out, subst(element, map)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, subst(key, map)
+      save value-out, subst(value, map)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, subst(param, map))
+      save result-out, subst(result, map)
+      back function-with(given, params-out, result-out)
+    miss
+      back given
+
+# a named type with new arguments, everything else as it was: a new value, never the one handed in, which is the base
+# form's own field type
+task named-with-args
+  take given, like type
+  take args-out, like list, like type
+  like type
+  mark private
+
+  sift given
+    case named
+      save values, make list
+      walk value-args
+        take one
+        push(values, one)
+      save kept-alias, read(alias)
+      save made
+        make type/named
+          bind name, name
+          bind args, args-out
+      back with-named-parts(made, values, kept-alias)
+    miss
+      back given
+
+# a function type with new parameters and result, its effects and parameter names as they were
+task function-with
+  take given, like type
+  take params-out, like list, like type
+  take result-out, like type
+  like type
+  mark private
+
+  sift given
+    case function
+      save kept, make list
+      walk effects
+        take one
+        push(kept, one)
+      save names, make list
+      walk param-names
+        take one
+        push(names, one)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      back with-function-parts(made, kept, names)
+    miss
+      back given
+
+# a made named type given the value arguments and alias its original held, where it held them
+task with-named-parts
+  take made, like type
+  take values, like list, like expression
+  take kept-alias, like maybe, like text
+  like type
+  mark private
+
+  sift made
+    case named
+      fork test, is-above(values/length, 0)
+        hold
+          save made/value-args, values
+      sift kept-alias
+        case some
+          link written
+          save made/alias, make(some, written)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back made
+
+# a made function type given the effects and parameter names its original held, where it held them
+task with-function-parts
+  take made, like type
+  take kept, like list, like text
+  take names, like list, like text
+  like type
+  mark private
+
+  sift made
+    case function
+      fork test, is-above(kept/length, 0)
+        hold
+          save made/effects, kept
+      fork test, is-above(names/length, 0)
+        hold
+          save made/param-names, names
+    miss
+      save nothing, 0
+  back made
+
+# a head's links or an extension's links made the fields of a synthesized record, as the original handed them over:
+# only the parts each holds
+task field-from-head
+  take name, like text
+  take field-type, like type
+  like form-field
+  mark private
+
+  back
+    make form-field
+      bind name, name
+      bind type, field-type
+
+# a props record the extension writes: `<form>-<field>`, where `field` is the base field typed by the parameter, else
+# `<form>-<param>`
+task props-name
+  take form-name, like text
+  take base, like statement
+  take param, like text
+  like text
+  mark private
+
+  walk fields-of(base)
+    take field
+    sift field/type
+      case named
+        fork test, is-equal(name, param)
+          hold
+            back <{form-name}-{field/name}>
+      miss
+        save nothing, 0
+  back <{form-name}-{param}>
+
+task synth
+  take state, like extend-state
+  take name, like text
+  take fields, like list, like form-field
+  take at, like span
+  mark private
+
+  save record
+    make statement/record-type
+      bind name, name
+      bind params, make list
+      bind fields, fields
+      bind variants, make list
+      bind function-free, free-of-functions(fields)
+      bind span, at
+  push(state/synthesized, record)
+  put-form(state, name, record)
+  save state/from-program/{name}, false
+  save state/resolved/{name}, true
+
+task with-file
+  take at, like span
+  take file, like text
+  like span
+  mark private
+
+  back
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+
+task resolve-one
+  take state, like extend-state
+  take name, like text
+  mark private
+
+  fork test, not(state/forms/has(name))
+    hold
+      back
+  save rt, state/forms/get(name)
+  fork test, flag(state/resolved, name)
+    hold
+      back
+  sift rt
+    case record-type
+      sift extend
+        case some
+          link ext
+          resolve-extension(state, rt, ext)
+        case none
+          back
+    miss
+      back
+
+task resolve-extension
+  take state, like extend-state
+  take rt, like statement
+  take ext, like form-extend
+  mark private
+
+  save name, record-name(rt)
+  fork test, flag(state/resolving, name)
+    hold
+      error(state, rt, ext/span, <"{name}" extends itself>)
+      save state/resolved/{name}, true
+      back
+  save state/resolving/{name}, true
+
+  save base-name, <>
+  save base-args, make list
+  sift ext/base
+    case named
+      save base-name, name
+      walk args
+        take arg
+        push(base-args, arg)
+    miss
+      save nothing, 0
+  fork test, or(not(is-named(ext/base)), not(state/forms/has(base-name)))
+    hold
+      save shown, <a non-form type>
+      fork test, is-named(ext/base)
+        hold
+          save shown, base-name
+      error(state, rt, ext/span, <"{name}" is like "{shown}", which is not a form that can be extended>)
+      save state/resolving/{name}, false
+      save state/resolved/{name}, true
+      back
+
+  resolve-one(state, base-name)
+  save base, state/forms/get(base-name)
+  save base-params, params-of(base)
+  save map, make list
+  save at, 0
+  walk base-args
+    take arg
+    fork test, is-below(at, base-params/length)
+      hold
+        save map, supply(map, get(base-params, at), arg)
+    save at, add(at, 1)
+
+  save rt-file, file-of(rt, state/file)
+  save chosen-props, props-of(base)
+  save heads-out, make list
+  walk ext/heads
+    take head
+    fork test, not(has-text(base-params, head/name))
+      hold
+        save listed, <>
+        fork test, is-above(base-params/length, 0)
+          hold
+            save joined, join(base-params, <, >)
+            save listed, < (it has {joined})>
+        error(state, rt, head/span, <"{base-name}" has no type parameter "{head/name}"{listed}>)
+        push(heads-out, head)
+        turn next
+    fork test, is-above(head/links/length, 0)
+      hold
+        save made-name, props-name(name, base, head/name)
+        save made-fields, make list
+        walk head/links
+          take head-link
+          push(made-fields, field-from-head(head-link/name, head-link/type))
+        # the synthesized record's span IS the head's in the original, so its file is written into the head too
+        save head/span, with-file(head/span, rt-file)
+        synth(state, made-name, made-fields, head/span)
+        save map, supply(map, head/name, named-type(made-name))
+        save chosen-props, made-name
+      miss
+        sift head/type
+          case some
+            link head-type
+            save map, supply(map, head/name, head-type)
+          case none
+            save nothing, 0
+    push(heads-out, head)
+  save ext/heads, heads-out
+
+  # the short form: `link` lines directly under the `like` fill the base's one record parameter, or extend the record a
+  # previous extension fixed it to
+  fork test, is-above(ext/links/length, 0)
+    hold
+      save open, make list
+      walk base-params
+        take param
+        sift supplied-type(map, param)
+          case some
+            save nothing, 0
+          case none
+            push(open, param)
+      save base-props, props-of(base)
+      fork test, is-equal(open/length, 1)
+        hold
+          save made-name, props-name(name, base, get(open, 0))
+          save made-fields, make list
+          walk ext/links
+            take extend-link
+            push(made-fields, extend-link)
+          save ext/span, with-file(ext/span, rt-file)
+          synth(state, made-name, made-fields, ext/span)
+          save map, supply(map, get(open, 0), named-type(made-name))
+          save chosen-props, made-name
+        miss
+          fork test, and(is-equal(open/length, 0), and(is-unequal(base-props, <>), state/forms/has(base-props)))
+            hold
+              save inherited-form, state/forms/get(base-props)
+              save tail, substring(base-props, add(char-count(base-name), 1), char-count(base-props))
+              save made-name, <{name}-{tail}>
+              save merged, make list
+              walk fields-of(inherited-form)
+                take field
+                push(merged, field)
+              walk ext/links
+                take extend-link
+                save as-field, extend-link
+                save placed, false
+                save k, 0
+                walk merged
+                  take one
+                  fork test, and(not(placed), is-equal(one/name, extend-link/name))
+                    hold
+                      save merged/{k}, as-field
+                      save placed, true
+                  save k, add(k, 1)
+                fork test, not(placed)
+                  hold
+                    push(merged, as-field)
+              save ext/span, with-file(ext/span, rt-file)
+              synth(state, made-name, merged, ext/span)
+              save map, supply(map, <__props__{base-props}>, named-type(made-name))
+              save chosen-props, made-name
+            miss
+              fork test, is-above(open/length, 1)
+                hold
+                  save joined, join(open, <, >)
+                  error(state, rt, ext/span, <"{base-name}" takes {open/length} type parameters ({joined}), so a `link` under `like` must sit under a `head \<name\>` that says which one it fills>)
+                miss
+                  error(state, rt, ext/span, <"{base-name}" takes no record parameter, so a `link` under `like {base-name}` has nothing to add to>)
+
+  # inherited fields, substituted, then the form's own top-level fields
+  save base-props, props-of(base)
+  save inherited, make list
+  walk fields-of(base)
+    take field
+    save field-type, subst(field/type, map)
+    # a field typed by a previously synthesized props record: re-pointed at the extended one
+    fork test, and(is-unequal(base-props, <>), is-named-as(field-type, base-props))
+      hold
+        sift supplied-type(map, <__props__{base-props}>)
+          case some
+            link repointed
+            save field-type, repointed
+          case none
+            save nothing, 0
+    push(inherited, copy-field(field, field-type))
+  save own, make list
+  walk fields-of(rt)
+    take field
+    save taken, false
+    walk inherited
+      take one
+      fork test, is-equal(one/name, field/name)
+        hold
+          save taken, true
+    fork test, not(taken)
+      hold
+        push(own, field)
+  save fields-out, make list
+  walk inherited
+    take one
+    push(fields-out, one)
+  walk own
+    take one
+    push(fields-out, one)
+
+  # parameters the extension left open stay parameters of this form
+  save params-out, params-of(rt)
+  walk base-params
+    take param
+    sift supplied-type(map, param)
+      case some
+        save nothing, 0
+      case none
+        fork test, not(has-text(params-out, param))
+          hold
+            push(params-out, param)
+
+  # pins: inherited first, then this form's, later winning
+  save pins-out, pins-of(base)
+  save base-chain, chain-of(base)
+  save above, make list
+  fork test, is-equal(base-chain/length, 0)
+    hold
+      push(above, base-name)
+    miss
+      walk base-chain
+        take link-name
+        push(above, link-name)
+  push(above, base-name)
+  walk ext/pins
+    take pin
+    fork test, and(is-owned(pin/name), has-text(above, <exception>))
+      hold
+        error(state, rt, ext/span, <"{pin/name}" is filled by the runtime on every exception and cannot be pinned>)
+        turn next
+    # a pin names a field of the form, or a prop of its props record (`bind thing, <upload>` on an exception)
+    save props-fields, make list
+    fork test, and(is-unequal(chosen-props, <>), state/forms/has(chosen-props))
+      hold
+        save props-fields, fields-of(state/forms/get(chosen-props))
+    fork test, and(not(has-field(fields-out, pin/name)), not(has-field(props-fields, pin/name)))
+      hold
+        error(state, rt, ext/span, <"{name}" pins "{pin/name}", which is not a field or prop of "{base-name}">)
+        turn next
+    save placed, false
+    save k, 0
+    walk pins-out
+      take one
+      fork test, and(not(placed), is-equal(one/name, pin/name))
+        hold
+          save pins-out/{k}, pin
+          save placed, true
+      save k, add(k, 1)
+    fork test, not(placed)
+      hold
+        push(pins-out, pin)
+
+  save chain-out, base-chain
+  push(chain-out, base-name)
+  save updated, state/forms/get(name)
+  sift updated
+    case record-type
+      save updated/fields, fields-out
+      save updated/params, params-out
+      save updated/pins, pins-out
+      save updated/chain, chain-out
+      fork test, is-unequal(chosen-props, <>)
+        hold
+          save updated/props, chosen-props
+      save updated/function-free, free-of-functions(fields-out)
+      save updated/extend, make(some, ext)
+    miss
+      save nothing, 0
+  save state/forms/{name}, updated
+  save state/resolving/{name}, false
+  save state/resolved/{name}, true
+
+task record-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      back name
+    miss
+      back <>
+
+task is-named
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case named
+      back true
+    miss
+      back false
+
+task named-name
+  take given, like type
+  like text
+  mark private
+
+  sift given
+    case named
+      back name
+    miss
+      back <>
+
+task is-named-as
+  take given, like type
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift given
+    case named
+      back is-equal(name, wanted)
+    miss
+      back false
+
+task has-field
+  take fields, like list, like form-field
+  take name, like text
+  like boolean
+  mark private
+
+  walk fields
+    take field
+    fork test, is-equal(field/name, name)
+      hold
+        back true
+  back false
+
+# the fields of `exception` the runtime fills. A raise never writes them and a declaration never pins them
+task is-owned
+  take name, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(name, <host>), is-equal(name, <form>)), or(is-equal(name, <code>), is-equal(name, <time>)))
+
+# a field the caller may write without touching the one it was handed, every part kept as written (a flag written
+# `false` included, which Term cannot tell from one left out). Natively a value is already a copy
+bind copy-form-field
+  take value, like form-field
+  like form-field
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a field with a new type, everything else as it was: a new value, never the base form's own field
+task copy-field
+  take given, like form-field
+  take field-type, like type
+  like form-field
+  mark private
+
+  save field, copy-form-field(given)
+  save field/type, field-type
+  back field
+
+# the root every exception descends from
+task exception-form
+  like text
+
+  back <exception>
+
+# whether a name is one of the seventeen exceptions the stdlib declares (@term/base/exception). A roll entry says which
+# one an exception is under, and a signature bound may name one the build dropped because nothing raises it
+task is-generic-exception
+  take name, like text
+  like boolean
+
+  walk generic-exceptions()
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task generic-exceptions
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <defect>)
+  push(out, <omission>)
+  push(out, <excess>)
+  push(out, <shortage>)
+  push(out, <mismatch>)
+  push(out, <exclusion>)
+  push(out, <absence>)
+  push(out, <conflict>)
+  push(out, <refusal>)
+  push(out, <anonymity>)
+  push(out, <denial>)
+  push(out, <overload>)
+  push(out, <outage>)
+  push(out, <timeout>)
+  push(out, <overage>)
+  push(out, <failure>)
+  push(out, <bundle>)
+  back out
+
+# ---- the whole pass ----
+
+task extend-forms
+  take program, like list, like statement
+  take file, like text
+  take decks, like list, like deck-name
+  like extend-result
+
+  save state
+    make extend-state
+      bind file, file
+      bind decks, decks
+      bind diagnostics, make list
+      bind names, make list
+      bind forms, make hash
+      bind places, make hash
+      bind from-program, make hash
+      bind resolved, make hash
+      bind resolving, make hash
+      bind synthesized, make list
+  save index, 0
+  walk program
+    take one
+    sift one
+      case record-type
+        put-form(state, name, one)
+        save state/places/{name}, index
+        save state/from-program/{name}, true
+      miss
+        save nothing, 0
+    save index, add(index, 1)
+
+  save first-names, make list
+  walk state/names
+    take one
+    push(first-names, one)
+  walk first-names
+    take one
+    resolve-one(state, one)
+
+  # each form's last definition written back where it stands, then the props records appended
+  save out, make list
+  walk program
+    take one
+    push(out, one)
+  walk state/names
+    take name
+    fork test, flag(state/from-program, name)
+      hold
+        save out/{state/places/get(name)}, state/forms/get(name)
+  walk state/synthesized
+    take record
+    push(out, record)
+
+  # an exception form must pin `note`, directly or by inheritance
+  walk state/names
+    take name
+    save rt, state/forms/get(name)
+    sift rt
+      case record-type
+        fork test, and(has-text(chain-of(rt), <exception>), not(pins-note(rt)))
+          hold
+            save at, span
+            sift extend
+              case some
+                link ext
+                save at, ext/span
+              case none
+                save nothing, 0
+            error(state, rt, at, <"{name}" is an exception and must pin its note (`bind note, \<...\>` under the `like`)>)
+      miss
+        save nothing, 0
+
+  save position, 0
+  walk out
+    take top
+    save out/{position}, walk-statement(state, top, top)
+    save position, add(position, 1)
+  back
+    make extend-result
+      bind program, out
+      bind diagnostics, state/diagnostics
+
+task pins-note
+  take one, like statement
+  like boolean
+  mark private
+
+  walk pins-of(one)
+    take pin
+    fork test, is-equal(pin/name, <note>)
+      hold
+        back true
+  back false
+
+task is-exception
+  take state, like extend-state
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, state/forms/has(name)
+    hold
+      back has-text(chain-of(state/forms/get(name)), <exception>)
+  back false
+
+# ---- constructions and raises ----
+
+task names-given
+  take fields, like list, like field-value
+  like list, like text
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    push(out, field/name)
+  back out
+
+task new-field
+  take name, like text
+  take value, like expression
+  like field-value
+  mark private
+
+  back
+    make field-value
+      bind name, name
+      bind value, value
+
+# the values written by position into the `slot` fields, in order, of a form or of a case
+task fill-slots
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  # not `owner`: a construction's own field of that name would hide it inside the arm
+  take slot-owner, like text
+  take slots, like list, like text
+  like expression
+  mark private
+
+  sift node
+    case record
+      fork test, is-above(positional/length, slots/length)
+        hold
+          save plural, <s>
+          fork test, is-equal(slots/length, 1)
+            hold
+              save plural, <>
+          save listed, join(slots, <, >)
+          error(state, top, span, <"{slot-owner}" has {slots/length} slot{plural} ({listed}) and this gives {positional/length} values>)
+        miss
+          save at, 0
+          walk positional
+            take value
+            save slot, get(slots, at)
+            fork test, has-text(names-given(fields), slot)
+              hold
+                error(state, top, expression-span(value), <"{slot}" is given twice, by position and by name>)
+              miss
+                push(fields, new-field(slot, value))
+            save at, add(at, 1)
+          save node/fields, fields
+      save node/positional, make list
+    miss
+      save nothing, 0
+  back node
+
+task backtick-bind
+  take name, like text
+  like text
+  mark private
+
+  back <`bind {name}`>
+
+# a construction of a VARIANT given a bare value: `make full, <apples>` for `case full, like text`. A one-value case has
+# one field, `value`, so the one value is it. A case whose fields are `slot`s takes them in order, `make conjunction(p,
+# q)`, as a form's slots are. Any other variant given values by position is refused naming its fields
+task fill-variant
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case record
+      fork test, is-equal(positional/length, 0)
+        hold
+          back node
+      save count, positional/length
+      # read before the arm over each form, whose own `name` hides the construction's
+      save wanted, name
+      save found, false
+      save variant-name, <>
+      save variant-fields, make list
+      save slot-names, make list
+      walk state/names
+        take form-name
+        fork test, found
+          hold
+            turn next
+        sift state/forms/get(form-name)
+          case record-type
+            walk variants
+              take variant
+              fork test, and(not(found), is-equal(variant/name, wanted))
+                hold
+                  save found, true
+                  save variant-name, variant/name
+                  walk variant/fields
+                    take field
+                    push(variant-fields, field/name)
+                    fork test, field/positional
+                      hold
+                        push(slot-names, field/name)
+          miss
+            save nothing, 0
+      fork test, not(found)
+        hold
+          back node
+      save given, names-given(fields)
+      save open, make list
+      walk variant-fields
+        take one
+        fork test, not(has-text(given, one))
+          hold
+            push(open, one)
+      fork test, is-above(slot-names/length, 0)
+        hold
+          save node, fill-slots(state, top, node, variant-name, slot-names)
+        miss
+          fork test, and(is-equal(open/length, 1), is-equal(count, 1))
+            hold
+              # the one value, read where it stands: a `need false` list handed to a call is written into the program
+              walk positional
+                take first-value
+                push(fields, new-field(get(open, 0), first-value))
+              save node/fields, fields
+            miss
+              fork test, is-equal(variant-fields/length, 0)
+                hold
+                  error(state, top, span, <"{variant-name}" holds no value, and this gives {count}>)
+                miss
+                  save shown, make list
+                  walk variant-fields
+                    take one
+                    push(shown, backtick-bind(one))
+                  save listed, join(shown, <, >)
+                  error(state, top, span, <"{variant-name}" takes its fields by name ({listed}), and this gives {count} by position>)
+      back clear-positional(node)
+    miss
+      back node
+
+task clear-positional
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case record
+      save node/positional, make list
+    miss
+      save nothing, 0
+  back node
+
+# fill a construction: positional values go to the form's `slot` fields in order, omitted fields take their `fall`, a
+# given pinned field is refused and the pins are added. Only the pins that name a field of the form itself; a pin on a
+# prop lives in the props record and is filled by a raise
+task fill-record
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case record
+      fork test, not(state/forms/has(name))
+        hold
+          back fill-variant(state, top, node)
+      save rt, state/forms/get(name)
+      save rt-name, record-name(rt)
+      save rt-fields, fields-of(rt)
+      save rt-pins, pins-of(rt)
+      save rt-chain, chain-of(rt)
+      save filled, node
+      fork test, is-above(positional/length, 0)
+        hold
+          save slots, make list
+          walk rt-fields
+            take field
+            fork test, field/positional
+              hold
+                push(slots, field/name)
+          fork test, is-equal(slots/length, 0)
+            hold
+              error(state, top, span, <"{rt-name}" has no slots, so its fields are given by name (`bind \<field\>, \<value\>`)>)
+              save filled, clear-positional(node)
+            miss
+              save filled, fill-slots(state, top, node, rt-name, slots)
+      back fill-defaults(state, top, filled, rt-name, rt-fields, rt-pins, rt-chain)
+    miss
+      back node
+
+task fill-defaults
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  take rt-name, like text
+  take rt-fields, like list, like form-field
+  take rt-pins, like list, like field-value
+  take rt-chain, like list, like text
+  like expression
+  mark private
+
+  sift node
+    case record
+      save given-fields, fields
+      walk rt-fields
+        take field
+        sift field/fallback
+          case some
+            link fallback
+            fork test, not(has-text(names-given(given-fields), field/name))
+              hold
+                push(given-fields, new-field(field/name, copy-expression(fallback)))
+          case none
+            save nothing, 0
+      # A field with no `need false` and no `fall` is required, and a construction that leaves it out is refused. An
+      # exception's own fields are the runtime's to fill, and a pin fills its field below
+      fork test, is-equal(rt-chain/length, 0)
+        hold
+          save pinned, names-given(rt-pins)
+          save missing, make list
+          walk rt-fields
+            take field
+            fork test, and(not(field/optional), and(not(has-text(pinned, field/name)), not(has-text(names-given(given-fields), field/name))))
+              hold
+                push(missing, <"{field/name}">)
+          fork test, is-above(missing/length, 0)
+            hold
+              save which, <each>
+              fork test, is-equal(missing/length, 1)
+                hold
+                  save which, <it>
+              save listed, join(missing, <, >)
+              error(state, top, span, <"{rt-name}" needs {listed}, which this construction leaves out. Give {which} with `bind`, or mark the field `need false` or give it a `fall`>)
+      fork test, is-equal(rt-pins/length, 0)
+        hold
+          save node/fields, given-fields
+          back node
+      save pins, make list
+      walk rt-pins
+        take pin
+        fork test, has-field(rt-fields, pin/name)
+          hold
+            push(pins, pin)
+      save pin-names, names-given(pins)
+      walk given-fields
+        take field
+        fork test, has-text(pin-names, field/name)
+          hold
+            error(state, top, expression-span(field/value), <"{field/name}" is pinned by "{rt-name}" and cannot be given here>)
+      walk pins
+        take pin
+        fork test, not(has-text(names-given(given-fields), pin/name))
+          hold
+            push(given-fields, new-field(pin/name, copy-expression(pin/value)))
+      save node/fields, given-fields
+    miss
+      save nothing, 0
+  back node
+
+# the deck a source file belongs to, for the `host` of a raise: as the build knows it, else read off a linked path
+# (`.../link/@scope/name/...`), and `@local` when it cannot be
+task host-of
+  take state, like extend-state
+  take top, like statement
+  like text
+  mark private
+
+  save f, file-of(top, state/file)
+  walk state/decks
+    take one
+    fork test, is-equal(one/file, f)
+      hold
+        back one/name
+  back linked-deck(f)
+
+# the first `/link/@scope/name/` in a path, as `@scope/name`, else `@local`
+task linked-deck
+  take path, like text
+  like text
+  mark private
+
+  save from, 0
+  save size, char-count(path)
+  walk test
+    hook test, is-below(from, size)
+    hook hold
+      save rest, substring(path, from, size)
+      save at, index-of(rest, </link/@>)
+      fork test, is-below(at, 0)
+        hold
+          back <@local>
+      save after, substring(rest, add(at, 6), char-count(rest))
+      save scope-end, index-of(after, </>)
+      fork test, is-above(scope-end, 1)
+        hold
+          save tail, substring(after, add(scope-end, 1), char-count(after))
+          save name-end, index-of(tail, </>)
+          fork test, is-above(name-end, 0)
+            hold
+              save scope, substring(after, 0, scope-end)
+              save name, substring(tail, 0, name-end)
+              back <{scope}/{name}>
+      # this one does not match; the next `/link/` begins after its first character
+      save from, add(from, add(at, 1))
+  back <@local>
+
+task text-expression
+  take value, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/string
+      bind value, value
+      bind span, at
+
+task call-expression
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  save callee
+    make expression/variable
+      bind name, name
+      bind span, at
+  back
+    make expression/call
+      bind callee, callee
+      bind args, make list
+      bind span, at
+
+task record-expression
+  take name, like text
+  take fields, like list, like field-value
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/record
+      bind name, name
+      bind fields, fields
+      bind span, at
+
+# finish a raise: `halt <form>` with its props as written
+task fill-raise
+  take state, like extend-state
+  take top, like statement
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case throw
+      save form-name, raise
+      fork test, not(state/forms/has(form-name))
+        hold
+          error(state, top, span, <"{form-name}" is not a form that can be raised>)
+          back node
+      fork test, not(is-exception(state, form-name))
+        hold
+          error(state, top, span, <"{form-name}" is not an exception. A raised form is `like exception` or like one of the stdlib exceptions>)
+          back node
+      save rt, state/forms/get(form-name)
+      save rt-fields, fields-of(rt)
+      save rt-pins, pins-of(rt)
+      save rt-props, props-of(rt)
+      save pin-names, names-given(rt-pins)
+      save at, span
+      save given, make list
+      sift read(value)
+        case record
+          save given, fields
+        miss
+          back node
+      save cause-found, false
+      save cause, new-field(<base>, read(value))
+      save props, make list
+      walk given
+        take field
+        fork test, is-equal(field/name, <base>)
+          hold
+            fork test, not(cause-found)
+              hold
+                save cause, field
+                save cause-found, true
+          miss
+            push(props, field)
+      save props-fields, make list
+      fork test, and(is-unequal(rt-props, <>), state/forms/has(rt-props))
+        hold
+          save props-fields, fields-of(state/forms/get(rt-props))
+      save props-names, make list
+      walk props-fields
+        take field
+        push(props-names, field/name)
+      save link-fields, make list
+      walk props
+        take prop
+        fork test, or(is-owned(prop/name), is-equal(prop/name, <note>))
+          hold
+            error(state, top, expression-span(prop/value), <"{prop/name}" is filled by the runtime or pinned by "{form-name}" and cannot be given at a raise>)
+            turn next
+        fork test, not(has-text(props-names, prop/name))
+          hold
+            save listed, <>
+            fork test, is-above(props-names/length, 0)
+              hold
+                save joined, join(props-names, <, >)
+                save listed, < (it has {joined})>
+            error(state, top, expression-span(prop/value), <"{form-name}" has no prop "{prop/name}"{listed}>)
+            turn next
+        fork test, has-text(pin-names, prop/name)
+          hold
+            error(state, top, expression-span(prop/value), <"{prop/name}" is pinned by "{form-name}" and cannot be given at a raise>)
+            turn next
+        push(link-fields, prop)
+      walk props-fields
+        take field
+        fork test, has-text(names-given(link-fields), field/name)
+          hold
+            turn next
+        save pinned, false
+        walk rt-pins
+          take pin
+          fork test, and(not(pinned), is-equal(pin/name, field/name))
+            hold
+              push(link-fields, new-field(field/name, copy-expression(pin/value)))
+              save pinned, true
+        fork test, pinned
+          hold
+            turn next
+        sift field/fallback
+          case some
+            link fallback
+            push(link-fields, new-field(field/name, copy-expression(fallback)))
+          case none
+            fork test, not(field/optional)
+              hold
+                error(state, top, at, <"{form-name}" needs "{field/name}", which this raise does not give>)
+      save fields-out, make list
+      push(fields-out, new-field(<host>, text-expression(host-of(state, top), at)))
+      push(fields-out, new-field(<form>, text-expression(form-name, at)))
+      push(fields-out, new-field(<code>, call-expression(<exception-code>, at)))
+      push(fields-out, new-field(<time>, call-expression(<exception-time>, at)))
+      # the pins of the exception itself (`note`, and anything else pinned on the shared form)
+      walk rt-pins
+        take pin
+        fork test, and(has-field(rt-fields, pin/name), not(has-text(props-names, pin/name)))
+          hold
+            push(fields-out, new-field(pin/name, copy-expression(pin/value)))
+      fork test, is-unequal(rt-props, <>)
+        hold
+          push(fields-out, new-field(<link>, record-expression(rt-props, link-fields, at)))
+      fork test, cause-found
+        hold
+          push(fields-out, cause)
+      save node/value, record-expression(form-name, fields-out, at)
+    miss
+      save nothing, 0
+  back node
+
+task walk-list
+  take state, like extend-state
+  take top, like statement
+  take values, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, walk-expression(state, top, one))
+  back out
+
+task walk-block
+  take state, like extend-state
+  take top, like statement
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, walk-statement(state, top, one))
+  back out
+
+task walk-fields
+  take state, like extend-state
+  take top, like statement
+  take fields, like list, like field-value
+  like list, like field-value
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save field/value, walk-expression(state, top, field/value)
+    push(out, field)
+  back out
+
+task walk-expression
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case record
+      save filled, fill-record(state, top, node)
+      back walk-record(state, top, filled)
+    case call
+      save node/callee, walk-expression(state, top, callee)
+      save node/args, walk-list(state, top, args)
+    case binary
+      save node/left, walk-expression(state, top, left)
+      save node/right, walk-expression(state, top, right)
+    case unary
+      save node/operand, walk-expression(state, top, operand)
+    case member
+      save node/target, walk-expression(state, top, target)
+      sift index
+        case some
+          link at
+          save written, walk-expression(state, top, at)
+          save node/index, make(some, written)
+        case none
+          save nothing, 0
+    case await
+      save node/expr, walk-expression(state, top, expr)
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save part/value, walk-expression(state, top, inner)
+          miss
+            save nothing, 0
+        push(parts-out, part)
+      save node/parts, parts-out
+    case array
+      save node/items, walk-list(state, top, items)
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, walk-expression(state, top, entry/key)
+        save entry/value, walk-expression(state, top, entry/value)
+        push(entries-out, entry)
+      save node/entries, entries-out
+    case closure
+      save node/body, walk-block(state, top, body)
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(state, top, branch/cond)
+        save branch/value, walk-expression(state, top, branch/value)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-expression(state, top, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+task walk-record
+  take state, like extend-state
+  take top, like statement
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case record
+      save node/fields, walk-fields(state, top, fields)
+    miss
+      save nothing, 0
+  back node
+
+# the value indices written in a type (`like derivation / head / make implication(a, b)`), wherever the type nests
+# them: a named type's own before its arguments'
+task walk-indices
+  take state, like extend-state
+  take top, like statement
+  take given, like type
+  like type
+  mark private
+
+  sift given
+    case named
+      fork test, is-above(value-args/length, 0)
+        hold
+          save values, make list
+          walk value-args
+            take one
+            push(values, walk-expression(state, top, one))
+          save given/value-args, values
+      fork test, is-above(args/length, 0)
+        hold
+          save args-out, make list
+          walk args
+            take arg
+            push(args-out, walk-indices(state, top, arg))
+          save given/args, args-out
+    case array
+      save given/element, walk-indices(state, top, element)
+    case map
+      save given/key, walk-indices(state, top, key)
+      save given/value, walk-indices(state, top, value)
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, walk-indices(state, top, param))
+      save given/params, params-out
+      save given/result, walk-indices(state, top, result)
+    miss
+      save nothing, 0
+  back given
+
+task walk-statement
+  take state, like extend-state
+  take top, like statement
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case let
+      save node/init, walk-expression(state, top, init)
+    case assign
+      save node/target, walk-expression(state, top, target)
+      save node/value, walk-expression(state, top, read(value))
+    case expression
+      save node/expr, walk-expression(state, top, expr)
+    case return
+      sift read(value)
+        case some
+          link given
+          save written, walk-expression(state, top, given)
+          save node/value, make(some, written)
+        case none
+          save nothing, 0
+    case throw
+      fork test, is-unequal(raise, <>)
+        hold
+          # the raise builds the record itself (pins included), so only its values are walked
+          save raised, fill-raise(state, top, node)
+          back walk-raised(state, top, raised)
+      save node/value, walk-expression(state, top, read(value))
+    case hold
+      save node/expr, walk-expression(state, top, expr)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(state, top, branch/cond)
+        save branch/body, walk-block(state, top, branch/body)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-block(state, top, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case while
+      save node/cond, walk-expression(state, top, cond)
+      save node/body, walk-block(state, top, body)
+    case for-each
+      save node/iterable, walk-expression(state, top, iterable)
+      save node/body, walk-block(state, top, body)
+    case match
+      save node/subject, walk-expression(state, top, subject)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, walk-block(state, top, arm/body)
+        push(cases-out, arm)
+      save node/cases, cases-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-block(state, top, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case function
+      save params-out, make list
+      walk params
+        take param
+        sift param/type
+          case some
+            link param-type
+            save written, walk-indices(state, top, param-type)
+            save param/type, make(some, written)
+          case none
+            save nothing, 0
+        push(params-out, param)
+      save node/params, params-out
+      sift result
+        case some
+          link result-type
+          save written, walk-indices(state, top, result-type)
+          save node/result, make(some, written)
+        case none
+          save nothing, 0
+      save node/body, walk-block(state, top, body)
+    # an INDEXED family's values: each case's output index and the indices in its fields' types, which are expressions
+    # like any other and fill their slots the same way
+    case record-type
+      save variants-out, make list
+      walk variants
+        take variant
+        fork test, is-above(variant/index-values/length, 0)
+          hold
+            save values, make list
+            walk variant/index-values
+              take one
+              push(values, walk-expression(state, top, one))
+            save variant/index-values, values
+        save variant-fields, make list
+        walk variant/fields
+          take field
+          save field/type, walk-indices(state, top, field/type)
+          push(variant-fields, field)
+        save variant/fields, variant-fields
+        push(variants-out, variant)
+      save node/variants, variants-out
+      save fields-out, make list
+      walk fields
+        take field
+        save field/type, walk-indices(state, top, field/type)
+        push(fields-out, field)
+      save node/fields, fields-out
+    # a `mark unsafe` body and its `halt take` handler, where a raise is as ordinary as anywhere
+    case guard
+      save node/body, walk-block(state, top, body)
+      sift catch
+        case some
+          link clause
+          save clause/body, walk-block(state, top, clause/body)
+          save node/catch, make(some, clause)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+# a finished raise's values walked: its props record's values, and every other field's value
+task walk-raised
+  take state, like extend-state
+  take top, like statement
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case throw
+      sift read(value)
+        case record
+          save fields-out, make list
+          walk fields
+            take field
+            sift field/value
+              case record
+                fork test, is-equal(field/name, <link>)
+                  hold
+                    save inner, field/value
+                    save field/value, walk-record(state, top, inner)
+                  miss
+                    save field/value, walk-expression(state, top, field/value)
+              miss
+                save field/value, walk-expression(state, top, field/value)
+            push(fields-out, field)
+          save raised-value, read(value)
+          save node/value, with-fields(raised-value, fields-out)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+task with-fields
+  take given, like expression
+  take fields-out, like list, like field-value
+  like expression
+  mark private
+
+  sift given
+    case record
+      save given/fields, fields-out
+    miss
+      save nothing, 0
+  back given

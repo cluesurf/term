@@ -7,6 +7,13 @@
 
 mark unstable
 
+load @term/base/arithmetic
+  find addition
+  find subtraction
+  find multiplication
+  find division
+  find negation
+
 dock type
   load <any>, name big-handle
 
@@ -174,53 +181,57 @@ form big-integer
       call bignum-to-text
         read self/dock
 
-  # this integer plus another
-  task add
-    take self
-    take other, like big-integer
-    like big-integer
-    send back
-      make big-integer
-        bind dock
-          call bignum-add
-            read self/dock
-            read other/dock
+  # this integer plus another: `add(a, b)` on two big integers, as on two numbers
+  wear addition
+    task add
+      take self
+      take other, like big-integer
+      like big-integer
+      send back
+        make big-integer
+          bind dock
+            call bignum-add
+              read self/dock
+              read other/dock
 
   # this integer minus another
-  task subtract
-    take self
-    take other, like big-integer
-    like big-integer
-    send back
-      make big-integer
-        bind dock
-          call bignum-subtract
-            read self/dock
-            read other/dock
+  wear subtraction
+    task subtract
+      take self
+      take other, like big-integer
+      like big-integer
+      send back
+        make big-integer
+          bind dock
+            call bignum-subtract
+              read self/dock
+              read other/dock
 
   # this integer times another
-  task multiply
-    take self
-    take other, like big-integer
-    like big-integer
-    send back
-      make big-integer
-        bind dock
-          call bignum-multiply
-            read self/dock
-            read other/dock
+  wear multiplication
+    task multiply
+      take self
+      take other, like big-integer
+      like big-integer
+      send back
+        make big-integer
+          bind dock
+            call bignum-multiply
+              read self/dock
+              read other/dock
 
   # this integer divided by another (truncating toward zero)
-  task divide
-    take self
-    take other, like big-integer
-    like big-integer
-    send back
-      make big-integer
-        bind dock
-          call bignum-divide
-            read self/dock
-            read other/dock
+  wear division
+    task divide
+      take self
+      take other, like big-integer
+      like big-integer
+      send back
+        make big-integer
+          bind dock
+            call bignum-divide
+              read self/dock
+              read other/dock
 
   # the remainder of dividing this integer by another
   task remainder
@@ -235,14 +246,15 @@ form big-integer
             read other/dock
 
   # the negation of this integer
-  task negate
-    take self
-    like big-integer
-    send back
-      make big-integer
-        bind dock
-          call bignum-negate
-            read self/dock
+  wear negation
+    task negate
+      take self
+      like big-integer
+      send back
+        make big-integer
+          bind dock
+            call bignum-negate
+              read self/dock
 
   # -1, 0, or 1 as this integer is less than, equal to, or greater than another
   task compare

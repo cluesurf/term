@@ -61,6 +61,13 @@ form hash
       call self/delete
         read key
 
+  # how many entries it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, read self/size
+
+  # the older name of `length`
   task size
     take self
     like number
@@ -88,7 +95,7 @@ form hash
     send back
       call self/values
 
-  # the canonical length verb (alias of size)
+  # the older name of `length`
   task count
     take self
     like number

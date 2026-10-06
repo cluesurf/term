@@ -1,0 +1,1012 @@
+# Everything a program holds, through every field node.tree declares: each expression, statement, view node and type,
+# in pre-order (a node before what is inside it), fields in the order node.tree declares them, and every `name` and
+# `label` text of every record on the way.
+#
+# About a hundred and fifty compiler passes walk the AST by reflection, `Object.entries` over whatever they are handed,
+# and each names the fields it does NOT descend into: `span` and `type` almost always, and `result`, `declared`,
+# `generics`, `binding` and others besides. Term has no reflection, so this is that walk written out once over every
+# field that can hold a node, types included (a named type's `value-args` are expressions), and a pass hands it the
+# field names its original skipped, spelled as the TypeScript spells them (`stubShape`, `valueArgs`). A skipped name is
+# skipped at every depth, inside a type too, as a reflective walk skips it. compile/node-walk.tree is the narrower walk
+# over expressions and statements only, never into a type.
+#
+# Written for self-hosting, 2026-10-05, the walk the passes that read types wait on (check/private, check/scope, ...).
+# `tmp/pair-node-reach.ts` holds it to a reflective walk over every milled and checked program.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find method-of
+  find catch-clause
+  find closure-param
+  find dock-component
+  find declared-param
+  find declared-signature
+  find dock-argument
+  find dock-call
+  find dock-route
+  find dock-send
+  find dock-take
+  find expression
+  find field-value
+  find form-extend
+  find function-param
+  find statement
+  find type
+  find view-node
+
+# what the walk has reached, and the field names it does not descend into
+form reached
+  mark shared
+  link skip, like list, like text
+  link expressions, like list, like expression
+  link statements, like list, like statement
+  link views, like list, like view-node
+  link types, like list, like type
+  # every `name` and `label` text of every record reached, nodes or not (a parameter, a field, a generic, a match arm,
+  # a loop's label, a dock's take), as a pass that reads `obj.name` off whatever it meets reads them. An empty one is
+  # left out: Term cannot tell it from an absent one, and no definition is named by it
+  link names, like list, like text
+
+task new-reached
+  take skip, like list, like text
+  like reached
+  mark private
+
+  back
+    make reached
+      bind skip, skip
+      bind expressions, make list
+      bind statements, make list
+      bind views, make list
+      bind types, make list
+      bind names, make list
+
+# everything these statements hold, through every field but the ones named in `skip`
+task reach-statements
+  take statements, like list, like statement
+  take skip, like list, like text
+  like reached
+
+  save out, new-reached(skip)
+  reach-block(out, statements)
+  back out
+
+# everything one expression holds, itself first
+task reach-expression
+  take value, like expression
+  take skip, like list, like text
+  like reached
+
+  save out, new-reached(skip)
+  reach-expression-in(out, value)
+  back out
+
+# everything one type holds, itself first
+task reach-type
+  take value, like type
+  take skip, like list, like text
+  like reached
+
+  save out, new-reached(skip)
+  reach-type-in(out, value)
+  back out
+
+task note-name
+  take out, like reached
+  take name, like text
+  like void
+  mark private
+
+  fork test, is-unequal(name, <>)
+    hold
+      push(out/names, name)
+
+# whether the walk descends into the field named `key`
+task enters
+  take out, like reached
+  take key, like text
+  like boolean
+  mark private
+
+  back not(contains(out/skip, key))
+
+task reach-block
+  take out, like reached
+  take statements, like list, like statement
+  like void
+  mark private
+
+  walk statements
+    take one
+    reach-statement-in(out, one)
+
+task reach-list
+  take out, like reached
+  take values, like list, like expression
+  like void
+  mark private
+
+  walk values
+    take one
+    reach-expression-in(out, one)
+
+task reach-maybe
+  take out, like reached
+  take given, like maybe, like expression
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      reach-expression-in(out, inner)
+    case none
+      back
+
+task reach-maybe-type
+  take out, like reached
+  take given, like maybe, like type
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      reach-type-in(out, inner)
+    case none
+      back
+
+task reach-types
+  take out, like reached
+  take values, like list, like type
+  like void
+  mark private
+
+  walk values
+    take one
+    reach-type-in(out, one)
+
+task reach-type-in
+  take out, like reached
+  take node, like type
+  like void
+  mark private
+
+  push(out/types, node)
+  sift node
+    case array
+      fork test, enters(out, <element>)
+        hold
+          reach-type-in(out, element)
+    case map
+      fork test, enters(out, <key>)
+        hold
+          reach-type-in(out, key)
+      fork test, enters(out, <value>)
+        hold
+          reach-type-in(out, value)
+    case named
+      note-name(out, name)
+      fork test, enters(out, <args>)
+        hold
+          walk args
+            take one
+            reach-type-in(out, one)
+      fork test, enters(out, <valueArgs>)
+        hold
+          walk value-args
+            take one
+            reach-expression-in(out, one)
+    case function
+      fork test, enters(out, <params>)
+        hold
+          reach-types(out, params)
+      fork test, enters(out, <result>)
+        hold
+          reach-type-in(out, result)
+    miss
+      back
+
+# an expression's own `type`, which every case carries
+task reach-own-type
+  take out, like reached
+  take given, like maybe, like type
+  like void
+  mark private
+
+  fork test, enters(out, <type>)
+    hold
+      reach-maybe-type(out, given)
+
+task reach-field-values
+  take out, like reached
+  take values, like list, like field-value
+  like void
+  mark private
+
+  walk values
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <value>)
+      hold
+        reach-expression-in(out, one/value)
+
+task reach-closure-params
+  take out, like reached
+  take params, like list, like closure-param
+  like void
+  mark private
+
+  walk params
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <type>)
+      hold
+        reach-maybe-type(out, one/type)
+
+task reach-expression-in
+  take out, like reached
+  take node, like expression
+  like void
+  mark private
+
+  push(out/expressions, node)
+  sift node
+    case integer
+      reach-own-type(out, type)
+    case float
+      reach-own-type(out, type)
+    case boolean
+      reach-own-type(out, type)
+    case string
+      reach-own-type(out, type)
+    case template
+      fork test, enters(out, <parts>)
+        hold
+          walk parts
+            take part
+            sift part
+              case value
+                link inner
+                fork test, enters(out, <value>)
+                  hold
+                    reach-expression-in(out, inner)
+              case chunk
+                turn next
+      reach-own-type(out, type)
+    case unit
+      reach-own-type(out, type)
+    case null
+      reach-own-type(out, type)
+    case variable
+      note-name(out, name)
+      reach-own-type(out, type)
+    case binary
+      fork test, enters(out, <left>)
+        hold
+          reach-expression-in(out, left)
+      fork test, enters(out, <right>)
+        hold
+          reach-expression-in(out, right)
+      reach-own-type(out, type)
+    case unary
+      fork test, enters(out, <operand>)
+        hold
+          reach-expression-in(out, operand)
+      reach-own-type(out, type)
+    case call
+      fork test, enters(out, <callee>)
+        hold
+          reach-expression-in(out, callee)
+      fork test, enters(out, <args>)
+        hold
+          reach-list(out, args)
+      reach-own-type(out, type)
+      fork test, enters(out, <into>)
+        hold
+          reach-maybe-type(out, into)
+    case array
+      fork test, enters(out, <items>)
+        hold
+          reach-list(out, items)
+      reach-own-type(out, type)
+    case map
+      fork test, enters(out, <entries>)
+        hold
+          walk entries
+            take entry
+            fork test, enters(out, <key>)
+              hold
+                reach-expression-in(out, entry/key)
+            fork test, enters(out, <value>)
+              hold
+                reach-expression-in(out, entry/value)
+      reach-own-type(out, type)
+    case record
+      note-name(out, name)
+      fork test, enters(out, <fields>)
+        hold
+          reach-field-values(out, fields)
+      reach-own-type(out, type)
+      # a `need false` list is walked where it is read, never handed on (compile/typescript.ts `onlyReads`), so the walk
+      # leaves the program as it found it
+      fork test, enters(out, <positional>)
+        hold
+          walk positional
+            take one
+            reach-expression-in(out, one)
+    case member
+      note-name(out, name)
+      fork test, enters(out, <target>)
+        hold
+          reach-expression-in(out, target)
+      fork test, enters(out, <index>)
+        hold
+          reach-maybe(out, index)
+      reach-own-type(out, type)
+    case await
+      fork test, enters(out, <expr>)
+        hold
+          reach-expression-in(out, expr)
+      reach-own-type(out, type)
+    case closure
+      fork test, enters(out, <params>)
+        hold
+          reach-closure-params(out, params)
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, body)
+      fork test, enters(out, <result>)
+        hold
+          reach-maybe-type(out, result)
+      reach-own-type(out, type)
+    case conditional
+      fork test, enters(out, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(out, <cond>)
+              hold
+                reach-expression-in(out, branch/cond)
+            fork test, enters(out, <value>)
+              hold
+                reach-expression-in(out, branch/value)
+      fork test, enters(out, <otherwise>)
+        hold
+          reach-maybe(out, otherwise)
+      reach-own-type(out, type)
+    case hole
+      note-name(out, name)
+      reach-own-type(out, type)
+
+task reach-maybe-block
+  take out, like reached
+  take block, like maybe, like list, like statement
+  like void
+  mark private
+
+  sift block
+    case some
+      link body
+      reach-block(out, body)
+    case none
+      back
+
+# An optional record, each in a task of its own: a `back` under `case none` ends the task it is written in, so written
+# inside reach-statement-in it ended the whole statement's walk, and every field after it went unwalked (found by the
+# pairing: a task's `have`, `must` and `declared` after an absent `stubShape`)
+task reach-maybe-statement
+  take out, like reached
+  take given, like maybe, like statement
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      reach-statement-in(out, inner)
+    case none
+      back
+
+task reach-maybe-signature
+  take out, like reached
+  take given, like maybe, like declared-signature
+  like void
+  mark private
+
+  sift given
+    case some
+      link signature
+      reach-signature(out, signature)
+    case none
+      back
+
+task reach-maybe-extend
+  take out, like reached
+  take given, like maybe, like form-extend
+  like void
+  mark private
+
+  sift given
+    case some
+      link extended
+      reach-extend(out, extended)
+    case none
+      back
+
+task reach-maybe-catch
+  take out, like reached
+  take given, like maybe, like catch-clause
+  like void
+  mark private
+
+  sift given
+    case some
+      link clause
+      note-name(out, clause/name)
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, clause/body)
+    case none
+      back
+
+task reach-maybe-method
+  take out, like reached
+  take given, like maybe, like method-of
+  like void
+  mark private
+
+  sift given
+    case some
+      link owner
+      note-name(out, owner/name)
+    case none
+      back
+
+task reach-maybe-component
+  take out, like reached
+  take given, like maybe, like dock-component
+  like void
+  mark private
+
+  sift given
+    case some
+      link component
+      note-name(out, component/name)
+      fork test, enters(out, <props>)
+        hold
+          reach-arguments(out, component/props)
+    case none
+      back
+
+task reach-declared-params
+  take out, like reached
+  take params, like list, like declared-param
+  like void
+  mark private
+
+  walk params
+    take one
+    fork test, enters(out, <type>)
+      hold
+        reach-maybe-type(out, one/type)
+
+task reach-signature
+  take out, like reached
+  take signature, like declared-signature
+  like void
+  mark private
+
+  fork test, enters(out, <params>)
+    hold
+      reach-declared-params(out, signature/params)
+  fork test, enters(out, <result>)
+    hold
+      reach-maybe-type(out, signature/result)
+
+task reach-function-params
+  take out, like reached
+  take params, like list, like function-param
+  like void
+  mark private
+
+  walk params
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <type>)
+      hold
+        reach-maybe-type(out, one/type)
+    fork test, enters(out, <fallback>)
+      hold
+        reach-maybe(out, one/fallback)
+
+task reach-extend
+  take out, like reached
+  take extended, like form-extend
+  like void
+  mark private
+
+  fork test, enters(out, <base>)
+    hold
+      reach-type-in(out, extended/base)
+  fork test, enters(out, <heads>)
+    hold
+      walk extended/heads
+        take head
+        note-name(out, head/name)
+        fork test, enters(out, <type>)
+          hold
+            reach-maybe-type(out, head/type)
+        fork test, enters(out, <links>)
+          hold
+            walk head/links
+              take one
+              note-name(out, one/name)
+              fork test, enters(out, <type>)
+                hold
+                  reach-type-in(out, one/type)
+  fork test, enters(out, <links>)
+    hold
+      walk extended/links
+        take one
+        note-name(out, one/name)
+        fork test, enters(out, <type>)
+          hold
+            reach-type-in(out, one/type)
+        fork test, enters(out, <fallback>)
+          hold
+            reach-maybe(out, one/fallback)
+  fork test, enters(out, <pins>)
+    hold
+      reach-field-values(out, extended/pins)
+
+task reach-statement-in
+  take out, like reached
+  take node, like statement
+  like void
+  mark private
+
+  push(out/statements, node)
+  sift node
+    case let
+      note-name(out, name)
+      fork test, enters(out, <init>)
+        hold
+          reach-expression-in(out, init)
+      fork test, enters(out, <type>)
+        hold
+          reach-maybe-type(out, type)
+    case assign
+      fork test, enters(out, <target>)
+        hold
+          reach-expression-in(out, target)
+      fork test, enters(out, <value>)
+        hold
+          reach-expression-in(out, read(value))
+    case expression
+      fork test, enters(out, <expr>)
+        hold
+          reach-expression-in(out, expr)
+    case if
+      fork test, enters(out, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(out, <cond>)
+              hold
+                reach-expression-in(out, branch/cond)
+            fork test, enters(out, <body>)
+              hold
+                reach-block(out, branch/body)
+      fork test, enters(out, <otherwise>)
+        hold
+          reach-maybe-block(out, otherwise)
+    case while
+      note-name(out, label)
+      fork test, enters(out, <cond>)
+        hold
+          reach-expression-in(out, cond)
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, body)
+      fork test, enters(out, <must>)
+        hold
+          walk read(must)
+            take one
+            reach-expression-in(out, one)
+      fork test, enters(out, <down>)
+        hold
+          reach-maybe(out, down)
+    case match
+      fork test, enters(out, <subject>)
+        hold
+          reach-expression-in(out, subject)
+      fork test, enters(out, <cases>)
+        hold
+          walk cases
+            take arm
+            note-name(out, arm/label)
+            fork test, enters(out, <body>)
+              hold
+                reach-block(out, arm/body)
+      fork test, enters(out, <otherwise>)
+        hold
+          reach-maybe-block(out, otherwise)
+      fork test, enters(out, <exceptionArms>)
+        hold
+          walk exception-arms
+            take arm
+            note-name(out, arm/label)
+    case for-each
+      note-name(out, label)
+      fork test, enters(out, <iterable>)
+        hold
+          reach-expression-in(out, iterable)
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, body)
+      fork test, enters(out, <must>)
+        hold
+          walk read(must)
+            take one
+            reach-expression-in(out, one)
+    case break
+      note-name(out, label)
+    case continue
+      note-name(out, label)
+    case return
+      fork test, enters(out, <value>)
+        hold
+          reach-maybe(out, read(value))
+    case guard
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, body)
+      fork test, enters(out, <catch>)
+        hold
+          reach-maybe-catch(out, catch)
+    case throw
+      fork test, enters(out, <value>)
+        hold
+          reach-expression-in(out, read(value))
+    case hold
+      note-name(out, read(name))
+      fork test, enters(out, <expr>)
+        hold
+          reach-expression-in(out, expr)
+    case function
+      note-name(out, name)
+      fork test, enters(out, <params>)
+        hold
+          reach-function-params(out, params)
+      fork test, enters(out, <body>)
+        hold
+          reach-block(out, body)
+      fork test, enters(out, <result>)
+        hold
+          reach-maybe-type(out, result)
+      fork test, enters(out, <generics>)
+        hold
+          walk generics
+            take generic
+            note-name(out, generic/name)
+      fork test, enters(out, <stubShape>)
+        hold
+          reach-maybe-statement(out, stub-shape)
+      fork test, enters(out, <stubBody>)
+        hold
+          walk stub-body
+            take one
+            reach-statement-in(out, one)
+      fork test, enters(out, <universals>)
+        hold
+          walk universals
+            take one
+            note-name(out, one/name)
+            fork test, enters(out, <expr>)
+              hold
+                reach-expression-in(out, one/expr)
+            # a `need false` list, walked where it is read so nothing is written into the program
+            fork test, enters(out, <types>)
+              hold
+                walk one/types
+                  take param
+                  fork test, enters(out, <type>)
+                    hold
+                      reach-maybe-type(out, param/type)
+      fork test, enters(out, <have>)
+        hold
+          walk read(have)
+            take one
+            reach-expression-in(out, one)
+      fork test, enters(out, <must>)
+        hold
+          walk read(must)
+            take one
+            reach-expression-in(out, one)
+      fork test, enters(out, <down>)
+        hold
+          reach-maybe(out, down)
+      fork test, enters(out, <method>)
+        hold
+          reach-maybe-method(out, method)
+      fork test, enters(out, <declared>)
+        hold
+          reach-maybe-signature(out, declared)
+    case record-type
+      note-name(out, name)
+      fork test, enters(out, <indices>)
+        hold
+          walk indices
+            take one
+            note-name(out, one/name)
+            fork test, enters(out, <type>)
+              hold
+                reach-type-in(out, one/type)
+      fork test, enters(out, <fields>)
+        hold
+          walk fields
+            take field
+            note-name(out, field/name)
+            fork test, enters(out, <type>)
+              hold
+                reach-type-in(out, field/type)
+            fork test, enters(out, <fallback>)
+              hold
+                reach-maybe(out, field/fallback)
+      fork test, enters(out, <variants>)
+        hold
+          walk variants
+            take variant
+            note-name(out, variant/name)
+            fork test, enters(out, <fields>)
+              hold
+                walk variant/fields
+                  take field
+                  note-name(out, field/name)
+                  fork test, enters(out, <type>)
+                    hold
+                      reach-type-in(out, field/type)
+            fork test, enters(out, <indexValues>)
+              hold
+                walk variant/index-values
+                  take one
+                  reach-expression-in(out, one)
+      fork test, enters(out, <alias>)
+        hold
+          reach-maybe-type(out, alias)
+      fork test, enters(out, <extend>)
+        hold
+          reach-maybe-extend(out, extend)
+      fork test, enters(out, <pins>)
+        hold
+          walk pins
+            take pin
+            note-name(out, pin/name)
+            fork test, enters(out, <value>)
+              hold
+                reach-expression-in(out, pin/value)
+    case mask
+      note-name(out, name)
+      fork test, enters(out, <tasks>)
+        hold
+          walk tasks
+            take one
+            note-name(out, one/name)
+            fork test, enters(out, <signature>)
+              hold
+                reach-signature(out, one/signature)
+    case bind
+      note-name(out, name)
+      fork test, enters(out, <params>)
+        hold
+          walk params
+            take one
+            note-name(out, one/name)
+            fork test, enters(out, <type>)
+              hold
+                reach-maybe-type(out, one/type)
+      fork test, enters(out, <result>)
+        hold
+          reach-maybe-type(out, result)
+    case roll
+      note-name(out, name)
+    case tell
+      note-name(out, name)
+    case view
+      note-name(out, name)
+      fork test, enters(out, <params>)
+        hold
+          reach-closure-params(out, params)
+      fork test, enters(out, <body>)
+        hold
+          reach-views(out, body)
+    case dock
+      fork test, enters(out, <route>)
+        hold
+          reach-route(out, route)
+    miss
+      back
+
+task reach-views
+  take out, like reached
+  take nodes, like list, like view-node
+  like void
+  mark private
+
+  walk nodes
+    take one
+    reach-view(out, one)
+
+task reach-view
+  take out, like reached
+  take one, like view-node
+  like void
+  mark private
+
+  push(out/views, one)
+  sift one
+    case element
+      note-name(out, name)
+      fork test, enters(out, <attributes>)
+        hold
+          walk attributes
+            take attribute
+            note-name(out, attribute/name)
+            fork test, enters(out, <value>)
+              hold
+                reach-expression-in(out, attribute/value)
+      fork test, enters(out, <props>)
+        hold
+          reach-field-values(out, props)
+      fork test, enters(out, <children>)
+        hold
+          reach-views(out, children)
+    case read
+      fork test, enters(out, <value>)
+        hold
+          reach-expression-in(out, read(value))
+    case fork
+      fork test, enters(out, <branches>)
+        hold
+          walk branches
+            take branch
+            fork test, enters(out, <cond>)
+              hold
+                reach-expression-in(out, branch/cond)
+            fork test, enters(out, <body>)
+              hold
+                reach-views(out, branch/body)
+      # a `need false` list, walked where it is read so nothing is written into the program
+      fork test, enters(out, <otherwise>)
+        hold
+          walk otherwise
+            take inner
+            reach-view(out, inner)
+    case walk
+      fork test, enters(out, <iterable>)
+        hold
+          reach-expression-in(out, iterable)
+      fork test, enters(out, <body>)
+        hold
+          reach-views(out, body)
+    case save
+      note-name(out, name)
+      fork test, enters(out, <value>)
+        hold
+          reach-expression-in(out, read(value))
+    case call
+      fork test, enters(out, <value>)
+        hold
+          reach-expression-in(out, read(value))
+    case slot
+      note-name(out, read(name))
+    miss
+      back
+
+task reach-arguments
+  take out, like reached
+  take arguments, like list, like dock-argument
+  like void
+  mark private
+
+  walk arguments
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <value>)
+      hold
+        reach-expression-in(out, one/value)
+
+task reach-calls
+  take out, like reached
+  take calls, like list, like dock-call
+  like void
+  mark private
+
+  walk calls
+    take one-call
+    note-name(out, one-call/name)
+    fork test, enters(out, <args>)
+      hold
+        reach-arguments(out, one-call/args)
+
+task reach-sends
+  take out, like reached
+  take sends, like list, like dock-send
+  like void
+  mark private
+
+  walk sends
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <value>)
+      hold
+        reach-maybe(out, one/value)
+
+task reach-takes
+  take out, like reached
+  take takes, like list, like dock-take
+  like void
+  mark private
+
+  walk takes
+    take one
+    note-name(out, one/name)
+    fork test, enters(out, <type>)
+      hold
+        reach-maybe-type(out, one/type)
+
+task reach-route
+  take out, like reached
+  take route, like dock-route
+  like void
+  mark private
+
+  fork test, enters(out, <takes>)
+    hold
+      reach-takes(out, route/takes)
+  fork test, enters(out, <methods>)
+    hold
+      walk route/methods
+        take method
+        note-name(out, method/name)
+        fork test, enters(out, <takes>)
+          hold
+            reach-takes(out, method/takes)
+        fork test, enters(out, <calls>)
+          hold
+            reach-calls(out, method/calls)
+        fork test, enters(out, <sends>)
+          hold
+            reach-sends(out, method/sends)
+  fork test, enters(out, <calls>)
+    hold
+      reach-calls(out, route/calls)
+  fork test, enters(out, <component>)
+    hold
+      reach-maybe-component(out, route/component)
+  fork test, enters(out, <directives>)
+    hold
+      reach-sends(out, route/directives)
+  fork test, enters(out, <sends>)
+    hold
+      reach-sends(out, route/sends)
+  fork test, enters(out, <hooks>)
+    hold
+      walk route/hooks
+        take one-hook
+        note-name(out, one-hook/name)
+        fork test, enters(out, <calls>)
+          hold
+            reach-calls(out, one-hook/calls)
+  fork test, enters(out, <children>)
+    hold
+      walk route/children
+        take child
+        reach-route(out, child)

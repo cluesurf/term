@@ -63,6 +63,8 @@ import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
 import { awaitsOutsideTasks, checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
+import { unknownSeamOn } from '@term/make/code/check/seam'
+import { inferStrict } from '@term/make/code/check/strict'
 import {
   checkClaims,
   fillClaims,
@@ -83,6 +85,56 @@ import {
   hasContracts,
   lowerContracts,
 } from '@term/make/code/check/contract'
+
+// the deck the build knows each file by, for every file the privacy checks may ask about: the compile's own, each
+// statement's and each file in the import scope
+function deckHomes(
+  program: Program,
+  scope: ImportScope | undefined,
+  file: string,
+  deckOf?: (file: string) => { root: string } | undefined,
+): { file: string; root: string }[] {
+  if (!deckOf) {
+    return []
+  }
+
+  const files = new Set([file, ...program.flatMap(s => (s.span.file !== undefined ? [s.span.file] : [])), ...(scope?.keys() ?? [])])
+  const out: { file: string; root: string }[] = []
+
+  for (const one of files) {
+    const deck = deckOf(one)
+
+    if (deck) {
+      out.push({ file: one, root: deck.root })
+    }
+  }
+
+  return out
+}
+
+// the deck each file of a program belongs to, by name, as form extension takes it (check/extend.tree): the compile's
+// own file and every statement's, which is every file a raise's `host` is read from
+function deckNames(
+  program: Program,
+  file: string,
+  deckOf?: (file: string) => { name: string } | undefined,
+): { file: string; name: string }[] {
+  if (!deckOf) {
+    return []
+  }
+
+  const out: { file: string; name: string }[] = []
+
+  for (const one of new Set([file, ...program.flatMap(s => (s.span.file !== undefined ? [s.span.file] : []))])) {
+    const deck = deckOf(one)
+
+    if (deck) {
+      out.push({ file: one, name: deck.name })
+    }
+  }
+
+  return out
+}
 
 // the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
 function safeTerminating(program: Program): Set<string> {
@@ -134,7 +186,7 @@ import {
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
-import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
+import { collectModules, makeParseMemo, scopeList } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/term/hash'
@@ -405,6 +457,9 @@ export function compile(
     // the await switch decides whether an un-ticked async call outside a task is refused, so a result cached under
     // one setting is not an answer under the other (check/effects.ts, `setAwaitOutsideTasks`)
     (awaitsOutsideTasks() ? '|await-outside' : '') +
+    // and so do the gradual seam and the strict inference switch (check/seam.ts, check/strict.ts)
+    (unknownSeamOn() ? '|seam' : '') +
+    (inferStrict() ? '|strict' : '') +
     (options?.roll ? '|roll' : '') +
     // a different choice of implementation is a different program
     (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
@@ -754,11 +809,13 @@ export function compileProgram(
 
   // module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
   // before anything below reads a form by name (module-scope-0003, check/scope.ts)
-  const formScope = bindFormsByImport(program, scope, naming ?? file)
+  const formScope = bindFormsByImport(program, scopeList(scope), naming ?? file)
 
-  if (formScope.length) {
-    return { ok: false, diagnostics: formScope }
+  if (formScope.diagnostics.length) {
+    return { ok: false, diagnostics: formScope.diagnostics }
   }
+
+  program = formScope.program
 
   // a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
   program = fillMaskDefaults(program, emitOnly !== undefined, [...(emitOnly ?? [])])
@@ -786,11 +843,13 @@ export function compileProgram(
 
   // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
   // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
-  const extendDiagnostics = extendForms(program, file, { deckOf })
+  const extended = extendForms(program, file, deckNames(program, file, deckOf))
 
-  if (extendDiagnostics.length) {
-    return { ok: false, diagnostics: extendDiagnostics }
+  if (extended.diagnostics.length) {
+    return { ok: false, diagnostics: extended.diagnostics }
   }
+
+  program = extended.program
 
   // every type a task or form of this file names is one the program has, read before seeding turns an unknown name
   // into a hole (check/type-names.ts)
@@ -844,7 +903,7 @@ export function compileProgram(
   // definitions of one name from two files that a call's own imports do not tell apart (native-dom-0031)
   // `mark private`: a `find` of a name private to the file it names is refused, before overloads rename anything,
   // so the found name is compared as written (check/private.ts)
-  const privateFinds = checkPrivateFinds(program, scope, deckOf)
+  const privateFinds = checkPrivateFinds(program, scopeList(scope), deckHomes(program, scope, file, deckOf))
 
   if (privateFinds.length) {
     return { ok: false, diagnostics: privateFinds }
@@ -917,7 +976,12 @@ export function compileProgram(
 
   // `mark private`: a call to, or a value reference of, a task private to another file. After the resolver, so a
   // local that shares the name is bound to itself and never refused (check/private.ts)
-  const privateReferences = checkPrivateReferences(program, file, deckOf)
+  const privateReferences = checkPrivateReferences(
+    program,
+    file,
+    [...overloadGroups].map(([name, members]) => ({ name, members })),
+    deckHomes(program, scope, file, deckOf),
+  )
 
   if (privateReferences.length) {
     return { ok: false, diagnostics: privateReferences }
@@ -967,7 +1031,7 @@ export function compileProgram(
       pruneRoots = new Set([...pruneRoots, ...cited])
     }
 
-    program = pruneToReachable(program, pruneRoots)
+    program = pruneToReachable(program, [...pruneRoots])
   }
 
   // a claim's fill inherits the claim's signature, so a proof states the name and its parameters and the type is

@@ -51,7 +51,7 @@ const CROSS_ANYWAY = new Set(['file', 'environment', 'process'])
 // subset of each (no torch, no haptics, no battery in WKWebView), and the cask's process reaches the platform's own API
 // through the toolkit host. Matched with their package and folder, so another package's `open` or `network` is not
 // caught. A task of one that cannot cross (a watcher, which takes a handler) stays in the page, on the browser host
-const DEVICE = new Set(['permission', 'camera', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
+const DEVICE = new Set(['permission', 'camera', 'microphone', 'contacts', 'calendar', 'photos', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
 
 // the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
 // javascript-wide impls serve every javascript env

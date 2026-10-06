@@ -4,10 +4,6 @@ load @term/base/code/rational
   find rational
   find make-rational
   find rational-text
-  find plus
-  find minus
-  find times
-  find divided-by
   find is-equal-to
   find negate
 
@@ -17,17 +13,17 @@ test <make-rational reduces to lowest terms>
 test <a whole number is written without a denominator>
   want hold, is-equal rational-text(make-rational(6, 3)), <2>
 
-test <plus adds one half and one third to five sixths>
-  want hold, is-equal rational-text(plus(make-rational(1, 2), make-rational(1, 3))), <5/6>
+test <add adds one half and one third to five sixths>
+  want hold, is-equal rational-text(add(make-rational(1, 2), make-rational(1, 3))), <5/6>
 
-test <minus takes one third from one half>
-  want hold, is-equal rational-text(minus(make-rational(1, 2), make-rational(1, 3))), <1/6>
+test <subtract takes one third from one half>
+  want hold, is-equal rational-text(subtract(make-rational(1, 2), make-rational(1, 3))), <1/6>
 
-test <times multiplies one half by two thirds to one third>
-  want hold, is-equal rational-text(times(make-rational(1, 2), make-rational(2, 3))), <1/3>
+test <multiply takes one half of two thirds to one third>
+  want hold, is-equal rational-text(multiply(make-rational(1, 2), make-rational(2, 3))), <1/3>
 
-test <divided-by divides one half by one quarter to two>
-  want hold, is-equal rational-text(divided-by(make-rational(1, 2), make-rational(1, 4))), <2>
+test <divide divides one half by one quarter to two>
+  want hold, is-equal rational-text(divide(make-rational(1, 2), make-rational(1, 4))), <2>
 
 test <is-equal-to holds for equal fractions>
   want hold, is-equal-to(make-rational(1, 2), make-rational(2, 4))

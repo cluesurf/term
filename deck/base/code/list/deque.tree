@@ -319,6 +319,13 @@ form deque
             read self/items
             read place
 
+  # how many items it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, read self/filled
+
+  # the older name of `length`
   task count
     take self
     like number

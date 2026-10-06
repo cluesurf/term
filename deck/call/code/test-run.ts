@@ -30,6 +30,7 @@ import { toCamel } from '@term/make/code/compile/typescript'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { RoleOf } from '@term/call/code/role-of'
 import { preprocessTests, readable, wantFailed, wantLine } from '@term/call/code/test-preprocess'
+import type { Snapshots } from '@term/call/code/test-preprocess'
 
 // one test: whether it held, how long it took in milliseconds, and the error it threw when it threw one
 export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string; line?: number }
@@ -41,6 +42,8 @@ export type TestRun = {
   // rewrote the file), so `term test` draws each as a Problem item with its code frame
   diagnostics?: Diagnostic[]
   text?: string
+  // under `term test --update`, what each test's `want snapshot`s saw, by its phrase
+  taken?: Map<string, string[]>
 }
 
 // the entry file's own top-level test tasks: a zero-argument task that returns a boolean. Imported helpers take
@@ -186,8 +189,9 @@ const BUNDLE_EPOCH = 'test-bundle-3'
 export function testsOf(
   file: string,
   source: string,
-  // as `preprocessTests` takes it: a native run writes every `want` as the plain marker
-  options: { plainWants?: boolean } = {},
+  // as `preprocessTests` takes it: a native run writes every `want` as the plain marker, and `term test` hands in the
+  // file's snapshots
+  options: { plainWants?: boolean; snapshots?: Snapshots } = {},
 ): { text: string; tests: { name: string; label: string; line?: number }[] } {
   const { text, labels, heads } = preprocessTests(source, options)
   const tests = discoverTests(text, file).map(name => {
@@ -210,9 +214,9 @@ export function caseMatches(phrase: string, test: { name: string; label: string 
 // lines the reader never wrote (guides: commands/test, 2026-10-04)
 function asWritten(
   found: Diagnostic[],
-  input: { file: string; source: string },
+  input: { file: string; source: string; snapshots?: Snapshots },
 ): { diagnostics: Diagnostic[]; diag: string } {
-  const { place } = readable(input.source)
+  const { place } = readable(input.source, input.snapshots)
   const lines = input.source.split('\n')
   const diagnostics = found.map(d => (d.file === input.file ? place(d).diagnostic : d))
 
@@ -236,10 +240,12 @@ export async function runTestFile(input: {
   units?: TestUnits
   // run only the tests this answers yes for (`term test --case`); every test when absent
   select?: (test: { name: string; label: string }) => boolean
+  // the file's stored snapshots, and whether to record new ones (call/code/test-snapshot.ts)
+  snapshots?: Snapshots
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
   // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
-  const { text, labels, heads } = preprocessTests(input.source)
+  const { text, labels, heads } = preprocessTests(input.source, { snapshots: input.snapshots })
   const names = discoverTests(text, input.file).filter(
     name => !input.select || input.select({ name, label: labels.get(name) ?? name.replace(/-/g, ' ') }),
   )
@@ -333,5 +339,15 @@ export async function runTestFile(input: {
     }
   }
 
-  return { ok: results.every(r => r.held), results }
+  // under `--update`, what each `want snapshot` saw, by its test's phrase, in the order taken
+  const taken = new Map<string, string[]>()
+
+  if (input.snapshots?.update) {
+    const keys = (await mod.termSnapshotTakenKeys?.()) as unknown as string[] | undefined
+    const values = (await mod.termSnapshotTakenValues?.()) as unknown as string[] | undefined
+
+    keys?.forEach((key, at) => taken.set(key, [...(taken.get(key) ?? []), values?.[at] ?? '']))
+  }
+
+  return { ok: results.every(r => r.held), results, ...(taken.size > 0 ? { taken } : {}) }
 }

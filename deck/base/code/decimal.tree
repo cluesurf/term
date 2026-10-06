@@ -18,6 +18,11 @@ load @term/base/integer/big
   find big-remainder
   find big-negate
 
+load @term/base/arithmetic
+  find addition
+  find subtraction
+  find multiplication
+
 load @term/base/exception
   find defect
 
@@ -114,63 +119,67 @@ form big-decimal
           read self/mantissa
         read self/scale
 
-  # this decimal plus another (the result keeps the larger of the two scales)
-  task add
-    take self
-    take other, like big-decimal
-    like big-decimal
-    save common
-      call maximum
-        read self/scale
-        read other/scale
-    send back
-      make big-decimal
-        bind mantissa
-          call big-add
-            call at-scale
-              read self
-              read common
-            call at-scale
-              read other
-              read common
-        bind scale, read common
+  # this decimal plus another (the result keeps the larger of the two scales): `add(a, b)` on two decimals
+  wear addition
+    task add
+      take self
+      take other, like big-decimal
+      like big-decimal
+      save common
+        call maximum
+          read self/scale
+          read other/scale
+      send back
+        make big-decimal
+          bind mantissa
+            call big-add
+              call at-scale
+                read self
+                read common
+              call at-scale
+                read other
+                read common
+          bind scale, read common
 
   # this decimal minus another
-  task subtract
-    take self
-    take other, like big-decimal
-    like big-decimal
-    save common
-      call maximum
-        read self/scale
-        read other/scale
-    send back
-      make big-decimal
-        bind mantissa
-          call big-subtract
-            call at-scale
-              read self
-              read common
-            call at-scale
-              read other
-              read common
-        bind scale, read common
+  wear subtraction
+    task subtract
+      take self
+      take other, like big-decimal
+      like big-decimal
+      save common
+        call maximum
+          read self/scale
+          read other/scale
+      send back
+        make big-decimal
+          bind mantissa
+            call big-subtract
+              call at-scale
+                read self
+                read common
+              call at-scale
+                read other
+                read common
+          bind scale, read common
 
-  # this decimal times another (scales add)
-  task multiply
-    take self
-    take other, like big-decimal
-    like big-decimal
-    send back
-      make big-decimal
-        bind mantissa
-          call big-multiply
-            read self/mantissa
-            read other/mantissa
-        bind scale
-          call add
-            read self/scale
-            read other/scale
+  # this decimal times another (scales add). Division is `decimal-divide`, which takes the digits and the rounding,
+  # since a quotient of two decimals is in general no decimal, so a decimal does not wear `division`
+  wear multiplication
+    task multiply
+      take self
+      take other, like big-decimal
+      like big-decimal
+      send back
+        make big-decimal
+          bind mantissa
+            call big-multiply
+              read self/mantissa
+              read other/mantissa
+          bind scale
+            call add
+              read self/scale
+              read other/scale
 
   # -1, 0, or 1 as this decimal is less than, equal to, or greater than another
   task compare
@@ -190,9 +199,8 @@ form big-decimal
           read other
           read common
 
-# free-function arithmetic, for other modules to call without colliding with the number intrinsics: a method `add` on
-# a decimal shares its bare name with `add` of two numbers, which wins (big.tree's `big-add` is the same answer to the
-# same collision, note/term/plan/decisions-2026-10.md, D5)
+# free-function arithmetic, from before `add` reached a decimal through `addition` (note/term/plan/decisions-2026-10.md,
+# D5): `add(a, b)` on two decimals is the method now, and these stay for the code written against them
 task decimal-add
   take a, like big-decimal
   take b, like big-decimal

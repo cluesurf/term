@@ -29,6 +29,16 @@ mine save-match
         mine form, like fork-arm-bare
           site arm
 
+# `save <two words>, <value>` under `make hash`: an entry whose key is any value, a text or a computed one (`<{k}>`),
+# where `save key, <value>` takes a bare word only (note/term/plan/decisions-2026-10.md, D14). Read under `make` alone
+# (make/mine.tree), after `save`, so a word is still a word there and everywhere else `save` binds a name
+mine save-key
+  mine term, term save
+    mine form, like seed
+      site key
+    mine form, like seed
+      site seed
+
 # `save x, <value>` binds a name. `save x, like <type>` annotates the binding, with the value on the lines
 # under it, which is how the DOM bindings in @term/site are written.
 mine save

@@ -556,7 +556,9 @@ function plainPath(expr: Expression): string | undefined {
   return undefined
 }
 
-const LENGTH_CALLS = new Set(['size', 'array-size', 'list_size'])
+// a list's length by a call of one argument: `length`, the name every collection answers, and its older `size` and
+// `count` (note/term/plan/decisions-2026-10.md, D2), before and after receiver dispatch names the list's own task
+const LENGTH_CALLS = new Set(['length', 'size', 'count', 'array-size', 'list_length', 'list_size', 'list_count'])
 
 // the atom key for a list length, or undefined when the expression is not one
 function lengthAtom(expr: Expression): string | undefined {

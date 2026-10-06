@@ -184,8 +184,14 @@ form bitset
       hook miss
         send back, false
 
-  # the number of set bits
+  # the older name of `length`
   task count
+    take self
+    like number
+    back length(self)
+
+  # how many members it holds, the number of set bits. `length` on every collection (decisions-2026-10.md, D2)
+  task length
     take self
     like number
     save total, code 0

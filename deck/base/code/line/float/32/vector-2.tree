@@ -1,43 +1,64 @@
-# Vector-2D: a 2-component 32-bit-float vector. Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `cross` the scalar (z-component) cross product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
+# Vector-2D: a 2-component 32-bit-float vector. Pure float math. `add` / `subtract` combine (it wears `addition` and `subtraction`), `scale` by a scalar, `dot` is the scalar product, `cross` the scalar (z-component) cross product, `magnitude` the norm, `normalize` the unit vector, `distance` the gap.
 
 mark unstable
 
 load @term/base/float
   find square-root
 
+load @term/base/arithmetic
+  find addition
+  find subtraction
+
 form vector-2
   link x, like decimal
   link y, like decimal
 
+  wear addition
+    task add
+      take self
+      take other, like vector-2
+      like vector-2
+      send back
+        make vector-2
+          bind x
+            call add
+              read self/x
+              read other/x
+          bind y
+            call add
+              read self/y
+              read other/y
+
+  wear subtraction
+    task subtract
+      take self
+      take other, like vector-2
+      like vector-2
+      send back
+        make vector-2
+          bind x
+            call subtract
+              read self/x
+              read other/x
+          bind y
+            call subtract
+              read self/y
+              read other/y
+
+  # the names before `add` reached a vector (note/term/plan/decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like vector-2
     like vector-2
-    send back
-      make vector-2
-        bind x
-          call add
-            read self/x
-            read other/x
-        bind y
-          call add
-            read self/y
-            read other/y
+    mark deprecated
+    back self/add(other)
 
   task minus
     take self
     take other, like vector-2
     like vector-2
-    send back
-      make vector-2
-        bind x
-          call subtract
-            read self/x
-            read other/x
-        bind y
-          call subtract
-            read self/y
-            read other/y
+    mark deprecated
+    back self/subtract(other)
 
   task scale
     take self
@@ -80,7 +101,8 @@ form vector-2
           read self/y
           read other/x
 
-  task length
+  # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
+  task magnitude
     take self
     like decimal
     send back
@@ -89,11 +111,17 @@ form vector-2
           read self
           read self
 
+  # the older name of `magnitude`
+  task length
+    take self
+    like decimal
+    back magnitude(self)
+
   task normalize
     take self
     like vector-2
     save magnitude
-      call length
+      call magnitude
         read self
     send back
       make vector-2
@@ -111,7 +139,7 @@ form vector-2
     take other, like vector-2
     like decimal
     send back
-      call length
+      call magnitude
         call minus
           read self
           read other

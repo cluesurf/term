@@ -1,0 +1,44 @@
+# device-layer-0022.
+# The microphone: one recording, always the same file on every host, a WAV of 16-bit PCM, mono, at 16,000 samples a
+# second. AVAudioRecorder on macOS and iOS, AudioRecord on Android (the platform's API, no MediaRecorder, whose formats
+# hold no WAV), and getUserMedia with a MediaRecorder in a browser, decoded and written as the same WAV.
+#
+#   record-audio(seconds)   `audio <where>`: a WAV file's path on a device, a blob: address in a browser. Or
+#                           not-determined (ask first: request-permission microphone), denied, unavailable (no
+#                           microphone), or failed
+#
+# `seconds` is whole seconds, held to 1 through `longest-recording`: a recording is one sitting, and a longer one is
+# a stream, which this is not.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/microphone
+  find capture-audio
+
+# the longest recording one call makes, in seconds
+host longest-recording
+  like number
+  code 60
+
+task record-audio
+  take seconds, like number
+  like text
+  save length, read seconds
+  fork test
+    hook test
+      call is-below
+        read seconds
+        code 1
+    hook hold
+      save length, code 1
+  fork test
+    hook test
+      call is-above
+        read seconds
+        read longest-recording
+    hook hold
+      save length, read longest-recording
+  send back
+    call capture-audio
+      read length

@@ -3,14 +3,12 @@ note <Tests for complex numbers: addition, multiplication, conjugate, magnitude.
 load @term/base/code/complex
   find complex
   find make-complex
-  find plus
-  find times
   find conjugate
   find magnitude
 
-test <plus adds the real parts>
+test <add adds the real parts>
   save z
-    call plus
+    call add
       call make-complex
         1.0
         2.0
@@ -22,9 +20,9 @@ test <plus adds the real parts>
       read z/real
       4.0
 
-test <plus adds the imaginary parts>
+test <add adds the imaginary parts>
   save z
-    call plus
+    call add
       call make-complex
         1.0
         2.0
@@ -36,9 +34,9 @@ test <plus adds the imaginary parts>
       read z/imaginary
       6.0
 
-test <times of i by i is negative one (real part)>
+test <multiply of i by i is negative one (real part)>
   save z
-    call times
+    call multiply
       call make-complex
         0.0
         1.0
@@ -49,6 +47,10 @@ test <times of i by i is negative one (real part)>
     call is-equal
       read z/real
       -1.0
+
+test <divide of one plus two i by three plus four i is eleven and two twenty-fifths>
+  save z, divide(make-complex(1.0, 2.0), make-complex(3.0, 4.0))
+  want hold, and(is-equal(z/real, 0.44), is-equal(z/imaginary, 0.08))
 
 test <conjugate negates the imaginary part>
   save z

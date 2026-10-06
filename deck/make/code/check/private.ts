@@ -16,14 +16,47 @@
 // `note private` is the old spelling. It is still honored, and warned about as `note-private`.
 
 import type { Expression, Program, Statement } from '@term/make/code/compile/node'
-import type { ImportScope } from '@term/make/code/compile/load'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { overloadGroups } from '@term/make/code/check/overload'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 
 type Definition = Extract<Statement, { form: 'function' }>
 
-type DeckOf = (file: string) => { name: string; root: string } | undefined
+// What the checks ask of the build, as data (check/private.tree takes the same): a file's import scope as a list, the
+// deck each file belongs to as the list the build's `deckOf` would answer, and the overload groups, check/overload.ts's
+// module state
+export interface ScopeFind {
+  name: string
+  targets: string[]
+  at?: Span
+}
+
+export interface FileScope {
+  file: string
+  finds: ScopeFind[]
+  bears: string[]
+}
+
+export interface DeckHome {
+  file: string
+  root: string
+}
+
+export interface OverloadGroup {
+  name: string
+  members: string[]
+}
+
+type DeckOf = (file: string) => { root: string } | undefined
+
+const deckOfList = (decks: DeckHome[]): DeckOf | undefined => {
+  if (decks.length === 0) {
+    return undefined
+  }
+
+  const table = new Map(decks.map(d => [d.file, { root: d.root }]))
+
+  return file => table.get(file)
+}
 
 const short = (file: string): string => file.split('/').slice(-3).join('/')
 
@@ -92,11 +125,13 @@ function refusal(
 
 // A `find` of a private name in a `load` block. Run BEFORE overload disambiguation renames definitions, so a found
 // name is compared with the name as written.
-export function checkPrivateFinds(program: Program, scope: ImportScope | undefined, deckOf?: DeckOf): Diagnostic[] {
-  if (!scope) {
+export function checkPrivateFinds(program: Program, scopes: FileScope[], decks: DeckHome[]): Diagnostic[] {
+  if (scopes.length === 0) {
     return []
   }
 
+  const deckOf = deckOfList(decks)
+  const scope = new Map(scopes.map(own => [own.file, own]))
   const byName = tasksByName(program)
 
   if (![...byName.values()].some(list => list.some(d => d.private))) {
@@ -120,8 +155,10 @@ export function checkPrivateFinds(program: Program, scope: ImportScope | undefin
 
   const diagnostics: Diagnostic[] = []
 
-  for (const [file, own] of scope) {
-    for (const [name, targets] of own.finds) {
+  for (const own of scopes) {
+    const file = own.file
+
+    for (const { name, targets, at } of own.finds) {
       const definitions = byName.get(name)
 
       if (!definitions?.some(d => d.private)) {
@@ -140,7 +177,7 @@ export function checkPrivateFinds(program: Program, scope: ImportScope | undefin
         continue
       }
 
-      const span = own.at?.get(name) ?? { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+      const span = at ?? { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
       diagnostics.push(refusal(name, reached, file, span, 'find'))
     }
   }
@@ -195,17 +232,18 @@ function eachReference(
 // A call to, or a reference as a value of, a private task from another file. Run AFTER the resolver, so only a
 // name the resolver bound to a top-level task counts (a parameter or a local of the same name is bound to itself),
 // and after overload disambiguation, so an arity or file overload is judged by the definition it was bound to.
-export function checkPrivateReferences(program: Program, file: string, deckOf?: DeckOf): Diagnostic[] {
+export function checkPrivateReferences(program: Program, file: string, groups: OverloadGroup[], decks: DeckHome[]): Diagnostic[] {
   const byName = tasksByName(program)
 
   if (![...byName.values()].some(list => list.some(d => d.private))) {
     return []
   }
 
+  const deckOf = deckOfList(decks)
   // a same-arity typed overload group is bound to its first member until the checker picks one by argument type,
   // so a reference to the group may mean any member
   const candidates = (name: string): Definition[] => {
-    const members = overloadGroups.get(name)
+    const members = groups.find(group => group.name === name)?.members
 
     return members ? members.flatMap(member => byName.get(member) ?? []) : (byName.get(name) ?? [])
   }

@@ -548,6 +548,9 @@ hook test
   # Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
   take ride
     like boolean
+  # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
+  take update
+    like boolean
   task test
 
 # Run benchmarks, or profile a file with --cpu / --memory

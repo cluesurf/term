@@ -1,16 +1,15 @@
-note <Tests for 2D vectors: plus, dot, cross (scalar), length.>
+note <Tests for 2D vectors: add, dot, cross (scalar), length.>
 
 load @term/base/code/line/float/32/vector-2
   find vector-2
   find make-vector-2
-  find plus
   find dot
   find cross
   find length
 
-test <plus adds component-wise>
+test <add adds component-wise>
   save v
-    call plus
+    call add
       call make-vector-2
         1.0
         2.0

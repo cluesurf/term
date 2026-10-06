@@ -23,7 +23,7 @@
 // definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
 
 import type { Program, Statement } from '@term/make/code/compile/node'
-import type { ImportScope } from '@term/make/code/compile/load'
+import type { FileScope, ImportScope, ScopeFind } from '@term/make/code/compile/load'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 
 type Defining = Extract<Statement, { form: 'record-type' | 'mask' }>
@@ -205,7 +205,34 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
   }
 }
 
-export function bindFormsByImport(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
+// the scope as the map the passes below read, from the list check/scope.tree takes (compile/load.ts `scopeList`)
+function scopeMap(scopes: FileScope[]): ImportScope | undefined {
+  if (scopes.length === 0) {
+    return undefined
+  }
+
+  const entries = (list: ScopeFind[]): Map<string, string[]> => new Map(list.map(one => [one.name, one.targets]))
+
+  return new Map(
+    scopes.map(own => [
+      own.file,
+      {
+        finds: entries(own.finds),
+        bears: own.bears,
+        ...(own.aliases ? { aliases: entries(own.aliases) } : {}),
+        ...(own.plain ? { plain: entries(own.plain) } : {}),
+      },
+    ]),
+  )
+}
+
+// The original moved first to check/scope.tree's shape: the scope a list, the entry `''` for none (no form is
+// defined in a file named `''`), and the program handed back beside the diagnostics
+export function bindFormsByImport(program: Program, scopes: FileScope[], entry: string): { program: Program; diagnostics: Diagnostic[] } {
+  return { program, diagnostics: bindForms(program, scopeMap(scopes), entry === '' ? undefined : entry) }
+}
+
+function bindForms(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
   separateCaseNames(program, scope, entry)
 
   const byName = new Map<string, Map<string, Defining[]>>()

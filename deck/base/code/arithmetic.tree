@@ -1,0 +1,38 @@
+# The arithmetic masks: what a form wears to be added, subtracted, multiplied, divided and negated by the same words a
+# number is (note/term/plan/decisions-2026-10.md, D5). A form that wears `addition` is added by `add`, written as it is
+# for two numbers, and a task bounded by `need addition` adds whatever it is handed: the checker turns the operator on
+# such a value into the mask's task (check/infer.ts `ARITHMETIC_MASKS`). `like self` is the form wearing the mask, so
+# a big integer is added to a big integer and answers one.
+#
+# These replace the shelved code/mask/ files of the same names, written before masks had typed signatures.
+
+mark stable
+
+mask addition
+  task add
+    take self
+    take other, like self
+    like self
+
+mask subtraction
+  task subtract
+    take self
+    take other, like self
+    like self
+
+mask multiplication
+  task multiply
+    take self
+    take other, like self
+    like self
+
+mask division
+  task divide
+    take self
+    take other, like self
+    like self
+
+mask negation
+  task negate
+    take self
+    like self

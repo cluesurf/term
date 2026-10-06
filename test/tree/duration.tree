@@ -1,4 +1,4 @@
-note <Tests for duration. Pure integer-nanosecond spans: build from a unit, read back coarser, and compose with plus/minus/negate/absolute.>
+note <Tests for duration. Pure integer-nanosecond spans: build from a unit, read back coarser, and compose with add/subtract/negate/absolute.>
 
 load @term/base/code/duration
   find duration
@@ -22,22 +22,22 @@ test <two minutes is a hundred and twenty seconds>
           code 2
       code 120
 
-test <plus sums two spans>
+test <add sums two spans>
   want hold
     call is-equal
       call to-seconds
-        call plus
+        call add
           call from-seconds
             code 30
           call from-seconds
             code 12
       code 42
 
-test <minus takes one span from another>
+test <subtract takes one span from another>
   want hold
     call is-equal
       call to-seconds
-        call minus
+        call subtract
           call from-seconds
             code 50
           call from-seconds

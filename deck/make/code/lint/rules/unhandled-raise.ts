@@ -7,7 +7,9 @@
 import type { Program, Statement, Expression } from '@term/make/code/compile/node'
 import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
+import { exceptionForm } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 
 type Raises = Map<string, Set<string>>
 

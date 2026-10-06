@@ -53,6 +53,7 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 import { integerText } from '@term/make/code/compile/type-text'
+import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
 
 // Kotlin hard keywords: one used as an identifier (a local named `continue`, a param named `object`) is
 // backtick-escaped, in the declaration and every reference alike
@@ -971,11 +972,19 @@ export function emitKotlin(
   // that is the receiver type is widened to the interface (with a downcast in the override, valid because trait
   // dispatch only reaches a method through the right instance). See note/seed/compiler/trait-dictionary-passing.md.
   const maskMethods = new Set<string>()
+  // the mask tasks declared to answer `like self`, whose interface call is cast back to the receiver's type
+  const selfResults = new Set<string>()
 
   for (const node of program) {
     if (node.form === 'mask') {
       for (const m of node.methods) {
         maskMethods.add(m)
+      }
+
+      for (const task of node.tasks ?? []) {
+        if (task.signature.result?.kind === 'named' && task.signature.result.name === 'self') {
+          selfResults.add(task.name)
+        }
       }
     }
   }
@@ -1105,7 +1114,7 @@ export function emitKotlin(
         const node = value as Record<string, unknown> & { form?: string; name?: string }
 
         if (node.form === 'variable' && node.name === local) {
-          const sized = parent?.form === 'call' && key === 'args' && (parent.callee as { name?: string }).name === 'list_size' && (parent.args as unknown[])[0] === node
+          const sized = parent?.form === 'call' && key === 'args' && LIST_LENGTH_TASKS.has((parent.callee as { name?: string }).name ?? '') && (parent.args as unknown[])[0] === node
           // a slot by an index, or a literal one (`items/1`, a numeric name)
           const indexed = parent?.form === 'member' && key === 'target' && (parent.index !== undefined || /^\d+$/.test(parent.name as string))
           const counted = parent?.form === 'member' && key === 'target' && collectionRead(parent as unknown as Expression) !== undefined
@@ -1850,7 +1859,7 @@ export function emitKotlin(
         // the size of a fixed list (a LongArray) is its own; the stdlib's generic `list_size` takes a MutableList
         if (
           node.callee.form === 'variable' &&
-          node.callee.name === 'list_size' &&
+          LIST_LENGTH_TASKS.has(node.callee.name) &&
           node.args[0]?.form === 'variable' &&
           arrayNames.has(node.args[0].name)
         ) {
@@ -1921,10 +1930,11 @@ export function emitKotlin(
           node.args.length >= 1
         ) {
           const rest = node.args.slice(1).map(expr)
+          const call = `${expr(node.args[0]!)}.${camel(node.callee.name)}(${rest.join(', ')})`
 
-          return `${expr(node.args[0]!)}.${camel(node.callee.name)}(${rest.join(
-            ', ',
-          )})`
+          // a task the mask declares `like self` answers the interface here, which Kotlin cannot narrow to the
+          // receiver's own type: the call's type, which the checker knows, is cast back (decisions-2026-10.md, D5)
+          return selfResults.has(node.callee.name) && node.type ? `(${call} as ${kotlinType(node.type)})` : call
         }
 
         // a trailing `need false` parameter left out at the call site still exists in the native signature:

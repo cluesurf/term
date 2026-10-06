@@ -20,7 +20,9 @@ import {
 import { terminatingFunctions } from '@term/make/code/check/totality'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenRules } from '@term/make/code/check/holds'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
+import { exceptionForm } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 import { hashText } from '@term/make/code/term/hash'
 
 // What the whole-program analyses found about each task of a checked unit, with every body in hand. A stub carries

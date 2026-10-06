@@ -10,6 +10,9 @@ import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
 import { tokenize } from '@term/make/code/parser/token'
+import { readTree } from '@term/deck/code/read'
+import { escapeText } from '@term/make/code/compile/host'
+import type { Form } from '@term/deck/code/read'
 
 // the one assertion head, `want`, with a mode named for the fork branch it requires: `want hold` asserts its body (a
 // boolean expression) is true (it holds), `want miss` asserts it is false (it misses). The body holds the actual
@@ -416,6 +419,325 @@ const WANT_PRELUDE = [
   '',
 ]
 
+// SAMPLED TESTS (decisions-2026-10.md, D11). A `test` whose body begins with `take` lines is a PROPERTY: its body is
+// run on sampled values of those types, a hundred of them, and the first that fails is shrunk to the smallest that
+// still fails (deck/test/code/property-check.tree, `check`). A law is proven by a `rule`; a property is checked.
+//
+//   test <reverse twice is the same>
+//     take xs, like list, like number
+//     want hold, is-equal reverse(reverse(xs)), xs
+//
+// becomes four tasks: the body as `<slug>-case`, taking the inputs as written; `<slug>-claim`, the case over one
+// `sample` record read back field by field (a list through `<slug>-input-<n>`); and the test itself, which checks the
+// claim from a seed fixed by the phrase, so a run is repeatable, and on a failure runs the claim once more on the
+// shrunk input, so the `want` that fails raises its own line, re-raised with the input appended:
+// `line 3 did not hold: want hold, ..., at xs [1, 0]`. The words used are loaded under a `sampled-` prefix, so a file's
+// own `check` or `sample` is untouched.
+//
+// An input samples as a `number`, `text` or `boolean`, or a `list` of any of them, nested. Any other type is the
+// test's failure, naming it. The body must not wait: the check calls the claim directly
+const SAMPLED_PRELUDE = [
+  'load @term/test/property-check',
+  '  find check, name sampled-check',
+  '  find sample, name sampled-sample',
+  '  find make-number-shape, name sampled-make-number-shape',
+  '  find make-text-shape, name sampled-make-text-shape',
+  '  find make-flag-shape, name sampled-make-flag-shape',
+  '  find make-list-shape, name sampled-make-list-shape',
+  '  find make-record-shape, name sampled-make-record-shape',
+  '  find number-in, name sampled-number-in',
+  '  find text-in, name sampled-text-in',
+  '  find flag-in, name sampled-flag-in',
+  '  find values-in, name sampled-values-in',
+  '  find argument-at, name sampled-argument-at',
+  '  find show-arguments, name sampled-show-arguments',
+  '',
+]
+
+// how many values a sampled test is run on, and the largest a sampled list or number grows to
+const SAMPLED_RUNS = 100
+const SAMPLED_SIZE = 20
+
+// the type a `take` samples as: a scalar by its word, a list by what it holds
+type SampledType = { kind: 'number' | 'text' | 'boolean' } | { kind: 'list'; item: SampledType } | { kind: 'refused'; written: string }
+
+function sampledTypeOf(like: Form | undefined): SampledType {
+  const word = like?.terms[0]
+
+  if (word === 'number' || word === 'integer') {
+    return { kind: 'number' }
+  }
+
+  if (word === 'text' || word === 'boolean') {
+    return { kind: word }
+  }
+
+  if (word === 'list') {
+    const item = like?.forms.find(form => form.head === 'like')
+
+    return item ? { kind: 'list', item: sampledTypeOf(item) } : { kind: 'refused', written: 'list of no stated type' }
+  }
+
+  return { kind: 'refused', written: word ?? 'no type' }
+}
+
+const refusedIn = (type: SampledType): string | undefined =>
+  type.kind === 'refused' ? type.written : type.kind === 'list' ? refusedIn(type.item) : undefined
+
+// the shape a type samples by, as a call
+function shapeCall(type: SampledType): string {
+  switch (type.kind) {
+    case 'number':
+      return 'sampled-make-number-shape()'
+    case 'text':
+      return 'sampled-make-text-shape()'
+    case 'boolean':
+      return 'sampled-make-flag-shape()'
+    case 'list':
+      return `sampled-make-list-shape(${shapeCall(type.item)})`
+    case 'refused':
+      return 'sampled-make-number-shape()'
+  }
+}
+
+// the type written back out, one `like` per level, each under the one before
+function likeLines(type: SampledType, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+
+  switch (type.kind) {
+    case 'list':
+      return [`${pad}like list`, ...likeLines(type.item, indent + 2)]
+    case 'refused':
+      return [`${pad}like unknown`]
+    default:
+      return [`${pad}like ${type.kind}`]
+  }
+}
+
+// the rewrite of one sampled test, each line with the source line it came from
+function sampledTest(input: {
+  slug: string
+  label: string
+  at: number
+  lines: string[]
+  groups: number[][]
+  takes: number[][]
+  plainWants: boolean
+}): Row[] {
+  const { slug, at, lines } = input
+  const rows: Row[] = []
+  const add = (text: string, from = at): void => {
+    rows.push({ text, from })
+  }
+
+  // each input: its name and type, read by the compiler's parser from the `take` group as written
+  const inputs = input.takes.map(group => {
+    const text = group.map(n => lines[n]!.slice(2)).join('\n')
+    const read = readTree({ file: 'take.tree', text })
+    const take = read.ok ? read.forms[0] : undefined
+
+    return { name: take?.terms[0] ?? 'value', type: sampledTypeOf(take?.forms.find(form => form.head === 'like')), group }
+  })
+  const refused = inputs.find(one => refusedIn(one.type) !== undefined)
+
+  // a type no sample is drawn for is the test's own failure, said when it runs
+  if (refused) {
+    add(`task ${slug}`)
+    add('  like boolean')
+    add(`  halt <a sampled test takes number, text, boolean or a list of them, and "${refused.name}" is ${refusedIn(refused.type)}>`)
+    add('')
+
+    return rows
+  }
+
+  // the body, taking the inputs as written
+  add(`task ${slug}-case`)
+  inputs.forEach(one => one.group.forEach(n => add(lines[n]!, n)))
+  add('  like boolean')
+
+  for (const group of input.groups.filter(group => !input.takes.includes(group))) {
+    const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
+
+    if (head === ASSERTION) {
+      const written = guard(group.map(n => lines[n]!), group, input.plainWants)
+      written.lines.forEach((text, n) => add(text, written.from[n] ?? group[0]!))
+    } else {
+      group.forEach(n => add(lines[n]!, n))
+    }
+  }
+
+  add('  send back')
+  add('    true')
+  add('')
+
+  // a list input read back out of its sample, one task per level
+  const readers: string[] = []
+  const reader = (type: SampledType, name: string): string => {
+    if (type.kind !== 'list') {
+      return type.kind === 'text' ? 'sampled-text-in' : type.kind === 'boolean' ? 'sampled-flag-in' : 'sampled-number-in'
+    }
+
+    const each = reader(type.item, `${name}-item`)
+    readers.push(
+      [
+        `task ${name}`,
+        '  take value, like sampled-sample',
+        ...likeLines(type, 2),
+        '  save out, make list',
+        '  walk sampled-values-in(value)',
+        '    take each',
+        `    out/push(${each}(each))`,
+        '  back out',
+        '',
+      ].join('\n'),
+    )
+
+    return name
+  }
+  const reads = inputs.map((one, n) => `${reader(one.type, `${slug}-input-${n}`)}(sampled-argument-at(value, ${n}))`)
+
+  readers.forEach(text => text.split('\n').forEach(line => add(line)))
+
+  // the claim answers whether the case held and never raises, so it is a plain `boolean` task on every backend: a
+  // raising one is a `Result` on Rust, which `check`'s `like task` parameter does not take
+  add(`task ${slug}-claim`)
+  add('  take value, like sampled-sample')
+  add('  like boolean')
+  add('  mark unsafe')
+  add(`    back ${slug}-case(${reads.join(', ')})`)
+  add('  halt take')
+  add('    take problem')
+  add('    back false')
+  add('')
+
+  // the test: the check, and on a failure the claim once more on the shrunk input, whose `want` raises its line
+  add(`task ${slug}`)
+  add('  like boolean')
+  add('  save names, make list')
+  add('  save types, make list')
+  inputs.forEach(one => {
+    add(`  names/push(<${one.name}>)`)
+    add(`  types/push(${shapeCall(one.type)})`)
+  })
+  add(`  save found, sampled-check(sampled-make-record-shape(names, types), ${slug}-claim, ${SAMPLED_RUNS}, ${seedOf(input.label)}, ${SAMPLED_SIZE})`)
+  add('  fork test, found/ok')
+  add('    hold')
+  add('      back true')
+  add('  save shown, sampled-show-arguments(found/counterexample)')
+  add('  save value, found/counterexample')
+  add('  mark unsafe')
+  add(`    ${slug}-case(${reads.join(', ')})`)
+  add('  halt take')
+  add('    take problem')
+  add(`    halt <{problem/note}${SAMPLED_AT}{shown}>`)
+  add(`  halt <it failed at {shown} and held when run again>`)
+  add('')
+
+  return rows
+}
+
+// what joins a failing sampled `want`'s marker to the input it failed at
+const SAMPLED_AT = ' sampled at '
+
+// SNAPSHOTS (decisions-2026-10.md, D11). `want snapshot, render(page)` holds a TEXT against the one stored for it in
+// the test file's snapshot file, `<test>.snapshot.tree` beside it: a hash from each test's phrase to the list of its
+// snapshots in order, a Term data file (call/code/test-snapshot.ts). The stored text is written into the test as a
+// literal, so the comparison is an ordinary `want hold, is-equal`, which reports both texts when they differ and runs
+// alike on every backend. `term test --update` instead records what each `want snapshot` sees and writes the file.
+// A snapshot is text: a value of another type is turned into text by the test, which decides how it is shown
+export type Snapshots = {
+  // each test's stored snapshots, by its phrase
+  stored: Map<string, string[]>
+  // record what each `want snapshot` sees, and hold nothing against the stored ones
+  update: boolean
+}
+
+// declared once in a file that takes a snapshot: the check that its value is text, and under `--update` the record of
+// every one taken, read back by the runner through the two tasks after the tests ran
+const SNAPSHOT_PRELUDE = [
+  'task term-snapshot-of',
+  '  take value, like text',
+  '  like text',
+  '  back value',
+  '',
+]
+
+const SNAPSHOT_RECORD = [
+  'host term-snapshot-keys, make list',
+  'host term-snapshot-values, make list',
+  '',
+  'task term-snapshot-take',
+  '  take key, like text',
+  '  take value, like text',
+  '  term-snapshot-keys/push(key)',
+  '  term-snapshot-values/push(value)',
+  '',
+  'task term-snapshot-taken-keys',
+  '  like list, like text',
+  '  back term-snapshot-keys',
+  '',
+  'task term-snapshot-taken-values',
+  '  like list, like text',
+  '  back term-snapshot-values',
+  '',
+]
+
+// the head of a `want snapshot`, with its inline value when it has one
+const SNAPSHOT_HEAD = /^want snapshot\s*(?:,\s*(.*))?$/
+
+// one `want snapshot`, the `taken`th of its test (`label`), rewritten: its value saved through `term-snapshot-of`, then
+// recorded (`--update`), held against the stored text, or the test's failure when none is stored
+function snapshotWant(
+  group: string[],
+  numbers: number[],
+  label: string,
+  taken: number,
+  snapshots: Snapshots | undefined,
+  plain: boolean,
+): { lines: string[]; from: number[] } {
+  const line = numbers[0]!
+  const inline = SNAPSHOT_HEAD.exec(group[0]!.trim())?.[1]?.trim()
+  const name = `want-snapshot-${line + 1}`
+  const saved = inline
+    ? { lines: [`  save ${name}, term-snapshot-of(${inline})`], from: [line] }
+    : {
+        // the value sat under `want snapshot` at four, and sits under `call term-snapshot-of` at six
+        lines: [`  save ${name}`, '    call term-snapshot-of', ...group.slice(1).map(text => (blank(text) ? text : `  ${text}`))],
+        from: [line, line, ...numbers.slice(1)],
+      }
+
+  if (snapshots?.update) {
+    return {
+      lines: [...saved.lines, `  term-snapshot-take(<${escapeText(label)}>, ${name})`],
+      from: [...saved.from, line],
+    }
+  }
+
+  const stored = snapshots?.stored.get(label)?.[taken]
+
+  if (stored === undefined) {
+    return {
+      lines: [...saved.lines, `  halt <no snapshot is stored for line ${line + 1}: term test --update writes it>`],
+      from: [...saved.from, line],
+    }
+  }
+
+  const held = guard([`want hold, is-equal ${name}, <${escapeText(stored)}>`], [line], plain)
+
+  return { lines: [...saved.lines, ...held.lines], from: [...saved.from, ...held.from] }
+}
+
+// the seed a sampled test draws from, fixed by its phrase: the same values every run, and different ones per test
+function seedOf(label: string): number {
+  let seed = 7
+
+  for (const char of label) {
+    seed = (seed * 31 + char.charCodeAt(0)) % 2147483647
+  }
+
+  return seed
+}
+
 // the marker a failing `want` raises, and its reader: the source line the marker names, or undefined for any other
 // raise, which is the test's own failure and reported as it is
 const WANT_FAILED = 'want:'
@@ -430,8 +752,11 @@ export function wantFailed(raised: unknown, source: string): string | undefined 
   }
 
   // the part of an `and` that did not hold, when the `want` was one: `part 2 of 3`
-  const part = /part \d+ of \d+/.exec(markerOf(raised) ?? '')?.[0]
-  const said = `line ${line + 1} did not hold${part ? `, ${part}` : ''}: ${source.split('\n')[line]?.trim() ?? ''}`
+  const marker = markerOf(raised) ?? ''
+  const part = /part \d+ of \d+/.exec(marker)?.[0]
+  // and the input a sampled test failed at, after the marker
+  const at = marker.includes(SAMPLED_AT) ? marker.slice(marker.indexOf(SAMPLED_AT) + SAMPLED_AT.length) : undefined
+  const said = `line ${line + 1} did not hold${part ? `, ${part}` : ''}: ${source.split('\n')[line]?.trim() ?? ''}${at ? `, at ${at}` : ''}`
   const link = linkOf(raised)
 
   return link && 'left' in link && 'right' in link ? `${said}, left ${shown(link.left)}, right ${shown(link.right)}` : said
@@ -547,7 +872,11 @@ export function carriesTests(source: string): boolean {
 // diagnostic raised against the rewritten text back onto the lines the person wrote, and hands back the text its
 // frame should quote. A test file's errors pointed into the rewritten text, a line the reader never wrote, until
 // 2026-10-04 (guides: commands/test). `term make`, `test`, `roll`, `time` and `hold` all compile through this.
-export function readable(source: string): {
+export function readable(
+  source: string,
+  // the snapshots `term test` rewrote the file with, so a diagnostic is placed by the lines it actually compiled
+  snapshots?: Snapshots,
+): {
   text: string
   place: (diagnostic: Diagnostic) => { diagnostic: Diagnostic; text: string }
 } {
@@ -555,7 +884,7 @@ export function readable(source: string): {
     return { text: source, place: diagnostic => ({ diagnostic, text: source }) }
   }
 
-  const rewritten = preprocessTests(source)
+  const rewritten = preprocessTests(source, { snapshots })
   const from = source.split('\n')
   const to = rewritten.text.split('\n')
 
@@ -591,7 +920,7 @@ export function readable(source: string): {
 // backend's report reads a raise's `note` and cannot read the values a `want-missed` carries in its `link`, a generic
 // field that is a boxed dynamic there, so a run on Rust, Swift or Kotlin (`term test --env`) names the line that did not
 // hold and not the values (call/code/test-native.ts)
-export function preprocessTests(source: string, options: { plainWants?: boolean } = {}): Preprocessed {
+export function preprocessTests(source: string, options: { plainWants?: boolean; snapshots?: Snapshots } = {}): Preprocessed {
   const lines = source.split('\n')
   const out: string[] = []
   const origin: number[] = []
@@ -600,6 +929,10 @@ export function preprocessTests(source: string, options: { plainWants?: boolean 
   const taken = takenNames(lines)
   // whether a `want` compares two values, so the file needs WANT_PRELUDE
   let compares = false
+  // whether a test takes inputs, so the file needs SAMPLED_PRELUDE
+  let sampled = false
+  // whether a test takes a snapshot, so the file needs SNAPSHOT_PRELUDE (and SNAPSHOT_RECORD under `--update`)
+  let snapshotted = false
 
   const emit = (text: string, from: number): void => {
     out.push(text)
@@ -638,15 +971,35 @@ export function preprocessTests(source: string, options: { plainWants?: boolean 
       i++
     }
 
+    // a test that TAKES inputs is a property, checked on sampled values of their types
+    const groups = statements(lines, body, 2)
+    const takes = groups.filter(group => lines[group[0]!]!.trim().split(/[\s,]/)[0] === 'take')
+
+    if (takes.length > 0) {
+      sampled = true
+      sampledTest({ slug, label, at, lines, groups, takes, plainWants: true }).forEach(row => emit(row.text, row.from))
+      continue
+    }
+
     // emit the task: setup statements pass through, assertions become guards, then `send back, true`
     emit(`task ${slug}`, at)
     emit('  mark async', at)
     emit('  like boolean', at)
 
-    for (const group of statements(lines, body, 2)) {
+    // how many snapshots this test has taken, so each is matched to its stored one by its place
+    let snapshotsTaken = 0
+
+    for (const group of groups) {
       const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
-      if (head === ASSERTION) {
+      if (head === ASSERTION && SNAPSHOT_HEAD.test(lines[group[0]!]!.trim())) {
+        const written = snapshotWant(group.map(n => lines[n]!), group, label, snapshotsTaken, options.snapshots, options.plainWants === true)
+
+        snapshotsTaken += 1
+        snapshotted = true
+        compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
+        written.lines.forEach((text, n) => emit(text, written.from[n] ?? group[0]!))
+      } else if (head === ASSERTION) {
         const written = guard(group.map(n => lines[n]!), group, options.plainWants === true)
 
         compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
@@ -664,6 +1017,18 @@ export function preprocessTests(source: string, options: { plainWants?: boolean 
   if (compares) {
     out.unshift(...WANT_PRELUDE)
     origin.unshift(...WANT_PRELUDE.map(() => 0))
+  }
+
+  if (sampled) {
+    out.unshift(...SAMPLED_PRELUDE)
+    origin.unshift(...SAMPLED_PRELUDE.map(() => 0))
+  }
+
+  if (snapshotted) {
+    const prelude = [...SNAPSHOT_PRELUDE, ...(options.snapshots?.update ? SNAPSHOT_RECORD : [])]
+
+    out.unshift(...prelude)
+    origin.unshift(...prelude.map(() => 0))
   }
 
   return { text: out.join('\n'), labels, origin, heads }

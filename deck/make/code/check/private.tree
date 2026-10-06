@@ -1,0 +1,558 @@
+# PRIVACY. `mark private` on a task makes it visible only inside the file that defines it.
+#
+# Names are package-global (every reachable module is merged into one program), so before 2026-10-02 the mark was read
+# and held nobody to anything: another file could `call helper`, pass it as a value, or `load ./x / find helper`, and
+# the TypeScript output exported it. This pass refuses each of those as `private-name`.
+#
+# It is EXACT, not name-based. A reference is judged by the binding the resolver gave it, so a parameter or a local in
+# the calling file that happens to share a private task's name is a local and is never refused. A name with any
+# definition the reference may mean that is public, or that lives in the referring file, is not a violation: an
+# overload or an env shim that is public keeps the name reachable.
+#
+# ONE EXCEPTION, the tests. A file under its package's `test/` directory may reference a private task of the same
+# package, because a test of an internal helper is how the helper is tested. The package is the deck root the build
+# knows the file by, and otherwise the path before the file's last `/test/` segment.
+#
+# `note private` is the old spelling. It is still honored, and warned about as `note-private`.
+#
+# Ported from check/private.ts (self-hosting, 2026-10-05), its walk compile/node-reach.tree with the original's skipped
+# fields. What the original asked of the build is handed in as data: the import scope as a list of `file-scope`, the
+# deck each file belongs to as a list of `deck-home` where it took a lookup, and the overload groups, which were
+# check/overload.ts's module state, as a list of `overload-group`.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find last-index-of
+  find index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find marker
+  find position
+  find span
+
+load ../compile/node
+  find binding
+  find method-of
+  find statement
+  find statement-span
+
+load ../compile/node-reach
+  find reach-statements
+
+load ../compile/import-scope
+  find file-scope
+  find file-set
+  find gather-exported
+  find holds-file
+  find new-file-set
+  find scope-find
+
+# the deck root a file belongs to, as the build knows it
+form deck-home
+  link file, like text
+  link root, like text
+
+# a same-arity overload group: a reference to `name` may mean any member until the checker picks one by type
+form overload-group
+  link name, like text
+  link members, like list, like text
+
+# a top-level task: its name, the file it is in (`<>` for none), and whether it is private
+form definition
+  link name, like text
+  link home, like text
+  link private, like boolean
+  link span, like span
+
+task file-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the last three segments of a path, as a message names a file
+task short-file
+  take file, like text
+  like text
+  mark private
+
+  save parts, split(file, </>)
+  save from, subtract(parts/length, 3)
+  fork test, is-below(from, 0)
+    hold
+      save from, 0
+  save kept, make list
+  save at, from
+  walk test
+    hook test, is-below(at, parts/length)
+    hook hold
+      push(kept, get-part(parts, at))
+      save at, add(at, 1)
+  back join(kept, </>)
+
+task get-part
+  take parts, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  save found, <>
+  save index, 0
+  walk parts
+    take one
+    fork test, is-equal(index, at)
+      hold
+        save found, one
+    save index, add(index, 1)
+  back found
+
+# a name as it was written: an overload is renamed `name__<arity>`, and the message names it without the suffix
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save cut, index-of(name, <__>)
+  fork test, is-below(cut, 0)
+    hold
+      back name
+  back substring(name, 0, cut)
+
+# the top-level tasks, in program order. A form's method is not a top-level name and has its own visibility story, so
+# it is not a candidate here
+task definitions-of
+  take program, like list, like statement
+  like list, like definition
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, has-method(method)
+          hold
+            turn next
+        save made
+          make definition
+            bind name, name
+            bind home, file-of(span)
+            bind private, private
+            bind span, span
+        push(out, made)
+      miss
+        turn next
+  back out
+
+task has-method
+  take given, like maybe, like method-of
+  like boolean
+  mark private
+
+  sift given
+    case some
+      back true
+    case none
+      back false
+
+task named
+  take all, like list, like definition
+  take name, like text
+  like list, like definition
+  mark private
+
+  save out, make list
+  walk all
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        push(out, one)
+  back out
+
+task any-private
+  take all, like list, like definition
+  like boolean
+  mark private
+
+  walk all
+    take one
+    fork test, one/private
+      hold
+        back true
+  back false
+
+task deck-root
+  take decks, like list, like deck-home
+  take file, like text
+  like text
+  mark private
+
+  walk decks
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/root
+  back <>
+
+task has-deck
+  take decks, like list, like deck-home
+  take file, like text
+  like boolean
+  mark private
+
+  walk decks
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back true
+  back false
+
+# is `file` a test file of the package that holds `home`
+task test-of
+  take file, like text
+  take home, like text
+  take decks, like list, like deck-home
+  like boolean
+  mark private
+
+  fork test, has-deck(decks, file)
+    hold
+      save root, deck-root(decks, file)
+      fork test, not(starts-with(file, <{root}/test/>))
+        hold
+          back false
+      back and(has-deck(decks, home), is-equal(deck-root(decks, home), root))
+  save at, last-index-of(file, </test/>)
+  fork test, is-below(at, 0)
+    hold
+      back false
+  save package, substring(file, 0, at)
+  back starts-with(home, <{package}/>)
+
+# may `file` see `one`: it is public, or in `file`, or `file` is a test of its package
+task visible
+  take one, like definition
+  take file, like text
+  take decks, like list, like deck-home
+  like boolean
+  mark private
+
+  fork test, not(one/private)
+    hold
+      back true
+  fork test, or(is-equal(one/home, <>), or(is-equal(file, <>), is-equal(one/home, file)))
+    hold
+      back true
+  back test-of(file, one/home, decks)
+
+task any-visible
+  take all, like list, like definition
+  take file, like text
+  take decks, like list, like deck-home
+  like boolean
+  mark private
+
+  walk all
+    take one
+    fork test, visible(one, file, decks)
+      hold
+        back true
+  back false
+
+task with-file
+  take at, like span
+  take file, like text
+  like span
+  mark private
+
+  back
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+
+task refusal
+  take name, like text
+  take found, like list, like definition
+  take file, like text
+  take at, like span
+  take how, like text
+  like diagnostic
+  mark private
+
+  save homes, make list
+  walk found
+    take one
+    fork test, and(is-unequal(one/home, <>), not(has-text(homes, one/home)))
+      hold
+        push(homes, one/home)
+  save shorts, make list
+  walk homes
+    take home
+    push(shorts, short-file(home))
+  save where, join(shorts, <, >)
+  save here, with-file(at, file)
+  save markers, make list
+  save first
+    make marker
+      bind span, here
+  push(markers, first)
+  walk found
+    take one
+    save labeled
+      make marker
+        bind span, one/span
+        bind label, <private "{name}" here>
+    push(markers, labeled)
+  save shown-file, short-file(file)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, here
+      bind message, make(some, <"{name}" is `mark private` in {where}, so {shown-file} cannot {how} it>)
+      bind markers, make(some, markers)
+      bind hint, make(some, <remove `mark private` from {name} in {where}, or call it only from that file>)
+  save kind, make private-name
+  back diagnose(kind, input)
+
+task zero-span
+  like span
+  mark private
+
+  save origin
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, origin
+      bind end, origin
+
+task find-span
+  take given, like maybe, like span
+  like span
+  mark private
+
+  sift given
+    case some
+      link at
+      back at
+    case none
+      back zero-span()
+
+# A `find` of a private name in a `load` block. Run BEFORE overload disambiguation renames definitions, so a found name
+# is compared with the name as written. An empty scope is the original's absent one: nothing is found, nothing refused
+task check-private-finds
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take decks, like list, like deck-home
+  like list, like diagnostic
+
+  save out, make list
+  fork test, is-equal(scopes/length, 0)
+    hold
+      back out
+  save all, definitions-of(program)
+  fork test, not(any-private(all))
+    hold
+      back out
+  walk scopes
+    take own
+    walk own/finds
+      take found
+      save these, named(all, found/name)
+      fork test, not(any-private(these))
+        hold
+          turn next
+      save reach, new-file-set()
+      walk found/targets
+        take target
+        gather-exported(scopes, target, reach)
+      save reached, make list
+      walk these
+        take one
+        fork test, and(has-file(one/span), holds-file(reach, one/home))
+          hold
+            push(reached, one)
+      fork test, or(is-equal(reached/length, 0), any-visible(reached, own/file, decks))
+        hold
+          turn next
+      push(out, refusal(found/name, reached, own/file, find-span(found/at), <find>))
+  back out
+
+# the definitions a reference to `name` may mean: every member of its overload group, else the name's own
+task candidates
+  take all, like list, like definition
+  take groups, like list, like overload-group
+  take name, like text
+  like list, like definition
+  mark private
+
+  walk groups
+    take group
+    fork test, is-equal(group/name, name)
+      hold
+        save out, make list
+        walk group/members
+          take member
+          walk named(all, member)
+            take one
+            push(out, one)
+        back out
+  back named(all, name)
+
+task binds-function
+  take given, like maybe, like binding
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link bound
+      sift bound
+        case function
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# A call to, or a reference as a value of, a private task from another file. Run AFTER the resolver, so only a name
+# the resolver bound to a top-level task counts (a parameter or a local of the same name is bound to itself), and after
+# overload disambiguation, so an arity or file overload is judged by the definition it was bound to. A same-arity typed
+# overload group is bound to its first member until the checker picks one by argument type, so a reference to the group
+# may mean any member
+task check-private-references
+  take program, like list, like statement
+  take file, like text
+  take groups, like list, like overload-group
+  take decks, like list, like deck-home
+  like list, like diagnostic
+
+  save out, make list
+  save all, definitions-of(program)
+  fork test, not(any-private(all))
+    hold
+      back out
+  save told, make list
+  # the fields a reference cannot be in: types, signatures and the resolver's binding hold no reference a definition
+  # could be named by
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <result>)
+  push(skip, <declared>)
+  push(skip, <generics>)
+  push(skip, <binding>)
+  push(skip, <privateNote>)
+  walk program
+    take top
+    # the statement's file where it has one, an empty one included, else the compile's
+    save from, file
+    fork test, has-file(statement-span(top))
+      hold
+        save from, file-of(statement-span(top))
+    save single, make list
+    push(single, top)
+    save reached, reach-statements(single, skip)
+    walk reached/expressions
+      take one
+      sift one
+        case variable
+          fork test, not(binds-function(binding))
+            hold
+              turn next
+          save these, candidates(all, groups, name)
+          fork test, or(is-equal(these/length, 0), any-visible(these, from, decks))
+            hold
+              turn next
+          # the original joined the two with a NUL; any separator neither can hold keeps them apart
+          save key, <{from}\n{name}>
+          fork test, has-text(told, key)
+            hold
+              turn next
+          push(told, key)
+          push(out, refusal(written-name(name), these, from, span, <use>))
+        miss
+          turn next
+  back out
+
+task has-file
+  take at, like span
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      back true
+    case none
+      back false
+
+# `note private` on a task in this compile's own file: the old spelling, honored and warned about
+task warn-private-notes
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save stamped, false
+  walk program
+    take one
+    fork test, has-file(statement-span(one))
+      hold
+        save stamped, true
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        sift private-note
+          case some
+            link noted
+            fork test, and(stamped, not(and(has-file(span), is-equal(file-of(span), file))))
+              hold
+                turn next
+            save shown, written-name(name)
+            save input
+              make diagnostic-input
+                bind file, file
+                bind span, with-file(noted, file)
+                bind message, make(some, <`note private` on "{shown}" is the old spelling of `mark private`>)
+                bind hint, make(some, <write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation>)
+            save kind, make note-private
+            push(out, diagnose(kind, input))
+          case none
+            turn next
+      miss
+        turn next
+  back out

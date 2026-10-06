@@ -20,11 +20,17 @@ object nativePermission {
     // the request code this runtime's requests carry, so another request's answer is not mistaken for its own
     private const val REQUEST = 7301
 
-    private fun androidName(name: String): String? = when (name) {
-        "camera" -> Manifest.permission.CAMERA
-        "location" -> Manifest.permission.ACCESS_FINE_LOCATION
-        "notification" -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
-        else -> null
+    // the Android permissions a grant is, every one of which must be held. The calendar is two, since this module both
+    // reads and writes it, and Android asks for both in one prompt
+    private fun androidNames(name: String): List<String> = when (name) {
+        "camera" -> listOf(Manifest.permission.CAMERA)
+        "microphone" -> listOf(Manifest.permission.RECORD_AUDIO)
+        "contacts" -> listOf(Manifest.permission.READ_CONTACTS)
+        "calendar" -> listOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        "photos" -> listOf(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE)
+        "location" -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        "notification" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
+        else -> emptyList()
     }
 
     private fun asked(activity: Activity) = activity.getSharedPreferences("term-permission", Context.MODE_PRIVATE)
@@ -40,11 +46,19 @@ object nativePermission {
             val manager = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             return if (manager.areNotificationsEnabled()) "granted" else "denied"
         }
-        val permission = androidName(name) ?: return "unavailable"
-        if (!declared(activity, permission)) return "unavailable"
-        if (activity.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return "granted"
-        return if (asked(activity).getBoolean(permission, false)) "denied" else "not-determined"
+        val permissions = androidNames(name)
+        if (permissions.isEmpty() || permissions.any { !declared(activity, it) }) return "unavailable"
+        if (permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) return "granted"
+        if (name == "photos" && chosenPhotos(activity)) return "granted"
+        return if (permissions.any { asked(activity).getBoolean(it, false) }) "denied" else "not-determined"
     }
+
+    // Android 14 lets a person allow only the photos they choose, which is a grant of its own permission
+    // (../../../photos.tree: limited access is a grant)
+    private const val CHOSEN_PHOTOS = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+
+    private fun chosenPhotos(activity: Activity): Boolean =
+        Build.VERSION.SDK_INT >= 34 && declared(activity, CHOSEN_PHOTOS) && activity.checkSelfPermission(CHOSEN_PHOTOS) == PackageManager.PERMISSION_GRANTED
 
     suspend fun status(name: String): String = now(name)
 
@@ -52,9 +66,9 @@ object nativePermission {
     // once without a prompt, and the status reads `denied`
     suspend fun request(name: String): String {
         val activity = hostActivity() ?: return "unavailable"
-        val permission = androidName(name)
-        if (permission == null || now(name) != "not-determined" && now(name) != "denied") return now(name)
-        asked(activity).edit().putBoolean(permission, true).apply()
+        val permissions = androidNames(name)
+        if (permissions.isEmpty() || now(name) != "not-determined" && now(name) != "denied") return now(name)
+        asked(activity).edit().apply { permissions.forEach { putBoolean(it, true) } }.apply()
         suspendCoroutine<Unit> { continuation ->
             lateinit var listener: (Int) -> Unit
             listener = { code ->
@@ -64,7 +78,9 @@ object nativePermission {
                 }
             }
             hostPermissionAnswers.add(listener)
-            activity.requestPermissions(arrayOf(permission), REQUEST)
+            // asked beside the full permission, Android 14's prompt offers the choice of photos as well
+            val asking = if (name == "photos" && Build.VERSION.SDK_INT >= 34) permissions + CHOSEN_PHOTOS else permissions
+            activity.requestPermissions(asking.toTypedArray(), REQUEST)
         }
         return now(name)
     }

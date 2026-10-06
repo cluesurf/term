@@ -92,8 +92,7 @@ function frontEnd(shared: boolean): Program {
     throw new Error(`mill: ${built.diagnostics.map(d => d.message).join(', ')}`)
   }
 
-  const out = built.program
-  extendForms(out, 'main.tree')
+  const out = extendForms(built.program, 'main.tree', []).program
   disambiguateOverloads(out)
   resolveNames(out, 'main.tree')
   const errors = check(out, 'main.tree').filter(d => d.severity !== 'warning')

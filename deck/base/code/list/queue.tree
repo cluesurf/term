@@ -122,11 +122,14 @@ form queue
             read self/items
             read at
 
+  # how many items wait in it. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, subtract(self/items/length, self/front)
+
+  # the older name of `length`
   task size
     take self
     like number
-    send back
-      call subtract
-        call size
-          read self/items
-        read self/front
+    send back, subtract(self/items/length, self/front)

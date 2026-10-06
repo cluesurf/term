@@ -7,6 +7,7 @@ load @term/mill/code/bind/mine
 
 load @term/mill/code/save/mine
   find save
+  find save-key
 
 load @term/mill/code/turn/mine
   find turn
@@ -29,6 +30,8 @@ mine make
         mine form, like bind
           site bind
         mine form, like save
+          site save
+        mine form, like save-key
           site save
         mine form, like call-link
           site link

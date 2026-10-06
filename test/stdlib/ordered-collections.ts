@@ -33,6 +33,9 @@ load @term/base/list/linked-list
   find linked-list
   find from-list
 
+load @term/base/set
+  find set
+
 load @term/base/list
   find list
   find join
@@ -71,6 +74,23 @@ task set-story
     push(shown, <{one}>)
   back <{length(s)} {has(s, 3)} {has(s, 1)} {gone} {join(shown, <,>)}>
 
+# a plain set, the same story: it keeps insertion order too (set.tree, decisions-2026-10.md, D13)
+task plain-set-story
+  like text
+  save s
+    make set
+      bind items, make hash
+  insert(s, 3)
+  insert(s, 1)
+  insert(s, 3)
+  insert(s, 2)
+  remove(s, 1)
+  save shown, make list
+  walk to-list(s)
+    take one
+    push(shown, <{one}>)
+  back <{length(s)} {has(s, 3)} {has(s, 1)} {join(shown, <,>)}>
+
 # a linked list: built from a list, reversed, measured, its head and tail read, and a long one measured in a loop
 task chain-story
   like text
@@ -93,13 +113,13 @@ task chain-story
 
 task run
   like text
-  back <{bag-story()} | {set-story()} | {chain-story()}>
+  back <{bag-story()} | {set-story()} | {plain-set-story()} | {chain-story()}>
 `
 
 // bag: 3 copies left (5, 5, 2), 2 distinct, two 5s, no 7, a 2, a 5 taken, no 9 to take, and the copies grouped by
 // first insertion. set: 3 and 2 left of 3, 1, 2, in that order. chain: 3 long, reversed, head 1, a tail of 2, an empty
 // list empty, and 200,000 nodes measured
-const EXPECTED = `3 2 2 0 true true false 5,5,2 | 2 true false true 3,2 | 3 3,2,1 1 2 true ${process.env.CHAIN_LENGTH ?? '200000'}`
+const EXPECTED = `3 2 2 0 true true false 5,5,2 | 2 true false true 3,2 | 2 true false 3,2 | 3 3,2,1 1 2 true ${process.env.CHAIN_LENGTH ?? '200000'}`
 
 const dir = mkdtempSync(join(tmpdir(), 'term-ordered-'))
 const only = process.env.COLLECTION_ONLY ?? ''

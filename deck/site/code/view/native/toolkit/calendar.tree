@@ -1,0 +1,37 @@
+# calendar on the platform's own toolkit (device-layer-0024): EventKit on macOS and iOS, the CalendarContract provider on Android, unavailable under Compose on the desktop.
+# Conforms to ../calendar. The runtime is native-calendar.swift, native-calendar.kt (both Android hosts) and compose/native-calendar.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-calendar>, name native-calendar
+  load <global:native-permission>, name native-permission
+
+task write-event
+  take title, like text
+  take start, like text
+  take end, like text
+  like text
+  send back
+    call native-calendar/add
+      read title
+      read start
+      read end
+      wait true
+
+task read-events
+  take from, like text
+  take to, like text
+  like text
+  send back
+    call native-calendar/find
+      read from
+      read to
+      wait true
+
+task delete-event
+  take id, like text
+  like text
+  send back
+    call native-calendar/remove
+      read id
+      wait true

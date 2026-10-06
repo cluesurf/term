@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { entrySpelling } from '@term/make/code/compile/native-main'
 import { projectResolver } from '@term/call/code/make'
 import {
   androidDevice,
@@ -19,10 +20,12 @@ import {
   assembleIosBundle,
   buildAndroidProgram,
   simulator,
+  SWIFT_MODULE,
 } from '@term/call/code/cask'
 import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
 import { runCompose } from './compose-build'
 import { runComposeAndroid } from './compose-android'
+import { followAppLog } from './android-log'
 import { runComposeRemote } from './compose-remote'
 import type { RemoteDesktop } from './compose-remote'
 
@@ -118,7 +121,7 @@ function runMacos(run: ToolkitRun): void {
   const file = swiftFor(run, 'macos', shot)
   const exe = join(run.dir, 'macos')
 
-  if (!file || !builds(run, 'macos', 'swiftc', ['-o', exe, file])) {
+  if (!file || !builds(run, 'macos', 'swiftc', ['-module-name', SWIFT_MODULE, '-o', exe, file])) {
     return
   }
 
@@ -159,7 +162,7 @@ function runIos(run: ToolkitRun): void {
   )
   const section = ['-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', entitlements]
 
-  if (!file || !builds(run, 'ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...section, '-o', bundle.exe, file])) {
+  if (!file || !builds(run, 'ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...section, '-module-name', SWIFT_MODULE, '-o', bundle.exe, file])) {
     return
   }
 
@@ -209,7 +212,7 @@ function runAndroid(run: ToolkitRun): void {
       entry,
       identifier: run.androidIdentifier,
       // the Activity Android starts runs the program inside onCreate, once a view can be made
-      driver: ['class TermActivity : TermViewActivity() {', '  override fun program() { main() }', '}'].join('\n'),
+      driver: ['class TermActivity : TermViewActivity() {', `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`, '}'].join('\n'),
       work,
       env: 'android',
     })
@@ -229,31 +232,14 @@ function runAndroid(run: ToolkitRun): void {
   }
 
   adb('uninstall', run.androidIdentifier)
-  adb('logcat', '-c')
   const installed = adb('install', '-r', apk)
   run.ok('android: installs', installed.status === 0, `${installed.stdout}${installed.stderr}`.slice(0, 400))
   run.prepare?.('android', { serial: found.serial, identifier: run.androidIdentifier })
   adb('shell', 'am', 'start', '-n', `${run.androidIdentifier}/.TermActivity`)
 
-  // the app logs every line under `native-dom` and says when it exits
-  let log = ''
-  const deadline = Date.now() + 120_000
-
-  while (Date.now() < deadline) {
-    log = adb('logcat', '-d', '-s', 'native-dom:I').stdout ?? ''
-
-    if (log.includes('native-view exit')) {
-      break
-    }
-
-    spawnSync('sleep', ['1'])
-  }
-
-  const said = log
-    .split('\n')
-    .map(line => line.slice(line.indexOf('native-dom:') + 'native-dom:'.length).trim())
-    .join('\n')
-  run.ok('android: the app said it exits 0', said.includes('native-view exit 0'), log.slice(-600))
+  // the app logs every line under `native-dom` and says when it exits: its own lines, streamed (./android-log.ts)
+  const said = followAppLog({ adb: tools.adb, serial: found.serial, identifier: run.androidIdentifier })
+  run.ok('android: the app said it exits 0', said.includes('native-view exit 0'), said.slice(-600))
 
   const shot = run.shots.android ?? join(run.dir, 'android.png')
   const pulled = spawnSync(tools.adb, ['-s', found.serial, 'exec-out', 'cat', `/sdcard/Android/data/${run.androidIdentifier}/files/native-dom.png`])

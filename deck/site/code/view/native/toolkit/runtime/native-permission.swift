@@ -1,119 +1,57 @@
 // Permissions on AppKit and UIKit (device-layer-0001), docked by ../permission.tree as `<global:native-permission>`.
 //
-// Each status is the platform's own, read when asked: AVCaptureDevice for the camera, CLLocationManager for location,
-// UNUserNotificationCenter for notifications.
+// A TABLE OF GRANTS, EACH BROUGHT BY ITS CAPABILITY. This runtime names no privacy framework. Each capability's own
+// runtime registers the grant it needs, at the top of the program, with how to read it and how to ask for it: the camera
+// and the torch `camera` (native-capture.swift's AVFoundation), the microphone `microphone`, location `location`,
+// notifications `notification`, contacts `contacts`, the calendar `calendar`, the photo library `photos`. A grant no
+// linked capability registered reads `unavailable`, as Android reads a permission the manifest does not declare.
+//
+// WHY IT IS NOT ONE SWITCH. App Store processing refuses a binary that references a privacy API without the usage
+// string for it (ITMS-90683), and the permission runtime is linked into every app that asks for any grant. When this file
+// read every grant itself, an app that only posted notifications referenced CoreLocation and AVFoundation and carried
+// neither NSLocationWhenInUseUsageDescription nor NSCameraUsageDescription. Now a framework is linked exactly when its
+// capability is, which is also when the build writes its usage string (device-layer-0012).
 //
 // ASKING NEEDS A DECLARATION. iOS and macOS end a process that requests a privacy grant without the usage string its
-// Info.plist must carry (NSCameraUsageDescription, NSLocationWhenInUseUsageDescription), and UserNotifications ends a
-// process with no bundle at all. So a request is made only when the declaration is there, and otherwise answers the
-// status as it stands, without a prompt. The build writes the declarations for what an app reaches (device-layer-0012).
+// Info.plist must carry, and UserNotifications ends a process with no bundle at all. So a request is made only when the
+// declaration is there, and otherwise answers the status as it stands, without a prompt.
 
-import AVFoundation
-import CoreLocation
 import Foundation
-import UserNotifications
 
 enum nativePermission {
-    // the usage string a grant's prompt needs, by name
-    private static let declarations = ["camera": "NSCameraUsageDescription", "location": "NSLocationWhenInUseUsageDescription"]
+    // how one grant is read and asked for, and the usage string asking needs (none: a bundle is enough)
+    struct Grant {
+        let declaration: String?
+        let status: () async -> String
+        let request: () async -> String
+    }
+
+    // filled once, at the top of the program, before anything reads it
+    nonisolated(unsafe) private static var grants: [String: Grant] = [:]
+
+    // a capability's runtime registers its grant with this, as a top-level `let _ =`, which runs when the program starts
+    @discardableResult
+    static func register(_ name: String, declaration: String?, status: @escaping () async -> String, request: @escaping () async -> String) -> Bool {
+        grants[name] = Grant(declaration: declaration, status: status, request: request)
+        return true
+    }
 
     // the process has a bundle, so the platform has an identity to hold a grant for
-    private static var bundled: Bool { Bundle.main.bundleIdentifier != nil }
+    static var bundled: Bool { Bundle.main.bundleIdentifier != nil }
 
-    private static func declared(_ name: String) -> Bool {
-        guard let key = declarations[name] else { return bundled }
+    private static func declared(_ grant: Grant) -> Bool {
+        guard let key = grant.declaration else { return bundled }
         return bundled && Bundle.main.object(forInfoDictionaryKey: key) != nil
     }
 
     static func status(_ name: String) async -> String {
-        switch name {
-        case "camera": return cameraStatus()
-        case "location": return locationStatus(CLLocationManager().authorizationStatus)
-        case "notification": return await notificationStatus()
-        default: return "unavailable"
-        }
+        guard let grant = grants[name] else { return "unavailable" }
+        return await grant.status()
     }
 
     static func request(_ name: String) async -> String {
-        guard declared(name) else { return await status(name) }
-        switch name {
-        case "camera":
-            _ = await AVCaptureDevice.requestAccess(for: .video)
-            return cameraStatus()
-        case "location":
-            return await askLocation()
-        case "notification":
-            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-            return await notificationStatus()
-        default:
-            return "unavailable"
-        }
-    }
-
-    // on the main actor: a CLLocationManager answers on the run loop of the thread that made it
-    @MainActor
-    private static func askLocation() async -> String {
-        await LocationAsker().ask()
-    }
-
-    private static func cameraStatus() -> String {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: return "granted"
-        case .denied: return "denied"
-        case .restricted: return "restricted"
-        case .notDetermined: return "not-determined"
-        @unknown default: return "unavailable"
-        }
-    }
-
-    static func locationStatus(_ status: CLAuthorizationStatus) -> String {
-        switch status {
-        case .notDetermined: return "not-determined"
-        case .denied: return "denied"
-        case .restricted: return "restricted"
-        case .authorizedAlways: return "granted"
-        #if canImport(UIKit)
-        case .authorizedWhenInUse: return "granted"
-        #endif
-        @unknown default: return "granted"
-        }
-    }
-
-    private static func notificationStatus() async -> String {
-        guard bundled else { return "unavailable" }
-        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
-        case .authorized, .provisional, .ephemeral: return "granted"
-        case .denied: return "denied"
-        case .notDetermined: return "not-determined"
-        @unknown default: return "unavailable"
-        }
-    }
-}
-
-// One location grant request: CoreLocation answers through its delegate once the person has chosen, and the manager
-// must live until then
-final class LocationAsker: NSObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    private var answer: CheckedContinuation<String, Never>?
-
-    func ask() async -> String {
-        if manager.authorizationStatus != .notDetermined {
-            return nativePermission.locationStatus(manager.authorizationStatus)
-        }
-        return await withCheckedContinuation { continuation in
-            answer = continuation
-            manager.delegate = self
-            #if canImport(UIKit)
-            manager.requestWhenInUseAuthorization()
-            #else
-            manager.requestAlwaysAuthorization()
-            #endif
-        }
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        guard manager.authorizationStatus != .notDetermined, let answer else { return }
-        self.answer = nil
-        answer.resume(returning: nativePermission.locationStatus(manager.authorizationStatus))
+        guard let grant = grants[name] else { return "unavailable" }
+        guard declared(grant) else { return await grant.status() }
+        return await grant.request()
     }
 }

@@ -19,6 +19,7 @@ import { isBinaryBuiltin, isUnaryBuiltin } from '@term/make/code/compile/surface
 import { isFoldable, leanLabels, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { armLocals } from '@term/make/code/check/arm'
 import { overloadGroups } from '@term/make/code/check/overload'
+import { typeTestOf } from '@term/make/code/check/seam'
 
 // the fields every caught exception binds in an arm, beside its own props (infer.ts keeps the same list)
 const EXCEPTION_SHARED = ['host', 'form', 'note', 'code', 'time']
@@ -544,7 +545,16 @@ export function resolve(
         break
       case 'if':
         for (const branch of node.branches) {
-          resolveExpression(branch.cond)
+          const tested = typeTestOf(branch.cond)
+
+          // `is-text(value)` as a whole test, with no task of that name in scope, asks what an `unknown` holds: only
+          // its local is resolved here, and the checker rewrites the branch into a `sift` arm (check/seam.ts)
+          if (tested && !look(tested.test) && branch.cond.form === 'call') {
+            resolveExpression(branch.cond.args[0]!)
+          } else {
+            resolveExpression(branch.cond)
+          }
+
           resolveBody(branch.body)
         }
 

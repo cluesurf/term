@@ -23,6 +23,17 @@ mint save-match
       bind seed, read seed
       bind arm, read arm
 
+# a `make hash` entry whose key is any value, a text or a computed one
+mint save-key
+  case key
+    site key
+  case seed
+    site seed
+  hook make
+    make save-key
+      bind key, read key
+      bind seed, read seed
+
 mint save
   case name
     site name

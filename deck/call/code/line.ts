@@ -996,6 +996,10 @@ const cli = yargs(hideBin(process.argv))
         .option('ride', {
           type: 'boolean',
           description: 'Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c',
+        })
+        .option('update', {
+          type: 'boolean',
+          description: 'Write what each `want snapshot` sees into the test file\'s snapshot file, instead of comparing against it',
         }),
     async argv => {
       await callTest({
@@ -1005,6 +1009,7 @@ const cli = yargs(hideBin(process.argv))
         case: argv.case,
         env: argv.env,
         ride: argv.ride,
+        update: argv.update,
       })
     },
   )

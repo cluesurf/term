@@ -1,0 +1,53 @@
+# device-layer-0024.
+# The person's calendar: EventKit on macOS and iOS, the CalendarContract provider on Android. A browser has no calendar
+# of the person's to reach, so it answers `unavailable`.
+#
+#   add-event(title, start, end)   `added <id>`, the platform's own identifier for the event, kept in the default
+#                                  calendar for new events (on Android a local calendar of the app's own, made the
+#                                  first time, when the device has none it can write). Or invalid (a time this cannot
+#                                  read, or an end before the start)
+#   find-events(from, to)          every event that overlaps the span, one a line: start, a tab, end, a tab, the title,
+#                                  sorted by start and then title. Or none (no event in the span), or invalid
+#   remove-event(id)               removed, or absent (no event has that identifier)
+#
+# Each also answers not-determined (ask first: request-permission calendar), denied, unavailable or failed. Write-only
+# access, which iOS 17 and macOS 14 let a person give, reads `denied`: this module reads events as well as writing them.
+#
+# A time is ISO 8601 with its offset, `2030-01-01T09:00:00Z` or `2030-01-01T10:00:00+01:00`, and every time this
+# answers is in UTC to the second, in the first form. A title holding a tab or a line break has it read as a space. An
+# event that repeats is answered once for each time it falls in the span.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed sets above, or the lines, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/calendar
+  find write-event
+  find read-events
+  find delete-event
+
+task add-event
+  take title, like text
+  take start, like text
+  take end, like text
+  like text
+  send back
+    call write-event
+      read title
+      read start
+      read end
+
+task find-events
+  take from, like text
+  take to, like text
+  like text
+  send back
+    call read-events
+      read from
+      read to
+
+task remove-event
+  take id, like text
+  like text
+  send back
+    call delete-event
+      read id

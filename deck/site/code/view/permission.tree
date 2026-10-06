@@ -1,7 +1,7 @@
 # Permissions (device-layer-0001): whether the person has let the app use a capability, and asking them. Every
 # capability that needs a grant asks through here, and the platform's own prompt is the only prompt.
 #
-#   names    camera, location, notification
+#   names    camera, microphone, location, notification, contacts, calendar, photos
 #
 #   permission-status(name)    granted, denied, not-determined (never asked), restricted (the device's owner or a
 #                              policy decides), or unavailable (this platform has no such grant, or no such capability)

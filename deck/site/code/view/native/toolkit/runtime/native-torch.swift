@@ -5,6 +5,10 @@
 import AVFoundation
 import Foundation
 
+// the light is the camera's, so the torch brings the camera's grant too (native-permission.swift); registering it twice,
+// with the camera, keeps the one answer
+nativePermission.register("camera", declaration: "NSCameraUsageDescription", status: { nativeCapture.status(.video) }, request: { await nativeCapture.request(.video) })
+
 enum nativeTorch {
     // the device with a torch, if this one has one
     private static func device() -> AVCaptureDevice? {

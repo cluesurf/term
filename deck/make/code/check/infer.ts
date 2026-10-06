@@ -29,7 +29,8 @@ import {
 } from '@term/make/code/check/scheme'
 import type { Scheme } from '@term/make/code/check/scheme'
 import { expectType } from '@term/make/code/check/expect'
-import { unknownSeam } from '@term/make/code/check/seam'
+import { typeTestOf, unknownSeam } from '@term/make/code/check/seam'
+import { inferStrict } from '@term/make/code/check/strict'
 import type {
   DeclaredSignature,
   Expression,
@@ -106,6 +107,14 @@ function instantiate(signature: Signature, sub: Substitution): Instantiated {
 const NATIVE_MAP_MEMBERS = new Set([...LOWERED_MAP_MEMBERS, LOWERED_MAP_READ])
 const NATIVE_LIST_MEMBERS = new Set([...LOWERED_LIST_MEMBERS, LOWERED_LIST_READ])
 
+// the operators a mask may stand behind, each with its mask and the task the mask declares (decisions-2026-10.md, D5)
+const ARITHMETIC_MASKS = new Map([
+  ['+', { mask: 'addition', task: 'add' }],
+  ['-', { mask: 'subtraction', task: 'subtract' }],
+  ['*', { mask: 'multiplication', task: 'multiply' }],
+  ['/', { mask: 'division', task: 'divide' }],
+])
+
 // `1st`, `2nd`, `3rd`, `4th`: a position named for a message
 function ordinal(n: number): string {
   const tens = n % 100
@@ -117,7 +126,45 @@ function ordinal(n: number): string {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
 }
 
+// WHAT INFERENCE SPENDS, for `pnpm term:generalize-bench` (decisions-2026-10.md, D10): every `check`, and every
+// `generalize` inside one with the size of the environment it walked. Off unless a profile is handed in, so a build
+// pays one comparison per generalized binding
+export type InferProfile = {
+  checks: number
+  checkMs: number
+  generalizes: number
+  generalizeMs: number
+  // the environment entries walked, summed over every generalize
+  walked: number
+}
+
+let profile: InferProfile | undefined
+
+export function setInferProfile(next: InferProfile | undefined): void {
+  profile = next
+}
+
 export function check(
+  program: Program,
+  file: string,
+  merged?: boolean,
+  only?: string,
+): Diagnostic[] {
+  if (!profile) {
+    return checkProgram(program, file, merged, only)
+  }
+
+  const start = performance.now()
+
+  try {
+    return checkProgram(program, file, merged, only)
+  } finally {
+    profile.checks += 1
+    profile.checkMs += performance.now() - start
+  }
+}
+
+function checkProgram(
   program: Program,
   file: string,
   merged?: boolean,
@@ -646,8 +693,6 @@ export function check(
       }
     }
 
-    const noGenerics = new Map<string, Type>()
-
     for (const statement of program) {
       if (statement.form !== 'instance') {
         continue
@@ -663,6 +708,8 @@ export function check(
 
         const where = { file: statement.span.file ?? file, span: statement.span }
         const wanted = task.signature.params.length
+        // `like self` in the mask is the form wearing it (decisions-2026-10.md, D5)
+        const wearer = new Map([['self', seedType({ kind: 'named', name: statement.target }, new Map())]])
 
         if (own.params.length !== wanted) {
           diagnostics.push(
@@ -679,7 +726,7 @@ export function check(
             return
           }
 
-          const declared = seedType(param.type, noGenerics)
+          const declared = seedType(param.type, wearer)
 
           if (!unify(declared, own.params[at]!)) {
             diagnostics.push(
@@ -692,7 +739,7 @@ export function check(
         })
 
         if (task.signature.result) {
-          const declared = seedType(task.signature.result, noGenerics)
+          const declared = seedType(task.signature.result, wearer)
 
           if (!unify(declared, own.result)) {
             diagnostics.push(
@@ -780,18 +827,42 @@ export function check(
   const instantiateScheme = (scheme: Scheme): Type =>
     instantiateSchemeImpl(scheme, sub)
 
-  const generalize = (type: Type, env: Env): number[] =>
-    generalizeImpl(type, env, sub)
+  const generalize = (type: Type, env: Env): number[] => {
+    if (!profile) {
+      return generalizeImpl(type, env, sub)
+    }
+
+    const start = performance.now()
+    const out = generalizeImpl(type, env, sub)
+    profile.generalizes += 1
+    profile.generalizeMs += performance.now() - start
+    profile.walked += env.size
+
+    return out
+  }
 
   // the trait bounds carried by the generics of the function currently being checked (each a generic type variable
   // with the mask it is bound by). Used to discharge a bounded call whose argument is still one of the enclosing
   // generics rather than a concrete type. Compared by resolved representative, since unification may have linked it.
   let currentBounds: { variable: Type; mask: string }[] = []
-  // the generic type variables of the function currently being checked. Inside its body each stands for ONE type the
-  // caller chooses, so a value of `pile t` is as ground as a `pile number`: pushing one into a fresh `make list` makes
-  // it a list of `pile t`. Counted as unknown, the element fell through to `number`, and engine/data/array's `to-array`
-  // emitted `const stack: number[]` holding vectors, a tsc error in every build of the port (2026-10-04)
-  let currentGenerics = new Set<number>()
+
+  // whether a value is of a form that wears `mask`, or of a generic of the task being checked that is bounded by it
+  function wearsArithmetic(type: Type, mask: string): boolean {
+    const held = resolve(type)
+
+    if (held.kind === 'named') {
+      return instances.has(`${mask}:${held.name}`)
+    }
+
+    return (
+      held.kind === 'variable' &&
+      currentBounds.some(bound => {
+        const variable = resolve(bound.variable)
+
+        return bound.mask === mask && variable.kind === 'variable' && variable.id === held.id
+      })
+    )
+  }
 
   function inferExpression(node: Expression, env: Env): Type {
     let type: Type
@@ -877,6 +948,26 @@ export function check(
       case 'binary': {
         const left = inferExpression(node.left, env)
         const right = inferExpression(node.right, env)
+
+        // ARITHMETIC ON A FORM IS ITS MASK'S TASK (decisions-2026-10.md, D5). `add`, `subtract`, `multiply` and
+        // `divide` are folded to operators where they are written, before any type is known, so on a form that wears
+        // `addition` (and the rest), or on a generic bounded by one, the operator is turned back into a call of the
+        // mask's task here: receiver dispatch then reaches the form's own task, and the dictionary pass a bounded
+        // generic's. One vocabulary for numbers, big integers, decimals, rationals and complex numbers
+        const arithmetic = ARITHMETIC_MASKS.get(node.op)
+
+        if (arithmetic && wearsArithmetic(left, arithmetic.mask)) {
+          const call = node as unknown as Record<string, unknown>
+          const operands = [node.left, node.right]
+
+          delete call.op
+          delete call.left
+          delete call.right
+          Object.assign(call, { form: 'call', callee: { form: 'variable', name: arithmetic.task, span: node.span }, args: operands })
+
+          type = inferExpression(node, env)
+          break
+        }
         // arithmetic and comparison are numeric-kind-preserving: float with float, integer with integer, no silent mix
         const numeric =
           resolve(left).kind === 'float' ||
@@ -901,8 +992,19 @@ export function check(
           expect(right, numeric, node.right.span, 'comparison operand')
           type = booleanType()
         } else if (node.op === '+' && resolve(left).kind === 'string') {
-          // `+` is string concatenation when its left operand is a string (otherwise numeric addition)
-          expect(right, stringType(), node.right.span, 'string concatenation')
+          // `add` IS NUMERIC, and two texts are joined by a template (decisions-2026-10.md, D3). This read a `+` with
+          // text on its left as concatenation, which the kernel then refused as `type mismatch, expected Number`, a
+          // message that named neither the call nor the way to write it. The text is a `<{a}{b}>`, said here
+          const part = (side: Expression): string => (side.form === 'variable' ? `{${side.name}}` : side.form === 'string' ? side.value : '{...}')
+
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: currentFile,
+              span: node.span,
+              message: '`add` adds two numbers, and this one is given text',
+              hint: `join texts with a template: <${part(node.left)}${part(node.right)}>`,
+            }),
+          )
           type = stringType()
         } else {
           expect(left, numeric, node.left.span, 'arithmetic operand')
@@ -1240,7 +1342,10 @@ export function check(
           }
         } else if (target.kind === 'array' && node.name === 'length') {
           type = numberType()
-        } else if (target.kind === 'map' && node.name === 'size') {
+        } else if (target.kind === 'map' && (node.name === 'size' || node.name === 'length')) {
+          // A COLLECTION'S LENGTH IS `length`, A MAP'S TOO (decisions-2026-10.md, D2): `m/length` is the map's entry
+          // count, read as the `size` every emitter already lowers, so no backend learns a second read
+          node.name = 'size'
           type = numberType()
         } else if (target.kind === 'array' && (node.index || /^\d+$/.test(node.name))) {
           // an element read, `read xs/{i}` or `read xs/0`, is the list's element: it was `unknown`, which every
@@ -1548,53 +1653,47 @@ export function check(
             )
             const op = node.callee.name
 
-            // pin only a still-FREE slot type from a SIMPLE argument type: this exists to give a fresh
-            // `make list`'s element the type of what is pushed into it, and a broader unification here can
-            // build a cyclic type (no occurs check on this path)
-            // a type with no variable anywhere in it, so pinning a slot to it cannot build a cycle: a scalar, a form
-            // with no arguments, or a FUNCTION of such types. The last is a closure pushed into a fresh list (the
-            // works a `gather` is handed), whose element otherwise stayed `() -> ?` and reached every native
-            // backend as the boxed unknown
-            const ground = (t: Type): boolean => {
-              const r = resolve(t)
-
-              return (
-                (r.kind === 'variable' && currentGenerics.has(r.id)) ||
-                r.kind === 'number' ||
-                r.kind === 'float' ||
-                r.kind === 'string' ||
-                r.kind === 'boolean' ||
-                r.kind === 'bytes' ||
-                (r.kind === 'named' && (r.args ?? []).every(ground)) ||
-                // a list, a map or a generic form whose parts are ground is ground too: a row pushed into a fresh
-                // `make list` makes it a list of lists, which was left a list of anything (base-v1-0042)
-                (r.kind === 'array' && ground(r.element)) ||
-                (r.kind === 'map' && ground(r.key) && ground(r.value)) ||
-                (r.kind === 'function' && r.params.every(ground) && ground(r.result))
-              )
-            }
-            const pin =(slot: Type, arg: Expression | undefined): void => {
-              if (!arg) {
+            // THE ARGUMENT IS OF THE SLOT'S TYPE, whatever either is yet. This path pinned only a still-free slot
+            // from a ground argument until 2026-10-05, on the belief that it had no occurs check: it has one, in
+            // the substitution's `bind-variable`, so the restriction only left a slot met by a value whose own type
+            // was still open (a `maybe` of something, a closure over a free parameter) free, and a value of the
+            // wrong type pushed into a list already typed went unchecked. A slot that would have to hold itself
+            // (`xs/push(xs)`) is named as that rather than as the mismatch the failed unification would print
+            const pin = (slot: Type, arg: Expression | undefined): void => {
+              if (!arg?.type) {
                 return
               }
 
               const el = resolve(slot)
-              const given = arg.type ? resolve(arg.type) : undefined
+              const given = resolve(arg.type)
 
-              if (el.kind === 'variable' && given && ground(given)) {
-                expect(given, el, arg.span, 'argument')
-              } else if (el.kind === 'variable' && given?.kind === 'unit') {
+              if (given.kind === 'unit') {
                 // pushing `make void` into a fresh list: the slot holds anything, so the element is the
                 // gradual unknown, never the unit type
-                expect({ kind: 'unknown' }, el, arg.span, 'argument')
-              } else if (given && !ground(given) && (given.kind === 'array' || given.kind === 'map')) {
-                // a collection whose own parts are not known yet (an empty `make list`) stored in the slot IS of the
-                // slot's type, whether that is known now or only later. Left unlinked, `host none, make list` then
-                // `graph/set(<log>, none)` kept `none` a list of anything after `back graph` settled the hash, and
-                // Swift emitted `SeedList<Any>` where a `SeedList<String>` goes (deck/make/test/affected.tree,
-                // 2026-10-04). Rust and TypeScript never spell the element there, which hid it
-                expect(given, el, arg.span, 'argument')
+                if (el.kind === 'variable') {
+                  expect({ kind: 'unknown' }, el, arg.span, 'argument')
+                }
+
+                return
               }
+
+              if (el.kind === 'variable' && given.kind !== 'variable' && occurs(el.id, given)) {
+                const holder = node.callee.form === 'member' && node.callee.target.form === 'variable'
+                  ? `"${node.callee.target.name}"`
+                  : 'this collection'
+
+                diagnostics.push(
+                  diagnose('type-mismatch', {
+                    file: currentFile,
+                    span: arg.span,
+                    message: `argument: ${holder} would hold a value of its own type (${showType(given)}), a type with no end. Hold it in a form with a field of that type instead`,
+                  }),
+                )
+
+                return
+              }
+
+              expect(given, el, arg.span, 'argument')
             }
 
             if (receiver.kind === 'array') {
@@ -1683,16 +1782,19 @@ export function check(
                 ? maskTasks.get(node.callee.name)
                 : undefined
 
+            // `like self` in the mask's signature is the type of the value it is called on, its first argument
+            const selfOf = masked && args[0] ? new Map([['self', args[0]]]) : new Map<string, Type>()
+
             if (masked && args.length === masked.params.length) {
               masked.params.forEach((param, i) => {
                 if (i > 0 && param.type) {
-                  expect(args[i]!, param.type, node.args[i]!.span, 'argument')
+                  expect(args[i]!, seedType(param.type, selfOf), node.args[i]!.span, 'argument')
                 }
               })
             }
 
             // gradual: an unknown callee, unless it is a native collection method whose result is known
-            type = nativeResult ?? masked?.result ?? unknownType()
+            type = nativeResult ?? (masked?.result ? seedType(masked.result, selfOf) : undefined) ?? unknownType()
           } else {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -1752,6 +1854,63 @@ export function check(
     for (const statement of body) {
       checkStatement(statement, env, result)
     }
+  }
+
+  // an `if` whose first test asks what an `unknown` local holds (`is-text(value)`), rewritten in place into the
+  // type-arm match a `sift value / case text` builds, with the later branches as its `miss`. Answers whether it was.
+  // A type test AFTER other tests splits the chain there: the branches before it keep this `if`, and it starts a new
+  // one in their `miss`, which is rewritten when that is checked. One with a task of its name in scope is that task's
+  function narrowsUnknown(node: Extract<Statement, { form: 'if' }>, env: Env): boolean {
+    const at = node.branches.findIndex(branch => {
+      const tested = typeTestOf(branch.cond)
+
+      return tested !== undefined && !functions.has(tested.test)
+    })
+
+    if (at < 0) {
+      return false
+    }
+
+    if (at > 0) {
+      const after = node.branches.splice(at)
+      node.otherwise = [{ form: 'if', branches: after, otherwise: node.otherwise, span: after[0]!.cond.span } as Statement]
+
+      return false
+    }
+
+    const first = node.branches[0]!
+    const tested = typeTestOf(first.cond)!
+    const bound = env.get(tested.subject)
+    const held = bound ? resolve(instantiateScheme(bound)) : undefined
+
+    if (held?.kind !== 'unknown' || first.cond.form !== 'call') {
+      diagnostics.push(
+        diagnose('type-mismatch', {
+          file: currentFile,
+          span: first.cond.span,
+          message: held
+            ? `"${tested.test}" tests what an unknown holds, and "${tested.subject}" is ${showType(held)} already, so there is nothing to narrow`
+            : `"${tested.test}" tests what an unknown local holds, and "${tested.subject}" is no local`,
+          hint: held ? `test the value itself, or take it \`like unknown\` where it is made` : undefined,
+        }),
+      )
+
+      return false
+    }
+
+    const subject = first.cond.args[0]!
+    const label = tested.label
+    const rest = node.branches.slice(1)
+    const otherwise: Statement[] =
+      rest.length > 0
+        ? [{ form: 'if', branches: rest, otherwise: node.otherwise, span: rest[0]!.cond.span } as Statement]
+        : (node.otherwise ?? [])
+    const match = node as unknown as Record<string, unknown>
+
+    delete match.branches
+    Object.assign(match, { form: 'match', subject, cases: [{ label, body: first.body }], otherwise })
+
+    return true
   }
 
   function checkStatement(
@@ -1851,6 +2010,16 @@ export function check(
         inLoop(node.label, node.span, () => checkBody(node.body, env, result))
         break
       case 'if':
+        // A TEST OF WHAT AN `unknown` HOLDS NARROWS IT. `fork test, is-text(value)` over an `unknown` `value` is the
+        // `sift value / case text` arm and is rewritten into it here, in place, before either is checked: inside
+        // `hold` the value is text, and every backend lowers it by the same type test the `sift` uses. The branches
+        // after the first become the `miss`. Only over an `unknown`: a `dynamic` is the host's own value, which
+        // json's `is-text` asks about, and a test over a typed value has nothing to narrow (decisions-2026-10.md, D10)
+        if (narrowsUnknown(node, env)) {
+          checkStatement(node, env, result)
+          break
+        }
+
         for (const branch of node.branches) {
           expect(
             inferExpression(branch.cond, env),
@@ -2225,6 +2394,13 @@ export function check(
                 vars: [],
                 type: seedType(fields.get(field)!, argMap),
               })
+
+              // and then the name IS the field for the whole arm, so a path off it is the field's own (`value/text()`
+              // on a `case big` holding a big integer), never a field of the subject narrowed to the case, which read
+              // `text` as a field `big` lacks and refused the call (test/check/arm-subject-field.ts)
+              if (local === subjectVar) {
+                narrowing.delete(subjectVar)
+              }
             }
           }
 
@@ -3398,9 +3574,29 @@ export function check(
         })
       })
 
-      callee.name = (exact.length > 0 ? exact : fitting)[
-        (exact.length > 0 ? exact : fitting).length - 1
-      ]!
+      const pool = exact.length > 0 ? exact : fitting
+
+      callee.name = pool[pool.length - 1]!
+
+      // under the strict switch a tie is refused, naming every definition it could be (check/strict.ts)
+      if (pool.length > 1 && inferStrict()) {
+        const written = callee.name.replace(/__\d+(__\d+)?$/, '')
+        const each = pool.map(name => {
+          const signature = functions.get(name)!
+          const defined = program.find(s => s.form === 'function' && s.name === name)?.span.file
+
+          return `(${signature.params.map(p => showType(resolve(p))).join(', ')})${defined ? ` in ${defined}` : ''}`
+        })
+
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: node.span,
+            message: `ambiguous call: ${pool.length} definitions of "${written}" fit these arguments equally, ${each.join(' and ')}, and the last one would run`,
+            hint: 'give the argument a type where it is made, or name the definition apart',
+          }),
+        )
+      }
 
       return
     }
@@ -3451,7 +3647,6 @@ export function check(
       variable: { kind: 'variable', id },
       mask,
     }))
-    currentGenerics = new Set(signature.generics)
 
     const env: Env = new Map(moduleEnv)
     // a same-arity redefinition keeps the first signature, but a merged program can still hand this body more
@@ -3497,7 +3692,6 @@ export function check(
   // type-check a zone's view: infer each embedded expression with the zone's params in scope, threading `save` bindings
   function checkZone(node: Extract<Statement, { form: 'view' }>): void {
     currentBounds = []
-    currentGenerics = new Set()
 
     const env: Env = new Map(moduleEnv)
 
@@ -3662,6 +3856,33 @@ export function check(
         currentFile = statement.span.file ?? file
         expect(unitType(), signature.result, statement.span, 'result')
       }
+    }
+  }
+
+  // A PARAMETER NOTHING GAVE A TYPE, under the strict switch (check/strict.ts). After every body, so a call checked
+  // later has had its say. Each module reports its own, as the type names do
+  if (only === undefined && inferStrict()) {
+    for (const statement of program) {
+      if (statement.form !== 'function' || statement.stub || (merged && statement.span.file !== file)) {
+        continue
+      }
+
+      const signature = functions.get(statement.name)
+
+      signature?.params.forEach((param, at) => {
+        const held = resolve(param)
+
+        if (held.kind === 'variable' && !signature.generics.has(held.id) && !signature.holes?.has(held.id)) {
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: statement.span.file ?? file,
+              span: statement.span,
+              message: `"${signature.names[at]}" of "${statement.name}" is never given a type: no call and no use of it decides one, and TypeScript and Rust would each guess a different one`,
+              hint: `write its type, \`take ${signature.names[at]}, like <type>\`, or \`like unknown\` for any value`,
+            }),
+          )
+        }
+      })
     }
   }
 

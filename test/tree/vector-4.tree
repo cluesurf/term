@@ -1,15 +1,14 @@
-note <Tests for 4D vectors: plus, dot, length.>
+note <Tests for 4D vectors: add, dot, length.>
 
 load @term/base/code/line/float/32/vector-4
   find vector-4
   find make-vector-4
-  find plus
   find dot
   find length
 
-test <plus adds component-wise>
+test <add adds component-wise>
   save v
-    call plus
+    call add
       call make-vector-4
         1.0
         2.0

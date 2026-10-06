@@ -15,6 +15,7 @@
 
 import type { Program } from '@term/make/code/compile/node'
 import type { ImportScope } from '@term/make/code/compile/load'
+import { scopeList } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { bindFormsByImport } from '@term/make/code/check/scope'
 import { extendForms } from '@term/make/code/check/extend'
@@ -32,16 +33,25 @@ export function stampModule(program: Program, file: string): void {
 // gets its fields and every raise is filled), then tasks split and bound by import. The first refusal of any step,
 // or none
 export function bindModules(program: Program, scope: ImportScope | undefined, entry: string): Diagnostic[] {
-  const forms = bindFormsByImport(program, scope, entry)
+  const forms = bindFormsByImport(program, scopeList(scope), entry)
 
-  if (forms.length) {
-    return forms
+  // a harness reads the program it handed in, so the bound one is written back into it
+  if (forms.program !== program) {
+    program.splice(0, program.length, ...forms.program)
   }
 
-  const extended = extendForms(program, entry)
+  if (forms.diagnostics.length) {
+    return forms.diagnostics
+  }
 
-  if (extended.length) {
-    return extended
+  const extended = extendForms(program, entry, [])
+
+  if (extended.program !== program) {
+    program.splice(0, program.length, ...extended.program)
+  }
+
+  if (extended.diagnostics.length) {
+    return extended.diagnostics
   }
 
   return disambiguateOverloads(program, scope, entry)

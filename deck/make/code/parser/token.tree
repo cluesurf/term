@@ -508,7 +508,7 @@ task open-brace-size
   fork test, is-equal(run, 0)
     hold
       back 0
-  fork test, and(literal, is-braced-number(runes, add(at, run)))
+  fork test, opens-number(runes, at, run, literal)
     hold
       back run
   save after, skip-spaces(runes, add(at, run))
@@ -644,7 +644,7 @@ task chunk-size
           fork test, or(is-minimum(after, runes/length), or(is-letter-code(get(runes, after)), or(is-equal(get(runes, after), 95), is-equal(get(runes, after), 123))))
             hold
               halt
-          fork test, and(literal, is-braced-number(runes, add(end, run)))
+          fork test, opens-number(runes, end, run, literal)
             hold
               halt
           save end, add(end, run)
@@ -654,6 +654,46 @@ task chunk-size
           halt
       save end, add(end, 1)
   back subtract(end, at)
+
+# whether the run of `run` braces at `at` opens an interpolation of a whole number: in a text literal, standing apart,
+# before the number and its `}`. ONE answer for the token that opens it (`open-brace-size`) and the chunk that stops
+# before it (`chunk-size`): with two, a brace one said was text and the other would not consume was no token at all
+task opens-number
+  take runes, like list, like number
+  take at, like number
+  take run, like number
+  take literal, like boolean
+  like boolean
+  mark private
+
+  back and(literal, and(stands-apart(runes, at), is-braced-number(runes, add(at, run))))
+
+# A BRACED NUMBER IS A VALUE ONLY WHERE IT STANDS APART: at the start of the literal, after a space, or after another
+# interpolation's `}`. Directly after any other character it is text, which is where every regex quantifier stands:
+# `<[0-9a-f]{8}>` and `<\d{4}>` are the patterns as written. Before this, a quantifier with no comma became its digits,
+# so `<^[0-9a-f]{8}$>` matched `^[0-9a-f]8$` and a uuid failed it on every backend, in silence (the Rust roundtrip's
+# uuid check, 2026-10-05). test/parser/brace-number.ts
+task stands-apart
+  take runes, like list, like number
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(at, 0)
+    hold
+      back true
+  save before, get(runes, subtract(at, 1))
+  fork test, or(is-equal(before, 32), or(is-equal(before, 9), or(is-equal(before, 10), is-equal(before, 125))))
+    hold
+      back true
+  # the literal's own `<`, and not an escaped one inside it
+  fork test, is-equal(before, 60)
+    hold
+      fork test, is-equal(at, 1)
+        hold
+          back true
+      back is-unequal(get(runes, subtract(at, 2)), 92)
+  back false
 
 # `/-?\d+\}/` at `at`: a whole number and the `}` closing it, what follows a brace run that opens on a number
 task is-braced-number

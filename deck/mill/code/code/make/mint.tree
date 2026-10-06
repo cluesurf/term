@@ -6,6 +6,7 @@ load @term/mill/code/bind/mint
 
 load @term/mill/code/save/mint
   find save
+  find save-key
 
 load @term/mill/code/seed/mint
   find seed

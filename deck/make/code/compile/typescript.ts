@@ -11,6 +11,7 @@ import type {
   ViewNode,
 } from '@term/make/code/compile/node'
 import type { Fill, RecordCopies, TextCursors } from '@term/make/code/compile/backend'
+import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
 import {
   recordCopies,
   redeclaredLets,
@@ -203,8 +204,19 @@ function isPrimary(text: string): boolean {
   return at === text.length
 }
 
-function integerDivision(node: { left: { type?: { kind: string } }; right: { type?: { kind: string } } }): boolean {
-  return node.left.type?.kind === 'number' && node.right.type?.kind === 'number'
+// whether an operator is whole-number arithmetic: both operands numbers, or the checker's own answer for the node is a
+// number. The second is what a task inlined in place of its call leaves: `bump(n) = add(n, 1)` called with an `unknown`
+// puts that value where `n` stood, and the sum, checked as a unit, went unchecked inlined, so the one program printed
+// `seven1` built whole and stopped built in units (guides: examples/types/gradual, 2026-10-05)
+function integerDivision(node: {
+  type?: { kind: string }
+  left: { type?: { kind: string } }
+  right: { type?: { kind: string } }
+}): boolean {
+  return (
+    (node.left.type?.kind === 'number' && node.right.type?.kind === 'number') ||
+    (node.type?.kind === 'number' && node.left.type?.kind !== 'float' && node.right.type?.kind !== 'float')
+  )
 }
 
 const PRECEDENCE: Record<BinaryOp, number> = {
@@ -985,7 +997,8 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
 // the range check on an integer sum, difference, product, quotient or remainder: inside the safe integers the double
 // is exact, and past them it is not the integer any more, so it raises the stdlib's `excess` (or `shortage` below).
 // A value that is not finite came from dividing by zero (no product of safe integers nears the float maximum), and
-// raises `defect`. As the exception class when the module carries it, as an Error with the same fields when not
+// raises `defect`. A value that is not a number at all reached the arithmetic through an `unknown` (text, where `+`
+// joins) and raises `mismatch`, which says so, where it was called a division by zero. As the exception class when the module carries it, as an Error with the same fields when not
 // The check is the whole of `__termInt`, and the stop is a function of its own: V8 inlines a function only while its
 // bytecode is small, and with the exception built in place every checked `+` was a real call. Measured on
 // spectral-norm, where a four-operation task runs 40 million times: the checks were most of a 5.5x gap to the hand
@@ -995,7 +1008,9 @@ const intPrelude = (withClass: boolean): string => `function __termInt(x: number
   return x
 }
 function __termIntStop(x: number): never {
-  const base = !Number.isFinite(x)
+  const base = typeof x !== "number"
+    ? { host: "@term/base", form: "mismatch", note: "Mismatch", code: "", time: Date.now(), link: { thing: "an arithmetic operand", expected: "number", actual: typeof x === "string" ? "text" : typeof x } }
+    : !Number.isFinite(x)
     ? { host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: { thing: "a division or remainder by zero" } }
     : { host: "@term/base", form: x > 0 ? "excess" : "shortage", note: x > 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: { thing: "number", limit: x > 0 ? 9007199254740991 : -9007199254740991, actual: x } }
   ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
@@ -1847,7 +1862,7 @@ function makeEmitter(
           return `${expression(node.args[0]!, 100)}.push(${expression(node.args[1]!)})`
         }
 
-        if (node.callee.form === 'variable' && node.callee.name === 'list_size' && node.args.length === 1 && node.args[0]!.type?.kind === 'array') {
+        if (node.callee.form === 'variable' && LIST_LENGTH_TASKS.has(node.callee.name) && node.args.length === 1 && node.args[0]!.type?.kind === 'array') {
           return `${expression(node.args[0]!, 100)}.length`
         }
 

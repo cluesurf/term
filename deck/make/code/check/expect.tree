@@ -49,7 +49,14 @@ task expect-type
   save suspects, make list
   push-variable(suspects, actual)
   push-variable(suspects, wanted)
-  save unified, unify-types-at(sub, unfold-alias(actual, aliases), unfold-alias(wanted, aliases), at)
+  # the span a variable this solves is recorded at names its file, so a later conflict can tell whether the use that
+  # decided it is in the same file, and where in it
+  save here
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+  save unified, unify-types-at(sub, unfold-alias(actual, aliases), unfold-alias(wanted, aliases), here)
 
   # `number` and `float` unify, so arithmetic can mix them, but a fraction is not a whole number: `number` is `i64` on
   # Rust, Swift and Kotlin and `float` is `f64`. A whole number where a fraction is wanted widens; a fraction where a
@@ -73,6 +80,17 @@ task expect-type
               save kind, make type-mismatch
               push(out, diagnose(kind, input))
       back out
+  save wanted-text, show-type(resolve-type(sub, wanted))
+  save actual-text, show-type(resolve-type(sub, actual))
+  # THE USE THAT IS BLAMED IS THE LATER ONE IN THE FILE, whichever was checked first. Checking order is not source
+  # order: a top-level `host` is typed before every task, and a task's own body when the task is reached, so the call
+  # that decided a parameter could sit below the one refused, and the frame then blamed the earlier line for
+  # disagreeing with a later one. When the use that decided a variable here comes after this one in the same file, the
+  # report is turned around: it is placed at that use, and this one is marked as the first (decisions-2026-10.md, D10)
+  save turned, turn-around(sub, suspects, at, file, what, wanted-text, actual-text)
+  fork test, is-above(turned/length, 0)
+    hold
+      back turned
   save markers, make list
   save first
     make marker
@@ -89,8 +107,6 @@ task expect-type
             bind span, where/span
             bind label, <first used as {shown} here>
         push(markers, blamed)
-  save wanted-text, show-type(resolve-type(sub, wanted))
-  save actual-text, show-type(resolve-type(sub, actual))
   save input
     make diagnostic-input
       bind file, file
@@ -111,3 +127,76 @@ task push-variable
       push(ids, id)
     miss
       back
+
+# the mismatch placed at the use that decided a variable, when that use sits after `at` in the same file, with `at`
+# marked as the first use. Empty when no such use exists, and the mismatch is then reported at `at` as checked
+task turn-around
+  take sub, like substitution
+  take suspects, like list, like number
+  take at, like span
+  take file, like text
+  take what, like text
+  take wanted-text, like text
+  take actual-text, like text
+  like list, like diagnostic
+  mark private
+
+  save out, make list
+  walk suspects
+    take id
+    fork test, sub/origin/has(id)
+      hold
+        save decided, sub/origin/get(id)
+        fork test, and(is-in-file(decided/span, file), is-before(at, decided/span))
+          hold
+            save shown, show-type(decided/type)
+            # this use's own type is the side that is not the decided variable
+            save this-text, wanted-text
+            fork test, is-equal(shown, wanted-text)
+              hold
+                save this-text, actual-text
+            save markers, make list
+            save main
+              make marker
+                bind span, decided/span
+            push(markers, main)
+            save earlier
+              make marker
+                bind span, at
+                bind label, <first used as {this-text} here>
+            push(markers, earlier)
+            save input
+              make diagnostic-input
+                bind file, file
+                bind span, decided/span
+                bind message, make(some, <{what}: expected {this-text}, found {shown}>)
+                bind markers, make(some, markers)
+            save kind, make type-mismatch
+            push(out, diagnose(kind, input))
+            back out
+  back out
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# does `a` start before `b`, by line and then column
+task is-before
+  take a, like span
+  take b, like span
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/start/line, b/start/line)
+    hold
+      back is-below(a/start/line, b/start/line)
+  back is-below(a/start/column, b/start/column)

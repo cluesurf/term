@@ -132,21 +132,62 @@ task generalize
   like list, like number
 
   save in-type, free-type-vars(given, sub)
-  save in-env, make list
+  # the environment's free variables are gathered INSIDE a form's arguments too. They were not, so a variable the
+  # environment held only as `maybe ?a` counted as unbound there, and a binding of type `?a` was generalized away from
+  # it: every use took a fresh copy, and none of them reached the `maybe`'s (decisions-2026-10.md, D10). Gathering
+  # more here only generalizes less, which is always sound. The binding's own side is unchanged, since generalizing
+  # more there would leave its own variable free for the native emitters, the trap the value restriction records
+  save in-env, make hash
   walk env/values()
     take bound
-    walk free-type-vars(bound/type, sub)
+    save quantified, make hash
+    walk bound/vars
+      take q
+      save quantified/{q}, true
+    save found, make list
+    gather-free-deep(bound/type, sub, found)
+    walk found
       take v
-      fork test, and(not(has-number(bound/vars, v)), not(has-number(in-env, v)))
+      fork test, not(quantified/has(v))
         hold
-          push(in-env, v)
+          save in-env/{v}, true
   save out, make list
   walk in-type
     take v
-    fork test, not(has-number(in-env, v))
+    fork test, not(in-env/has(v))
       hold
         push(out, v)
   back out
+
+# every free variable of a type, a form's arguments included, each once
+task gather-free-deep
+  take given, like type
+  take sub, like substitution
+  take into, like list, like number
+  mark private
+
+  save r, resolve-type(sub, given)
+  sift r
+    case variable
+      fork test, not(has-number(into, id))
+        hold
+          push(into, id)
+    case array
+      gather-free-deep(element, sub, into)
+    case map
+      gather-free-deep(key, sub, into)
+      gather-free-deep(value, sub, into)
+    case function
+      walk params
+        take param
+        gather-free-deep(param, sub, into)
+      gather-free-deep(result, sub, into)
+    case named
+      walk args
+        take arg
+        gather-free-deep(arg, sub, into)
+    miss
+      back
 
 # the value restriction: only a syntactic value may be generalized (so a mutable reference is never over-generalized)
 task is-value-expression

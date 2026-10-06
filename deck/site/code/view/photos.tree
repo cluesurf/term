@@ -1,0 +1,53 @@
+# device-layer-0025.
+# The person's photo library, read: PhotoKit on macOS and iOS, the MediaStore provider on Android. A browser holds no
+# photo library of the person's, so it answers `unavailable`.
+#
+#   find-photos(count)   the newest `count` photos, newest first, one a line: the platform's own identifier, a tab,
+#                        when it was taken (else added), in UTC to the second, a tab, and its size as `<width>x<height>`
+#                        in pixels. Or none (the library holds no photo)
+#   copy-photo(id)       `photo <where>`: the photo as a JPEG file the app may read, at its full size, whatever the
+#                        library keeps it as (HEIC, PNG). Or absent (no photo has that identifier)
+#
+# Each also answers not-determined (ask first: request-permission photos), denied, unavailable or failed. Access the
+# person limited to some photos is a grant, and answers those. `count` is held to 1 through `most-photos`.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed sets above, or the lines, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/photos
+  find newest-photos
+  find export-photo
+
+# the most photos one call lists
+host most-photos
+  like number
+  code 500
+
+task find-photos
+  take count, like number
+  like text
+  save held, read count
+  fork test
+    hook test
+      call is-below
+        read count
+        code 1
+    hook hold
+      save held, code 1
+  fork test
+    hook test
+      call is-above
+        read count
+        read most-photos
+    hook hold
+      save held, read most-photos
+  send back
+    call newest-photos
+      read held
+
+task copy-photo
+  take id, like text
+  like text
+  send back
+    call export-photo
+      read id

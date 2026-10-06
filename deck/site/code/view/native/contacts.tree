@@ -1,0 +1,7 @@
+# contacts where there are none (device-layer-0023): the abstract module beside the env dirs, reached by every env
+# with no device (node, the server, the memory host, Rust, a browser). Conforms to ../contacts.
+
+task search-contacts
+  take query, like text
+  like text
+  send back, text <unavailable>

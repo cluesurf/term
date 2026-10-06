@@ -25,11 +25,21 @@ type RecordType = Extract<Statement, { form: 'record-type' }>
 type Field = RecordType['fields'][number]
 
 // the root every exception descends from, and the stdlib tasks a raise calls for its occurrence code and time
-export const EXCEPTION_FORM = 'exception'
+const EXCEPTION_FORM = 'exception'
+
+// The original moved first to check/extend.tree's shape: a Term module exports tasks, never a constant, so its readers
+// call these
+export function exceptionForm(): string {
+  return EXCEPTION_FORM
+}
+
+export function isGenericException(name: string): boolean {
+  return GENERIC_EXCEPTIONS.has(name)
+}
 
 // the seventeen the stdlib declares (@term/base/exception). A roll entry says which one an exception is under, and a
 // signature bound may name one the build dropped because nothing raises it
-export const GENERIC_EXCEPTIONS = new Set([
+const GENERIC_EXCEPTIONS = new Set([
   'defect',
   'omission',
   'excess',
@@ -60,7 +70,23 @@ export type ExtendOptions = {
   deckOf?: (file: string) => { name: string; root: string } | undefined
 }
 
+// the deck a file belongs to, by name, as the build's `deckOf` answers it (check/extend.tree takes the list)
+export type DeckName = { file: string; name: string }
+
+// The original moved first to check/extend.tree's shape: the decks a list, and the program handed back beside the
+// diagnostics (this one still writes the program it is handed, and hands back the same array)
 export function extendForms(
+  program: Program,
+  file: string,
+  decks: DeckName[],
+): { program: Program; diagnostics: Diagnostic[] } {
+  const table = new Map(decks.map(d => [d.file, { name: d.name, root: '' }]))
+  const diagnostics = extendFormsIn(program, file, { deckOf: one => table.get(one) })
+
+  return { program, diagnostics }
+}
+
+function extendFormsIn(
   program: Program,
   file: string,
   options?: ExtendOptions,

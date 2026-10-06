@@ -1,0 +1,15 @@
+# microphone on a browser (device-layer-0022): getUserMedia, a MediaRecorder, and the recording decoded and written as
+# a WAV. Conforms to ../microphone. The runtime is runtime/native-microphone.ts.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-microphone>, name native-microphone
+  load <global:native-permission>, name native-permission
+
+task capture-audio
+  take seconds, like number
+  like text
+  send back
+    call native-microphone/record
+      read seconds
+      wait true

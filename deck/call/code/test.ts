@@ -14,6 +14,7 @@ import type { TestUnits } from '@term/call/code/test-run'
 import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { declaresDraft } from '@term/call/code/draft'
+import { isSnapshotFile, readSnapshots, writeSnapshots } from '@term/call/code/test-snapshot'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { closeRun, count, failRun, field, location, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
 
@@ -28,6 +29,8 @@ export async function callTest(input: {
   env?: string
   // run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
   ride?: boolean
+  // write what each `want snapshot` sees, instead of holding it against the stored text
+  update?: boolean
 }): Promise<void> {
   try {
     const fs = await import('fs/promises')
@@ -43,6 +46,7 @@ export async function callTest(input: {
         case: input.case,
         env: input.env,
         ride: input.ride,
+        update: input.update,
       })
 
       return
@@ -244,7 +248,7 @@ async function findTestFiles(input: {
         }
 
         await walk(full)
-      } else if (entry.name.endsWith('.tree')) {
+      } else if (entry.name.endsWith('.tree') && !isSnapshotFile(entry.name)) {
         const text = await fs.readFile(full, 'utf-8')
 
         // likewise for a single shelved file, the answer the build walk gives (call/code/draft.ts)
@@ -332,6 +336,7 @@ async function runSeedTests(input: {
   case?: string
   env?: string
   ride?: boolean
+  update?: boolean
 }): Promise<void> {
   const path = await import('path')
   const fs = await import('fs/promises')
@@ -358,6 +363,14 @@ async function runSeedTests(input: {
   if (input.env && input.env !== 'node' && !NATIVE_TEST_ENVS.includes(input.env as NativeTestEnv)) {
     report({ glyph: 'failed', kind: 'problem', subject: `term test runs on node, rust, swift and kotlin, and not on ${input.env}` })
     process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'usage', next: 'term test --env rust' })
+
+    return
+  }
+
+  // a snapshot is recorded on node, the one run that reads the values back: the native report answers a letter a test
+  if (native && input.update) {
+    report({ glyph: 'failed', kind: 'problem', subject: `Snapshots are written on node: --update runs without --env, and --env ${native} then holds the tests to them` })
+    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'usage', next: 'term test --update' })
 
     return
   }
@@ -458,7 +471,18 @@ async function runSeedTests(input: {
           continue
         }
 
-        const listed = testsOf(file, source, native ? { plainWants: true } : {})
+        // the file's snapshots, held to or recorded (call/code/test-snapshot.ts). A store that cannot be read is the
+        // file's failure, never an empty store, which would fail every snapshot as unwritten
+        const store = readSnapshots(file)
+
+        if ('problem' in store) {
+          broken++
+          report({ glyph: 'failed', verb: 'test', subject: rel, duration: Date.now() - started, facts: [store.problem] })
+          continue
+        }
+
+        const snapshots = { stored: store.stored, update: input.update === true }
+        const listed = testsOf(file, source, native ? { plainWants: true, snapshots } : { snapshots })
         const chosen = input.case ? listed.tests.filter(test => caseMatches(input.case!, test)) : listed.tests
 
         // `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all, and
@@ -482,9 +506,13 @@ async function runSeedTests(input: {
                 roleOf,
                 leanOf,
                 units,
+                snapshots,
                 ...(input.case ? { select: (test: { name: string; label: string }) => caseMatches(input.case!, test) } : {}),
               }),
         )
+
+        // under `--update`, the texts each test's `want snapshot`s saw replace the ones it had
+        const recorded = input.update && run.taken ? writeSnapshots({ testFile: file, stored: store.stored, taken: run.taken, phrases: listed.tests.map(test => test.label) }) : undefined
 
         if (run.failure) {
           broken++
@@ -521,7 +549,12 @@ async function runSeedTests(input: {
           verb: 'test',
           subject: rel,
           duration: Date.now() - started,
-          counts: [count(run.results.length, 'tests', 'test'), count(held, 'passed'), ...(missed > 0 ? [count(missed, 'failed')] : [])],
+          counts: [
+            count(run.results.length, 'tests', 'test'),
+            count(held, 'passed'),
+            ...(missed > 0 ? [count(missed, 'failed')] : []),
+            ...(recorded ? [count(recorded.written, 'snapshots written', 'snapshot written')] : []),
+          ],
           ...(printed.length > 0 ? { quote: printed } : {}),
         })
 

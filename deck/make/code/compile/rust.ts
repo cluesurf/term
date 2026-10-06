@@ -69,6 +69,7 @@ import { taggedForms, tagText } from '@term/make/code/compile/tag'
 import { declaredLater, formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 import { integerText } from '@term/make/code/compile/type-text'
+import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
 
 // Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers; a seed name colliding with
 // one is suffixed with `_`, the same convention typescript.ts's RESERVED already uses, applied uniformly
@@ -919,11 +920,42 @@ function emitRustPass(
     return t
   }
 
+  // A TRAIT METHOD RAISES WHEN ANY INSTANCE'S TASK DOES. The signature was taken from one instance alone, so a mask
+  // worn by a big integer, which never raises, and a rational, whose reduction raises on a zero denominator, declared
+  // `-> Self` and the rational's impl handed back a `Result` (decisions-2026-10.md, D5). Raising, the trait answers
+  // `Result<T, TermException>`, an impl whose task does not raise wraps its answer in `Ok`, and a call through the
+  // trait takes the raise as any raising call does. Read when the traits are emitted, after `raising` is filled
+  const maskOf = new Map<string, string>()
+
+  for (const node of program) {
+    if (node.form === 'mask') {
+      for (const m of node.methods) {
+        maskOf.set(m, node.name)
+      }
+    }
+  }
+
+  const traitRaises = (mask: string | undefined, method: string): boolean =>
+    mask !== undefined &&
+    (instanceTargets.get(mask) ?? []).some(target => {
+      const fn = implFn.get(`${target}:${method}`)
+
+      return fn !== undefined && raising.has(fn.name)
+    })
+
+  // what a trait method answers: the task's result, or that result or the raise
+  const traitResult = (fn: Fn, target: string, raises: boolean): string => {
+    const value = fn.result ? rustType(subSelf(fn.result, target)) : '()'
+
+    return raises ? ` -> std::result::Result<${value}, TermException>` : fn.result ? ` -> ${value}` : ''
+  }
+
   // a trait method declaration (no body): `fn measure(self) -> i64;`, derived from an implementation's signature with
   // the receiver as `self` and the receiver type as `Self`
   const traitMethodDecl = (
     fn: Fn | undefined,
     target: string,
+    mask: string,
   ): string => {
     if (!fn) {
       return ''
@@ -935,17 +967,16 @@ function emitRustPass(
         p => `${snake(p.name)}: ${rustType(subSelf(p.type, target))}`,
       )
 
-    const ret = fn.result
-      ? ` -> ${rustType(subSelf(fn.result, target))}`
-      : ''
+    const raises = traitRaises(mask, fn.method!.name)
 
+    // a `Result` holding `Self` needs `Self` sized, which a trait's `Self` is not by default
     return `fn ${snake(fn.method!.name)}(${['self', ...rest].join(
       ', ',
-    )})${ret};`
+    )})${traitResult(fn, target, raises)}${raises ? ' where Self: Sized' : ''};`
   }
 
   // an `impl` method that delegates to the free implementation function: `fn measure(self) -> i64 { box_measure(self) }`
-  const implMethod = (fn: Fn | undefined, target: string): string => {
+  const implMethod = (fn: Fn | undefined, target: string, mask: string): string => {
     if (!fn) {
       return ''
     }
@@ -957,15 +988,15 @@ function emitRustPass(
         p => `${snake(p.name)}: ${rustType(subSelf(p.type, target))}`,
       )
 
-    const ret = fn.result
-      ? ` -> ${rustType(subSelf(fn.result, target))}`
-      : ''
-
+    const raises = traitRaises(mask, fn.method!.name)
     const callArgs = ['self', ...restNames].join(', ')
+    const call = `${snake(fn.name)}(${callArgs})`
+    // the trait raises and this task does not: its answer is the `Ok` one
+    const body = raises && !raising.has(fn.name) ? `std::result::Result::Ok(${call})` : call
 
     return `fn ${snake(fn.method!.name)}(${['self', ...rest].join(
       ', ',
-    )})${ret} { return ${snake(fn.name)}(${callArgs}); }`
+    )})${traitResult(fn, target, raises)} { return ${body}; }`
   }
 
   // within a match arm, which subject variable is narrowed to which variant (so `subject/field` reads the bound local)
@@ -2393,13 +2424,13 @@ function emitRustPass(
         // a push onto, or the size of, an owned list local is the Vec's own (ownedLocals)
         if (
           node.callee.form === 'variable' &&
-          (node.callee.name === 'list_push' || node.callee.name === 'list_size') &&
+          (node.callee.name === 'list_push' || LIST_LENGTH_TASKS.has(node.callee.name)) &&
           node.args[0]?.form === 'variable' &&
           ownedNames.has(node.args[0].name)
         ) {
           const list = vname(node.args[0].name)
 
-          return node.callee.name === 'list_size'
+          return LIST_LENGTH_TASKS.has(node.callee.name)
             ? `(${list}.len() as i64)`
             : `{ let __push_item = ${bare(owned(node.args[1]!))}; ${list}.push(__push_item); ${list}.len() as i64 }`
         }
@@ -2792,9 +2823,12 @@ function emitRustPass(
           maskMethods.has(node.callee.name) &&
           argList.length >= 1
         ) {
+          // a trait whose method raises answers a `Result`, taken as any raising call's is
+          const suffix = traitRaises(maskOf.get(node.callee.name), node.callee.name) ? raiseSuffix() : ''
+
           return lendWrap(`(${argList[0]}).${snake(node.callee.name)}(${argList
             .slice(1)
-            .join(', ')})`)
+            .join(', ')})${suffix}`)
         }
 
         // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments. A field holding a closure
@@ -5355,7 +5389,7 @@ function emitRustPass(
         const decls = target
           ? node.methods
               .map(m =>
-                traitMethodDecl(implFn.get(`${target}:${m}`), target),
+                traitMethodDecl(implFn.get(`${target}:${m}`), target, node.name),
               )
               .filter(Boolean)
           : []
@@ -5371,7 +5405,7 @@ function emitRustPass(
         // an `impl` block whose methods delegate to the free implementation functions
         const impls = node.methods
           .map(m =>
-            implMethod(implFn.get(`${node.target}:${m}`), node.target),
+            implMethod(implFn.get(`${node.target}:${m}`), node.target, node.mask),
           )
           .filter(Boolean)
 

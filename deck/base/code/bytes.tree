@@ -98,16 +98,16 @@ task from-base64
     call octets-from-base64
       read text
 
-# the number of bytes
-task count
+# the number of bytes. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+task length
   take value, like bytes
   like number
   send back
     call octets-length
       read value
 
-# `length` is kept as a familiar alias for `count`
-task length
+# the older name of `length`
+task count
   take value, like bytes
   like number
   send back

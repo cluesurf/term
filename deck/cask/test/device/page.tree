@@ -91,6 +91,15 @@ task boot
   save camera
     call permission-status
       text <camera>
+  save microphone
+    call permission-status
+      text <microphone>
+  save contacts
+    call permission-status
+      text <contacts>
+  save calendar
+    call permission-status
+      text <calendar>
   # the vault, through the bridge: kept, read back, and removed, so nothing is left in it
   save kept
     call save-secret
@@ -121,7 +130,7 @@ task boot
         text <{directory}/line.bin>
   call write
     text <{directory}/device.txt>
-    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|watch-network {heard}|bytes {carried}|secret {kept} {fetched} {dropped}>
+    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|microphone {microphone}|contacts {contacts}|calendar {calendar}|watch-network {heard}|bytes {carried}|secret {kept} {fetched} {dropped}>
   fork test
     hook test
       call is-equal

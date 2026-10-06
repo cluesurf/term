@@ -1670,6 +1670,42 @@ task runs
     }
   }
 
+  // `add` on two texts (decisions-2026-10.md, D3): the checker refuses it and names the template, where the kernel
+  // refused it as `type mismatch, expected Number` naming neither (guides: language/operators)
+  {
+    const out = compile({ file: '/gate/code/gap.tree', text: 'task join-two\n  take a, like text\n  take b, like text\n\n  like text\n\n  back add(a, b)\n' })
+    const said = out.ok ? undefined : out.diagnostics.find(d => d.message.startsWith('`add` adds two numbers'))
+
+    ok('add on two texts is refused by the checker', said !== undefined, out.ok ? 'it built' : out.diagnostics.map(d => d.message).join(' | '))
+    ok('naming the template that joins them', said?.hint === 'join texts with a template: <{a}{b}>', said?.hint ?? '')
+
+    const numbers = build('task sum\n  take a, like number\n  take b, like number\n\n  like number\n\n  back add(a, b)\n')
+    ok('add on two numbers still builds', numbers.ok, numbers.messages)
+  }
+
+  // a whole-number sum inlined where an `unknown` is its operand keeps its range check, decided by the sum's own type
+  // (compile/typescript.ts `integerDivision`): it was dropped, and the one program printed `seven1` built whole and
+  // stopped built in units (guides: types/gradual, 2026-10-05). Run, the text reaching it raises `mismatch`
+  {
+    const seam = build(
+      'task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n',
+    )
+    ok('the inlined sum keeps its range check', seam.ok && /passThrough[\s\S]*?__termIntStop/.test(seam.typescript), seam.messages || seam.typescript.slice(0, 400))
+
+    if (seam.ok) {
+      const mod = await load(seam.typescript)
+      let raised: { form?: string; link?: { actual?: string } } | undefined
+
+      try {
+        mod.passThrough!('seven')
+      } catch (error) {
+        raised = error as typeof raised
+      }
+
+      ok('and text reaching it raises mismatch, naming text', raised?.form === 'mismatch' && raised.link?.actual === 'text', JSON.stringify(raised))
+    }
+  }
+
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

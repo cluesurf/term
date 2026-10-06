@@ -1,0 +1,529 @@
+# The TypeScript backend: compile the vibe AST to idiomatic TypeScript. The reference codegen. Emitted programs use
+# native JS control flow and functions (so they read like hand-written code, and async / await are native), and call
+# the RT runtime (runtime.ts) for the ternary / aggregate ops, so results match the interpreter exactly. See
+# note/research/vibe/computation/backend/03-backends.md.
+#
+# Ported from engine/backend/typescript.ts (self-hosting, 2026-10-05). The emitter's label stack and counter are one
+# `mark shared` record every emitting task hands down, and labels are drawn in the original's order. A text is quoted
+# as `JSON.stringify` quotes it (term/quote). Running the text (`new Function`) stays in typescript.ts, a face over
+# `compile-for-run`, and runtime.ts is the host runtime the text calls.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find replace-all
+
+load @term/base/integer/big
+  find big-from-number
+
+load ../ast
+  find assign-op
+  find binary-op
+  find expression
+  find statement
+
+load ../../term/quote
+  find json-quote
+
+# an enclosing loop or switch, and the label `break` / `continue` name it by
+form label-frame
+  link is-loop, like boolean
+  link label, like text
+
+form emitter
+  mark shared
+  link counter, like number
+  link stack, like list, like label-frame
+
+# a program split for running in-process: its functions first, then the rest, emitted by one emitter in that order
+form run-source
+  link declarations, like text
+  link body, like text
+
+# the preamble that binds the built-ins to plain names (so `print(x)` is a direct call in the emitted body)
+task typescript-preamble
+  like text
+
+  back <const print = RT.print, len = RT.len, push = RT.push, keys = RT.keys, str = RT.strOf, int = RT.toInt;>
+
+task new-emitter
+  like emitter
+  mark private
+
+  back
+    make emitter
+      bind counter, 0
+      bind stack, make list
+
+task new-label
+  take state, like emitter
+  take is-loop, like boolean
+  like text
+  mark private
+
+  save letter, <S>
+  fork test, is-loop
+    hold
+      save letter, <L>
+  save made, <{letter}{state/counter}>
+  save state/counter, add(state/counter, 1)
+  back made
+
+task enter-label
+  take state, like emitter
+  take is-loop, like boolean
+  take made, like text
+  mark private
+
+  save frame
+    make label-frame
+      bind is-loop, is-loop
+      bind label, made
+  push(state/stack, frame)
+
+# the label of the nearest enclosing loop, or loop or switch
+task nearest-label
+  take state, like emitter
+  take loops-only, like boolean
+  like text
+  mark private
+
+  save at, subtract(state/stack/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save frame, get(state/stack, at)
+      fork test, or(frame/is-loop, not(loops-only))
+        hold
+          back frame/label
+      save at, subtract(at, 1)
+  fork test, loops-only
+    hold
+      halt <no enclosing loop for break/continue>
+  halt <no enclosing loop/switch for break/continue>
+
+# the runtime's name for a binary operator, `undefined` for the two that short-circuit (they never reach it)
+task binary-name
+  take op, like binary-op
+  like text
+  mark private
+
+  sift op
+    case plus
+      back <add>
+    case minus
+      back <sub>
+    case times
+      back <mul>
+    case divide
+      back <div>
+    case remainder
+      back <mod>
+    case equal
+      back <eq>
+    case unequal
+      back <ne>
+    case below
+      back <lt>
+    case at-most
+      back <le>
+    case above
+      back <gt>
+    case at-least
+      back <ge>
+    miss
+      back <undefined>
+
+# a chunk of a template as it stands between backticks
+task template-chunk
+  take chunk, like text
+  like text
+  mark private
+
+  save out, replace-all(chunk, <\\>, <\\\\>)
+  save out, replace-all(out, <`>, <\\`>)
+  back replace-all(out, <$\{>, <\\$\{>)
+
+task emit-expressions
+  take state, like emitter
+  take nodes, like list, like expression
+  like text
+  mark private
+
+  save parts, make list
+  walk nodes
+    take one
+    push(parts, emit-expression(state, one))
+  back join(parts, <, >)
+
+task emit-statements
+  take state, like emitter
+  take nodes, like list, like statement
+  take between, like text
+  like text
+  mark private
+
+  save parts, make list
+  walk nodes
+    take one
+    push(parts, emit-statement(state, one))
+  back join(parts, between)
+
+task emit-block
+  take state, like emitter
+  take nodes, like list, like statement
+  like text
+  mark private
+
+  save inside, emit-statements(state, nodes, < >)
+  back <\{ {inside} \}>
+
+task emit-expression
+  take state, like emitter
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case integer
+      # a literal is a number, or a big integer past one (engine/ast, `integer-literal`)
+      sift value
+        case small
+          save whole, big-from-number(value)
+          save digits, whole/text()
+          back <RT.int({digits}n)>
+        case big
+          link whole
+          save digits, whole/text()
+          back <RT.int({digits}n)>
+    case float
+      back <RT.flt({value})>
+    case boolean
+      back <RT.bool({value})>
+    case string
+      save quoted, json-quote(value)
+      back <RT.str({quoted})>
+    case unit
+      back <RT.UNIT_V>
+    case variable
+      back name
+    case array
+      save inside, emit-expressions(state, items)
+      back <RT.array([{inside}])>
+    case map
+      save parts, make list
+      walk entries
+        take entry
+        save key-text, json-quote(entry/key)
+        save value-text, emit-expression(state, entry/value)
+        push(parts, <[{key-text}, {value-text}]>)
+      save inside, join(parts, <, >)
+      back <RT.mapLit([{inside}])>
+    case closure
+      save prefix, <>
+      fork test, is-async
+        hold
+          save prefix, <async >
+      save names, join(params, <, >)
+      save inside, emit-statements(state, body, < >)
+      back <{prefix}({names}) =\> \{ {inside} \}>
+    case unary
+      save operand-text, emit-expression(state, operand)
+      sift op
+        case not
+          back <RT.notTruthy({operand-text})>
+        case negate
+          back <RT.neg({operand-text})>
+    case binary
+      save left-text, emit-expression(state, left)
+      save right-text, emit-expression(state, right)
+      sift op
+        case both
+          back <RT.and({left-text}, () =\> {right-text})>
+        case either
+          back <RT.or({left-text}, () =\> {right-text})>
+        miss
+          save runtime, binary-name(op)
+          back <RT.{runtime}({left-text}, {right-text})>
+    case call
+      save callee-text, emit-expression(state, callee)
+      save inside, emit-expressions(state, args)
+      back <{callee-text}({inside})>
+    case await
+      save inner, emit-expression(state, expr)
+      back <(await {inner})>
+    case index
+      save target-text, emit-expression(state, target)
+      save index-text, emit-expression(state, index)
+      back <RT.index({target-text}, {index-text})>
+    case member
+      save target-text, emit-expression(state, target)
+      save quoted, json-quote(name)
+      back <RT.member({target-text}, {quoted})>
+    case template
+      save pieces, make list
+      walk parts
+        take part
+        sift part
+          case chunk
+            push(pieces, template-chunk(value))
+          case value
+            save shown, emit-expression(state, value)
+            push(pieces, <$\{String({shown})\}>)
+      save inside, join(pieces, <>)
+      back <`{inside}`>
+
+# the runtime's name for the operator a compound assignment applies, `<>` for a plain `=`
+task assign-name
+  take op, like assign-op
+  like text
+  mark private
+
+  sift op
+    case add
+      back <add>
+    case subtract
+      back <sub>
+    case multiply
+      back <mul>
+    case divide
+      back <div>
+    miss
+      back <>
+
+task compound-text
+  take operator, like assign-op
+  take current, like text
+  take rhs, like text
+  like text
+  mark private
+
+  save runtime, assign-name(operator)
+  fork test, is-equal(runtime, <>)
+    hold
+      back rhs
+  back <RT.{runtime}({current}, {rhs})>
+
+task emit-assign
+  take state, like emitter
+  take goal, like expression
+  take operator, like assign-op
+  take given, like expression
+  like text
+  mark private
+
+  save rhs, emit-expression(state, given)
+  sift goal
+    case variable
+      save written, compound-text(operator, name, rhs)
+      back <{name} = {written};>
+    case index
+      save holder, <>
+      sift target
+        case variable
+          save holder, name
+        miss
+          halt <index assignment target must be a variable>
+      save index-text, emit-expression(state, index)
+      save written, compound-text(operator, <RT.index({holder}, {index-text})>, rhs)
+      back <{holder} = RT.setIndex({holder}, {index-text}, {written});>
+    case member
+      save holder, <>
+      sift target
+        case variable
+          save holder, name
+        miss
+          halt <member assignment target must be a variable>
+      save quoted, json-quote(name)
+      save written, compound-text(operator, <RT.member({holder}, {quoted})>, rhs)
+      back <{holder} = RT.setMember({holder}, {quoted}, {written});>
+    miss
+      halt <invalid assignment target>
+
+task emit-statement
+  take state, like emitter
+  take node, like statement
+  like text
+  mark private
+
+  sift node
+    case let
+      save keyword, <const>
+      fork test, mutable
+        hold
+          save keyword, <let>
+      save init-text, emit-expression(state, init)
+      back <{keyword} {name} = {init-text};>
+    case assign
+      back emit-assign(state, target, op, value)
+    case expression
+      save inner, emit-expression(state, expr)
+      back <{inner};>
+    case return
+      save inner, emit-expression(state, value)
+      back <return {inner};>
+    case block
+      back emit-block(state, body)
+    case function
+      save prefix, <>
+      fork test, is-async
+        hold
+          save prefix, <async >
+      save names, join(params, <, >)
+      save inside, emit-block(state, body)
+      back <{prefix}function {name}({names}) {inside}>
+    case break
+      save label, nearest-label(state, false)
+      back <break {label};>
+    case continue
+      save label, nearest-label(state, true)
+      back <continue {label};>
+    case if
+      save head, <>
+      save at, 0
+      walk branches
+        take branch
+        save glue, <>
+        fork test, is-above(at, 0)
+          hold
+            save glue, < else >
+        save cond-text, emit-expression(state, branch/cond)
+        save body-text, emit-block(state, branch/body)
+        save head, <{head}{glue}if (RT.truthy({cond-text})) {body-text}>
+        save at, add(at, 1)
+      fork test, is-above(otherwise/length, 0)
+        hold
+          save else-text, emit-block(state, otherwise)
+          back <{head} else {else-text}>
+      back head
+    case while
+      save label, new-label(state, true)
+      enter-label(state, true, label)
+      save cond-text, emit-expression(state, cond)
+      save body-text, emit-block(state, body)
+      state/stack/pop()
+      back <{label}: while (RT.truthy({cond-text})) {body-text}>
+    case switch
+      save label, new-label(state, false)
+      enter-label(state, false, label)
+      save held, <_s{state/counter}>
+      save matched, <_m{state/counter}>
+      save state/counter, add(state/counter, 1)
+      save subject-text, emit-expression(state, subject)
+      save out, <{label}: \{ const {held} = {subject-text}; let {matched} = false; >
+      walk cases
+        take one
+        save match-text, emit-expression(state, one/match)
+        save inside, emit-statements(state, one/body, < >)
+        save out, <{out}if ({matched} || RT.truthy(RT.eq({held}, {match-text}))) \{ {matched} = true; {inside} \} >
+      fork test, is-above(otherwise/length, 0)
+        hold
+          save inside, emit-statements(state, otherwise, < >)
+          save out, <{out}if (!{matched}) \{ {inside} \} >
+      state/stack/pop()
+      back <{out}\}>
+    case throw
+      save inner, emit-expression(state, value)
+      back <throw RT.toError({inner});>
+    case try
+      save body-text, emit-block(state, body)
+      save out, <try {body-text}>
+      # zero or one catch (engine/ast `catches`): none lets a throw go on, an empty body swallows it
+      fork test, is-above(catches/length, 0)
+        hold
+          save caught, get(catches, 0)
+          # the JS catch parameter is internal; the optional user-named binding recovers the original thrown Value
+          save raw, <_err{state/counter}>
+          save state/counter, add(state/counter, 1)
+          save binding, <>
+          fork test, is-above(caught/name/length, 0)
+            hold
+              save binding, <const {caught/name} = RT.fromError({raw}); >
+          save inside, emit-statements(state, caught/body, < >)
+          save out, <{out} catch ({raw}) \{ {binding}{inside} \}>
+      fork test, is-above(finally-body/length, 0)
+        hold
+          save finally-text, emit-block(state, finally-body)
+          save out, <{out} finally {finally-text}>
+      back out
+    case for
+      save label, new-label(state, true)
+      enter-label(state, true, label)
+      save iterable-text, emit-expression(state, iterable)
+      save body-text, emit-block(state, body)
+      state/stack/pop()
+      back <{label}: for (const {name} of RT.iterate({iterable-text})) {body-text}>
+
+# the emitted module text (importing the runtime), the standalone TypeScript output
+task compile-to-typescript
+  take code, like list, like statement
+  like text
+
+  save state, new-emitter()
+  save lines, make list
+  push(lines, <import * as RT from '@term/make/code/engine/backend/runtime'>)
+  push(lines, typescript-preamble())
+  walk code
+    take one
+    push(lines, emit-statement(state, one))
+  back join(lines, <\n>)
+
+# a program's functions, then the rest with its last expression returned, for running in-process (typescript.ts
+# `runCompiled`, and `runCompiledFunction`, which reads only the functions)
+task compile-for-run
+  take code, like list, like statement
+  like run-source
+
+  save state, new-emitter()
+  save declarations, emit-declarations(state, code)
+  save top, make list
+  walk code
+    take one
+    fork test, is-unequal(one/form, <function>)
+      hold
+        push(top, one)
+  save lines, make list
+  save at, 0
+  walk top
+    take one
+    save written, <>
+    fork test, is-equal(at, subtract(top/length, 1))
+      hold
+        sift one
+          case expression
+            save inner, emit-expression(state, expr)
+            save written, <return {inner};>
+          miss
+            save written, emit-statement(state, one)
+      miss
+        save written, emit-statement(state, one)
+    push(lines, written)
+    save at, add(at, 1)
+  back
+    make run-source
+      bind declarations, declarations
+      bind body, join(lines, <\n>)
+
+# a program's functions alone, one a line, for calling one of them in-process (typescript.ts `runCompiledFunction`)
+task compile-declarations
+  take code, like list, like statement
+  like text
+
+  back emit-declarations(new-emitter(), code)
+
+task emit-declarations
+  take state, like emitter
+  take code, like list, like statement
+  like text
+  mark private
+
+  save declared, make list
+  walk code
+    take one
+    fork test, is-equal(one/form, <function>)
+      hold
+        push(declared, emit-statement(state, one))
+  back join(declared, <\n>)

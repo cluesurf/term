@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { entrySpelling } from '@term/make/code/compile/native-main'
 import { projectResolver } from '@term/call/code/make'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import { LAYOUT_LABELS, LAYOUT_ROWS, judgeLayout } from './shared/layout-rows'
@@ -984,7 +985,7 @@ function runAndroid(): void {
       entry,
       identifier,
       // the Activity Android starts runs the program inside onCreate, once a view can be made
-      driver: ['class TermActivity : TermViewActivity() {', '  override fun program() { main() }', '}'].join('\n'),
+      driver: ['class TermActivity : TermViewActivity() {', `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`, '}'].join('\n'),
       work,
       env: 'android',
     })

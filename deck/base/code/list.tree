@@ -24,6 +24,13 @@ form list
 
   head t
 
+  # how many items it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  task length
+    take self
+    like number
+    send back, read self/length
+
+  # the older name of `length`
   task size
     take self
     like number
@@ -317,7 +324,7 @@ form list
       call self/slice
         read count
 
-  # the canonical length verb (alias of size)
+  # the older name of `length`
   task count
     take self
     like number

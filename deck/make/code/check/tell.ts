@@ -7,7 +7,9 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Program, Statement } from '@term/make/code/compile/node'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
+import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+
+const EXCEPTION_FORM = exceptionForm()
 import { deckFromPath } from '@term/make/code/compile/roll'
 
 export function checkTells(
@@ -101,7 +103,7 @@ export function checkTells(
       error(
         candidates.length
           ? `"${tell.name}" is not an exception in this build. Did you mean ${candidates.join(' or ')}?`
-          : tell.name.startsWith('@term/base/') && GENERIC_EXCEPTIONS.has(bare)
+          : tell.name.startsWith('@term/base/') && isGenericException(bare)
             ? `"${tell.name}" is a standard exception, but nothing in this program raises it, so this tell is stale`
             : `"${tell.name}" is not an exception in this build`,
         'stale-tell',

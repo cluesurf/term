@@ -27,6 +27,7 @@ import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
 import { checkScope } from '@term/call/code/scope'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import { entrySpelling } from '@term/make/code/compile/native-main'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
@@ -236,7 +237,9 @@ export function buildCompose({
     return { form: 'failed', stage: 'scope', reason: refused }
   }
 
-  const kotlin = emitKotlin(result.program)
+  // the program's `task main` is spelled `main_` in Kotlin (compile/native-main.ts `entrySpelling`), which keeps `main`
+  // for the JVM's own start: this is that start, and it calls the program's
+  const kotlin = `${emitKotlin(result.program)}\nfun main() { ${entrySpelling('kotlin', 'main')}() }\n`
   const prelude = nativePrelude(result.program, 'compose', readRuntime, kotlin)
 
   // the Compose runtime and not the Android one: no Android class may reach a desktop build
@@ -351,7 +354,7 @@ export function buildComposeAndroid({
 
   const kotlin = emitKotlin(result.program)
   const prelude = nativePrelude(result.program, 'compose-android', readRuntime, kotlin)
-  const driver = ['class TermActivity : TermComposeActivity() {', '  override fun program() { main() }', '}'].join('\n')
+  const driver = ['class TermActivity : TermComposeActivity() {', `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`, '}'].join('\n')
 
   // 1. the libraries and the compiler plugin
   const script = toolchainScript()

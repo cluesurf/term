@@ -62,6 +62,11 @@ form type
     link value-args
       like list, like expression
       need false
+    # the import alias a `like` was written with (mint-bridge.ts `applyAliases`), read by module scope when it binds
+    # the name and then dropped (check/scope)
+    link alias
+      like maybe, like text
+      need false
   case function
     link params, like list, like type
     link result, like type
@@ -340,6 +345,16 @@ form expression
     link lean
       like boolean
       need false
+    # the import alias a `make` was written with (mint-bridge.ts `applyAliases`), read by module scope when it binds
+    # the name and then dropped (check/scope)
+    link alias
+      like maybe, like text
+      need false
+    # the form whose case this builds, where two modules' forms share the case name and the construction's file says
+    # which (check/scope `bindSharedCases`, and the checker when it picks by fields)
+    link owner
+      like text
+      need false
   case member
     link target, like expression
     link name, like text
@@ -580,26 +595,12 @@ form extend-head
     need false
   link span, like span
 
-form extend-link
-  link name, like text
-  link type, like type
-  link nick
-    like text
-    need false
-  link identity
-    like boolean
-    need false
-  link optional
-    like boolean
-    need false
-  link fallback
-    like maybe, like expression
-    need false
-
+# an extension's `link` lines are fields as the mill builds them (`fieldOf`, a span and every flag included), and
+# check/extend hands them to the props record it makes as they are
 form form-extend
   link base, like type
   link heads, like list, like extend-head
-  link links, like list, like extend-link
+  link links, like list, like form-field
   link pins, like list, like field-value
   link span, like span
 

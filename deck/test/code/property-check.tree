@@ -341,6 +341,121 @@ task shrink-of
     case pick
       back out
 
+# ---- what a sampled `test` is written in terms of ----
+#
+# `term test` rewrites `test <phrase>` with `take` lines under it into a check over a record shape, one field per
+# `take`, and a claim that reads each field back as its type (call/code/test-preprocess.ts `sampledTest`). These are
+# the words that rewrite uses, so a test file needs none of its own
+
+# a `like number`: a whole number of either sign
+task make-number-shape
+  like shape
+
+  back make shape/int
+
+task make-text-shape
+  like shape
+
+  back make shape/text
+
+task make-flag-shape
+  like shape
+
+  back make shape/wave
+
+task make-list-shape
+  take item, like shape
+  like shape
+
+  back
+    make shape/list
+      bind item, item
+
+task make-record-shape
+  take names, like list, like text
+  take types, like list, like shape
+  like shape
+
+  back
+    make shape/record
+      bind names, names
+      bind types, types
+
+task flag-in
+  take value, like sample
+  like boolean
+
+  sift value
+    case flag
+      link on
+      back on
+    miss
+      back false
+
+# the sample at `at` of a record or a list of them
+task argument-at
+  take value, like sample
+  take at, like number
+  like sample
+
+  back get(values-in(value), at)
+
+# a sample as a test writes its value: `3`, `true`, `<ab>`, `[1, 2]`
+task show-sample
+  take value, like sample
+  like text
+
+  sift value
+    case number
+      link n
+      back <{n}>
+    case flag
+      link on
+      fork test, on
+        hold
+          back <true>
+      back <false>
+    case words
+      link written
+      back <\<{written}\>>
+    case items
+      link values
+      save out, <>
+      walk values
+        take each
+        fork test, is-equal(out, <>)
+          hold
+            save out, show-sample(each)
+          miss
+            save out, <{out}, {show-sample(each)}>
+      back <[{out}]>
+    case fields
+      back show-arguments(value)
+
+# a record of samples as the inputs of a test: `xs [3, 1], n 2`
+task show-arguments
+  take value, like sample
+  like text
+
+  sift value
+    case fields
+      link names
+      link values
+      save out, <>
+      save at, 0
+      walk values
+        take each
+        save part, <{get(names, at)} {show-sample(each)}>
+        fork test, is-equal(at, 0)
+          hold
+            save out, part
+          miss
+            save out, <{out}, {part}>
+        save at, add(at, 1)
+      back out
+    miss
+      back show-sample(value)
+
 # the claim at a value. A claim that raises counts as failing, not crashing
 task holds-at
   take claim

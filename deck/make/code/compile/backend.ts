@@ -7,7 +7,7 @@ import type {
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
-import { LOWERED_LIST_MEMBERS, LOWERED_MAP_MEMBERS } from '@term/make/code/compile/lowered-members'
+import { LIST_LENGTH_TASKS, LOWERED_LIST_MEMBERS, LOWERED_MAP_MEMBERS } from '@term/make/code/compile/lowered-members'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -1106,7 +1106,7 @@ export function ownedLocals(
         const first = owned(args[0])
 
         // a push onto, or the size of, an owned list
-        if (!inClosure && first && callee.form === 'variable' && (callee.name === 'list_push' || callee.name === 'list_size')) {
+        if (!inClosure && first && callee.form === 'variable' && (callee.name === 'list_push' || LIST_LENGTH_TASKS.has(callee.name))) {
           if (callee.name === 'list_push') {
             written.add(first)
           }

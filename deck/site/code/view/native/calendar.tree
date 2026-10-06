@@ -1,0 +1,20 @@
+# calendar where there is none (device-layer-0024): the abstract module beside the env dirs, reached by every env
+# with no device (node, the server, the memory host, Rust, a browser). Conforms to ../calendar.
+
+task write-event
+  take title, like text
+  take start, like text
+  take end, like text
+  like text
+  send back, text <unavailable>
+
+task read-events
+  take from, like text
+  take to, like text
+  like text
+  send back, text <unavailable>
+
+task delete-event
+  take id, like text
+  like text
+  send back, text <unavailable>

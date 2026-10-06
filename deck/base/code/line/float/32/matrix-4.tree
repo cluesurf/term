@@ -1,4 +1,4 @@
-# Matrix-4x4: a 4x4 32-bit-float matrix, stored row-major in a 16-element list. Pure float math. `get` reads a cell, `times` is the matrix product (named `times` because `multiply` is the number primitive), `identity-matrix-4` is the identity, `transform` applies the matrix to a 4D vector. Index math `row * 4 + column` addresses the flat backing list.
+# Matrix-4x4: a 4x4 32-bit-float matrix, stored row-major in a 16-element list. Pure float math. `get` reads a cell, `multiply` is the matrix product (it wears `multiplication`), `identity-matrix-4` is the identity, `transform` applies the matrix to a 4D vector. Index math `row * 4 + column` addresses the flat backing list.
 
 mark unstable
 
@@ -9,6 +9,9 @@ load @term/base/list
 load @term/base/line/float/32/vector-4
   find vector-4
   find make-vector-4
+
+load @term/base/arithmetic
+  find multiplication
 
 form matrix-4
   link cells
@@ -30,10 +33,28 @@ form matrix-4
             code 4
           read column
 
-  # matrix product self * other. Both are 16 cells, the form's invariant, and so is the product
+  # the matrix product: `multiply(a, b)`, as on two numbers (note/term/plan/decisions-2026-10.md, D5)
+  wear multiplication
+    task multiply
+      take self
+      take other, like matrix-4
+      have
+        call is-equal
+          read self/cells/length
+          code 16
+      have
+        call is-equal
+          read other/cells/length
+          code 16
+      like matrix-4
+      back self/times(other)
+
+  # matrix product self * other, by its name before `multiply` reached a matrix, kept for one release. Both are 16
+  # cells, the form's invariant, and so is the product
   task times
     take self
     take other, like matrix-4
+    mark deprecated
     have
       call is-equal
         read self/cells/length

@@ -6,6 +6,9 @@
 import AVFoundation
 import Foundation
 
+// the camera's grant, brought by the camera (native-permission.swift), run when the program starts
+nativePermission.register("camera", declaration: "NSCameraUsageDescription", status: { nativeCapture.status(.video) }, request: { await nativeCapture.request(.video) })
+
 enum nativeCamera {
     // `photo <path>`, or not-determined, denied, unavailable or failed
     static func capture() async -> String {

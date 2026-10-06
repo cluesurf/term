@@ -3,7 +3,6 @@ note <Tests for quaternions: Hamilton product with identity, conjugate, length, 
 load @term/base/code/line/float/32/quaternion
   find quaternion
   find make-quaternion
-  find times
   find conjugate
   find length
   find normalize
@@ -12,7 +11,7 @@ load @term/base/code/line/float/32/quaternion
 
 test <identity times a quaternion returns it>
   save q
-    call times
+    call multiply
       call make-quaternion
         0.0
         0.0

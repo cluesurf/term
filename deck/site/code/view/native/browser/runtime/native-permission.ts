@@ -1,14 +1,14 @@
 // Permissions in a browser (device-layer-0001), docked by ../permission.tree as `<global:native-permission>`.
 //
 // The Permissions API reads a grant (`prompt` is `not-determined`), and each capability's own call asks for it, since a
-// browser prompts only from the call that needs the grant: getUserMedia for the camera, getCurrentPosition for
+// browser prompts only from the call that needs the grant: getUserMedia for the camera and the microphone, getCurrentPosition for
 // location, Notification.requestPermission for notifications.
 //
 // Every runtime a page links is joined into one module in front of the program (native.ts `joinTypeScriptPrelude`), so
 // nothing here is named at the top level but the object: a helper called `status` would collide with the program's own.
 
 export const nativePermission = {
-  queries: { camera: 'camera', location: 'geolocation', notification: 'notifications' } as Record<string, string>,
+  queries: { camera: 'camera', microphone: 'microphone', location: 'geolocation', notification: 'notifications' } as Record<string, string>,
 
   async status(name: string): Promise<string> {
     const query = nativePermission.queries[name]
@@ -29,8 +29,8 @@ export const nativePermission = {
 
   async request(name: string): Promise<string> {
     try {
-      if (name === 'camera' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      if ((name === 'camera' || name === 'microphone') && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+        const stream = await navigator.mediaDevices.getUserMedia(name === 'camera' ? { video: true } : { audio: true })
 
         for (const track of stream.getTracks()) {
           track.stop()

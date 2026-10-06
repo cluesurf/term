@@ -1,11 +1,34 @@
 // Location on AppKit and UIKit (device-layer-0004), docked by ../location.tree as `<global:native-location>`.
-// CoreLocation, once: a grant first (read through nativePermission, docked beside this), then one `requestLocation`,
-// answered through the delegate.
+// CoreLocation, once: a grant first (read through nativePermission, docked beside this, which this registers the
+// location grant with), then one `requestLocation`, answered through the delegate.
 
 import CoreLocation
 import Foundation
 
+// the location grant, brought by location (native-permission.swift), run when the program starts. Asking happens on the
+// main actor: a CLLocationManager answers on the run loop of the thread that made it
+nativePermission.register(
+    "location",
+    declaration: "NSLocationWhenInUseUsageDescription",
+    status: { nativeLocation.grant(CLLocationManager().authorizationStatus) },
+    request: { await LocationAsker.ask() }
+)
+
 enum nativeLocation {
+    // CoreLocation's status as a grant
+    static func grant(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "not-determined"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .authorizedAlways: return "granted"
+        #if canImport(UIKit)
+        case .authorizedWhenInUse: return "granted"
+        #endif
+        @unknown default: return "granted"
+        }
+    }
+
     // `<latitude> <longitude> <accuracy>`, or not-determined, denied, unavailable or failed. On the main actor: a
     // CLLocationManager answers on the run loop of the thread that made it, and the main thread's is the one that runs
     @MainActor
@@ -38,8 +61,41 @@ enum nativeLocation {
 
     // the grant as nativePermission reads it, without waiting: a watch starts at once
     private static func locationGrant() -> String {
-        let status = nativePermission.locationStatus(CLLocationManager().authorizationStatus)
+        let status = grant(CLLocationManager().authorizationStatus)
         return status == "restricted" ? "denied" : status
+    }
+}
+
+// One location grant request: CoreLocation answers through its delegate once the person has chosen, and the manager
+// must live until then
+final class LocationAsker: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private var answer: CheckedContinuation<String, Never>?
+
+    @MainActor
+    static func ask() async -> String {
+        await LocationAsker().ask()
+    }
+
+    func ask() async -> String {
+        if manager.authorizationStatus != .notDetermined {
+            return nativeLocation.grant(manager.authorizationStatus)
+        }
+        return await withCheckedContinuation { continuation in
+            answer = continuation
+            manager.delegate = self
+            #if canImport(UIKit)
+            manager.requestWhenInUseAuthorization()
+            #else
+            manager.requestAlwaysAuthorization()
+            #endif
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard manager.authorizationStatus != .notDetermined, let answer else { return }
+        self.answer = nil
+        answer.resume(returning: nativeLocation.grant(manager.authorizationStatus))
     }
 }
 

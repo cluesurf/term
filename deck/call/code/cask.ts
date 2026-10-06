@@ -75,6 +75,12 @@ const IDENTIFIER_PREFIX = 'surf.term'
 // the lowest macOS the cask runs on: WKWebView's `takeSnapshot` and the concurrency the runtime uses
 const MACOS_MINIMUM = '14.0'
 
+// the Swift module every Apple app is built as, whatever the app is called. Left to swiftc it is the executable's name,
+// and an app named after an Apple framework shadows it: built as `Photos`, the program's own `import Photos` imported
+// itself and PHPhotoLibrary was not in scope (device-layer-0025). No Apple framework has this name, and nothing reads
+// the module by name
+export const SWIFT_MODULE = 'TermApp'
+
 const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
@@ -345,9 +351,9 @@ export function buildProgram({
       section.push('-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', entitlements)
     }
 
-    runTool('xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, ...section, '-o', exe, file])
+    runTool('xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, ...section, '-module-name', SWIFT_MODULE, '-o', exe, file])
   } else {
-    runTool('swiftc', [...swiftFlags(), ...release, '-o', exe, file])
+    runTool('swiftc', [...swiftFlags(), ...release, '-module-name', SWIFT_MODULE, '-o', exe, file])
   }
 
   // the native half as compiled, without the driver line, which differs between a dev build and a release of the

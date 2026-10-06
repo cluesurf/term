@@ -15,6 +15,20 @@ type Declaration = { runtime: string; android: string[]; apple?: { key: string; 
 
 const DECLARATIONS: Declaration[] = [
   { runtime: 'nativeCamera', android: ['android.permission.CAMERA'], apple: { key: 'NSCameraUsageDescription', text: 'Takes the photos you ask for.' } },
+  { runtime: 'nativeMicrophone', android: ['android.permission.RECORD_AUDIO'], apple: { key: 'NSMicrophoneUsageDescription', text: 'Records the sound you ask it to.' } },
+  { runtime: 'nativeContacts', android: ['android.permission.READ_CONTACTS'], apple: { key: 'NSContactsUsageDescription', text: 'Finds the people you ask for.' } },
+  // iOS 17 and macOS 14 read the full-access string; the build's minimum is those, so the older NSCalendarsUsageDescription is not needed
+  {
+    runtime: 'nativeCalendar',
+    android: ['android.permission.READ_CALENDAR', 'android.permission.WRITE_CALENDAR'],
+    apple: { key: 'NSCalendarsFullAccessUsageDescription', text: 'Keeps and finds the events you ask it to.' },
+  },
+  // READ_MEDIA_IMAGES from Android 13, READ_EXTERNAL_STORAGE before it, and Android 14's choice of photos
+  {
+    runtime: 'nativePhotos',
+    android: ['android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED', 'android.permission.READ_EXTERNAL_STORAGE'],
+    apple: { key: 'NSPhotoLibraryUsageDescription', text: 'Shows and copies the photos you ask for.' },
+  },
   { runtime: 'nativeTorch', android: [], apple: { key: 'NSCameraUsageDescription', text: 'Turns on the camera light when you ask for it.' } },
   {
     runtime: 'nativeLocation',

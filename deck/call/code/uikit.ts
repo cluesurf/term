@@ -24,6 +24,7 @@ import { collectModules } from '@term/make/code/compile/load'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { checkScope } from '@term/call/code/scope'
 import { appleUsage } from '@term/call/code/device-declare'
+import { SWIFT_MODULE } from '@term/call/code/cask'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
@@ -114,6 +115,8 @@ export function xcodeProject(input: { name: string; identifier: string; version:
       OTHER_SWIFT_FLAGS: '-enforce-exclusivity=unchecked',
       PRODUCT_BUNDLE_IDENTIFIER: input.identifier,
       PRODUCT_NAME: '$(TARGET_NAME)',
+      // never the app's own name, which may be an Apple framework's (cask.ts SWIFT_MODULE)
+      PRODUCT_MODULE_NAME: SWIFT_MODULE,
       SWIFT_COMPILATION_MODE: optimize ? 'wholemodule' : 'singlefile',
       SWIFT_OPTIMIZATION_LEVEL: optimize ? '-O' : '-Onone',
       SWIFT_VERSION: '5.0',

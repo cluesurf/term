@@ -66,7 +66,7 @@ task use
     case one
       send back, read value
 `),
-  new Set(['use']),
+  ['use'],
 )
 
 ok('a form built and matched only by its cases is kept', kept(shaped).includes('knot'), kept(shaped).join(', '))

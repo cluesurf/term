@@ -1,0 +1,93 @@
+# A text quoted as JSON, exactly as JavaScript's `JSON.stringify` quotes a string: `"` and `\` escaped, the five named
+# controls as `\b` `\f` `\n` `\r` `\t`, every other code point below U+0020 as `\u00xx`, and a lone surrogate as
+# `\udxxx`, all in lowercase hex. Everything else is written as it stands.
+#
+# Written over code points for an emitter that writes JavaScript source (the engine's TypeScript backend), so it
+# answers alike on every backend, where the stdlib's `stringify` hands the text to each host's own JSON writer.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+task json-quote
+  take value, like text
+  like text
+
+  save parts, make list
+  push(parts, <">)
+  save runes, to-runes(value)
+  walk runes
+    take rune
+    push(parts, quote-rune(rune))
+  push(parts, <">)
+  back join(parts, <>)
+
+# one code point as it stands inside a JSON string
+task quote-rune
+  take rune, like number
+  like text
+  mark private
+
+  fork test, is-equal(rune, 34)
+    hold
+      back <\\">
+  fork test, is-equal(rune, 92)
+    hold
+      back <\\\\>
+  fork test, is-equal(rune, 8)
+    hold
+      back <\\b>
+  fork test, is-equal(rune, 12)
+    hold
+      back <\\f>
+  fork test, is-equal(rune, 10)
+    hold
+      back <\\n>
+  fork test, is-equal(rune, 13)
+    hold
+      back <\\r>
+  fork test, is-equal(rune, 9)
+    hold
+      back <\\t>
+  fork test, is-below(rune, 32)
+    hold
+      back hex-escape(rune)
+  # a lone surrogate (a paired one is one code point above U+FFFF and never reaches here)
+  fork test, and(is-minimum(rune, 55296), is-maximum(rune, 57343))
+    hold
+      back hex-escape(rune)
+  back rune-to-text(rune)
+
+# `\u` and four lowercase hex digits
+task hex-escape
+  take rune, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  save out, <>
+  save rest, rune
+  save place, 0
+  walk test
+    hook test, is-below(place, 4)
+    hook hold
+      save low, modulo(rest, 16)
+      save out, <{char-of(digits, low)}{out}>
+      save rest, divide(subtract(rest, low), 16)
+      save place, add(place, 1)
+  back <\\u{out}>
+
+task char-of
+  take digits, like text
+  take at, like number
+  like text
+  mark private
+
+  back substring(digits, at, add(at, 1))

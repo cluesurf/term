@@ -1,0 +1,25 @@
+# device-layer-0023.
+# The person's contacts, read: CNContactStore on macOS and iOS, the ContactsContract provider on Android. A browser has
+# no contact search (the Contact Picker shows a sheet and answers what the person ticks), so it answers `unavailable`.
+#
+#   find-contacts(query)   the contacts whose name holds `query`, ignoring case, one a line, each the name, a tab, and
+#                          its phone numbers joined by `, ` (nothing after the tab when it has none), sorted by name.
+#                          An empty query matches everyone. Or none (no contact matches), not-determined (ask first:
+#                          request-permission contacts), denied, unavailable or failed
+#
+# The match is made the same way on every host, by this module's own rule above, and never by a platform's search,
+# because the platforms disagree: CNContact.predicateForContacts matches a name by its words' beginnings and the
+# Android provider's LIKE anywhere in it. A name or number holding a tab or a line break has it read as a space.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, or the lines, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/contacts
+  find search-contacts
+
+task find-contacts
+  take query, like text
+  like text
+  send back
+    call search-contacts
+      read query

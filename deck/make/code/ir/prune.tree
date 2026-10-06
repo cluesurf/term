@@ -1,0 +1,181 @@
+# Tree-shaking the merged program: keep only the definitions reachable from the entry's roots, so a tiny entry that
+# pulls in a huge `load`/`bear` closure (the whole stdlib) does not pay to type-check every imported definition it never
+# uses. Runs after `resolve` (names are bound) and before the expensive `check`/`elaborate` passes.
+#
+# SOUNDNESS by over-approximation: references are collected by deep-walking each kept statement and taking EVERY name
+# it mentions (variable reads, call targets, named type references, and, harmlessly, incidental parameter and field
+# names). Over-approximating can only KEEP more, never drop a real reference. Trait instances are selected implicitly
+# (no name in source), so all `mask` / `instance` statements are kept and seed the search; the same for `native` /
+# `bind` / `dock` (platform surface and side effects). Only `function` and `record-type` definitions are ever pruned.
+#
+# It is ON by default for the optimized merged build (compile.ts `treeShake`) and off in per-module and editor builds,
+# held by test/compile/shake-differential.ts (compile with and without it, the entry's emitted code identical). Every
+# layer of shaking what a program ships is in note/term/compiler/runtime-shaking.md.
+#
+# Ported from ir/prune.ts (self-hosting, 2026-10-05). Every name a statement mentions is compile/node-reach.tree's
+# `names`, through every field but `span`, as the original's walk read every `name` and `label` it met. The original
+# moved first to take the roots as a list.
+
+load @term/base/list
+  find list
+
+load ../compile/node
+  find statement
+
+load ../compile/node-reach
+  find reach-statements
+
+# the definitions of one name: a name may have several (overloads, a form's cases, a method's bare name)
+form named-definitions
+  link name, like text
+  link statements, like list, like statement
+
+form prune-state
+  mark shared
+  link index, like hash, like text, like list, like statement
+  link reachable, like hash, like text, like boolean
+  link queue, like list, like text
+
+task is-prunable
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back true
+    case record-type
+      back true
+    miss
+      back false
+
+# every name and label a statement mentions, anywhere inside it
+task names-of
+  take one, like statement
+  like list, like text
+  mark private
+
+  save single, make list
+  push(single, one)
+  save skip, make list
+  push(skip, <span>)
+  save reached, reach-statements(single, skip)
+  back reached/names
+
+task index-definition
+  take state, like prune-state
+  take name, like text
+  take one, like statement
+  mark private
+
+  save known, make list
+  fork test, state/index/has(name)
+    hold
+      save known, state/index/get(name)
+  push(known, one)
+  save state/index/{name}, known
+
+task index-statement
+  take state, like prune-state
+  take one, like statement
+  mark private
+
+  sift one
+    case function
+      index-definition(state, name, one)
+      # a form's method is DEFINED under its mangled name (`<form>_<method>`) but CALLED bare (`call get / ...`) until
+      # the checker's receiver dispatch runs, which is AFTER this prune. So a reached bare method name must keep every
+      # form's method of that name: (1) the used implementation survives, and (2) the checker's "exactly one form owns
+      # this method" dispatch sees the same owner set as the unpruned program, so shaking never changes how a call
+      # resolves
+      sift method
+        case some
+          link owner
+          index-definition(state, owner/name, one)
+        case none
+          back
+    case record-type
+      index-definition(state, name, one)
+      # a form is reached through its CASES too: `make one` and `case one` name the case, never the form, so a task that
+      # builds and matches a variant without writing the form's name lost the whole form, and every backend then wrote
+      # the cases as records nothing declared
+      walk variants
+        take variant
+        index-definition(state, variant/name, one)
+    miss
+      back
+
+task name-of-definition
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    case record-type
+      back name
+    miss
+      back <>
+
+# Return a program holding only the reachable `function` / `record-type` definitions, and every statement that is
+# neither, starting from `roots`
+task prune-to-reachable
+  take program, like list, like statement
+  take roots, like list, like text
+  like list, like statement
+
+  save state
+    make prune-state
+      bind index, make hash
+      bind reachable, make hash
+      bind queue, make list
+  walk program
+    take one
+    fork test, is-prunable(one)
+      hold
+        index-statement(state, one)
+  walk roots
+    take root
+    push(state/queue, root)
+  # seed from every statement that is never pruned (masks, instances, natives, binds, docks): they are always kept and
+  # may name prunable definitions
+  walk program
+    take one
+    fork test, not(is-prunable(one))
+      hold
+        walk names-of(one)
+          take name
+          push(state/queue, name)
+  walk test
+    hook test, is-above(state/queue/length, 0)
+    hook hold
+      save name, state/queue/pop()
+      fork test, not(state/reachable/has(name))
+        hold
+          save state/reachable/{name}, true
+          fork test, state/index/has(name)
+            hold
+              walk state/index/get(name)
+                take definition
+                walk names-of(definition)
+                  take mentioned
+                  fork test, not(state/reachable/has(mentioned))
+                    hold
+                      push(state/queue, mentioned)
+  save rooted, make hash
+  walk roots
+    take root
+    save rooted/{root}, true
+  save out, make list
+  walk program
+    take one
+    fork test, not(is-prunable(one))
+      hold
+        push(out, one)
+        turn next
+    save name, name-of-definition(one)
+    fork test, or(state/reachable/has(name), rooted/has(name))
+      hold
+        push(out, one)
+  back out

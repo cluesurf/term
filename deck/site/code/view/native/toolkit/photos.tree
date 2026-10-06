@@ -1,0 +1,23 @@
+# the photo library on the platform's own toolkit (device-layer-0025): PhotoKit on macOS and iOS, the MediaStore provider on Android, unavailable under Compose on the desktop.
+# Conforms to ../photos. The runtime is native-photos.swift, native-photos.kt (both Android hosts) and compose/native-photos.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-photos>, name native-photos
+  load <global:native-permission>, name native-permission
+
+task newest-photos
+  take count, like number
+  like text
+  send back
+    call native-photos/newest
+      read count
+      wait true
+
+task export-photo
+  take id, like text
+  like text
+  send back
+    call native-photos/export
+      read id
+      wait true

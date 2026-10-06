@@ -4,28 +4,28 @@
 // the program ships there. The standard library has had this as a repository gate (task/term/base-gate.ts); this is
 // the same run for any project. Each test file is built on the backend with one more task beside its tests, the
 // REPORT, which calls each test in order inside a guard and answers one letter per test: `P` it held, `F` it did not,
-// `E` it raised. The program is compiled with the backend's own toolchain (cargo, swiftc, kotlinc), run, and its last
-// line read back into the same results `term test` reports for node.
+// `E` it raised. The program is built exactly as `term make --emit <env> --build` builds one (call/code/native-build.ts:
+// rustc, or cargo when it names a crate, swiftc, kotlinc), with the same main, run, and its last line read back into
+// the same results `term test` reports for node.
 //
 // The report is a module of its own under the project's `.base/`, loading the test file, so a lean test file is read
 // lean and the report is read as it is written. The resolver hands it the test file as `term test` rewrote it (its
 // `test` blocks made tasks), since the file on disk still has them.
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import { emitKotlin } from '@term/make/code/compile/kotlin'
 import { hashText } from '@term/make/code/term/hash'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCacheDir } from '@term/call/code/cache-store'
 import { projectResolver } from '@term/call/code/make'
-import { cargoManifest, swiftFlags } from '@term/call/code/cask'
+import { buildNative } from '@term/call/code/native-build'
 import type { RoleOf } from '@term/call/code/role-of'
 import type { DeckOf } from '@term/make/code/compile/roll'
 import type { TestResult, TestRun } from '@term/call/code/test-run'
@@ -35,7 +35,7 @@ export type NativeTestEnv = 'rust' | 'swift' | 'kotlin'
 export const NATIVE_TEST_ENVS: NativeTestEnv[] = ['rust', 'swift', 'kotlin']
 
 // what each backend needs on this machine, named in the refusal when it is not here
-const TOOLS: Record<NativeTestEnv, string[]> = { rust: ['cargo'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }
+const TOOLS: Record<NativeTestEnv, string[]> = { rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }
 
 // the tools a backend needs that this machine lacks
 export function missingTools(env: NativeTestEnv): string[] {
@@ -46,7 +46,6 @@ export function missingTools(env: NativeTestEnv): string[] {
 const REPORT = 'term-test-report'
 // what ends each test's entry in the report: a character no note holds
 const ENTRY_END = '␞'
-const SPELLED: Record<NativeTestEnv, string> = { rust: 'term_test_report', swift: 'termTestReport', kotlin: 'termTestReport' }
 
 export async function runNativeTestFile(input: {
   root: string
@@ -95,14 +94,16 @@ export async function runNativeTestFile(input: {
   const emitted = env === 'rust' ? emitRust(result.program) : env === 'swift' ? emitSwift(result.program) : emitKotlin(result.program)
   const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
   const prelude = nativePrelude(result.program, env, readRuntime, emitted)
-  const source = `${prelude}\n${emitted}`
-  const call = SPELLED[env]
 
-  if (!new RegExp(`\\b${call}\\b`).test(emitted)) {
-    return failed(`the ${env} program has no ${call}`)
+  // built as `term make --emit <env> --build` builds a program, with the same main (call/code/native-build.ts), so a
+  // test runs on the 1 GiB stack thread a program runs on, under the same driver for an async or raising entry
+  const built = buildNative({ source: `${prelude}\n${emitted}`, target: env, folder: work, name: 'term-test', entry: REPORT })
+
+  if (!built.ok) {
+    return failed(`the ${env} build failed: ${built.reason.split('\n')[0]?.slice(0, 240) ?? ''}`)
   }
 
-  const ran = env === 'rust' ? buildRust(work, source, call) : env === 'swift' ? buildSwift(work, source, call) : buildKotlin(work, source, call)
+  const ran = runCaptured(built.command)
 
   if ('failure' in ran) {
     return failed(ran.failure)
@@ -120,10 +121,11 @@ export async function runNativeTestFile(input: {
   const results: TestResult[] = input.tests.map((test, at) => {
     const entry = entries[at]!
     const note = entry.slice(1)
-    // a failing `want` raises its line, which is said as node says it, with the line as written
-    const want = /^want:(\d+)$/.exec(note)
+    // a failing `want` raises its line, which is said as node says it, with the line as written, and a sampled test's
+    // the input it failed at (call/code/test-preprocess.ts `sampledTest`)
+    const want = /^want:(\d+)(?: sampled at (.*))?$/.exec(note)
     const why = want
-      ? `line ${want[1]} did not hold on ${env}: ${lines[Number(want[1]) - 1]?.trim() ?? ''}`
+      ? `line ${want[1]} did not hold on ${env}: ${lines[Number(want[1]) - 1]?.trim() ?? ''}${want[2] ? `, at ${want[2]}` : ''}`
       : `it raised on ${env}${note ? `: ${note}` : ''}`
 
     return {
@@ -170,95 +172,15 @@ function reportText(load: string, names: string[]): string {
 
 type Ran = { out: string } | { failure: string }
 
-const firstError = (text: string, pattern: RegExp): string =>
-  (text.split('\n').find(line => pattern.test(line)) ?? text.split('\n')[0] ?? 'the build failed').slice(0, 240)
-
 // run a built program, a minute at most, its standard output when it exits 0
-function runBuilt(command: string, args: string[]): Ran {
-  const ran = spawnSync(command, args, { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 })
+function runCaptured(command: string[]): Ran {
+  const ran = spawnSync(command[0]!, command.slice(1), { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 })
 
   if (ran.status !== 0) {
-    return { failure: `the program stopped (exit ${ran.status ?? ran.signal}): ${firstError(ran.stderr ?? '', /./)}` }
+    const said = (ran.stderr ?? '').split('\n').find(line => line.trim() !== '') ?? ''
+
+    return { failure: `the program stopped (exit ${ran.status ?? ran.signal}): ${said.slice(0, 240)}` }
   }
 
   return { out: ran.stdout }
-}
-
-// a cargo project, its target directory kept between runs so the crates build once
-function buildRust(work: string, source: string, call: string): Ran {
-  const project = path.join(work, 'cargo')
-  mkdirSync(path.join(project, 'src'), { recursive: true })
-
-  const asynchronous = new RegExp(`async fn ${call}\\(`).test(source)
-  const raising = new RegExp(`fn ${call}\\(\\)[^{]*-> std::result::Result`).test(source)
-  const value = asynchronous ? `${call}().await` : `${call}()`
-  const shown = raising ? `${value}.unwrap_or_else(|e| e.to_string())` : value
-  const main = asynchronous
-    ? `#[tokio::main]\nasync fn main() { print!("{}", ${shown}); }\n`
-    : `fn main() { print!("{}", ${shown}); }\n`
-  const program = `#![allow(warnings)]\n${source}\n${main}`
-
-  writeFileSync(path.join(project, 'src', 'main.rs'), program)
-  writeFileSync(path.join(project, 'Cargo.toml'), cargoManifest('term-test', program))
-
-  try {
-    execFileSync('cargo', ['build', '--quiet'], { cwd: project, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 })
-  } catch (error) {
-    return { failure: `cargo could not build it: ${firstError(String((error as { stderr?: Buffer }).stderr ?? error), /^error/)}` }
-  }
-
-  return runBuilt(path.join(project, 'target', 'debug', 'term-test'), [])
-}
-
-function buildSwift(work: string, source: string, call: string): Ran {
-  const file = path.join(work, 'test.swift')
-  const exe = path.join(work, 'test')
-  const raising = new RegExp(`func ${call}\\(\\)[^{]*throws`).test(source)
-  const asynchronous = new RegExp(`func ${call}\\(\\)[^{]*async`).test(source)
-  const value = `${raising ? 'try ' : ''}${asynchronous ? 'await ' : ''}${call}()`
-  const driver = raising
-    ? `do { print(${value}, terminator: "") } catch { print("\\(error)", terminator: "") }\n`
-    : `print(${value}, terminator: "")\n`
-
-  writeFileSync(file, `${source}\n${driver}`)
-
-  try {
-    execFileSync('swiftc', [...swiftFlags(), '-o', exe, file], { stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 })
-  } catch (error) {
-    return { failure: `swiftc could not build it: ${firstError(String((error as { stderr?: Buffer }).stderr ?? error), /error:/)}` }
-  }
-
-  return runBuilt(exe, [])
-}
-
-// the classpath the Kotlin backend's runtime needs (coroutines, ktor), where task/term/native/kotlin.sh `deps` keeps
-// it: the same cache the Swift flags are read from
-function kotlinClasspath(): string | undefined {
-  const cache = process.env.TERM_NATIVE_CACHE ?? path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
-  const file = path.join(cache, 'kotlin', 'classpath.txt')
-
-  return existsSync(file) ? readFileSync(file, 'utf8').trim() : undefined
-}
-
-function buildKotlin(work: string, source: string, call: string): Ran {
-  const file = path.join(work, 'TermTest.kt')
-  const jar = path.join(work, 'term-test.jar')
-  const asynchronous = new RegExp(`suspend fun ${call}\\(`).test(source)
-  const driver = asynchronous
-    ? `fun main() { print(kotlinx.coroutines.runBlocking { ${call}() }) }\n`
-    : `fun main() { print(${call}()) }\n`
-  const classpath = kotlinClasspath()
-
-  writeFileSync(file, hoistKotlinImports(`${source}\n${driver}`))
-
-  try {
-    execFileSync('kotlinc', [file, ...(classpath ? ['-classpath', classpath] : []), '-include-runtime', '-nowarn', '-d', jar], {
-      stdio: 'pipe',
-      maxBuffer: 64 * 1024 * 1024,
-    })
-  } catch (error) {
-    return { failure: `kotlinc could not build it: ${firstError(String((error as { stderr?: Buffer }).stderr ?? error), /error/)}` }
-  }
-
-  return runBuilt('java', ['-cp', [jar, ...(classpath ? [classpath] : [])].join(':'), 'TermTestKt'])
 }

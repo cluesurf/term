@@ -41,3 +41,9 @@ export const LOWERED_MAP_MEMBERS: ReadonlySet<string> = new Set(['has', 'get', '
 // the one property each answers, read rather than called: a list's `length` and a map's `size`
 export const LOWERED_LIST_READ = 'length'
 export const LOWERED_MAP_READ = 'size'
+
+// THE LIST TASKS THAT ARE THE ARRAY'S OWN LENGTH: `length`, and `size` and `count`, its older names
+// (note/term/plan/decisions-2026-10.md, D2). Every emitter writes a call of one as the native length, and the interval
+// prover reads it as the list's length. Only `list_size` was known until 2026-10-05, so `length(xs)` became a function
+// call where `size(xs)` was `xs.length`, and proved nothing about an index
+export const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(['list_length', 'list_size', 'list_count'])

@@ -1,69 +1,104 @@
-# Complex number: a real and an imaginary part, both floats. Pure float math, identical on every backend. The combiners are named `plus` / `minus` / `times` because `add` / `subtract` / `multiply` are the number arithmetic primitives. Read the parts directly as `value/real` and `value/imaginary`.
+# Complex number: a real and an imaginary part, both floats. Pure float math, identical on every backend. A complex
+# number wears the arithmetic masks, so `add`, `subtract`, `multiply` and `divide` take two of them as they take two
+# numbers (note/term/plan/decisions-2026-10.md, D5). Read the parts directly as `value/real` and `value/imaginary`.
 
 mark unstable
 
 load @term/base/float
   find square-root
 
+load @term/base/arithmetic
+  find addition
+  find subtraction
+  find multiplication
+  find division
+  find negation
+
 form complex
   link real, like decimal
   link imaginary, like decimal
 
   # (a + bi) + (c + di) = (a + c) + (b + d)i
-  task plus
-    take self
-    take other, like complex
-    like complex
-    send back
-      make complex
-        bind real
-          call add
-            read self/real
-            read other/real
-        bind imaginary
-          call add
-            read self/imaginary
-            read other/imaginary
+  wear addition
+    task add
+      take self
+      take other, like complex
+      like complex
+      send back
+        make complex
+          bind real
+            call add
+              read self/real
+              read other/real
+          bind imaginary
+            call add
+              read self/imaginary
+              read other/imaginary
 
   # (a + bi) - (c + di) = (a - c) + (b - d)i
-  task minus
-    take self
-    take other, like complex
-    like complex
-    send back
-      make complex
-        bind real
-          call subtract
-            read self/real
-            read other/real
-        bind imaginary
-          call subtract
-            read self/imaginary
-            read other/imaginary
+  wear subtraction
+    task subtract
+      take self
+      take other, like complex
+      like complex
+      send back
+        make complex
+          bind real
+            call subtract
+              read self/real
+              read other/real
+          bind imaginary
+            call subtract
+              read self/imaginary
+              read other/imaginary
 
   # (a + bi)(c + di) = (ac - bd) + (ad + bc)i
-  task times
-    take self
-    take other, like complex
-    like complex
-    send back
-      make complex
-        bind real
-          call subtract
-            call multiply
-              read self/real
-              read other/real
-            call multiply
-              read self/imaginary
-              read other/imaginary
-        bind imaginary
-          call add
-            call multiply
-              read self/real
-              read other/imaginary
-            call multiply
-              read self/imaginary
-              read other/real
+  wear multiplication
+    task multiply
+      take self
+      take other, like complex
+      like complex
+      send back
+        make complex
+          bind real
+            call subtract
+              call multiply
+                read self/real
+                read other/real
+              call multiply
+                read self/imaginary
+                read other/imaginary
+          bind imaginary
+            call add
+              call multiply
+                read self/real
+                read other/imaginary
+              call multiply
+                read self/imaginary
+                read other/real
+
+  # (a + bi) / (c + di) = ((ac + bd) + (bc - ad)i) / (c^2 + d^2). By zero, each part is IEEE's answer: an infinity
+  # or not a number
+  wear division
+    task divide
+      take self
+      take other, like complex
+      like complex
+      save scale, add(multiply(other/real, other/real), multiply(other/imaginary, other/imaginary))
+      send back
+        make complex
+          bind real, divide(add(multiply(self/real, other/real), multiply(self/imaginary, other/imaginary)), scale)
+          bind imaginary, divide(subtract(multiply(self/imaginary, other/real), multiply(self/real, other/imaginary)), scale)
+
+  # -(a + bi) = -a - bi
+  wear negation
+    task negate
+      take self
+      like complex
+      send back
+        make complex
+          bind real, subtract(0.0, self/real)
+          bind imaginary, subtract(0.0, self/imaginary)
 
   # the complex conjugate: negate the imaginary part
   task conjugate
@@ -90,6 +125,28 @@ form complex
           call multiply
             read self/imaginary
             read self/imaginary
+
+  # the names before `add` reached a complex number (decisions-2026-10.md, D5), kept for one release
+  task plus
+    take self
+    take other, like complex
+    like complex
+    mark deprecated
+    back self/add(other)
+
+  task minus
+    take self
+    take other, like complex
+    like complex
+    mark deprecated
+    back self/subtract(other)
+
+  task times
+    take self
+    take other, like complex
+    like complex
+    mark deprecated
+    back self/multiply(other)
 
 task make-complex
   take real, like decimal
