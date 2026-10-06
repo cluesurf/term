@@ -1,0 +1,206 @@
+# What a `.tree` file MEANS, as one comparable text: the mill's program with spans dropped and template pieces merged,
+# written as JSON. The formatter accepts a layout when this is identical before and after, and test/format/sweep.ts
+# holds the whole repository to the same comparison, so the two cannot disagree about what "the same program" is.
+#
+# Ported from format/meaning.ts (self-hosting, 2026-10-06), which stays as the face: it mills, and converts the program,
+# a tree of plain objects, into compile/rolling's ordered JSON value (its keys in their order, a bigint as its digits
+# and an `n`, as the original's replacer wrote it). The decisions:
+#   - `JSON.stringify` is written out: a key holding `undefined` left out of an object and `null` in a list, a number
+#     that is not finite `null`, a text quoted as term/quote.tree's `json-quote` quotes it
+#   - a literal piece of a template is a `{ form: 'chunk', value }` record or a bare text, and two in a row are one
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/float
+  find is-finite
+
+load ../compile/rolling
+  find roll-value
+  find roll-pair
+  find pair-of
+  find pairs-value
+  find text-of-value
+  find string-of
+  find value-at
+
+load ../term/quote
+  find json-quote
+
+# a literal piece's text: a bare text, or a `chunk` record's value as `String` writes it, none for anything else
+task chunk-of
+  take part, like roll-value
+  like maybe, like text
+  mark private
+
+  sift part
+    case text-value
+      link text
+      back make(some, text)
+    case pair-values
+      sift value-at(part, <form>)
+        case some
+          link form-value
+          sift form-value
+            case text-value
+              link form-text
+              fork test, is-equal(form-text, <chunk>)
+                hold
+                  save shown, <undefined>
+                  sift value-at(part, <value>)
+                    case some
+                      link held
+                      save shown, string-of(held)
+                    case none
+                      save shown, shown
+                  back make(some, shown)
+            miss
+              back make none
+        case none
+          back make none
+      back make none
+    miss
+      back make none
+
+task chunk-record
+  take text, like text
+  like roll-value
+  mark private
+
+  save pairs, make list
+  push(pairs, pair-of(<form>, text-of-value(<chunk>)))
+  push(pairs, pair-of(<value>, text-of-value(text)))
+  back pairs-value(pairs)
+
+# Adjacent literal pieces of a template mean the same thing however they are split, and a span (and `privateNote`, a
+# span under its own name) is position, not meaning: both are taken out before comparing
+task merge-parts
+  take value, like roll-value
+  like roll-value
+
+  sift value
+    case item-values
+      link values
+      save out, make list
+      walk values
+        take one
+        push(out, merge-parts(one))
+      back
+        make item-values
+          bind values, out
+    case pair-values
+      link pairs
+      save out, make list
+      walk pairs
+        take pair
+        save key, pair/key
+        fork test, or(is-equal(key, <span>), is-equal(key, <privateNote>))
+          hold
+            turn next
+        sift pair/value
+          case item-values
+            link raw
+            fork test, is-equal(key, <parts>)
+              hold
+                save merged, make list
+                walk raw
+                  take part
+                  save piece, chunk-of(part)
+                  save joined, false
+                  sift piece
+                    case some
+                      link piece-text
+                      fork test, is-above(merged/length, 0)
+                        hold
+                          save at, subtract(merged/length, 1)
+                          sift chunk-of(get(merged, at))
+                            case some
+                              link before
+                              save merged/{at}, chunk-record(<{before}{piece-text}>)
+                              save joined, true
+                            case none
+                              save joined, false
+                      fork test, is-equal(joined, false)
+                        hold
+                          push(merged, chunk-record(piece-text))
+                    case none
+                      push(merged, merge-parts(part))
+                save merged-value
+                  make item-values
+                    bind values, merged
+                push(out, pair-of(key, merged-value))
+                turn next
+          miss
+            save key, key
+        push(out, pair-of(key, merge-parts(pair/value)))
+      back pairs-value(out)
+    miss
+      back value
+
+# a value as `JSON.stringify` writes it, none for a value it leaves out (`undefined`)
+task json-of
+  take value, like roll-value
+  like maybe, like text
+
+  sift value
+    case no-value
+      back make none
+    case null-value
+      back make(some, <null>)
+    case text-value
+      link text
+      save quoted, json-quote(text)
+      back make(some, quoted)
+    case number-value
+      link number
+      fork test, is-finite(number)
+        hold
+          save shown, <{number}>
+          back make(some, shown)
+      back make(some, <null>)
+    case flag-value
+      link flag
+      fork test, flag
+        hold
+          back make(some, <true>)
+      back make(some, <false>)
+    case item-values
+      link values
+      save parts, make list
+      walk values
+        take one
+        sift json-of(one)
+          case some
+            link written
+            push(parts, written)
+          case none
+            push(parts, <null>)
+      save whole, <[{join(parts, <,>)}]>
+      back make(some, whole)
+    case pair-values
+      link pairs
+      save parts, make list
+      walk pairs
+        take pair
+        sift json-of(pair/value)
+          case some
+            link written
+            push(parts, <{json-quote(pair/key)}:{written}>)
+          case none
+            turn next
+      save whole, <\{{join(parts, <,>)}\}>
+      back make(some, whole)
+
+# the program's meaning: its parts merged, as JSON
+task meaning-of
+  take program, like roll-value
+  like text
+
+  sift json-of(merge-parts(program))
+    case some
+      link written
+      back written
+    case none
+      back <>

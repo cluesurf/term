@@ -125,14 +125,16 @@ const nameOf = (file: string): string => relative(CODE, file).replace(/^(text|bl
 //   a `check` returns a maybe, like the construct it compiles to. Without saying so it fell to the `like number`
 //   default and every rule ending in one declared a number for a maybe. Three more.
 //
-// the counts on 2026-08-31
-const GRAMMARS = 99
-const PARSES = 81
-const READS = 32
-const MILLS = 32
+// the counts on 2026-08-31, and one more grammar on 2026-10-06: `text/note/mine.tree`, the expression grammar's spec
+// (note/term/mill/03-note-grammar.md). It parses, reads to 268 rule objects, is text only, and its generated reader
+// mills and typechecks, so every count below moved by exactly one grammar
+const GRAMMARS = 100
+const PARSES = 82
+const READS = 33
+const MILLS = 33
 const DROPPING = 0
 // of the MILLS that mill, how many survive the whole front end: resolve, extend, overloads, typecheck
-const COMPILES = 9
+const COMPILES = 10
 // grammars that REFER to a rule they never define, and how many distinct names in total
 const DANGLING = 23
 const DANGLING_NAMES = 86
@@ -141,7 +143,7 @@ const DANGLING_NAMES = 86
 // what makes `term make` able to compile a dialect without being told (format-mill-0009). The sixteen that infer
 // as neither are pure combinators over rules that are still stubs, so they have no leaf to infer from yet.
 const BYTE_ONLY = 6
-const TEXT_ONLY = 8
+const TEXT_ONLY = 9
 const NEITHER = 18
 
 // The TOTAL rule OBJECTS read across every grammar, counting nested children.
@@ -152,7 +154,7 @@ const NEITHER = 18
 // (`grammar.size` counts top-level `mine <name>` entries, and losing a nested construct leaves the name in place
 // with a shorter body). Counting every object, nested ones included, is what actually moves. Same lesson as the
 // per-rule pin in feed-mill-json.ts, one level deeper.
-const RULES = 699
+const RULES = 967
 
 let pass = 0
 let fail = 0

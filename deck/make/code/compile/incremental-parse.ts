@@ -4,7 +4,7 @@
 // changed and reuse the rest, instead of re-lexing the whole file on every keystroke. The blocks partition the source
 // exactly: `blocks.map(b => b.text).join('\n') === source`.
 
-import { hashText } from '@term/make/code/term/hash'
+import { feedLine, finishBlocks, makeBlockSplitter } from '@term/make/code/compile/block-split'
 import { parse } from '@term/make/code/parser/tree'
 import type { Node } from '@term/make/code/parser/tree'
 import type { RootNode, GroupNode } from '@term/make/code/parser/narrow'
@@ -20,58 +20,20 @@ export type TopBlock = {
   hash: string
 }
 
-// is this a top-level definition head: a column-0 line that is neither blank nor a comment
-function isHead(line: string): boolean {
-  return (
-    line.length > 0 &&
-    !line.startsWith(' ') &&
-    !line.startsWith('\t') &&
-    !line.startsWith('#')
-  )
-}
-
-// is this line trivia that rides forward onto the next definition (a blank line or a comment)
-function isLeadingTrivia(line: string): boolean {
-  return line.trim() === '' || line.trimStart().startsWith('#')
-}
-
+// The blocks of a source: a column-0 line that is neither blank nor a comment starts a definition, and the comment /
+// blank run immediately above it rides forward into it, never so far that the block before is left empty. The rule is
+// Term, compile/block-split.tree (self-hosting, 2026-10-06), the one the streaming loader feeds a line at a time
+// (compile/stream.ts), so the two cannot disagree. This splitter was a second copy of it until then: tmp/pair-stream.ts
+// held the two equal, and a head that is ALSO trivia (a line of non-ASCII space, which `trim` empties) once differed
 export function splitTopLevel(source: string): TopBlock[] {
-  const lines = source.split('\n')
+  const splitter = makeBlockSplitter()
   const blocks: TopBlock[] = []
 
-  let start = 0
-  let seenHead = false
-
-  const push = (from: number, to: number): void => {
-    const text = lines.slice(from, to).join('\n')
-    blocks.push({ text, startLine: from, hash: hashText(text) })
+  for (const line of source.split('\n')) {
+    blocks.push(...feedLine(splitter, line))
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    if (isHead(lines[i]!) && seenHead) {
-      // a new definition begins; the comment / blank run immediately above it rides forward into the new block, but
-      // never so far that the block before is left empty. A head that is ALSO trivia (a line of non-ASCII space, which
-      // `trim` empties) used to ride forward whole and leave an empty definition behind, where the streaming splitter
-      // kept it (compile/block-split.tree, found by tmp/pair-stream.ts, 2026-10-04)
-      let boundary = i
-
-      while (
-        boundary > start + 1 &&
-        isLeadingTrivia(lines[boundary - 1]!)
-      ) {
-        boundary--
-      }
-
-      push(start, boundary)
-      start = boundary
-    }
-
-    if (isHead(lines[i]!)) {
-      seenHead = true
-    }
-  }
-
-  push(start, lines.length)
+  blocks.push(finishBlocks(splitter))
 
   return blocks
 }

@@ -1,0 +1,753 @@
+# A TypeScript module, assembled: the tables the emitter reads, then the imports, the statements, the fast and reusing
+# copies, the preludes the code needs, the field-less constants and their guards, and the wake chain, joined.
+#
+# Ported from compile/typescript.ts's `emitTypeScript` (self-hosting, 2026-10-06), which stays as the face and says why
+# each step is shaped as it is. The decisions:
+#   - two steps. `ts-tables` reads the program into the tables the emitter's facts are built from, and the face puts
+#     them in the module state compile/ts-emit.tree reads. `assemble-type-script` then writes the module. Between the two
+#     the face builds the emitter, since its facts are identity-keyed answers of TypeScript faces (compile/place.ts,
+#     ir/facts/bounds.ts, the interval fact, ir/facts/text.ts) and `tsProven` is one of them
+#   - the emitter comes in as tasks: a statement, an unchecked copy, a reusing copy, a case's tag, the fast and reuse task
+#     lists (the very lists the emitter appends to, so a copy that reaches another guarded task is copied too, as the
+#     original's `for ... of` over the live array did), and the flags and constants it raised
+#   - a set is a hash of text to `true`, in insertion order, which is a `Set`'s order
+#   - the wake chain's entries are open JSON records, so the face writes each entry's text (`entryText`, `JSON.stringify`
+#     of whatever keys it has) and hands in the texts by deck, through a task called only where the chain is written,
+#     as the original wrote them there. The chain around them is here
+#   - `JSON.stringify` of a name is term/quote.tree's `json-quote`
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+  find starts-with
+  find substring
+
+load ./node
+  find statement
+  find form-field
+  find variant-field
+  find function-param
+
+load ./route-lower
+  find lower-routes
+
+load ./bind
+  find collect-binds
+  find referenced-binds
+  find bind-target-of
+
+load ./ts-names
+  find to-camel
+  find identity-cases
+
+load ./ts-preludes
+  find exception-class
+  find exception-prelude
+  find form-walk-prelude
+  find maybe-field-prelude
+  find host-value-prelude
+  find int-prelude
+  find equal-prelude
+  find text-prelude
+  find list-prelude
+
+load ../term/quote
+  find json-quote
+
+# what the emitter's facts and the assembly read of a program
+form ts-tables
+  # the program without stub tasks, its `hook` routes lowered
+  link program, like list, like statement
+  # `dock type` handles: Term name to the concrete TypeScript type
+  link opaque, like hash, like text, like text
+  link variants, like hash, like text, like boolean
+  link exceptions, like hash, like text, like boolean
+  link variant-fields, like hash, like text, like list, like variant-field
+  link variant-fields-by-owner, like hash, like text, like hash, like text, like list, like variant-field
+  link record-fields, like hash, like text, like list, like form-field
+  link dock-names, like hash, like text, like boolean
+  link identity, like list, like text
+  link shared-forms, like hash, like text, like boolean
+  link tag-by-owner, like hash, like text, like text
+  link tag-by-variant, like hash, like text, like text
+  link text-by-owner, like hash, like text, like hash, like text, like text
+  link text-by-variant, like hash, like text, like text
+  link function-params, like hash, like text, like list, like function-param
+  link binds, like hash, like text, like statement
+
+# the wake chain's entries of one deck, each already its text
+form wake-group
+  link deck, like text
+  link entries, like list, like text
+
+# what the emitter raised while it wrote the module: the preludes its code needs, the field-less constants by case, and
+# the identity guards by case
+form emit-flags
+  link form-walk-used, like boolean
+  link host-used, like boolean
+  link maybe-field-used, like boolean
+  link int-used, like boolean
+  link equal-used, like boolean
+  link text-used, like boolean
+  link list-used, like boolean
+  link fieldless, like hash, like text, like text
+  link guards, like hash, like text, like text
+
+# ---- reading a statement ----
+
+task is-stub
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      link stub
+      back is-equal(stub, true)
+    miss
+      back false
+
+# the native kind a dock declares: `type` for a `dock type` handle, else empty
+task native-kind-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case native
+      link kind
+      sift kind
+        case some
+          link written
+          back to-text(written)
+        case none
+          back <>
+    miss
+      back <>
+
+# does a record type's chain include `exception`
+task chains-exception
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case record-type
+      link chain
+      save found, false
+      walk chain
+        take link-name
+        fork test, is-equal(link-name, <exception>)
+          hold
+            save found, true
+      back found
+    miss
+      back false
+
+task set-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take name
+    out/set(name, true)
+  back out
+
+# ---- the tables ----
+
+# the tables a program is emitted with. `variants` and `exceptions` are the whole program's (per-module emit), `context`
+# the whole program read and never emitted, `library` a program host code also builds values of, and `per-module`
+# whether the caller handed in `variants`
+task ts-tables
+  take given, like list, like statement
+  take context, like maybe, like list, like statement
+  take variants-given, like list, like text
+  take exceptions-given, like list, like text
+  take library, like boolean
+  take per-module, like boolean
+  take env, like text
+  like ts-tables
+
+  # separate-compilation stubs are typing context only: their owning unit emits the real definition
+  save kept, make list
+  walk given
+    take one
+    fork test, is-equal(is-stub(one), false)
+      hold
+        push(kept, one)
+  save known, make list
+  sift context
+    case some
+      link whole
+      walk whole
+        take one
+        push(known, one)
+    case none
+      save known, known
+  walk kept
+    take one
+    push(known, one)
+
+  save program, lower-routes(kept, env)
+
+  save opaque, make hash
+  save variant-names, set-of(variants-given)
+  save exceptions, set-of(exceptions-given)
+  save variant-fields, make hash
+  save by-owner, make hash
+  save record-fields, make hash
+  save shared-forms, make hash
+  save tag-by-owner, make hash
+  save tag-by-variant, make hash
+  save text-by-owner, make hash
+  save text-by-variant, make hash
+  save function-params, make hash
+
+  walk known
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        fork test, is-equal(native-kind-of(one), <type>)
+          hold
+            opaque/set(alias, module)
+      miss
+        turn next
+
+  walk known
+    take one
+    sift one
+      case record-type
+        link name
+        link variants
+        link text
+        link tag
+        link shared
+        fork test, is-equal(shared, true)
+          hold
+            shared-forms/set(name, true)
+        fork test, is-equal(text, true)
+          hold
+            save own-texts, make hash
+            walk variants
+              take variant
+              save spelled, variant/name
+              sift variant/text
+                case some
+                  link written
+                  save spelled, written
+                case none
+                  save spelled, spelled
+              own-texts/set(variant/name, spelled)
+            text-by-owner/set(name, own-texts)
+            walk variants
+              take variant
+              save spelled, variant/name
+              sift variant/text
+                case some
+                  link written
+                  save spelled, written
+                case none
+                  save spelled, spelled
+              text-by-variant/set(variant/name, spelled)
+        fork test, is-unequal(tag, <>)
+          hold
+            tag-by-owner/set(name, tag)
+            walk variants
+              take variant
+              tag-by-variant/set(variant/name, tag)
+      miss
+        turn next
+
+  walk known
+    take one
+    sift one
+      case function
+        link name
+        link params
+        function-params/set(name, params)
+      miss
+        turn next
+
+  walk known
+    take one
+    sift one
+      case record-type
+        link name
+        link fields
+        link variants
+        fork test, is-equal(variants/length, 0)
+          hold
+            record-fields/set(name, fields)
+        save own, make hash
+        walk variants
+          take variant
+          variant-names/set(variant/name, true)
+          variant-fields/set(variant/name, variant/fields)
+          own/set(variant/name, variant/fields)
+        fork test, is-above(own/keys()/length, 0)
+          hold
+            by-owner/set(name, own)
+        fork test, chains-exception(one)
+          hold
+            exceptions/set(name, true)
+      miss
+        turn next
+
+  save dock-names, make hash
+  walk program
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        fork test, and(is-unequal(native-kind-of(one), <type>), is-equal(starts-with(module, <global:>), false))
+          hold
+            dock-names/set(alias, true)
+      miss
+        turn next
+
+  save identity, make list
+  fork test, is-equal(library, false)
+    hold
+      save identity, identity-cases(program, per-module)
+
+  back
+    make ts-tables
+      bind program, program
+      bind opaque, opaque
+      bind variants, variant-names
+      bind exceptions, exceptions
+      bind variant-fields, variant-fields
+      bind variant-fields-by-owner, by-owner
+      bind record-fields, record-fields
+      bind dock-names, dock-names
+      bind identity, identity
+      bind shared-forms, shared-forms
+      bind tag-by-owner, tag-by-owner
+      bind tag-by-variant, tag-by-variant
+      bind text-by-owner, text-by-owner
+      bind text-by-variant, text-by-variant
+      bind function-params, function-params
+      bind binds, collect-binds(program)
+
+# ---- the module ----
+
+# `<form>:<name>` for a statement that declares a name (a task, a form, a mask), else empty
+task declared-key
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      link name
+      back <function:{name}>
+    case record-type
+      link name
+      back <record-type:{name}>
+    case mask
+      link name
+      back <mask:{name}>
+    miss
+      back <>
+
+# whether a top-level statement is exported: a task that is not `mark private`, a form, a mask, and a constant in
+# per-module emit
+task is-exported
+  take one, like statement
+  take export-constants, like boolean
+  like boolean
+  mark private
+
+  sift one
+    case function
+      link private
+      back is-unequal(private, true)
+    case record-type
+      back true
+    case mask
+      back true
+    case let
+      back export-constants
+    miss
+      back false
+
+# the first task of a name among the statements, or none
+task task-named
+  take statements, like list, like statement
+  take name, like text
+  like maybe, like statement
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case function
+        link task-name
+        fork test, is-equal(task-name, name)
+          hold
+            back make(some, one)
+      miss
+        turn next
+  back make none
+
+task has-text
+  take texts, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk texts
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# the dock import of an alias: the module bound once, read through `any`
+task dock-import
+  take alias, like text
+  take module, like text
+  like text
+  mark private
+
+  back <import * as __dock_{alias} from "{module}"\nconst {alias}: any = __dock_{alias}>
+
+# the module's imports: each `dock load` once by alias, each `<global:X>` declared and aliased, and what the binds the
+# program calls need on this env
+task module-imports
+  take program, like list, like statement
+  take binds, like hash, like text, like statement
+  take env, like text
+  like list, like text
+  mark private
+
+  save dock-aliases, make hash
+  save imports, make list
+
+  walk program
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        fork test, and(is-unequal(native-kind-of(one), <type>), is-equal(starts-with(module, <global:>), false))
+          hold
+            save spelled, to-camel(alias)
+            fork test, dock-aliases/has(spelled)
+              hold
+                turn next
+            dock-aliases/set(spelled, true)
+            push(imports, dock-import(spelled, module))
+      miss
+        turn next
+
+  save declared-globals, make hash
+  walk program
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        fork test, starts-with(module, <global:>)
+          hold
+            save global-name, to-camel(substring(module, 7, module/length))
+            fork test, is-equal(declared-globals/has(global-name), false)
+              hold
+                declared-globals/set(global-name, true)
+                push(imports, <declare const {global-name}: any>)
+            save spelled, to-camel(alias)
+            fork test, and(is-unequal(spelled, global-name), is-equal(dock-aliases/has(spelled), false))
+              hold
+                dock-aliases/set(spelled, true)
+                push(imports, <const {spelled}: any = typeof {global-name} === "undefined" ? undefined : {global-name}>)
+      miss
+        turn next
+
+  save used, referenced-binds(program, binds)
+  walk used/values()
+    take bound
+    sift target-for(bound, env)
+      case some
+        link target
+        walk target/imports
+          take need
+          save need-alias, need/alias
+          fork test, is-unequal(need-alias, <>)
+            hold
+              save spelled, to-camel(need-alias)
+              fork test, is-equal(dock-aliases/has(spelled), false)
+                hold
+                  dock-aliases/set(spelled, true)
+                  push(imports, dock-import(spelled, need/module))
+            miss
+              save line, <import "{need/module}">
+              fork test, is-equal(has-text(imports, line), false)
+                hold
+                  push(imports, line)
+      case none
+        turn next
+  back imports
+
+# a bind's target for this env, else its `javascript` one
+task target-for
+  take bound, like statement
+  take env, like text
+  like maybe, like bind-target
+  mark private
+
+  sift bind-target-of(bound, env)
+    case some
+      link target
+      back make(some, target)
+    case none
+      sift bound
+        case bind
+          link targets
+          walk targets
+            take target
+            fork test, is-equal(target/env, <javascript>)
+              hold
+                back make(some, target)
+          back make none
+        miss
+          back make none
+
+# A TypeScript module from a program read into `tables`: its imports, its statements (the last of each declared name),
+# the fast and reusing copies the emitter asked for, the preludes its code needs, the field-less constants and guards,
+# and the wake chain
+task assemble-type-script
+  take tables, like ts-tables
+  take env, like text
+  take export-constants, like boolean
+  # whether the caller handed a roll to wake, and its groups, each entry written as its text only when the chain is
+  # written, as the original wrote them
+  take wake-given, like boolean
+  take wake-of
+    like task
+      like list, like wake-group
+  take statement-of
+    like task
+      take node, like statement
+      like text
+  take unchecked-of
+    like task
+      take node, like statement
+      take name, like text
+      like text
+  take reusing-of
+    like task
+      take node, like statement
+      like text
+  take tag-of
+    like task
+      take variant, like text
+      like text
+  take fast-tasks
+    like task
+      like list, like text
+  take reuse-tasks
+    like task
+      like list, like text
+  take flags-of
+    like task
+      like emit-flags
+  like text
+
+  save program, tables/program
+  save imports, module-imports(program, tables/binds, env)
+
+  # the last of each declared name: a generated binding's overloads and a recurring interface would be declared twice
+  save emittable, make list
+  walk program
+    take one
+    sift one
+      case native
+        turn next
+      miss
+        push(emittable, one)
+  save last-index, make hash
+  walk emittable
+    take one
+    take index
+    save key, declared-key(one)
+    fork test, is-unequal(key, <>)
+      hold
+        last-index/set(key, index)
+
+  save lines, make list
+  walk emittable
+    take one
+    take index
+    save key, declared-key(one)
+    fork test, and(is-unequal(key, <>), is-unequal(last-index/get(key), index))
+      hold
+        turn next
+    save written, statement-of(one)
+    fork test, is-exported(one, export-constants)
+      hold
+        save written, <export {written}>
+    fork test, is-above(written/length, 0)
+      hold
+        push(lines, written)
+
+  # each task a guarded loop calls unchecked, once more with no overflow checks
+  walk fast-tasks()
+    take name
+    sift task-named(emittable, name)
+      case some
+        link found
+        push(lines, <export {unchecked-of(found, <{name}-fast>)}>)
+      case none
+        turn next
+
+  # each task a reuse site calls, once more building its result in the object it was given
+  walk reuse-tasks()
+    take name
+    sift task-named(emittable, name)
+      case some
+        link found
+        push(lines, <export {reusing-of(found)}>)
+      case none
+        turn next
+
+  save flags, flags-of()
+  save class-prelude, exception-prelude()
+  save prelude, make list
+
+  # the exception class rides in front of the first module that raises or declares one
+  fork test, is-above(tables/exceptions/keys()/length, 0)
+    hold
+      save declares, false
+      walk program
+        take one
+        fork test, chains-exception(one)
+          hold
+            save declares, true
+      fork test, declares
+        hold
+          push(prelude, class-prelude)
+
+  # the form walk raises through the class, so it brings the class when nothing else did
+  fork test, flags/form-walk-used
+    hold
+      fork test, is-equal(has-text(prelude, class-prelude), false)
+        hold
+          save prelude, with-first(prelude, class-prelude)
+      push(prelude, form-walk-prelude())
+
+  fork test, flags/maybe-field-used
+    hold
+      push(prelude, maybe-field-prelude())
+
+  fork test, flags/host-used
+    hold
+      fork test, is-equal(has-text(prelude, class-prelude), false)
+        hold
+          save prelude, with-first(prelude, class-prelude)
+      push(prelude, host-value-prelude())
+
+  fork test, flags/int-used
+    hold
+      push(prelude, int-prelude(has-text(prelude, class-prelude)))
+
+  fork test, flags/equal-used
+    hold
+      push(prelude, equal-prelude())
+
+  fork test, flags/text-used
+    hold
+      push(prelude, text-prelude(join(lines, <\n>)))
+
+  fork test, flags/list-used
+    hold
+      push(prelude, list-prelude(has-text(prelude, class-prelude)))
+
+  # the field-less variants' constants, ahead of every use
+  save fieldless, flags/fieldless
+  walk fieldless/keys()
+    take name
+    push(prelude, <const {fieldless/get(name)} = Object.freeze(\{ {tag-of(name)}: {json-quote(name)} as const \})>)
+
+  # the identity tests of field-less cases, each a type guard so the other branch still narrows
+  save guards, flags/guards
+  walk guards/keys()
+    take name
+    save tag, tag-of(name)
+    save constant, <undefined>
+    fork test, fieldless/has(name)
+      hold
+        save constant, fieldless/get(name)
+    push(prelude, <function {guards/get(name)}(value: \{ {tag}: string \}): value is \{ {tag}: {json-quote(name)} \} \{ return value === {constant} \}>)
+
+  # the wake chain: one `hiveWake` per deck with its entries, then the raise hook, when the program has the hive
+  save woken, make list
+  save has-hive, false
+  sift task-named(program, <hive-wake>)
+    case some
+      save has-hive, true
+    case none
+      save has-hive, false
+  fork test, and(wake-given, has-hive)
+    hold
+      save groups, make list
+      walk wake-of()
+        take group
+        push(groups, <  hiveWake({json-quote(group/deck)}, [{join(group/entries, <, >)}])>)
+      push(woken, <export function wakeHive(): void \{\n{join(groups, <\n>)}\n  ;(globalThis as \{ __termRaise?: (e: unknown) =\> void \}).__termRaise = (e) =\> \{\n    const x = e as \{ host: string; form: string; note: string \}\n    hiveTell(\{ host: x.host, kind: "exception", name: x.form, site: "", base: x \})\n  \}\n\}>)
+
+  # a module that raises through the class without declaring an exception form of its own brings the class too
+  fork test, is-equal(has-text(prelude, class-prelude), false)
+    hold
+      save raises, false
+      save raise-text, <new {exception-class()}(>
+      walk lines
+        take line
+        fork test, contains(line, raise-text)
+          hold
+            save raises, true
+      fork test, raises
+        hold
+          save prelude, with-first(prelude, class-prelude)
+
+  save parts, make list
+  walk prelude
+    take one
+    push(parts, one)
+  walk lines
+    take one
+    push(parts, one)
+  walk woken
+    take one
+    push(parts, one)
+  save body, <{join(parts, <\n\n>)}\n>
+
+  fork test, is-above(imports/length, 0)
+    hold
+      back <{join(imports, <\n>)}\n\n{body}>
+  back body
+
+# a list with one text put first
+task with-first
+  take texts, like list, like text
+  take first, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, first)
+  walk texts
+    take one
+    push(out, one)
+  back out

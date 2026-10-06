@@ -1,0 +1,3582 @@
+# The dependent type core: a bidirectional type checker by normalization-by-evaluation, implementing the decided kernel
+# (note/research/vibe/computation/plans/12-type-systems.md): a predicative, cumulative, universe-polymorphic hierarchy
+# (an impredicative bottom), quantities 0 / 1 / many with linear usage checking, an identity type with refl and J and
+# an observational function and pair extensionality that COMPUTES, dependent pairs, self types, metavariables solved by
+# Miller pattern unification, transparent definitions unfolded under a fuel, propositional truncations, and the circle.
+#
+# Ported from check/judge.ts (self-hosting, 2026-10-06), which stays as the face. THE REPRESENTATION:
+#   - A CLOSURE IS DEFUNCTIONALIZED. The original's closure was `{ env, body }` or `{ native: (arg) => Value }`, and a
+#     form holding a task over its own type is refused by strict positivity. Every native closure the original built is
+#     one CASE of `kernel-closure`, holding exactly what its function captured, and `close-over` runs that function's
+#     body: `id-pi` (an identity at a pi type, pointwise), `id-pair-second` (the second of a non-dependent product's
+#     identity), `id-sigma-second` (the second of a dependent pair's identity, transported along the first's proof), and
+#     `motive-outer` / `motive-inner` (the transport motive `\ y. \ _. B y`). No function sits inside a value
+#   - THE MODULE STATE IS ONE `mark shared` RECORD, `judge-state`: the metavariables' types and solutions, the next id,
+#     the transparent definitions, the unfold fuel, the truncation constructors and whether the circle is on. Every task
+#     that reads or writes it takes it first. The face holds the one instance, and its resets are the original's
+#   - A MULTIPLICITY is `like unknown`, the original's values themselves (`0`, `1`, `'many'`), so a term or a value
+#     crosses to TypeScript and back unconverted
+#   - A KERNEL ERROR raises `failure` with its kind in front of its message: `kernel-type:` for the original's
+#     `TypeError`, `kernel-fault:` for a plain `Error`. The face throws the original's class with the message alone
+#   - The original restored the unfold fuel in a `finally` when a conversion threw. Nothing inside the kernel catches a
+#     throw that passed through a conversion, so the face restores it where a call into the kernel throws, which is the
+#     same value. The congruence closure's `RangeError` (too many terms) is an `overflow` flag that stops the closure at
+#     the point the throw did. The metavariable solver's catch-all is a guard that catches everything, as it did
+#   - `normal-term`'s opaque set is a test handed in
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/exception
+  find exception
+  find failure
+
+load @term/base/text
+  find substring
+  find starts-with
+  find last-index-of
+  find char-code-at
+
+# ---- the state ----
+
+form judge-state
+  mark shared
+  link meta-type, like hash, like number, like kernel-value
+  link meta-solution, like hash, like number, like kernel-value
+  link next-meta, like number
+  link definition, like hash, like text, like kernel-value
+  link unfold-fuel, like number
+  link truncation, like hash, like text, like number
+  link circle, like boolean
+
+task new-state
+  like judge-state
+
+  back
+    make judge-state
+      bind meta-type, make hash
+      bind meta-solution, make hash
+      bind next-meta, 0
+      bind definition, make hash
+      bind unfold-fuel, 0
+      bind truncation, make hash
+      bind circle, false
+
+task define-constant
+  take st, like judge-state
+  take name, like text
+  take val, like kernel-value
+
+  st/definition/set(name, val)
+
+task register-truncation
+  take st, like judge-state
+  take name, like text
+  take arity, like number
+
+  st/truncation/set(name, arity)
+
+task is-truncation-constructor
+  take st, like judge-state
+  take name, like text
+  like boolean
+
+  back st/truncation/has(name)
+
+task enable-circle
+  take st, like judge-state
+
+  save st/circle, true
+
+task reset-definitions
+  take st, like judge-state
+
+  save st/definition, make hash
+  save st/truncation, make hash
+  save st/circle, false
+
+task reset-metas
+  take st, like judge-state
+
+  save st/meta-type, make hash
+  save st/meta-solution, make hash
+  save st/next-meta, 0
+
+task unfold-fuel-of
+  take st, like judge-state
+  like number
+
+  back st/unfold-fuel
+
+task set-unfold-fuel
+  take st, like judge-state
+  take fuel, like number
+
+  save st/unfold-fuel, fuel
+
+# ---- a call into the kernel, from a caller that tells its errors apart ----
+
+# what the elaborator raises to abandon a construct it cannot represent, which is not a kernel error: the original's
+# `Decline` class, a `failure` with `decline:` in front of its reason, as a kernel error carries its kind. The task is
+# left to the surface checker, with the reason
+task decline
+  take reason, like text
+
+  halt <decline:{reason}>
+
+# the answer of a kernel step: its value, or which of the three ways it failed. `kernel-type` is the original's
+# `TypeError` (the kernel's own), `kernel-fault` a plain `Error`, `kernel-decline` the elaborator's `Decline`, each with
+# its message as the original read it
+form kernel-answer
+  case kernel-ok
+    link value, like unknown
+  case kernel-type
+    link message, like text
+  case kernel-fault
+    link message, like text
+  case kernel-decline
+    link reason, like text
+
+# run a kernel step and answer how it went, the unfold fuel put back on any raise as judge.ts's `kernel()` puts it
+# back. A raise that is none of the three passes on as it came, except a `failure` with another note, which is raised
+# again with that note
+task kernel-call
+  take st, like judge-state
+  take step
+    like task
+      like unknown
+      halt failure
+  like kernel-answer
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save value, step()
+    back
+      make kernel-ok
+        bind value, value
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    sift problem
+      case failure
+        link note
+        fork test, starts-with(note, <decline:>)
+          hold
+            back
+              make kernel-decline
+                bind reason, substring(note, 8, note/length)
+        fork test, starts-with(note, <kernel-type:>)
+          hold
+            back
+              make kernel-type
+                bind message, substring(note, 12, note/length)
+        fork test, starts-with(note, <kernel-fault:>)
+          hold
+            back
+              make kernel-fault
+                bind message, substring(note, 13, note/length)
+        halt <{note}>
+  back
+    make kernel-fault
+      bind message, <unreachable>
+
+# ---- universe levels ----
+
+form level
+  link constant, like number
+  link vars, like hash, like text, like number
+
+task lit-level
+  take n, like number
+  like level
+
+  back
+    make level
+      bind constant, n
+      bind vars, make hash
+
+task var-level
+  take name, like text
+  like level
+
+  save vars, make hash
+  vars/set(name, 0)
+  back
+    make level
+      bind constant, 0
+      bind vars, vars
+
+task shift-level
+  take lev, like level
+  take by, like number
+  like level
+
+  save vars, make hash
+  walk lev/vars/keys()
+    take key
+    vars/set(key, add(lev/vars/get(key), by))
+  back
+    make level
+      bind constant, add(lev/constant, by)
+      bind vars, vars
+
+task succ-level
+  take lev, like level
+  like level
+
+  back shift-level(lev, 1)
+
+task larger
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-above(b, a)
+    hold
+      back b
+  back a
+
+task max-level
+  take a, like level
+  take b, like level
+  like level
+
+  save vars, make hash
+  walk a/vars/keys()
+    take key
+    vars/set(key, a/vars/get(key))
+  walk b/vars/keys()
+    take key
+    fork test, vars/has(key)
+      hold
+        vars/set(key, larger(vars/get(key), b/vars/get(key)))
+      miss
+        vars/set(key, b/vars/get(key))
+  back
+    make level
+      bind constant, larger(a/constant, b/constant)
+      bind vars, vars
+
+# the bottom universe is impredicative: a level is literally Type 0 (constant 0, no variables)
+task is-bottom-level
+  take lev, like level
+  like boolean
+  mark private
+
+  back and(is-equal(lev/constant, 0), is-equal(lev/vars/keys()/length, 0))
+
+task pi-level
+  take domain-level, like level
+  take codomain-level, like level
+  like level
+
+  fork test, is-bottom-level(codomain-level)
+    hold
+      back lit-level(0)
+  back max-level(domain-level, codomain-level)
+
+# a <= b for every instantiation of the level variables
+task leq-level
+  take a, like level
+  take b, like level
+  like boolean
+  mark private
+
+  fork test, is-above(a/constant, b/constant)
+    hold
+      back false
+  walk a/vars/keys()
+    take key
+    fork test, is-equal(b/vars/has(key), false)
+      hold
+        back false
+    fork test, is-below(b/vars/get(key), a/vars/get(key))
+      hold
+        back false
+  back true
+
+task eq-level
+  take a, like level
+  take b, like level
+  like boolean
+
+  back and(leq-level(a, b), leq-level(b, a))
+
+task show-level
+  take lev, like level
+  like text
+  mark private
+
+  save atoms, make list
+  walk lev/vars/keys()
+    take key
+    save offset, lev/vars/get(key)
+    fork test, is-equal(offset, 0)
+      hold
+        push(atoms, key)
+      miss
+        push(atoms, <{key}+{offset}>)
+  fork test, is-equal(atoms/length, 0)
+    hold
+      back <{lev/constant}>
+  save shown, make list
+  fork test, is-above(lev/constant, 0)
+    hold
+      push(shown, <{lev/constant}>)
+  walk atoms
+    take atom
+    push(shown, atom)
+  fork test, is-equal(shown/length, 1)
+    hold
+      back get(shown, 0)
+  back <max({join(shown, <, >)})>
+
+task one-var-level
+  take name, like text
+  take offset, like number
+  like level
+  mark private
+
+  save vars, make hash
+  vars/set(name, offset)
+  back
+    make level
+      bind constant, 0
+      bind vars, vars
+
+# substitute a level variable with a level (instantiating a polymorphic definition)
+task subst-level
+  take lev, like level
+  take name, like text
+  take replacement, like level
+  like level
+  mark private
+
+  save result
+    make level
+      bind constant, lev/constant
+      bind vars, make hash
+  walk lev/vars/keys()
+    take key
+    save offset, lev/vars/get(key)
+    fork test, is-equal(key, name)
+      hold
+        save result, max-level(result, shift-level(replacement, offset))
+      miss
+        save result, max-level(result, one-var-level(key, offset))
+  back result
+
+# ---- multiplicities: the original's values, `0`, `1` and `'many'` ----
+
+task mult-zero
+  like unknown
+  mark private
+
+  back 0
+
+task mult-one
+  like unknown
+  mark private
+
+  back 1
+
+task mult-many
+  like unknown
+  mark private
+
+  back <many>
+
+task add-mult
+  take a, like unknown
+  take b, like unknown
+  like unknown
+  mark private
+
+  fork test, is-equal(a, 0)
+    hold
+      back b
+  fork test, is-equal(b, 0)
+    hold
+      back a
+  back mult-many()
+
+task mul-mult
+  take a, like unknown
+  take b, like unknown
+  like unknown
+  mark private
+
+  fork test, or(is-equal(a, 0), is-equal(b, 0))
+    hold
+      back mult-zero()
+  fork test, is-equal(a, 1)
+    hold
+      back b
+  fork test, is-equal(b, 1)
+    hold
+      back a
+  back mult-many()
+
+task fits-mult
+  take use, like unknown
+  take need, like unknown
+  like boolean
+  mark private
+
+  fork test, is-equal(need, <many>)
+    hold
+      back true
+  back is-equal(use, need)
+
+task show-mult
+  take m, like unknown
+  like text
+  mark private
+
+  back <{m}>
+
+# ---- terms, values, eliminators, closures ----
+
+form kernel-term
+  mark tag, name tag
+  case var
+    link index, like number
+  case meta
+    link id, like number
+  case const
+    link name, like text
+  case type
+    link level, like level
+  case pi
+    link mult, like unknown
+    link domain, like kernel-term
+    link codomain, like kernel-term
+  # `name` is what the source called the bound variable. Read only to print an error, never to decide one
+  case lam
+    link body, like kernel-term
+    link name
+      like maybe, like text
+      need false
+  case app
+    link fun, like kernel-term
+    link arg, like kernel-term
+  case ann
+    link term, like kernel-term
+    link type, like kernel-term
+  case id
+    link type, like kernel-term
+    link left, like kernel-term
+    link right, like kernel-term
+  case refl
+    link type, like kernel-term
+    link value, like kernel-term
+  case j
+    link proof, like kernel-term
+    link motive, like kernel-term
+    link base, like kernel-term
+    link level, like level
+  case sigma
+    link mult, like unknown
+    link domain, like kernel-term
+    link codomain, like kernel-term
+  case pair
+    link first, like kernel-term
+    link second, like kernel-term
+  case fst
+    link pair, like kernel-term
+  case snd
+    link pair, like kernel-term
+  case self
+    link body, like kernel-term
+
+form kernel-closure
+  case term-closure
+    link env, like list, like kernel-value
+    link body, like kernel-term
+  # Id ((a:S) -> T a) f g at `a`: Id (T a) (f a) (g a)
+  case id-pi
+    link codomain, like kernel-closure
+    link left, like kernel-value
+    link right, like kernel-value
+  # the second of a non-dependent product's identity: Id B p.2 q.2, whatever the argument
+  case id-pair-second
+    link second-type, like kernel-value
+    link left, like kernel-value
+    link right, like kernel-value
+  # the transport motive `\ y. \ _. B y`, its outer binder
+  case motive-outer
+    link codomain, like kernel-closure
+  # and its inner one, `y` fixed
+  case motive-inner
+    link codomain, like kernel-closure
+    link y, like kernel-value
+  # the second of a dependent pair's identity at `h`: Id (B q.1) (J h motive p.2) q.2
+  case id-sigma-second
+    link second-type, like kernel-value
+    link motive, like kernel-value
+    link second-left, like kernel-value
+    link second-right, like kernel-value
+
+form kernel-elim
+  mark tag, name e
+  case app
+    link arg, like kernel-value
+  case j
+    link motive, like kernel-value
+    link base, like kernel-value
+  case fst
+  case snd
+
+form kernel-value
+  mark tag, name v
+  case type
+    link level, like level
+  case pi
+    link mult, like unknown
+    link domain, like kernel-value
+    link codomain, like kernel-closure
+  case lam
+    link body, like kernel-closure
+  case neutral
+    link head, like number
+    link spine, like list, like kernel-elim
+  # a rigid constant from the signature, stuck like a neutral
+  case rigid
+    link name, like text
+    link spine, like list, like kernel-elim
+  # a flexible neutral headed by an unsolved metavariable; collapses to its solution once solved
+  case flex
+    link id, like number
+    link spine, like list, like kernel-elim
+  case id
+    link type, like kernel-value
+    link left, like kernel-value
+    link right, like kernel-value
+  case refl
+    link type, like kernel-value
+    link value, like kernel-value
+  case sigma
+    link mult, like unknown
+    link domain, like kernel-value
+    link codomain, like kernel-closure
+  case pair
+    link first, like kernel-value
+    link second, like kernel-value
+  case self
+    link body, like kernel-closure
+
+# ---- building ----
+
+task t-var
+  take i, like number
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/var
+      bind index, i
+
+task t-meta
+  take i, like number
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/meta
+      bind id, i
+
+task t-const
+  take n, like text
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/const
+      bind name, n
+
+task t-type
+  take lev, like level
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/type
+      bind level, lev
+
+task t-app
+  take f, like kernel-term
+  take x, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/app
+      bind fun, f
+      bind arg, x
+
+task t-lam
+  take b, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/lam
+      bind body, b
+
+task t-fst
+  take p, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/fst
+      bind pair, p
+
+task t-snd
+  take p, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/snd
+      bind pair, p
+
+task t-j
+  take p, like kernel-term
+  take m, like kernel-term
+  take b, like kernel-term
+  take lev, like level
+  like kernel-term
+  mark private
+
+  back
+    make kernel-term/j
+      bind proof, p
+      bind motive, m
+      bind base, b
+      bind level, lev
+
+task neutral-var
+  take lv, like number
+  like kernel-value
+
+  save sp, make list
+  back
+    make kernel-value/neutral
+      bind head, lv
+      bind spine, sp
+
+task v-type
+  take lev, like level
+  like kernel-value
+  mark private
+
+  back
+    make kernel-value/type
+      bind level, lev
+
+task v-lam
+  take cl, like kernel-closure
+  like kernel-value
+  mark private
+
+  back
+    make kernel-value/lam
+      bind body, cl
+
+task term-closure
+  take env, like list, like kernel-value
+  take b, like kernel-term
+  like kernel-closure
+  mark private
+
+  back
+    make kernel-closure/term-closure
+      bind env, env
+      bind body, b
+
+# a spine with one more eliminator, a new list
+task with-elim
+  take sp, like list, like kernel-elim
+  take el, like kernel-elim
+  like list, like kernel-elim
+  mark private
+
+  save out, make list
+  walk sp
+    take one
+    push(out, one)
+  push(out, el)
+  back out
+
+task e-app
+  take x, like kernel-value
+  like kernel-elim
+  mark private
+
+  back
+    make kernel-elim/app
+      bind arg, x
+
+task e-j
+  take m, like kernel-value
+  take b, like kernel-value
+  like kernel-elim
+  mark private
+
+  back
+    make kernel-elim/j
+      bind motive, m
+      bind base, b
+
+task e-fst
+  like kernel-elim
+  mark private
+
+  back make kernel-elim/fst
+
+task e-snd
+  like kernel-elim
+  mark private
+
+  back make kernel-elim/snd
+
+# a neutral, rigid or flexible head with one more eliminator, none for any other value
+task extend-stuck
+  take val, like kernel-value
+  take el, like kernel-elim
+  like maybe, like kernel-value
+  mark private
+
+  sift val
+    case neutral
+      link head
+      link spine
+      save made
+        make kernel-value/neutral
+          bind head, head
+          bind spine, with-elim(spine, el)
+      back make(some, made)
+    case rigid
+      link name
+      link spine
+      save made
+        make kernel-value/rigid
+          bind name, name
+          bind spine, with-elim(spine, el)
+      back make(some, made)
+    case flex
+      link id
+      link spine
+      save made
+        make kernel-value/flex
+          bind id, id
+          bind spine, with-elim(spine, el)
+      back make(some, made)
+    miss
+      back make none
+
+# ---- the metacontext ----
+
+# unfold a rigid constant that has a definition, replaying its spine onto the definition's value
+task unfold-rigid
+  take st, like judge-state
+  take name, like text
+  take sp, like list, like kernel-elim
+  like kernel-value
+  mark private
+
+  save result, st/definition/get(name)
+  walk sp
+    take el
+    save result, replay(st, result, el)
+  back result
+
+task replay
+  take st, like judge-state
+  take result, like kernel-value
+  take el, like kernel-elim
+  like kernel-value
+  mark private
+
+  sift el
+    case app
+      link arg
+      back apply-value(st, result, arg)
+    case fst
+      back apply-fst(st, result)
+    case snd
+      back apply-snd(st, result)
+    case j
+      link motive
+      link base
+      back apply-j(st, result, motive, base)
+
+task rigid-name
+  take val, like kernel-value
+  like maybe, like text
+  mark private
+
+  sift val
+    case rigid
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+task rigid-spine
+  take val, like kernel-value
+  like list, like kernel-elim
+  mark private
+
+  sift val
+    case rigid
+      link spine
+      back spine
+    miss
+      save none, make list
+      back none
+
+# head unfolds `whnf` takes in its loop
+task whnf-fuel
+  like number
+  mark private
+
+  back 262144
+
+# reduce a value to weak head normal form, unfolding transparent definitions at the head and following metavariable
+# solutions, bounded by the fuel
+task whnf
+  take st, like judge-state
+  take val, like kernel-value
+  like kernel-value
+
+  save current, force(st, val)
+  save fuel, whnf-fuel()
+  walk test
+    hook test, true
+    hook hold
+      sift rigid-name(current)
+        case some
+          link name
+          fork test, is-equal(st/definition/has(name), false)
+            hold
+              back current
+          fork test, is-maximum(fuel, 0)
+            hold
+              back current
+          save fuel, subtract(fuel, 1)
+          save current, force(st, unfold-rigid(st, name, rigid-spine(current)))
+        case none
+          back current
+  back current
+
+# a fresh metavariable of the given type, as a term ready to splice into elaboration
+task fresh-meta
+  take st, like judge-state
+  take ty, like kernel-value
+  like kernel-term
+
+  save id, st/next-meta
+  save st/next-meta, add(id, 1)
+  st/meta-type/set(id, ty)
+  back t-meta(id)
+
+# follow a flexible value to its solution, applying the recorded spine, as far as it resolves
+task force
+  take st, like judge-state
+  take val, like kernel-value
+  like kernel-value
+
+  sift val
+    case flex
+      link id
+      link spine
+      fork test, is-equal(st/meta-solution/has(id), false)
+        hold
+          back val
+      save result, st/meta-solution/get(id)
+      walk spine
+        take el
+        save result, replay(st, result, el)
+      back force(st, result)
+    miss
+      back val
+
+# ---- Miller pattern unification ----
+
+# a partial renaming from outer de Bruijn levels (the spine's variables) to the solution's local levels
+form renaming
+  link codomain, like number
+  link map, like hash, like number, like number
+
+# invert a spine: only a list of distinct bound variables is a pattern
+task invert-spine
+  take st, like judge-state
+  take sp, like list, like kernel-elim
+  like maybe, like renaming
+  mark private
+
+  save map, make hash
+  save codomain, 0
+  walk sp
+    take el
+    sift el
+      case app
+        link arg
+        save forced, force(st, arg)
+        sift forced
+          case neutral
+            link head
+            link spine
+            fork test, is-unequal(spine/length, 0)
+              hold
+                back make none
+            fork test, map/has(head)
+              hold
+                back make none
+            map/set(head, codomain)
+            save codomain, add(codomain, 1)
+          miss
+            back make none
+      miss
+        back make none
+  save found
+    make renaming
+      bind codomain, codomain
+      bind map, map
+  back make(some, found)
+
+# a renaming under one new binder: the fresh outer variable maps to a fresh local one
+task lift-renaming
+  take ren, like renaming
+  take outer-level, like number
+  like renaming
+  mark private
+
+  save map, make hash
+  walk ren/map/keys()
+    take key
+    map/set(key, ren/map/get(key))
+  map/set(outer-level, ren/codomain)
+  back
+    make renaming
+      bind codomain, add(ren/codomain, 1)
+      bind map, map
+
+# rename a value into a term under the solution's binders. Refuses an escaping variable (the scope check) or the
+# metavariable itself (the occurs check)
+task rename-value
+  take st, like judge-state
+  take meta-id, like number
+  take ren, like renaming
+  take lv, like number
+  take given, like kernel-value
+  like kernel-term
+  mark private
+
+  save val, force(st, given)
+  sift val
+    case type
+      link level
+      back t-type(level)
+    case flex
+      link id
+      link spine
+      fork test, is-equal(id, meta-id)
+        hold
+          halt <kernel-type:occurs check: a metavariable appears in its own solution>
+      back rename-spine(st, meta-id, ren, lv, t-meta(id), spine)
+    case neutral
+      link head
+      link spine
+      fork test, is-equal(ren/map/has(head), false)
+        hold
+          halt <kernel-type:a variable escapes the scope of the metavariable solution>
+      save local, ren/map/get(head)
+      back rename-spine(st, meta-id, ren, lv, t-var(subtract(subtract(ren/codomain, local), 1)), spine)
+    case rigid
+      link name
+      link spine
+      back rename-spine(st, meta-id, ren, lv, t-const(name), spine)
+    case pi
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/pi
+          bind mult, mult
+          bind domain, rename-value(st, meta-id, ren, lv, domain)
+          bind codomain, rename-under(st, meta-id, ren, lv, codomain)
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/sigma
+          bind mult, mult
+          bind domain, rename-value(st, meta-id, ren, lv, domain)
+          bind codomain, rename-under(st, meta-id, ren, lv, codomain)
+    case lam
+      link body
+      back t-lam(rename-under(st, meta-id, ren, lv, body))
+    case self
+      link body
+      back
+        make kernel-term/self
+          bind body, rename-under(st, meta-id, ren, lv, body)
+    case pair
+      link first
+      link second
+      back
+        make kernel-term/pair
+          bind first, rename-value(st, meta-id, ren, lv, first)
+          bind second, rename-value(st, meta-id, ren, lv, second)
+    case id
+      link type
+      link left
+      link right
+      back
+        make kernel-term/id
+          bind type, rename-value(st, meta-id, ren, lv, type)
+          bind left, rename-value(st, meta-id, ren, lv, left)
+          bind right, rename-value(st, meta-id, ren, lv, right)
+    case refl
+      link type
+      link value
+      back
+        make kernel-term/refl
+          bind type, rename-value(st, meta-id, ren, lv, type)
+          bind value, rename-value(st, meta-id, ren, lv, value)
+
+task rename-under
+  take st, like judge-state
+  take meta-id, like number
+  take ren, like renaming
+  take lv, like number
+  take cl, like kernel-closure
+  like kernel-term
+  mark private
+
+  back rename-value(st, meta-id, lift-renaming(ren, lv), add(lv, 1), close-over(st, cl, neutral-var(lv)))
+
+task rename-spine
+  take st, like judge-state
+  take meta-id, like number
+  take ren, like renaming
+  take lv, like number
+  take head-term, like kernel-term
+  take sp, like list, like kernel-elim
+  like kernel-term
+  mark private
+
+  save trm, head-term
+  walk sp
+    take el
+    sift el
+      case app
+        link arg
+        save trm, t-app(trm, rename-value(st, meta-id, ren, lv, arg))
+      case fst
+        save trm, t-fst(trm)
+      case snd
+        save trm, t-snd(trm)
+      case j
+        link motive
+        link base
+        save trm, t-j(trm, rename-value(st, meta-id, ren, lv, motive), rename-value(st, meta-id, ren, lv, base), lit-level(0))
+  back trm
+
+# solve `?id spine := rhs`. False when the spine is not a pattern or the scope or occurs check fails: the original
+# caught every throw of the renaming, and so does this guard
+task solve-meta
+  take st, like judge-state
+  take lv, like number
+  take id, like number
+  take sp, like list, like kernel-elim
+  take rhs, like kernel-value
+  like boolean
+  mark private
+
+  sift invert-spine(st, sp)
+    case none
+      back false
+    case some
+      link ren
+      save renamed, rename-or-none(st, id, ren, lv, rhs)
+      sift renamed
+        case none
+          back false
+        case some
+          link body
+          save solution, body
+          save i, 0
+          walk test
+            hook test, is-below(i, ren/codomain)
+            hook hold
+              save solution, t-lam(solution)
+              save i, add(i, 1)
+          save empty, make list
+          st/meta-solution/set(id, evaluate(st, empty, solution))
+          back true
+
+task rename-or-none
+  take st, like judge-state
+  take id, like number
+  take ren, like renaming
+  take lv, like number
+  take rhs, like kernel-value
+  like maybe, like kernel-term
+  mark private
+
+  fork
+    mark unsafe
+    save renamed, rename-value(st, id, ren, lv, rhs)
+    back make(some, renamed)
+  halt take
+    take problem
+    back make none
+  back make none
+
+# ---- evaluation ----
+
+# an environment's value at an index, READ AS JAVASCRIPT READS AN ARRAY: past the end it is `undefined`, and nothing
+# fails until something reads it. The elaborator builds closures whose environments a body indexes past and never uses
+# (a proof in deck/base/code/list/linked-list.tree verifies only so), and a later use fails as the original did, reading
+# `v` of `undefined`. The native backends index as they do, and stop at the read
+bind value-at
+  take values, like list, like kernel-value
+  take index, like number
+  like kernel-value
+  case node
+    text <$values[$index]!>
+  case browser
+    text <$values[$index]!>
+  case rust
+    text <$values.borrow()[$index as usize].clone()>
+  case swift
+    text <$values[Int($index)]>
+  case kotlin
+    text <$values[$index.toInt()]>
+
+task evaluate
+  take st, like judge-state
+  take env, like list, like kernel-value
+  take trm, like kernel-term
+  like kernel-value
+
+  sift trm
+    case var
+      link index
+      back value-at(env, index)
+    case meta
+      link id
+      save sp, make list
+      save flex
+        make kernel-value/flex
+          bind id, id
+          bind spine, sp
+      back force(st, flex)
+    case const
+      link name
+      save sp, make list
+      back
+        make kernel-value/rigid
+          bind name, name
+          bind spine, sp
+    case type
+      link level
+      back v-type(level)
+    case pi
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-value/pi
+          bind mult, mult
+          bind domain, evaluate(st, env, domain)
+          bind codomain, term-closure(env, codomain)
+    case lam
+      link body
+      back v-lam(term-closure(env, body))
+    case app
+      link fun
+      link arg
+      back apply-value(st, evaluate(st, env, fun), evaluate(st, env, arg))
+    case ann
+      link term
+      back evaluate(st, env, term)
+    case id
+      link type
+      link left
+      link right
+      back id-value(st, evaluate(st, env, type), evaluate(st, env, left), evaluate(st, env, right))
+    case refl
+      link type
+      link value
+      back
+        make kernel-value/refl
+          bind type, evaluate(st, env, type)
+          bind value, evaluate(st, env, value)
+    case j
+      link proof
+      link motive
+      link base
+      back apply-j(st, evaluate(st, env, proof), evaluate(st, env, motive), evaluate(st, env, base))
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-value/sigma
+          bind mult, mult
+          bind domain, evaluate(st, env, domain)
+          bind codomain, term-closure(env, codomain)
+    case pair
+      link first
+      link second
+      back
+        make kernel-value/pair
+          bind first, evaluate(st, env, first)
+          bind second, evaluate(st, env, second)
+    case fst
+      link pair
+      back apply-fst(st, evaluate(st, env, pair))
+    case snd
+      link pair
+      back apply-snd(st, evaluate(st, env, pair))
+    case self
+      link body
+      back
+        make kernel-value/self
+          bind body, term-closure(env, body)
+
+task apply-fst
+  take st, like judge-state
+  take given, like kernel-value
+  like kernel-value
+
+  save val, force(st, given)
+  sift val
+    case pair
+      link first
+      back first
+    miss
+      sift extend-stuck(val, e-fst())
+        case some
+          link stuck
+          back stuck
+        case none
+          halt <kernel-fault:fst of a non-pair>
+  halt <kernel-fault:fst of a non-pair>
+
+task apply-snd
+  take st, like judge-state
+  take given, like kernel-value
+  like kernel-value
+
+  save val, force(st, given)
+  sift val
+    case pair
+      link second
+      back second
+    miss
+      sift extend-stuck(val, e-snd())
+        case some
+          link stuck
+          back stuck
+        case none
+          halt <kernel-fault:snd of a non-pair>
+  halt <kernel-fault:snd of a non-pair>
+
+# does the term reference the variable bound `depth` binders outward
+task uses-var
+  take trm, like kernel-term
+  take depth, like number
+  like boolean
+  mark private
+
+  sift trm
+    case var
+      link index
+      back is-equal(index, depth)
+    case pi
+      link domain
+      link codomain
+      back or(uses-var(domain, depth), uses-var(codomain, add(depth, 1)))
+    case sigma
+      link domain
+      link codomain
+      back or(uses-var(domain, depth), uses-var(codomain, add(depth, 1)))
+    case lam
+      link body
+      back uses-var(body, add(depth, 1))
+    case self
+      link body
+      back uses-var(body, add(depth, 1))
+    case app
+      link fun
+      link arg
+      back or(uses-var(fun, depth), uses-var(arg, depth))
+    case pair
+      link first
+      link second
+      back or(uses-var(first, depth), uses-var(second, depth))
+    case fst
+      link pair
+      back uses-var(pair, depth)
+    case snd
+      link pair
+      back uses-var(pair, depth)
+    case ann
+      link term
+      link type
+      back or(uses-var(term, depth), uses-var(type, depth))
+    case id
+      link type
+      link left
+      link right
+      back or(or(uses-var(type, depth), uses-var(left, depth)), uses-var(right, depth))
+    case refl
+      link type
+      link value
+      back or(uses-var(type, depth), uses-var(value, depth))
+    case j
+      link proof
+      link motive
+      link base
+      back or(or(uses-var(proof, depth), uses-var(motive, depth)), uses-var(base, depth))
+    miss
+      back false
+
+# a codomain depends on its argument unless it is a closed term body that never mentions the bound variable
+task depends-on-argument
+  take cl, like kernel-closure
+  like boolean
+  mark private
+
+  sift cl
+    case term-closure
+      link body
+      back uses-var(body, 0)
+    miss
+      back true
+
+# the observational identity, which makes extensionality COMPUTE:
+#   Id ((a:S) -> T a) f g   ==   (a:S) -> Id (T a) (f a) (g a)
+#   Id ((x:A) * B) p q       ==   (Id A p.1 q.1) * (Id B p.2 q.2), transported along the first proof when B depends
+task id-value
+  take st, like judge-state
+  take ty, like kernel-value
+  take left-value, like kernel-value
+  take right-value, like kernel-value
+  like kernel-value
+  mark private
+
+  sift ty
+    case pi
+      link mult
+      link domain
+      link codomain
+      save pointwise
+        make kernel-closure/id-pi
+          bind codomain, codomain
+          bind left, left-value
+          bind right, right-value
+      back
+        make kernel-value/pi
+          bind mult, mult
+          bind domain, domain
+          bind codomain, pointwise
+    case sigma
+      link domain
+      link codomain
+      save first-left, apply-fst(st, left-value)
+      save first-right, apply-fst(st, right-value)
+      save first-id, id-value(st, domain, first-left, first-right)
+      fork test, is-equal(depends-on-argument(codomain), false)
+        hold
+          save second-type, close-over(st, codomain, first-left)
+          save second
+            make kernel-closure/id-pair-second
+              bind second-type, second-type
+              bind left, left-value
+              bind right, right-value
+          back
+            make kernel-value/sigma
+              bind mult, mult-many()
+              bind domain, first-id
+              bind codomain, second
+      save second-type-at-right, close-over(st, codomain, first-right)
+      save second-left, apply-snd(st, left-value)
+      save second-right, apply-snd(st, right-value)
+      save outer
+        make kernel-closure/motive-outer
+          bind codomain, codomain
+      save motive, v-lam(outer)
+      save second
+        make kernel-closure/id-sigma-second
+          bind second-type, second-type-at-right
+          bind motive, motive
+          bind second-left, second-left
+          bind second-right, second-right
+      back
+        make kernel-value/sigma
+          bind mult, mult-many()
+          bind domain, first-id
+          bind codomain, second
+    miss
+      back
+        make kernel-value/id
+          bind type, ty
+          bind left, left-value
+          bind right, right-value
+
+# a closure applied to a value: a term closure evaluated in its environment extended by the value, and a native one's
+# function run on what it captured
+task close-over
+  take st, like judge-state
+  take cl, like kernel-closure
+  take x, like kernel-value
+  like kernel-value
+
+  sift cl
+    case term-closure
+      link env
+      link body
+      save extended, make list
+      push(extended, x)
+      walk env
+        take one
+        push(extended, one)
+      back evaluate(st, extended, body)
+    case id-pi
+      link codomain
+      link left
+      link right
+      back id-value(st, close-over(st, codomain, x), apply-value(st, left, x), apply-value(st, right, x))
+    case id-pair-second
+      link second-type
+      link left
+      link right
+      back id-value(st, second-type, apply-snd(st, left), apply-snd(st, right))
+    case motive-outer
+      link codomain
+      save inner
+        make kernel-closure/motive-inner
+          bind codomain, codomain
+          bind y, x
+      back v-lam(inner)
+    case motive-inner
+      link codomain
+      link y
+      back close-over(st, codomain, y)
+    case id-sigma-second
+      link second-type
+      link motive
+      link second-left
+      link second-right
+      back id-value(st, second-type, apply-j(st, x, motive, second-left), second-right)
+
+task apply-value
+  take st, like judge-state
+  take given, like kernel-value
+  take x, like kernel-value
+  like kernel-value
+
+  save fn, force(st, given)
+  sift fn
+    case lam
+      link body
+      back close-over(st, body, x)
+    case rigid
+      link name
+      link spine
+      # the circle's computation rules, once a signature has enabled them
+      sift reduce-circle(st, name, spine, x)
+        case some
+          link circle
+          back circle
+        case none
+          save made
+            make kernel-value/rigid
+              bind name, name
+              bind spine, with-elim(spine, e-app(x))
+          back made
+    miss
+      sift extend-stuck(fn, e-app(x))
+        case some
+          link stuck
+          back stuck
+        case none
+          halt <kernel-fault:applied a non-function>
+  halt <kernel-fault:applied a non-function>
+
+# the circle's rules: `circleRec A b l circleBase --> b` and `circleApLoop A b l --> l`, none when the application is no
+# complete redex
+task reduce-circle
+  take st, like judge-state
+  take name, like text
+  take sp, like list, like kernel-elim
+  take x, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  fork test, is-equal(st/circle, false)
+    hold
+      back make none
+  fork test, and(is-equal(name, <circleRec>), is-equal(sp/length, 3))
+    hold
+      save scrutinee, force(st, x)
+      sift scrutinee
+        case rigid
+          link scrutinee-name
+          fork test, is-equal(scrutinee-name, <circleBase>)
+            hold
+              save b, get(sp, 1)
+              sift b
+                case app
+                  link arg
+                  back make(some, arg)
+                miss
+                  back make none
+          back make none
+        miss
+          back make none
+  fork test, and(is-equal(name, <circleApLoop>), is-equal(sp/length, 2))
+    hold
+      back make(some, x)
+  back make none
+
+task apply-j
+  take st, like judge-state
+  take given, like kernel-value
+  take motive, like kernel-value
+  take base, like kernel-value
+  like kernel-value
+  mark private
+
+  save proof, force(st, given)
+  sift proof
+    case refl
+      back base
+    miss
+      sift extend-stuck(proof, e-j(motive, base))
+        case some
+          link stuck
+          back stuck
+        case none
+          halt <kernel-fault:J on a non-identity>
+  halt <kernel-fault:J on a non-identity>
+
+# ---- quoting ----
+
+task quote-spine
+  take st, like judge-state
+  take lv, like number
+  take head-term, like kernel-term
+  take sp, like list, like kernel-elim
+  like kernel-term
+  mark private
+
+  save trm, head-term
+  walk sp
+    take el
+    sift el
+      case app
+        link arg
+        save trm, t-app(trm, quote(st, lv, arg))
+      case fst
+        save trm, t-fst(trm)
+      case snd
+        save trm, t-snd(trm)
+      case j
+        link motive
+        link base
+        save trm, t-j(trm, quote(st, lv, motive), quote(st, lv, base), lit-level(0))
+  back trm
+
+task quote
+  take st, like judge-state
+  take lv, like number
+  take given, like kernel-value
+  like kernel-term
+
+  save val, force(st, given)
+  sift val
+    case type
+      link level
+      back t-type(level)
+    case flex
+      link id
+      link spine
+      back quote-spine(st, lv, t-meta(id), spine)
+    case pi
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/pi
+          bind mult, mult
+          bind domain, quote(st, lv, domain)
+          bind codomain, quote(st, add(lv, 1), close-over(st, codomain, neutral-var(lv)))
+    case lam
+      link body
+      back t-lam(quote(st, add(lv, 1), close-over(st, body, neutral-var(lv))))
+    case id
+      link type
+      link left
+      link right
+      back
+        make kernel-term/id
+          bind type, quote(st, lv, type)
+          bind left, quote(st, lv, left)
+          bind right, quote(st, lv, right)
+    case refl
+      link type
+      link value
+      back
+        make kernel-term/refl
+          bind type, quote(st, lv, type)
+          bind value, quote(st, lv, value)
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/sigma
+          bind mult, mult
+          bind domain, quote(st, lv, domain)
+          bind codomain, quote(st, add(lv, 1), close-over(st, codomain, neutral-var(lv)))
+    case pair
+      link first
+      link second
+      back
+        make kernel-term/pair
+          bind first, quote(st, lv, first)
+          bind second, quote(st, lv, second)
+    case self
+      link body
+      back
+        make kernel-term/self
+          bind body, quote(st, add(lv, 1), close-over(st, body, neutral-var(lv)))
+    case neutral
+      link head
+      link spine
+      back quote-spine(st, lv, t-var(subtract(subtract(lv, head), 1)), spine)
+    case rigid
+      link name
+      link spine
+      back quote-spine(st, lv, t-const(name), spine)
+
+# ---- the normal form to rewrite in ----
+
+# how deep `normal-term` nests before it quotes what is left
+task normal-depth
+  like number
+  mark private
+
+  back 256
+
+# Every transparent definition unfolded, throughout, except a constant `opaque` names and a call whose unfolding only
+# gets STUCK, which stay as written. Every step is a conversion, so the term is convertible to the value
+task normal-term
+  take st, like judge-state
+  take lv, like number
+  take val, like kernel-value
+  take opaque
+    like task
+      take name, like text
+      like boolean
+  take depth, like number
+  like kernel-term
+
+  fork test, is-above(depth, normal-depth())
+    hold
+      back quote(st, lv, val)
+  save head-value, head-normal(st, lv, val, opaque)
+  sift head-value
+    case rigid
+      link name
+      link spine
+      back normal-spine(st, lv, t-const(name), spine, opaque, depth)
+    case neutral
+      link head
+      link spine
+      back normal-spine(st, lv, t-var(subtract(subtract(lv, head), 1)), spine, opaque, depth)
+    case lam
+      link body
+      back t-lam(normal-term(st, add(lv, 1), close-over(st, body, neutral-var(lv)), opaque, add(depth, 1)))
+    case pair
+      link first
+      link second
+      back
+        make kernel-term/pair
+          bind first, normal-term(st, lv, first, opaque, add(depth, 1))
+          bind second, normal-term(st, lv, second, opaque, add(depth, 1))
+    miss
+      back quote(st, lv, head-value)
+
+# a match, or the kernel's `cond`, left standing: it waits on a value that is not known
+task is-match
+  take val, like kernel-value
+  like boolean
+  mark private
+
+  sift val
+    case rigid
+      link name
+      back or(starts-with(name, <match__>), is-equal(name, <cond>))
+    miss
+      back false
+
+task is-defined-rigid
+  take st, like judge-state
+  take val, like kernel-value
+  like boolean
+  mark private
+
+  sift val
+    case rigid
+      link name
+      back st/definition/has(name)
+    miss
+      back false
+
+task is-flex-or-lam
+  take val, like kernel-value
+  like boolean
+  mark private
+
+  sift val
+    case flex
+      back true
+    case lam
+      back true
+    miss
+      back false
+
+task is-neutral-on-branch
+  take st, like judge-state
+  take val, like kernel-value
+  like boolean
+  mark private
+
+  sift val
+    case neutral
+      link spine
+      back applied-to-a-branch(st, spine)
+    miss
+      back false
+
+# unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is STUCK
+task head-normal
+  take st, like judge-state
+  take lv, like number
+  take val, like kernel-value
+  take opaque
+    like task
+      take name, like text
+      like boolean
+  like kernel-value
+  mark private
+
+  save current, force(st, val)
+  save fuel, whnf-fuel()
+  walk test
+    hook test, true
+    hook hold
+      sift rigid-name(current)
+        case some
+          link name
+          fork test, or(is-equal(st/definition/has(name), false), opaque(name))
+            hold
+              back current
+          fork test, is-maximum(fuel, 0)
+            hold
+              back current
+          save fuel, subtract(fuel, 1)
+          save next, force(st, unfold-rigid(st, name, rigid-spine(current)))
+          # a match is a definition too: it computes on a constructor, and on anything else it is stuck
+          walk test
+            hook test, and(and(is-match(next), is-defined-rigid(st, next)), is-above(fuel, 0))
+            hook hold
+              save fuel, subtract(fuel, 1)
+              sift rigid-name(next)
+                case some
+                  link inner
+                  save next, force(st, unfold-rigid(st, inner, rigid-spine(next)))
+                case none
+                  save next, next
+          # a definition whose value is a function with nothing applied to it stays its name
+          fork test, or(or(is-flex-or-lam(next), is-neutral-on-branch(st, next)), or(is-match(next), applies-an-argument(st, lv, current, next)))
+            hold
+              back current
+          save current, next
+        case none
+          back current
+  back current
+
+# is `next` one of `call`'s arguments, applied to more: a match on that argument that could not compute
+task applies-an-argument
+  take st, like judge-state
+  take lv, like number
+  take call, like kernel-value
+  take next, like kernel-value
+  like boolean
+  mark private
+
+  save next-spine, rigid-spine(next)
+  sift rigid-name(next)
+    case none
+      back false
+    case some
+      link next-name
+      fork test, is-equal(next-spine/length, 0)
+        hold
+          back false
+      save arguments-of, make hash
+      walk rigid-spine(call)
+        take el
+        sift el
+          case app
+            link arg
+            sift whnf(st, arg)
+              case lam
+                save nothing, 0
+              miss
+                arguments-of/set(show-term(quote(st, lv, arg)), true)
+          miss
+            turn next
+      save k, 0
+      walk test
+        hook test, is-below(k, next-spine/length)
+        hook hold
+          fork test, applied-to-a-branch(st, slice-from(next-spine, k))
+            hold
+              save prefix
+                make kernel-value/rigid
+                  bind name, next-name
+                  bind spine, slice-to(next-spine, k)
+              fork test, arguments-of/has(show-term(quote(st, lv, prefix)))
+                hold
+                  back true
+          save k, add(k, 1)
+      back false
+
+task slice-from
+  take sp, like list, like kernel-elim
+  take from, like number
+  like list, like kernel-elim
+  mark private
+
+  save out, make list
+  walk sp
+    take el
+    take at
+    fork test, is-minimum(at, from)
+      hold
+        push(out, el)
+  back out
+
+task slice-to
+  take sp, like list, like kernel-elim
+  take stop, like number
+  like list, like kernel-elim
+  mark private
+
+  save out, make list
+  walk sp
+    take el
+    take at
+    fork test, is-below(at, stop)
+      hold
+        push(out, el)
+  back out
+
+# a spine holding a lambda: a match applies its subject to a motive and branches
+task applied-to-a-branch
+  take st, like judge-state
+  take sp, like list, like kernel-elim
+  like boolean
+  mark private
+
+  walk sp
+    take el
+    sift el
+      case app
+        link arg
+        sift force(st, arg)
+          case lam
+            back true
+          miss
+            turn next
+      miss
+        turn next
+  back false
+
+# a head under its applications, each argument normalized; any other elimination quoted as it stands
+task normal-spine
+  take st, like judge-state
+  take lv, like number
+  take head-term, like kernel-term
+  take sp, like list, like kernel-elim
+  take opaque
+    like task
+      take name, like text
+      like boolean
+  take depth, like number
+  like kernel-term
+  mark private
+
+  walk sp
+    take el
+    sift el
+      case app
+        turn next
+      miss
+        back quote-spine(st, lv, head-term, sp)
+  save trm, head-term
+  walk sp
+    take el
+    sift el
+      case app
+        link arg
+        save trm, t-app(trm, normal-term(st, lv, arg, opaque, add(depth, 1)))
+      miss
+        turn next
+  back trm
+
+# ---- conversion ----
+
+task max-unfold
+  like number
+  mark private
+
+  back 1024
+
+task convert-spine
+  take st, like judge-state
+  take lv, like number
+  take a, like list, like kernel-elim
+  take b, like list, like kernel-elim
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take x
+    take i
+    save y, get(b, i)
+    sift x
+      case app
+        link arg
+        save left-arg, arg
+        sift y
+          case app
+            link arg
+            fork test, is-equal(convert(st, lv, left-arg, arg), false)
+              hold
+                back false
+          miss
+            back false
+      case j
+        link motive
+        link base
+        save left-motive, motive
+        save left-base, base
+        sift y
+          case j
+            link motive
+            link base
+            fork test, or(is-equal(convert(st, lv, left-motive, motive), false), is-equal(convert(st, lv, left-base, base), false))
+              hold
+                back false
+          miss
+            back false
+      case fst
+        sift y
+          case fst
+            turn next
+          miss
+            back false
+      case snd
+        sift y
+          case snd
+            turn next
+          miss
+            back false
+  back true
+
+# two values' kinds, so `convert` can ask of a pair what the original asked with `a.v === ... && b.v === ...`
+task kind-of
+  take val, like kernel-value
+  like text
+  mark private
+
+  back val/v
+
+task convert
+  take st, like judge-state
+  take lv, like number
+  take given-a, like kernel-value
+  take given-b, like kernel-value
+  like boolean
+
+  save a, force(st, given-a)
+  save b, force(st, given-b)
+  save ka, kind-of(a)
+  save kb, kind-of(b)
+
+  # metavariable solving by Miller pattern unification
+  sift a
+    case flex
+      link id
+      link spine
+      save a-id, id
+      save a-spine, spine
+      sift b
+        case flex
+          link id
+          link spine
+          fork test, is-equal(a-id, id)
+            hold
+              back convert-spine(st, lv, a-spine, spine)
+          # flex-flex with different heads: either orientation
+          fork test, solve-meta(st, lv, a-id, a-spine, b)
+            hold
+              back true
+          back solve-meta(st, lv, id, spine, a)
+        miss
+          back solve-meta(st, lv, a-id, a-spine, b)
+    miss
+      save nothing, 0
+  sift b
+    case flex
+      link id
+      link spine
+      back solve-meta(st, lv, id, spine, a)
+    miss
+      save nothing, 0
+
+  fork test, and(is-equal(ka, <type>), is-equal(kb, <type>))
+    hold
+      back eq-level(level-of(a), level-of(b))
+  fork test, and(is-equal(ka, <pi>), is-equal(kb, <pi>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), convert(st, lv, domain-of(a), domain-of(b))), convert(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv))))
+  fork test, or(is-equal(ka, <lam>), is-equal(kb, <lam>))
+    hold
+      back convert(st, add(lv, 1), apply-value(st, a, neutral-var(lv)), apply-value(st, b, neutral-var(lv)))
+  fork test, and(is-equal(ka, <sigma>), is-equal(kb, <sigma>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), convert(st, lv, domain-of(a), domain-of(b))), convert(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv))))
+  # eta for pairs: compare componentwise, a neutral pair through its projections
+  fork test, or(is-equal(ka, <pair>), is-equal(kb, <pair>))
+    hold
+      back and(convert(st, lv, apply-fst(st, a), apply-fst(st, b)), convert(st, lv, apply-snd(st, a), apply-snd(st, b)))
+  fork test, and(is-equal(ka, <self>), is-equal(kb, <self>))
+    hold
+      back convert(st, add(lv, 1), close-over(st, body-of(a), neutral-var(lv)), close-over(st, body-of(b), neutral-var(lv)))
+  fork test, and(is-equal(ka, <id>), is-equal(kb, <id>))
+    hold
+      back and(and(convert(st, lv, id-type-of(a), id-type-of(b)), convert(st, lv, id-left-of(a), id-left-of(b))), convert(st, lv, id-right-of(a), id-right-of(b)))
+  fork test, and(is-equal(ka, <refl>), is-equal(kb, <refl>))
+    hold
+      back convert(st, lv, refl-value-of(a), refl-value-of(b))
+  fork test, and(is-equal(ka, <neutral>), is-equal(kb, <neutral>))
+    hold
+      fork test, is-unequal(neutral-head-of(a), neutral-head-of(b))
+        hold
+          back false
+      back convert-spine(st, lv, spine-of(a), spine-of(b))
+
+  fork test, and(is-equal(ka, <rigid>), is-equal(kb, <rigid>))
+    hold
+      save a-name, rigid-name-of(a)
+      save a-spine, spine-of(a)
+      save b-spine, spine-of(b)
+      # PROOF IRRELEVANCE for a propositional truncation: everything but the proof, at exactly the constructor's arity
+      fork test, and(is-equal(a-name, rigid-name-of(b)), and(st/truncation/has(a-name), and(and(is-equal(st/truncation/get(a-name), a-spine/length), is-equal(a-spine/length, b-spine/length)), is-minimum(a-spine/length, 1))))
+        hold
+          back convert-spine(st, lv, slice-to(a-spine, subtract(a-spine/length, 1)), slice-to(b-spine, subtract(b-spine/length, 1)))
+      # rigid constants: the fast structural path first
+      fork test, and(and(is-equal(a-name, rigid-name-of(b)), is-equal(a-spine/length, b-spine/length)), convert-spine(st, lv, a-spine, b-spine))
+        hold
+          back true
+
+  # the whole chain of transparent heads unfolded in one step; a head still unfoldable after `whnf` spent its fuel
+  fork test, is-defined-rigid(st, a)
+    hold
+      save unfolded, whnf(st, a)
+      fork test, is-defined-rigid(st, unfolded)
+        hold
+          back false
+      back convert-unfolding(st, lv, unfolded, b)
+  fork test, is-defined-rigid(st, b)
+    hold
+      save unfolded, whnf(st, b)
+      fork test, is-defined-rigid(st, unfolded)
+        hold
+          back false
+      back convert-unfolding(st, lv, a, unfolded)
+  back false
+
+# convert after a delta unfold, charging fuel so a self-referential definition cannot loop the checker. The original
+# gave the fuel back in a `finally`. The face gives it back where a call into the kernel throws
+task convert-unfolding
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  like boolean
+  mark private
+
+  fork test, is-minimum(st/unfold-fuel, max-unfold())
+    hold
+      back false
+  save st/unfold-fuel, add(st/unfold-fuel, 1)
+  save answer, convert(st, lv, a, b)
+  save st/unfold-fuel, subtract(st/unfold-fuel, 1)
+  back answer
+
+# ---- the fields of a value, read by its kind ----
+
+task level-of
+  take val, like kernel-value
+  like level
+  mark private
+
+  sift val
+    case type
+      link level
+      back level
+    miss
+      back lit-level(0)
+
+task mult-of
+  take val, like kernel-value
+  like unknown
+  mark private
+
+  sift val
+    case pi
+      link mult
+      back mult
+    case sigma
+      link mult
+      back mult
+    miss
+      back mult-zero()
+
+task domain-of
+  take val, like kernel-value
+  like kernel-value
+  mark private
+
+  sift val
+    case pi
+      link domain
+      back domain
+    case sigma
+      link domain
+      back domain
+    miss
+      back val
+
+task codomain-of
+  take val, like kernel-value
+  like kernel-closure
+  mark private
+
+  sift val
+    case pi
+      link codomain
+      back codomain
+    case sigma
+      link codomain
+      back codomain
+    miss
+      save none, make list
+      back term-closure(none, t-var(0))
+
+task body-of
+  take val, like kernel-value
+  like kernel-closure
+  mark private
+
+  sift val
+    case self
+      link body
+      back body
+    case lam
+      link body
+      back body
+    miss
+      save none, make list
+      back term-closure(none, t-var(0))
+
+task id-type-of
+  take val, like kernel-value
+  like kernel-value
+  mark private
+
+  sift val
+    case id
+      link type
+      back type
+    case refl
+      link type
+      back type
+    miss
+      back val
+
+task id-left-of
+  take val, like kernel-value
+  like kernel-value
+  mark private
+
+  sift val
+    case id
+      link left
+      back left
+    miss
+      back val
+
+task id-right-of
+  take val, like kernel-value
+  like kernel-value
+  mark private
+
+  sift val
+    case id
+      link right
+      back right
+    miss
+      back val
+
+task refl-value-of
+  take val, like kernel-value
+  like kernel-value
+  mark private
+
+  sift val
+    case refl
+      link value
+      back value
+    miss
+      back val
+
+task neutral-head-of
+  take val, like kernel-value
+  like number
+  mark private
+
+  sift val
+    case neutral
+      link head
+      back head
+    miss
+      back -1
+
+task spine-of
+  take val, like kernel-value
+  like list, like kernel-elim
+  mark private
+
+  sift val
+    case neutral
+      link spine
+      back spine
+    case rigid
+      link spine
+      back spine
+    case flex
+      link spine
+      back spine
+    miss
+      save none, make list
+      back none
+
+task rigid-name-of
+  take val, like kernel-value
+  like text
+  mark private
+
+  sift val
+    case rigid
+      link name
+      back name
+    miss
+      back <>
+
+# are two values definitionally equal
+task are-convertible
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  like boolean
+
+  back convert(st, lv, a, b)
+
+# ---- conversion modulo hypotheses ----
+
+# like `convert`, but at every node also accepting the two values when they match a hypothesis equation, in either
+# orientation, by definitional equality
+task matches-hypothesis
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  take hyps, like list, like list, like kernel-value
+  like boolean
+  mark private
+
+  walk hyps
+    take hyp
+    save l, get(hyp, 0)
+    save r, get(hyp, 1)
+    fork test, or(and(convert(st, lv, a, l), convert(st, lv, b, r)), and(convert(st, lv, a, r), convert(st, lv, b, l)))
+      hold
+        back true
+  fork test, is-below(hyps/length, 2)
+    hold
+      back false
+  back congruent(st, lv, a, b, hyps)
+
+# the most terms the congruence closure keeps
+task congruence-terms
+  like number
+  mark private
+
+  back 256
+
+# a node of the closure: an application's head and its arguments' nodes, when it is one
+form congruence-shape
+  link head, like text
+  link args, like list, like number
+
+# the closure's state. `overflow` is the original's `RangeError`: once set, everything stops and the answer is false
+form congruence
+  mark shared
+  link nodes, like list, like kernel-value
+  link shapes, like list, like maybe, like congruence-shape
+  link parents, like list, like number
+  link overflow, like boolean
+
+task node-of
+  take st, like judge-state
+  take lv, like number
+  take cg, like congruence
+  take val, like kernel-value
+  like number
+  mark private
+
+  walk cg/nodes
+    take node
+    take at
+    fork test, convert(st, lv, node, val)
+      hold
+        back at
+  fork test, is-minimum(cg/nodes/length, congruence-terms())
+    hold
+      save cg/overflow, true
+      back -1
+  save at, cg/nodes/length
+  push(cg/nodes, val)
+  push(cg/parents, at)
+  save no-shape, make none
+  push(cg/shapes, no-shape)
+  save forced, force(st, val)
+  save head, <>
+  save has-head, false
+  sift forced
+    case neutral
+      link head-level
+      save head, <#{head-level}>
+      save has-head, true
+    case rigid
+      link name
+      save head, name
+      save has-head, true
+    miss
+      save has-head, false
+  save sp, spine-of(forced)
+  fork test, and(has-head, is-above(sp/length, 0))
+    hold
+      save all-app, true
+      walk sp
+        take el
+        sift el
+          case app
+            turn next
+          miss
+            save all-app, false
+      fork test, all-app
+        hold
+          save args, make list
+          walk sp
+            take el
+            sift el
+              case app
+                link arg
+                save node, node-of(st, lv, cg, arg)
+                fork test, cg/overflow
+                  hold
+                    back -1
+                push(args, node)
+              miss
+                turn next
+          save shape
+            make congruence-shape
+              bind head, head
+              bind args, args
+          save some-shape, make(some, shape)
+          save cg/shapes/{at}, some-shape
+  back at
+
+task find-root
+  take cg, like congruence
+  take start, like number
+  like number
+  mark private
+
+  save n, start
+  walk test
+    hook test, is-unequal(get(cg/parents, n), n)
+    hook hold
+      save cg/parents/{n}, get(cg/parents, get(cg/parents, n))
+      save n, get(cg/parents, n)
+  back n
+
+task join-nodes
+  take cg, like congruence
+  take x, like number
+  take y, like number
+  like boolean
+  mark private
+
+  save rx, find-root(cg, x)
+  save ry, find-root(cg, y)
+  fork test, is-equal(rx, ry)
+    hold
+      back false
+  save cg/parents/{rx}, ry
+  back true
+
+# CONGRUENCE CLOSURE over the hypotheses: each hypothesis joins its two sides, and two applications of one head join when
+# their arguments are joined, until nothing changes
+task congruent
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  take hyps, like list, like list, like kernel-value
+  like boolean
+  mark private
+
+  save cg
+    make congruence
+      bind nodes, make list
+      bind shapes, make list
+      bind parents, make list
+      bind overflow, false
+  save na, node-of(st, lv, cg, a)
+  fork test, cg/overflow
+    hold
+      back false
+  save nb, node-of(st, lv, cg, b)
+  fork test, cg/overflow
+    hold
+      back false
+  walk hyps
+    take hyp
+    save nl, node-of(st, lv, cg, get(hyp, 0))
+    fork test, cg/overflow
+      hold
+        back false
+    save nr, node-of(st, lv, cg, get(hyp, 1))
+    fork test, cg/overflow
+      hold
+        back false
+    join-nodes(cg, nl, nr)
+
+  save changed, true
+  walk test
+    hook test, and(changed, is-unequal(find-root(cg, na), find-root(cg, nb)))
+    hook hold
+      save changed, false
+      save i, 0
+      walk test
+        hook test, is-below(i, cg/nodes/length)
+        hook hold
+          save j, add(i, 1)
+          walk test
+            hook test, is-below(j, cg/nodes/length)
+            hook hold
+              sift get(cg/shapes, i)
+                case some
+                  link si
+                  sift get(cg/shapes, j)
+                    case some
+                      link sj
+                      fork test, and(and(is-unequal(find-root(cg, i), find-root(cg, j)), is-equal(si/head, sj/head)), and(is-equal(si/args/length, sj/args/length), args-joined(cg, si/args, sj/args)))
+                        hold
+                          fork test, join-nodes(cg, i, j)
+                            hold
+                              save changed, true
+                    case none
+                      save nothing, 0
+                case none
+                  save nothing, 0
+              save j, add(j, 1)
+          save i, add(i, 1)
+  back is-equal(find-root(cg, na), find-root(cg, nb))
+
+task args-joined
+  take cg, like congruence
+  take left, like list, like number
+  take right, like list, like number
+  like boolean
+  mark private
+
+  walk left
+    take arg
+    take k
+    fork test, is-unequal(find-root(cg, arg), find-root(cg, get(right, k)))
+      hold
+        back false
+  back true
+
+task convert-mod-spine
+  take st, like judge-state
+  take lv, like number
+  take a, like list, like kernel-elim
+  take b, like list, like kernel-elim
+  take hyps, like list, like list, like kernel-value
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take x
+    take i
+    save y, get(b, i)
+    sift x
+      case app
+        link arg
+        save left-arg, arg
+        sift y
+          case app
+            link arg
+            fork test, is-equal(convert-mod(st, lv, left-arg, arg, hyps), false)
+              hold
+                back false
+          miss
+            back false
+      case j
+        link motive
+        link base
+        save left-motive, motive
+        save left-base, base
+        sift y
+          case j
+            link motive
+            link base
+            fork test, or(is-equal(convert-mod(st, lv, left-motive, motive, hyps), false), is-equal(convert-mod(st, lv, left-base, base, hyps), false))
+              hold
+                back false
+          miss
+            back false
+      case fst
+        sift y
+          case fst
+            turn next
+          miss
+            back false
+      case snd
+        sift y
+          case snd
+            turn next
+          miss
+            back false
+  back true
+
+task convert-mod-unfolding
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  take hyps, like list, like list, like kernel-value
+  like boolean
+  mark private
+
+  fork test, is-minimum(st/unfold-fuel, max-unfold())
+    hold
+      back false
+  save st/unfold-fuel, add(st/unfold-fuel, 1)
+  save answer, convert-mod(st, lv, a, b, hyps)
+  save st/unfold-fuel, subtract(st/unfold-fuel, 1)
+  back answer
+
+task convert-mod
+  take st, like judge-state
+  take lv, like number
+  take given-a, like kernel-value
+  take given-b, like kernel-value
+  take hyps, like list, like list, like kernel-value
+  like boolean
+
+  fork test, convert(st, lv, given-a, given-b)
+    hold
+      back true
+  fork test, matches-hypothesis(st, lv, given-a, given-b, hyps)
+    hold
+      back true
+  save a, force(st, given-a)
+  save b, force(st, given-b)
+  save ka, kind-of(a)
+  save kb, kind-of(b)
+
+  fork test, and(is-equal(ka, <pi>), is-equal(kb, <pi>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), convert-mod(st, lv, domain-of(a), domain-of(b), hyps)), convert-mod(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv)), hyps))
+  fork test, or(is-equal(ka, <lam>), is-equal(kb, <lam>))
+    hold
+      back convert-mod(st, add(lv, 1), apply-value(st, a, neutral-var(lv)), apply-value(st, b, neutral-var(lv)), hyps)
+  fork test, and(is-equal(ka, <sigma>), is-equal(kb, <sigma>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), convert-mod(st, lv, domain-of(a), domain-of(b), hyps)), convert-mod(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv)), hyps))
+  fork test, or(is-equal(ka, <pair>), is-equal(kb, <pair>))
+    hold
+      back and(convert-mod(st, lv, apply-fst(st, a), apply-fst(st, b), hyps), convert-mod(st, lv, apply-snd(st, a), apply-snd(st, b), hyps))
+  fork test, and(is-equal(ka, <self>), is-equal(kb, <self>))
+    hold
+      back convert-mod(st, add(lv, 1), close-over(st, body-of(a), neutral-var(lv)), close-over(st, body-of(b), neutral-var(lv)), hyps)
+  fork test, and(is-equal(ka, <id>), is-equal(kb, <id>))
+    hold
+      back and(and(convert-mod(st, lv, id-type-of(a), id-type-of(b), hyps), convert-mod(st, lv, id-left-of(a), id-left-of(b), hyps)), convert-mod(st, lv, id-right-of(a), id-right-of(b), hyps))
+  fork test, and(is-equal(ka, <refl>), is-equal(kb, <refl>))
+    hold
+      back convert-mod(st, lv, refl-value-of(a), refl-value-of(b), hyps)
+  fork test, and(and(is-equal(ka, <neutral>), is-equal(kb, <neutral>)), is-equal(neutral-head-of(a), neutral-head-of(b)))
+    hold
+      back convert-mod-spine(st, lv, spine-of(a), spine-of(b), hyps)
+  fork test, and(and(and(is-equal(ka, <rigid>), is-equal(kb, <rigid>)), and(is-equal(rigid-name-of(a), rigid-name-of(b)), is-equal(spine-of(a)/length, spine-of(b)/length))), convert-mod-spine(st, lv, spine-of(a), spine-of(b), hyps))
+    hold
+      back true
+  fork test, is-defined-rigid(st, a)
+    hold
+      back convert-mod-unfolding(st, lv, unfold-rigid(st, rigid-name-of(a), spine-of(a)), b, hyps)
+  fork test, is-defined-rigid(st, b)
+    hold
+      back convert-mod-unfolding(st, lv, a, unfold-rigid(st, rigid-name-of(b), spine-of(b)), hyps)
+  back false
+
+task convertible-modulo
+  take st, like judge-state
+  take lv, like number
+  take a, like kernel-value
+  take b, like kernel-value
+  take hyps, like list, like list, like kernel-value
+  like boolean
+
+  back convert-mod(st, lv, a, b, hyps)
+
+# subtyping with universe cumulativity
+task subtype
+  take st, like judge-state
+  take lv, like number
+  take given-a, like kernel-value
+  take given-b, like kernel-value
+  like boolean
+  mark private
+
+  save a, force(st, given-a)
+  save b, force(st, given-b)
+  save ka, kind-of(a)
+  save kb, kind-of(b)
+  fork test, or(is-equal(ka, <flex>), is-equal(kb, <flex>))
+    hold
+      back convert(st, lv, a, b)
+  fork test, and(is-equal(ka, <type>), is-equal(kb, <type>))
+    hold
+      back leq-level(level-of(a), level-of(b))
+  fork test, and(is-equal(ka, <pi>), is-equal(kb, <pi>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), convert(st, lv, domain-of(a), domain-of(b))), subtype(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv))))
+  fork test, and(is-equal(ka, <sigma>), is-equal(kb, <sigma>))
+    hold
+      back and(and(is-equal(mult-of(a), mult-of(b)), subtype(st, lv, domain-of(a), domain-of(b))), subtype(st, add(lv, 1), close-over(st, codomain-of(a), neutral-var(lv)), close-over(st, codomain-of(b), neutral-var(lv))))
+  back convert(st, lv, a, b)
+
+# ---- context and usage ----
+
+# `globals` is the signature: each postulated constant's type. `names` is what the source called each bound variable,
+# '' where it had no name, read only to print an error
+form context
+  link level, like number
+  link env, like list, like kernel-value
+  link types, like list, like kernel-value
+  link mults, like list, like unknown
+  link names, like list, like text
+  link globals, like hash, like text, like kernel-value
+
+task empty-context
+  like context
+
+  back
+    make context
+      bind level, 0
+      bind env, make list
+      bind types, make list
+      bind mults, make list
+      bind names, make list
+      bind globals, make hash
+
+# a context whose signature postulates each named constant at its closed type
+form signature-entry
+  link name, like text
+  link type, like kernel-term
+
+task context-with-signature
+  take st, like judge-state
+  take signature, like list, like signature-entry
+  like context
+
+  save globals, make hash
+  save empty, make list
+  walk signature
+    take entry
+    globals/set(entry/name, evaluate(st, empty, entry/type))
+  back
+    make context
+      bind level, 0
+      bind env, make list
+      bind types, make list
+      bind mults, make list
+      bind names, make list
+      bind globals, globals
+
+task bind-context
+  take ctx, like context
+  take m, like unknown
+  take ty, like kernel-value
+  take name, like text
+  like context
+
+  save env, make list
+  push(env, neutral-var(ctx/level))
+  walk ctx/env
+    take one
+    push(env, one)
+  save types, make list
+  push(types, ty)
+  walk ctx/types
+    take one
+    push(types, one)
+  save mults, make list
+  push(mults, m)
+  walk ctx/mults
+    take one
+    push(mults, one)
+  save names, make list
+  push(names, name)
+  walk ctx/names
+    take one
+    push(names, one)
+  back
+    make context
+      bind level, add(ctx/level, 1)
+      bind env, env
+      bind types, types
+      bind mults, mults
+      bind names, names
+      bind globals, ctx/globals
+
+task zero-usage
+  take n, like number
+  like list, like unknown
+  mark private
+
+  save out, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, n)
+    hook hold
+      push(out, mult-zero())
+      save i, add(i, 1)
+  back out
+
+task add-usage
+  take a, like list, like unknown
+  take b, like list, like unknown
+  like list, like unknown
+  mark private
+
+  save out, make list
+  walk a
+    take m
+    take i
+    push(out, add-mult(m, get(b, i)))
+  back out
+
+task scale-usage
+  take k, like unknown
+  take a, like list, like unknown
+  like list, like unknown
+  mark private
+
+  save out, make list
+  walk a
+    take m
+    push(out, mul-mult(k, m))
+  back out
+
+task singleton-usage
+  take n, like number
+  take index, like number
+  like list, like unknown
+  mark private
+
+  save out, zero-usage(n)
+  save out/{index}, mult-one()
+  back out
+
+form inferred
+  link type, like kernel-value
+  link usage, like list, like unknown
+
+task inferred-of
+  take ty, like kernel-value
+  take use, like list, like unknown
+  like inferred
+  mark private
+
+  back
+    make inferred
+      bind type, ty
+      bind usage, use
+
+task v-type-of
+  take lev, like level
+  like kernel-value
+  mark private
+
+  back v-type(lev)
+
+# ---- the judgments ----
+
+task infer
+  take st, like judge-state
+  take ctx, like context
+  take trm, like kernel-term
+  like inferred
+
+  sift trm
+    case var
+      link index
+      fork test, or(is-below(index, 0), is-minimum(index, ctx/types/length))
+        hold
+          halt <kernel-type:unbound variable {index}>
+      back inferred-of(get(ctx/types, index), singleton-usage(ctx/level, index))
+    case const
+      link name
+      fork test, is-equal(ctx/globals/has(name), false)
+        hold
+          halt <kernel-type:unknown constant {name}>
+      back inferred-of(ctx/globals/get(name), zero-usage(ctx/level))
+    case meta
+      link id
+      fork test, is-equal(st/meta-type/has(id), false)
+        hold
+          halt <kernel-type:unknown metavariable {id}>
+      back inferred-of(st/meta-type/get(id), zero-usage(ctx/level))
+    case type
+      link level
+      back inferred-of(v-type(succ-level(level)), zero-usage(ctx/level))
+    case pi
+      link domain
+      link codomain
+      save domain-level, infer-universe(st, ctx, domain)
+      save inner, bind-context(ctx, mult-many(), evaluate(st, ctx/env, domain), <>)
+      save codomain-level, infer-universe(st, inner, codomain)
+      back inferred-of(v-type(pi-level(domain-level, codomain-level)), zero-usage(ctx/level))
+    case app
+      link fun
+      link arg
+      save got, infer(st, ctx, fun)
+      save fun-type, force(st, got/type)
+      # self elimination at application: a self-typed function unfolds to its body with the self value substituted
+      sift fun-type
+        case self
+          link body
+          save fun-type, force(st, close-over(st, body, evaluate(st, ctx/env, fun)))
+        miss
+          save nothing, 0
+      sift fun-type
+        case pi
+          link mult
+          link domain
+          link codomain
+          save arg-usage, check(st, ctx, arg, domain)
+          save result, close-over(st, codomain, evaluate(st, ctx/env, arg))
+          back inferred-of(result, add-usage(got/usage, scale-usage(mult, arg-usage)))
+        miss
+          halt <kernel-type:applied a non-function>
+    case ann
+      link term
+      link type
+      infer-universe(st, ctx, type)
+      save ty, evaluate(st, ctx/env, type)
+      back inferred-of(ty, check(st, ctx, term, ty))
+    case id
+      link type
+      link left
+      link right
+      save lev, infer-universe(st, ctx, type)
+      save ty, evaluate(st, ctx/env, type)
+      check(st, ctx, left, ty)
+      check(st, ctx, right, ty)
+      back inferred-of(v-type(lev), zero-usage(ctx/level))
+    case refl
+      link type
+      link value
+      infer-universe(st, ctx, type)
+      save ty, evaluate(st, ctx/env, type)
+      check(st, ctx, value, ty)
+      save val, evaluate(st, ctx/env, value)
+      back inferred-of(id-value(st, ty, val, val), zero-usage(ctx/level))
+    case j
+      link proof
+      link motive
+      link base
+      link level
+      save got, infer(st, ctx, proof)
+      sift got/type
+        case id
+          link type
+          link left
+          link right
+          check(st, ctx, motive, motive-pi-type(ctx, type, left, level))
+          save motive-value, evaluate(st, ctx/env, motive)
+          save refl-a
+            make kernel-value/refl
+              bind type, type
+              bind value, left
+          save base-type, apply-value(st, apply-value(st, motive-value, left), refl-a)
+          check(st, ctx, base, base-type)
+          save proof-value, evaluate(st, ctx/env, proof)
+          save result-type, apply-value(st, apply-value(st, motive-value, right), proof-value)
+          back inferred-of(result-type, zero-usage(ctx/level))
+        miss
+          halt <kernel-type:J needs an identity proof>
+    case sigma
+      link domain
+      link codomain
+      save domain-level, infer-universe(st, ctx, domain)
+      save inner, bind-context(ctx, mult-many(), evaluate(st, ctx/env, domain), <>)
+      save codomain-level, infer-universe(st, inner, codomain)
+      back inferred-of(v-type(max-level(domain-level, codomain-level)), zero-usage(ctx/level))
+    case fst
+      link pair
+      save got, infer(st, ctx, pair)
+      save pair-type, force(st, got/type)
+      sift pair-type
+        case sigma
+          link domain
+          back inferred-of(domain, got/usage)
+        miss
+          halt <kernel-type:fst of a non-pair>
+    case snd
+      link pair
+      save got, infer(st, ctx, pair)
+      save pair-type, force(st, got/type)
+      sift pair-type
+        case sigma
+          link codomain
+          save first, apply-fst(st, evaluate(st, ctx/env, pair))
+          back inferred-of(close-over(st, codomain, first), got/usage)
+        miss
+          halt <kernel-type:snd of a non-pair>
+    case self
+      link body
+      # formation: Self x. T : Type i, where T is typed with x standing for the self type itself
+      save self-type
+        make kernel-value/self
+          bind body, term-closure(ctx/env, body)
+      save inner, bind-context(ctx, mult-many(), self-type, <>)
+      save lev, infer-universe(st, inner, body)
+      back inferred-of(v-type(lev), zero-usage(ctx/level))
+    case pair
+      halt <kernel-type:cannot infer a bare pair; annotate it or check it against a sigma type>
+    case lam
+      halt <kernel-type:cannot infer a bare function; annotate it or check it against a pi type>
+
+task motive-pi-type
+  take ctx, like context
+  take a-type, like kernel-value
+  take a, like kernel-value
+  take lev, like level
+  like kernel-value
+  mark private
+
+  save env, make list
+  push(env, a)
+  push(env, a-type)
+  walk ctx/env
+    take one
+    push(env, one)
+  save identity
+    make kernel-term/id
+      bind type, t-var(2)
+      bind left, t-var(1)
+      bind right, t-var(0)
+  save inner
+    make kernel-term/pi
+      bind mult, mult-many()
+      bind domain, identity
+      bind codomain, t-type(lev)
+  back
+    make kernel-value/pi
+      bind mult, mult-many()
+      bind domain, a-type
+      bind codomain, term-closure(env, inner)
+
+task lam-name
+  take trm, like kernel-term
+  like text
+  mark private
+
+  sift trm
+    case lam
+      link name
+      sift name
+        case some
+          link written
+          back written
+        case none
+          back <>
+    miss
+      back <>
+
+task lam-name-maybe
+  take trm, like kernel-term
+  like maybe, like text
+  mark private
+
+  sift trm
+    case lam
+      link name
+      back name
+    miss
+      back make none
+
+task lam-body
+  take trm, like kernel-term
+  like kernel-term
+  mark private
+
+  sift trm
+    case lam
+      link body
+      back body
+    miss
+      back trm
+
+task check
+  take st, like judge-state
+  take ctx, like context
+  take trm, like kernel-term
+  take given-expected, like kernel-value
+  like list, like unknown
+
+  save expected, force(st, given-expected)
+  save tag, trm/tag
+
+  sift expected
+    case self
+      link body
+      # a canonical introduction form is checked against the unfolded body; anything else is accepted when it already
+      # has the self type, and checked against the unfolded body when it does not
+      fork test, or(is-equal(tag, <lam>), is-equal(tag, <pair>))
+        hold
+          back check(st, ctx, trm, close-over(st, body, evaluate(st, ctx/env, trm)))
+      save actual, infer(st, ctx, trm)
+      fork test, subtype(st, ctx/level, actual/type, expected)
+        hold
+          back actual/usage
+      back check(st, ctx, trm, close-over(st, body, evaluate(st, ctx/env, trm)))
+    miss
+      save nothing, 0
+
+  fork test, is-equal(tag, <lam>)
+    hold
+      sift expected
+        case pi
+          link mult
+          link domain
+          link codomain
+          save inner, bind-context(ctx, mult, domain, lam-name(trm))
+          save body-type, close-over(st, codomain, neutral-var(ctx/level))
+          save body-usage, check(st, inner, lam-body(trm), body-type)
+          save first-use, get(body-usage, 0)
+          fork test, is-equal(fits-mult(first-use, mult), false)
+            hold
+              halt <kernel-type:linearity: a {show-mult(mult)} argument was used {show-mult(first-use)} times>
+          save rest, make list
+          walk body-usage
+            take m
+            take i
+            fork test, is-above(i, 0)
+              hold
+                push(rest, m)
+          back rest
+        miss
+          # a type that COMPUTES to a pi is one
+          save reduced, whnf(st, expected)
+          fork test, or(is-equal(kind-of(reduced), <pi>), is-equal(kind-of(reduced), <self>))
+            hold
+              back check(st, ctx, trm, reduced)
+          halt <kernel-type:a function must be checked against a pi type>
+
+  fork test, is-equal(tag, <refl>)
+    hold
+      sift expected
+        case id
+          link type
+          link left
+          link right
+          fork test, is-equal(convert(st, ctx/level, left, right), false)
+            hold
+              halt <kernel-type:refl: the two sides of the identity are not definitionally equal>
+          sift trm
+            case refl
+              link value
+              check(st, ctx, value, type)
+            miss
+              save nothing, 0
+          back zero-usage(ctx/level)
+        miss
+          halt <kernel-type:refl must be checked against an identity type>
+
+  fork test, is-equal(tag, <pair>)
+    hold
+      sift expected
+        case sigma
+          link mult
+          link domain
+          link codomain
+          sift trm
+            case pair
+              link first
+              link second
+              save first-usage, check(st, ctx, first, domain)
+              save second-type, close-over(st, codomain, evaluate(st, ctx/env, first))
+              save second-usage, check(st, ctx, second, second-type)
+              back add-usage(scale-usage(mult, first-usage), second-usage)
+            miss
+              save nothing, 0
+        miss
+          halt <kernel-type:a pair must be checked against a sigma type>
+
+  save actual, infer(st, ctx, trm)
+  save actual-type, force(st, actual/type)
+  # self elimination: a term of type Self x. T may be used at T[x := itself]
+  sift actual-type
+    case self
+      link body
+      fork test, is-equal(subtype(st, ctx/level, actual-type, expected), false)
+        hold
+          save unfolded, close-over(st, body, evaluate(st, ctx/env, trm))
+          fork test, subtype(st, ctx/level, unfolded, expected)
+            hold
+              back actual/usage
+    miss
+      save nothing, 0
+  fork test, is-equal(subtype(st, ctx/level, actual/type, expected), false)
+    hold
+      halt <kernel-type:type mismatch:\n  expected {show-value(st, ctx, expected)}\n  found    {show-value(st, ctx, actual/type)}>
+  back actual/usage
+
+task infer-universe
+  take st, like judge-state
+  take ctx, like context
+  take trm, like kernel-term
+  like level
+  mark private
+
+  save got, infer(st, ctx, trm)
+  sift got/type
+    case type
+      link level
+      back level
+    miss
+      halt <kernel-type:expected a type>
+
+# ---- showing ----
+
+# a value as a person reads it, in a context whose variables have the source's names
+task show-value
+  take st, like judge-state
+  take ctx, like context
+  take val, like kernel-value
+  like text
+  mark private
+
+  save names, make list
+  walk ctx/names
+    take name
+    take index
+    fork test, is-equal(name, <>)
+      hold
+        push(names, <x{subtract(subtract(ctx/level, 1), index)}>)
+      miss
+        push(names, name)
+  back show-named(quote(st, ctx/level, val), names)
+
+# the source's spelling of a constant: a case is `succ`, not `nat__succ`, and a name split by scope loses `__in0_0`
+task source-name
+  take name, like text
+  like text
+  mark private
+
+  save unscoped, strip-scope(name)
+  save at, last-index-of(unscoped, <__>)
+  fork test, is-above(at, 0)
+    hold
+      back substring(unscoped, add(at, 2), unscoped/length)
+  back unscoped
+
+# `__in\d+_\d+$` taken off the end, the leftmost start that reaches it
+task strip-scope
+  take name, like text
+  like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      fork test, scope-suffix-at(name, at)
+        hold
+          back substring(name, 0, at)
+      save at, add(at, 1)
+  back name
+
+task is-digit
+  take code, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+# whether `__in<digits>_<digits>` starts at `at` and ends the text
+task scope-suffix-at
+  take name, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(starts-with(substring(name, at, name/length), <__in>), false)
+    hold
+      back false
+  save i, add(at, 4)
+  save start, i
+  walk test
+    hook test, and(is-below(i, name/length), is-digit(char-code-at(name, i)))
+    hook hold
+      save i, add(i, 1)
+  fork test, or(is-equal(i, start), is-maximum(name/length, i))
+    hold
+      back false
+  fork test, is-unequal(char-code-at(name, i), 95)
+    hold
+      back false
+  save i, add(i, 1)
+  save start, i
+  walk test
+    hook test, and(is-below(i, name/length), is-digit(char-code-at(name, i)))
+    hook hold
+      save i, add(i, 1)
+  back and(is-unequal(i, start), is-equal(i, name/length))
+
+task name-at
+  take names, like list, like text
+  take index, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(index, 0), is-below(index, names/length))
+    hold
+      back get(names, index)
+  back <>
+
+task names-under
+  take names, like list, like text
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, name)
+  walk names
+    take one
+    push(out, one)
+  back out
+
+# A term as a person reads it: a variable by the name the source gave it, a binder the term opens by a fresh name
+task show-named
+  take trm, like kernel-term
+  take names, like list, like text
+  like text
+
+  save fresh, <x{names/length}>
+  sift trm
+    case var
+      link index
+      save named, name-at(names, index)
+      fork test, is-equal(named, <>)
+        hold
+          back <#{index}>
+      back named
+    case const
+      link name
+      back source-name(name)
+    case pi
+      link mult
+      link domain
+      link codomain
+      back <({show-mult(mult)} {fresh} : {show-named(domain, names)}) -\> {show-named(codomain, names-under(names, fresh))}>
+    case lam
+      link body
+      link name
+      save shown, fresh
+      sift name
+        case some
+          link written
+          fork test, is-unequal(written, <>)
+            hold
+              save shown, written
+        case none
+          save shown, shown
+      back <\\{shown}. {show-named(body, names-under(names, shown))}>
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back <({show-mult(mult)} {fresh} : {show-named(domain, names)}) * {show-named(codomain, names-under(names, fresh))}>
+    case self
+      link body
+      back <Self {fresh}. {show-named(body, names-under(names, fresh))}>
+    case app
+      link fun
+      link arg
+      back <({show-named(fun, names)} {show-named(arg, names)})>
+    case ann
+      link term
+      link type
+      back <({show-named(term, names)} : {show-named(type, names)})>
+    case id
+      link type
+      link left
+      link right
+      back <Id {show-named(type, names)} {show-named(left, names)} {show-named(right, names)}>
+    case j
+      link proof
+      back <J({show-named(proof, names)})>
+    case pair
+      link first
+      link second
+      back <({show-named(first, names)}, {show-named(second, names)})>
+    case fst
+      link pair
+      back <{show-named(pair, names)}.1>
+    case snd
+      link pair
+      back <{show-named(pair, names)}.2>
+    miss
+      back show-term(trm)
+
+task show-term
+  take trm, like kernel-term
+  like text
+
+  sift trm
+    case var
+      link index
+      back <#{index}>
+    case meta
+      link id
+      back <?{id}>
+    case const
+      link name
+      back name
+    case type
+      link level
+      back <Type {show-level(level)}>
+    case pi
+      link mult
+      link domain
+      link codomain
+      back <({show-mult(mult)} {show-term(domain)}) -\> {show-term(codomain)}>
+    case lam
+      link body
+      back <\\ {show-term(body)}>
+    case app
+      link fun
+      link arg
+      back <({show-term(fun)} {show-term(arg)})>
+    case ann
+      link term
+      link type
+      back <({show-term(term)} : {show-term(type)})>
+    case id
+      link type
+      link left
+      link right
+      back <Id {show-term(type)} {show-term(left)} {show-term(right)}>
+    case refl
+      back <refl>
+    case j
+      link proof
+      back <J({show-term(proof)})>
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back <({show-mult(mult)} {show-term(domain)}) * {show-term(codomain)}>
+    case pair
+      link first
+      link second
+      back <({show-term(first)}, {show-term(second)})>
+    case fst
+      link pair
+      back <{show-term(pair)}.1>
+    case snd
+      link pair
+      back <{show-term(pair)}.2>
+    case self
+      link body
+      back <Self {show-term(body)}>
+
+# instantiate a level-polymorphic term: a level variable replaced by a concrete level throughout
+task instantiate-level
+  take trm, like kernel-term
+  take name, like text
+  take replacement, like level
+  like kernel-term
+
+  sift trm
+    case type
+      link level
+      back t-type(subst-level(level, name, replacement))
+    case pi
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/pi
+          bind mult, mult
+          bind domain, instantiate-level(domain, name, replacement)
+          bind codomain, instantiate-level(codomain, name, replacement)
+    case lam
+      link body
+      # the source's name for the binder kept as it was, there or absent, as a spread keeps it
+      save inner, instantiate-level(body, name, replacement)
+      save written, lam-name-maybe(trm)
+      sift written
+        case some
+          back
+            make kernel-term/lam
+              bind body, inner
+              bind name, written
+        case none
+          back t-lam(inner)
+    case app
+      link fun
+      link arg
+      back t-app(instantiate-level(fun, name, replacement), instantiate-level(arg, name, replacement))
+    case ann
+      link term
+      link type
+      back
+        make kernel-term/ann
+          bind term, instantiate-level(term, name, replacement)
+          bind type, instantiate-level(type, name, replacement)
+    case id
+      link type
+      link left
+      link right
+      back
+        make kernel-term/id
+          bind type, instantiate-level(type, name, replacement)
+          bind left, instantiate-level(left, name, replacement)
+          bind right, instantiate-level(right, name, replacement)
+    case refl
+      link type
+      link value
+      back
+        make kernel-term/refl
+          bind type, instantiate-level(type, name, replacement)
+          bind value, instantiate-level(value, name, replacement)
+    case j
+      link proof
+      link motive
+      link base
+      link level
+      back t-j(instantiate-level(proof, name, replacement), instantiate-level(motive, name, replacement), instantiate-level(base, name, replacement), subst-level(level, name, replacement))
+    case sigma
+      link mult
+      link domain
+      link codomain
+      back
+        make kernel-term/sigma
+          bind mult, mult
+          bind domain, instantiate-level(domain, name, replacement)
+          bind codomain, instantiate-level(codomain, name, replacement)
+    case pair
+      link first
+      link second
+      back
+        make kernel-term/pair
+          bind first, instantiate-level(first, name, replacement)
+          bind second, instantiate-level(second, name, replacement)
+    case fst
+      link pair
+      back t-fst(instantiate-level(pair, name, replacement))
+    case snd
+      link pair
+      back t-snd(instantiate-level(pair, name, replacement))
+    case self
+      link body
+      back
+        make kernel-term/self
+          bind body, instantiate-level(body, name, replacement)
+    miss
+      back trm
+
+# check a closed term against a closed type
+task checks
+  take st, like judge-state
+  take trm, like kernel-term
+  take ty, like kernel-term
+  like boolean
+
+  save ctx, empty-context()
+  infer-universe(st, ctx, ty)
+  save empty, make list
+  check(st, ctx, trm, evaluate(st, empty, ty))
+  back true

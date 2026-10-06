@@ -1,0 +1,1820 @@
+# Elaboration, part four: an expression or a statement body as ONE kernel term. Literals, variables, inline task
+# values, operators, calls (a local function value or a task of the program, its erased generic witnesses metavariables),
+# field reads, constructions (an overloaded case resolved by the type expected), arrays, and a body's `return`, `let`,
+# `if` and `match` (the eliminator of a plain form, the dependent eliminator of an indexed family with its inversion
+# motive, the large eliminator for a dependent or type-returning match). None for anything outside that fragment.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures `expr`, `body` and `contextualTypeMeta`
+# these were. The decisions:
+#   - the closures' shared state is one `term-state`: the judge's state, the program's data, the alias state, each
+#     task's declared arity, and the enclosing task's generic binders (by level and by name), which the face sets
+#   - a SCOPE maps a name to its binder level, and a name the kernel did not bind (`hide`) to -1, where the original
+#     stored `undefined`: `has` still stops the lookup reaching a global, and a level of -1 is read as no level. A
+#     scope handed to `kernel-type-at` leaves those names out, as the face's filter did
+#   - the original caught a kernel error around an `infer` and answered null: `attempt-term` / `attempt-value`, which
+#     put the fuel back. A kernel error nothing catches raises on, and the face gives it the original's class
+#   - the large form's refusal was the original's `TypeError`: here a `failure` noted `kernel-type:`, which the face
+#     turns into that class
+#   - a field type that did not read (`null`) and is evaluated raises the message the original's crash had
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+  find last-index-of
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find closure-param
+  find field-value
+  find match-case
+  find statement-branch
+
+load ../compile/type-text
+  find integer-text
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find whnf
+  find infer
+  find fresh-meta
+  find close-over
+  find convertible-modulo
+  find bind-context
+  find neutral-var
+  find show-term
+
+load ./elaborating-data
+  find elaboration-data
+  find field-info
+  find alias-state
+  find kernel-type-at
+  find constant
+  find variable
+  find arrow
+  find erased-pi
+  find apply-term
+  find lambdas
+  find type-zero
+  find has-free-var
+  find ctor-key
+  find number-literal-constant
+
+load ./elaborating-rewrite
+  find substitute-vars
+
+load ./elaborating-cases
+  find attempt-term
+
+# ---- the host's ----
+
+bind float-text
+  take value, like float
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+# ---- the state ----
+
+form arity
+  link total, like number
+  link need, like number
+
+form term-state
+  mark shared
+  link st, like judge-state
+  link data, like elaboration-data
+  link aliases, like alias-state
+  link declared-arity, like hash, like text, like arity
+  # the context levels of the task being checked's erased generic binders, and the same binders by name
+  link generic-levels, like list, like number
+  link generics, like hash, like text, like number
+  link type0-value, like kernel-value
+
+task new-term-state
+  take st, like judge-state
+  take data, like elaboration-data
+  take aliases, like alias-state
+  take program, like list, like statement
+  take type0-value, like kernel-value
+  like term-state
+
+  save arities, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        save need, 0
+        walk params
+          take param
+          fork test, is-unequal(param/optional, true)
+            hold
+              save need, add(need, 1)
+        save found
+          make arity
+            bind total, params/length
+            bind need, need
+        arities/set(name, found)
+      miss
+        turn next
+  back
+    make term-state
+      bind st, st
+      bind data, data
+      bind aliases, aliases
+      bind declared-arity, arities
+      bind generic-levels, make list
+      bind generics, make hash
+      bind type0-value, type0-value
+
+# ---- small readings ----
+
+task level-of
+  take scope, like hash, like text, like number
+  take name, like text
+  like number
+  mark private
+
+  fork test, scope/has(name)
+    hold
+      back scope/get(name)
+  back -1
+
+task scope-with
+  take scope, like hash, like text, like number
+  take name, like text
+  take level, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk scope/keys()
+    take key
+    out/set(key, scope/get(key))
+  out/set(name, level)
+  back out
+
+# the scope `kernel-type-at` reads: every name the kernel bound, none it hid
+task visible
+  take scope, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk scope/keys()
+    take key
+    save level, scope/get(key)
+    fork test, is-minimum(level, 0)
+      hold
+        out/set(key, level)
+  back out
+
+task some-type
+  take given, like type
+  like maybe, like type
+  mark private
+
+  back make(some, given)
+
+task some-term
+  take given, like kernel-term
+  like maybe, like kernel-term
+  mark private
+
+  back make(some, given)
+
+task some-value
+  take given, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  back make(some, given)
+
+task no-term
+  like maybe, like kernel-term
+  mark private
+
+  back make none
+
+task no-value
+  like maybe, like kernel-value
+  mark private
+
+  back make none
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+task variant-fields
+  take data, like elaboration-data
+  take key, like text
+  like list, like field-info
+  mark private
+
+  fork test, data/variant-field-info/has(key)
+    hold
+      back data/variant-field-info/get(key)
+  save none, make list
+  back none
+
+task former-arity
+  take data, like elaboration-data
+  take name, like text
+  like number
+  mark private
+
+  fork test, data/type-former-arity/has(name)
+    hold
+      back data/type-former-arity/get(name)
+  back 0
+
+task is-unit-term
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case const
+      link name
+      back is-equal(name, <Unit>)
+    miss
+      back false
+
+# a kernel type that did not read, evaluated: the original's crash reading `.tag` off `null`
+task read-field-type
+  take given, like maybe, like kernel-term
+  like kernel-term
+  mark private
+
+  sift given
+    case some
+      link found
+      back found
+    case none
+      halt <Cannot read properties of null (reading 'tag')>
+
+# the inferred type of a term, none on any raise (the original's `catch { return null }`)
+task attempt-type
+  take ts, like term-state
+  take ctx, like context
+  take term, like kernel-term
+  like maybe, like kernel-value
+  mark private
+
+  save st, ts/st
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save found, infer(st, ctx, term)/type
+    back make(some, found)
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back make none
+  back make none
+
+# the inferred type of a term, quoted at the context's level, none on any raise (a `try` around both)
+task attempt-quoted-type
+  take ts, like term-state
+  take ctx, like context
+  take term, like kernel-term
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save found, quote(st, ctx/level, infer(st, ctx, term)/type)
+    back make(some, found)
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back make none
+  back make none
+
+# the spine of an application: its head and its arguments, outermost last
+form spine
+  link head, like kernel-term
+  link args, like list, like kernel-term
+
+task spine-of
+  take term, like kernel-term
+  like spine
+  mark private
+
+  save args, make list
+  save head, term
+  walk test
+    hook test, is-application(head)
+    hook hold
+      sift head
+        case app
+          link fun
+          link arg
+          save args, prepended(arg, args)
+          save head, fun
+        miss
+          halt
+  back
+    make spine
+      bind head, head
+      bind args, args
+
+task is-application
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case app
+      back true
+    miss
+      back false
+
+task prepended
+  take first, like kernel-term
+  take rest, like list, like kernel-term
+  like list, like kernel-term
+  mark private
+
+  save out, make list
+  push(out, first)
+  walk rest
+    take one
+    push(out, one)
+  back out
+
+task const-name
+  take term, like kernel-term
+  like maybe, like text
+  mark private
+
+  sift term
+    case const
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+task lam-of
+  take body, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make lam
+      bind body, body
+
+task named-lam
+  take body, like kernel-term
+  take name, like text
+  like kernel-term
+  mark private
+
+  save named, make(some, name)
+  back
+    make lam
+      bind body, body
+      bind name, named
+
+task wrapped
+  take count, like number
+  take body, like kernel-term
+  like kernel-term
+  mark private
+
+  save out, body
+  save w, 0
+  walk test
+    hook test, is-below(w, count)
+    hook hold
+      save out, lam-of(out)
+      save w, add(w, 1)
+  back out
+
+# a form's name without the module scope's `__in<g>_<k>`, as `/__in\d+_\d+$/` removed it
+task scope-free
+  take name, like text
+  like text
+  mark private
+
+  save at, last-index-of(name, <__in>)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  save rest, substring(name, add(at, 4), name/length)
+  save underscore, -1
+  save digits-before, 0
+  save digits-after, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, rest/length)
+    hook hold
+      save ch, substring(rest, i, add(i, 1))
+      fork test, is-equal(ch, <_>)
+        hold
+          fork test, is-minimum(underscore, 0)
+            hold
+              back name
+          save underscore, i
+        miss
+          fork test, is-digit(ch)
+            hold
+              fork test, is-below(underscore, 0)
+                hold
+                  save digits-before, add(digits-before, 1)
+                miss
+                  save digits-after, add(digits-after, 1)
+            miss
+              back name
+      save i, add(i, 1)
+  fork test, and(is-above(digits-before, 0), is-above(digits-after, 0))
+    hold
+      back substring(name, 0, at)
+  back name
+
+task is-digit
+  take ch, like text
+  like boolean
+  mark private
+
+  back or(or(or(is-equal(ch, <0>), is-equal(ch, <1>)), or(is-equal(ch, <2>), is-equal(ch, <3>))), or(or(or(is-equal(ch, <4>), is-equal(ch, <5>)), or(is-equal(ch, <6>), is-equal(ch, <7>))), or(is-equal(ch, <8>), is-equal(ch, <9>))))
+
+# ---- metavariables ----
+
+# a fresh type metavariable for one erased generic argument at a call site. Inside a generic task's body it is
+# abstracted over the enclosing generic binders and applied to them (a contextual metavariable), so unification can
+# solve it TO an enclosing generic
+task contextual-type-meta
+  take ts, like term-state
+  take ctx, like context
+  like kernel-term
+
+  save st, ts/st
+  fork test, is-equal(ts/generic-levels/length, 0)
+    hold
+      back fresh-meta(st, ts/type0-value)
+  save pi, type-zero()
+  walk ts/generic-levels
+    take one
+    save pi, erased-pi(type-zero(), pi)
+  save no-env, no-values()
+  save out, fresh-meta(st, evaluate(st, no-env, pi))
+  walk ts/generic-levels
+    take l
+    save out, apply-term(out, variable(subtract(subtract(ctx/level, l), 1)))
+  back out
+
+task kernel-type-in
+  take ts, like term-state
+  take given, like maybe, like type
+  take depth, like number
+  take generics, like hash, like text, like number
+  take scope, like hash, like text, like number
+  like maybe, like kernel-term
+  mark private
+
+  back kernel-type-at(ts/aliases, given, depth, generics, ts/data/named-types, visible(scope), ts/data/variant-to-enum)
+
+# ---- expressions ----
+
+# an expression as a kernel term in the given context, none outside the covered fragment. `expected` is the type the
+# expression is checked against, when known, which resolves an overloaded constructor
+task expr
+  take ts, like term-state
+  take node, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take expected, like maybe, like kernel-value
+  like maybe, like kernel-term
+
+  save st, ts/st
+  save data, ts/data
+  sift node
+    case integer
+      back some-term(constant(number-literal-constant(integer-text(node))))
+    case float
+      link value
+      back some-term(constant(number-literal-constant(float-text(value))))
+    case string
+      back some-term(constant(<stringValue>))
+    case boolean
+      link value
+      fork test, value
+        hold
+          back some-term(constant(<boolTrue>))
+      back some-term(constant(<boolFalse>))
+    case unit
+      back some-term(constant(<unitValue>))
+    case variable
+      link name
+      save level, level-of(scope, name)
+      fork test, is-minimum(level, 0)
+        hold
+          back some-term(variable(subtract(subtract(ctx/level, level), 1)))
+      # a local the kernel cannot bind (`hide`), which must not reach a global of the same name
+      fork test, scope/has(name)
+        hold
+          back no-term()
+      # a nullary task used as a value, or a TYPE used as a first-class value
+      fork test, data/function-type/has(name)
+        hold
+          back some-term(constant(name))
+      fork test, data/named-types/has(name)
+        hold
+          back some-term(constant(name))
+      back no-term()
+    case closure
+      link params
+      link body
+      back closure-term(ts, node, params, body, scope, ctx, expected)
+    case unary
+      link op
+      link operand
+      sift expr(ts, operand, scope, ctx, no-value())
+        case some
+          link found
+          sift op
+            case negate
+              back some-term(apply-term(constant(<neg>), found))
+            miss
+              back some-term(apply-term(constant(<not>), found))
+        case none
+          back no-term()
+    case binary
+      link op
+      link left
+      link right
+      back binary-term(ts, op, left, right, scope, ctx)
+    case call
+      link callee
+      link args
+      back call-term(ts, callee, args, scope, ctx)
+    case member
+      link target
+      link name
+      sift expr(ts, target, scope, ctx, no-value())
+        case some
+          link target-term
+          sift attempt-quoted-type(ts, ctx, target-term)
+            case some
+              link quoted
+              sift const-name(quoted)
+                case some
+                  link record-name
+                  fork test, is-equal(data/record-fields/has(record-name), false)
+                    hold
+                      back no-term()
+                  save found, false
+                  walk data/record-fields/get(record-name)
+                    take field
+                    fork test, is-equal(field, name)
+                      hold
+                        save found, true
+                  fork test, is-equal(found, false)
+                    hold
+                      back no-term()
+                  back some-term(apply-term(constant(<{record-name}__{name}>), target-term))
+                case none
+                  back no-term()
+            case none
+              back no-term()
+        case none
+          back no-term()
+    case record
+      link name
+      link fields
+      back record-term(ts, node, name, fields, scope, ctx, expected)
+    case await
+      link awaited
+      back expr(ts, awaited, scope, ctx, no-value())
+    case array
+      link items
+      back array-term(ts, node, items, scope, ctx)
+    miss
+      back no-term()
+
+# an inline task value as a kernel LAMBDA from its own annotations: each parameter's type lowered at the current depth
+# with the parameters before it and the enclosing scope, the result written or peeled from the expected task type
+task closure-term
+  take ts, like term-state
+  take node, like expression
+  take params, like list, like closure-param
+  take statements, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take expected, like maybe, like kernel-value
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save closure-ctx, ctx
+  save closure-scope, scope
+  save value-scope, scope
+  save outer-generics, ts/generics
+  walk params
+    take param
+    save type-term, no-term()
+    sift param/type
+      case some
+        link written
+        save type-term, kernel-type-in(ts, some-type(written), closure-ctx/level, outer-generics, value-scope)
+      case none
+        save type-term, no-term()
+    sift type-term
+      case some
+        link found
+        save param-type, evaluate(st, closure-ctx/env, found)
+        save closure-scope, scope-with(closure-scope, param/name, closure-ctx/level)
+        save value-scope, scope-with(value-scope, param/name, closure-ctx/level)
+        save closure-ctx, bind-context(closure-ctx, <many>, param-type, param/name)
+      case none
+        back no-term()
+  save result-value, no-value()
+  save result-term, no-term()
+  sift node
+    case closure
+      link result
+      sift result
+        case some
+          link written
+          save result-term, kernel-type-in(ts, some-type(written), closure-ctx/level, outer-generics, value-scope)
+        case none
+          save result-term, no-term()
+    miss
+      save result-term, no-term()
+  sift result-term
+    case some
+      link found
+      save result-value, some-value(evaluate(st, closure-ctx/env, found))
+    case none
+      sift expected
+        case some
+          link want
+          save pit, quote(st, ctx/level, want)
+          save i, 0
+          walk test
+            hook test, and(is-below(i, params/length), is-pi(pit))
+            hook hold
+              save pit, pi-codomain(pit)
+              save i, add(i, 1)
+          save result-value, some-value(evaluate(st, closure-ctx/env, pit))
+        case none
+          save result-value, no-value()
+  sift result-value
+    case some
+      link value
+      sift body(ts, statements, closure-scope, closure-ctx, value)
+        case some
+          link inner
+          back some-term(lambdas(params/length, inner))
+        case none
+          back no-term()
+    case none
+      back no-term()
+
+task is-pi
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case pi
+      back true
+    miss
+      back false
+
+task pi-codomain
+  take term, like kernel-term
+  like kernel-term
+  mark private
+
+  sift term
+    case pi
+      link codomain
+      back codomain
+    miss
+      back term
+
+# the primitive an operator other than `==` and `!=` lowers to, none for any other
+task operator-name
+  take op, like binary-op
+  like maybe, like text
+  mark private
+
+  save name, <>
+  sift op
+    case plus
+      save name, <add>
+    case minus
+      save name, <sub>
+    case times
+      save name, <mul>
+    case divide
+      save name, <div>
+    case remainder
+      save name, <mod>
+    case below
+      save name, <lt>
+    case at-most
+      save name, <le>
+    case above
+      save name, <gt>
+    case at-least
+      save name, <ge>
+    case both
+      save name, <and>
+    case either
+      save name, <or>
+    miss
+      back make none
+  back make(some, name)
+
+task is-equality
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift op
+    case equal
+      back true
+    case unequal
+      back true
+    miss
+      back false
+
+task binary-term
+  take ts, like term-state
+  take op, like binary-op
+  take left-node, like expression
+  take right-node, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  fork test, is-equality(op)
+    hold
+      # polymorphic equality: one operand elaborated, its type synthesized, the other elaborated against it
+      save left, expr(ts, left-node, scope, ctx, no-value())
+      save right, no-term()
+      save operand-type, ts/type0-value
+      sift left
+        case some
+          link left-term
+          sift attempt-type(ts, ctx, left-term)
+            case some
+              link found
+              save operand-type, found
+            case none
+              back no-term()
+          save right, expr(ts, right-node, scope, ctx, some-value(operand-type))
+        case none
+          save right, expr(ts, right-node, scope, ctx, no-value())
+          sift right
+            case some
+              link right-term
+              sift attempt-type(ts, ctx, right-term)
+                case some
+                  link found
+                  save operand-type, found
+                case none
+                  back no-term()
+              save left, expr(ts, left-node, scope, ctx, some-value(operand-type))
+            case none
+              back no-term()
+      sift left
+        case some
+          link l
+          sift right
+            case some
+              link r
+              save head, constant(<notequal>)
+              sift op
+                case equal
+                  save head, constant(<equal>)
+                miss
+                  save head, head
+              back some-term(apply-term(apply-term(apply-term(head, quote(st, ctx/level, operand-type)), l), r))
+            case none
+              back no-term()
+        case none
+          back no-term()
+  save left, expr(ts, left-node, scope, ctx, no-value())
+  save right, expr(ts, right-node, scope, ctx, no-value())
+  sift left
+    case some
+      link l
+      sift right
+        case some
+          link r
+          sift operator-name(op)
+            case some
+              link name
+              back some-term(apply-term(apply-term(constant(name), l), r))
+            case none
+              back no-term()
+        case none
+          back no-term()
+    case none
+      back no-term()
+
+task call-term
+  take ts, like term-state
+  take callee, like expression
+  take args, like list, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save data, ts/data
+  sift callee
+    case variable
+      link callee-name
+      # a call of a LOCAL function value: its variable applied, a hidden local stopping the lookup
+      save local-level, level-of(scope, callee-name)
+      fork test, and(is-below(local-level, 0), scope/has(callee-name))
+        hold
+          back no-term()
+      fork test, is-minimum(local-level, 0)
+        hold
+          save local-index, subtract(subtract(ctx/level, local-level), 1)
+          save local-args, make list
+          walk args
+            take argument
+            sift expr(ts, argument, scope, ctx, no-value())
+              case some
+                link term
+                push(local-args, term)
+              case none
+                back no-term()
+          # a GENERIC function value bound to a local carries leading erased universe binders, one witness each
+          save witnesses, make list
+          fork test, is-below(local-index, ctx/types/length)
+            hold
+              save peeled, whnf(st, get(ctx/types, local-index))
+              walk test
+                hook test, is-erased-universe-pi(st, peeled)
+                hook hold
+                  push(witnesses, contextual-type-meta(ts, ctx))
+                  save peeled, whnf(st, close-over(st, pi-closure(peeled), neutral-var(ctx/level)))
+          save out, variable(local-index)
+          walk witnesses
+            take w
+            save out, apply-term(out, w)
+          walk local-args
+            take a
+            save out, apply-term(out, a)
+          back some-term(out)
+      fork test, is-equal(data/function-type/has(callee-name), false)
+        hold
+          back no-term()
+      # a generic call gets a fresh metavariable per type parameter, before anything else
+      save type-arguments, make list
+      save generic-count, 0
+      fork test, data/function-generics/has(callee-name)
+        hold
+          save generic-count, data/function-generics/get(callee-name)
+      save g, 0
+      walk test
+        hook test, is-below(g, generic-count)
+        hook hold
+          push(type-arguments, contextual-type-meta(ts, ctx))
+          save g, add(g, 1)
+      # the value-parameter types past the erased binders, a closed one kept as a guide for its argument
+      save domains, make list
+      save pt, data/function-type/get(callee-name)
+      walk test
+        hook test, is-pi(pt)
+        hook hold
+          sift pt
+            case pi
+              link mult
+              link domain
+              link codomain
+              fork test, is-unequal(mult, 0)
+                hold
+                  fork test, or(is-const(domain), and(is-application(domain), is-equal(has-free-var(domain, 0), false)))
+                    hold
+                      push(domains, make(some, domain))
+                    miss
+                      push(domains, no-term())
+              save pt, codomain
+            miss
+              halt
+      # an omitted trailing `need false` parameter: not a partial application, and not this pass's to check
+      fork test, ts/declared-arity/has(callee-name)
+        hold
+          save arity, ts/declared-arity/get(callee-name)
+          fork test, and(is-below(args/length, arity/total), is-minimum(args/length, arity/need))
+            hold
+              back no-term()
+      save values, make list
+      save missing, false
+      walk args
+        take argument
+        take i
+        save guide, no-value()
+        fork test, is-below(i, domains/length)
+          hold
+            sift get(domains, i)
+              case some
+                link domain
+                save no-env, no-values()
+                save guide, some-value(evaluate(st, no-env, domain))
+              case none
+                save guide, no-value()
+        sift expr(ts, argument, scope, ctx, guide)
+          case some
+            link term
+            push(values, term)
+          case none
+            save missing, true
+      fork test, missing
+        hold
+          back no-term()
+      save out, constant(callee-name)
+      walk type-arguments
+        take t
+        save out, apply-term(out, t)
+      walk values
+        take v
+        save out, apply-term(out, v)
+      back some-term(out)
+    miss
+      back no-term()
+
+task is-const
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case const
+      back true
+    miss
+      back false
+
+# is a value a pi of multiplicity 0 over a universe: a generic binder to supply a witness for
+task is-erased-universe-pi
+  take st, like judge-state
+  take value, like kernel-value
+  like boolean
+  mark private
+
+  sift value
+    case pi
+      link mult
+      link domain
+      fork test, is-unequal(mult, 0)
+        hold
+          back false
+      sift whnf(st, domain)
+        case type
+          back true
+        miss
+          back false
+    miss
+      back false
+
+task pi-closure
+  take value, like kernel-value
+  like kernel-closure
+  mark private
+
+  sift value
+    case pi
+      link codomain
+      back codomain
+    miss
+      halt <Cannot read properties of undefined (reading 'codomain')>
+
+task record-term
+  take ts, like term-state
+  take node, like expression
+  take name, like text
+  take fields, like list, like field-value
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take expected, like maybe, like kernel-value
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save data, ts/data
+  fork test, data/variant-to-enum/has(name)
+    hold
+      save owners, data/variant-to-enum/get(name)
+      # the owner the surface checker already resolved, when the construction's type names one
+      save typed-name, <>
+      save typed, false
+      sift node
+        case record
+          link type
+          sift type
+            case some
+              link written
+              sift written
+                case named
+                  link written-name
+                  save typed-name, written-name
+                  save typed, true
+                miss
+                  save typed, false
+            case none
+              save typed, false
+        miss
+          save typed, false
+      save settled, <>
+      fork test, and(typed, has-text(owners, typed-name))
+        hold
+          save settled, typed-name
+      # a construction the checker typed as a form declaring the case but which the kernel did not encode
+      fork test, and(and(is-equal(settled, <>), typed), is-equal(has-text(owners, typed-name), false))
+        hold
+          fork test, data/declared-owners/has(name)
+            hold
+              save declaring, data/declared-owners/get(name)
+              fork test, declaring/has(typed-name)
+                hold
+                  back no-term()
+      save enum-name, <>
+      fork test, is-equal(owners/length, 1)
+        hold
+          save enum-name, get(owners, 0)
+        miss
+          fork test, is-unequal(settled, <>)
+            hold
+              save enum-name, settled
+            miss
+              sift expected
+                case some
+                  link want-value
+                  save want, quote(st, ctx/level, want-value)
+                  save want-name, <>
+                  sift want
+                    case const
+                      link wanted
+                      save want-name, wanted
+                    miss
+                      save want-name, <>
+                  fork test, and(is-unequal(want-name, <>), has-text(owners, want-name))
+                    hold
+                      save enum-name, want-name
+                    miss
+                      walk owners
+                        take owner
+                        save no-env, no-values()
+                        save no-hyps, make list
+                        fork test, convertible-modulo(st, ctx/level, want-value, evaluate(st, no-env, constant(owner)), no-hyps)
+                          hold
+                            save enum-name, owner
+                            halt
+                case none
+                  save enum-name, <>
+      # an overloaded case with no guiding type is ambiguous here
+      fork test, is-equal(enum-name, <>)
+        hold
+          back no-term()
+      save declared, variant-fields(data, ctor-key(enum-name, name))
+      # a construction leaving a declared field out is a function of the rest, which is not the case: decline
+      walk declared
+        take d
+        fork test, is-equal(has-field(fields, d/name), false)
+          hold
+            back no-term()
+      save values, make list
+      walk fields
+        take field
+        save guide, no-value()
+        walk declared
+          take d
+          fork test, is-equal(d/name, field/name)
+            hold
+              sift d/type
+                case some
+                  link field-type
+                  fork test, is-equal(has-free-var(field-type, 0), false)
+                    hold
+                      save no-env, no-values()
+                      save guide, some-value(evaluate(st, no-env, field-type))
+                case none
+                  save guide, no-value()
+              halt
+        sift expr(ts, field/value, scope, ctx, guide)
+          case some
+            link value
+            push(values, value)
+          case none
+            back no-term()
+      # the erased type parameters first: contextual metavariables, or the expected type's own arguments
+      save arity, former-arity(data, enum-name)
+      save witnesses, make list
+      save w, 0
+      walk test
+        hook test, is-below(w, arity)
+        hook hold
+          push(witnesses, contextual-type-meta(ts, ctx))
+          save w, add(w, 1)
+      fork test, is-above(arity, 0)
+        hold
+          sift expected
+            case some
+              link want-value
+              save spine, spine-of(quote(st, ctx/level, want-value))
+              sift const-name(spine/head)
+                case some
+                  link head-name
+                  fork test, and(is-equal(head-name, enum-name), is-minimum(spine/args/length, arity))
+                    hold
+                      save taken, make list
+                      walk spine/args
+                        take a
+                        take i
+                        fork test, is-below(i, arity)
+                          hold
+                            push(taken, a)
+                      save witnesses, taken
+                case none
+                  save arity, arity
+            case none
+              save arity, arity
+      save out, constant(ctor-key(enum-name, name))
+      walk witnesses
+        take t
+        save out, apply-term(out, t)
+      walk values
+        take v
+        save out, apply-term(out, v)
+      back some-term(out)
+  # a struct, by make__r over its fields in declaration order
+  fork test, is-equal(data/record-fields/has(name), false)
+    hold
+      back no-term()
+  save out, constant(<make__{name}>)
+  walk data/record-fields/get(name)
+    take field-name
+    save given, field-named(fields, field-name)
+    sift given
+      case some
+        link value
+        sift expr(ts, value, scope, ctx, no-value())
+          case some
+            link term
+            save out, apply-term(out, term)
+          case none
+            back no-term()
+      case none
+        back no-term()
+  back some-term(out)
+
+task has-text
+  take items, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk items
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+task has-field
+  take fields, like list, like field-value
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk fields
+    take one
+    fork test, is-equal(one/name, wanted)
+      hold
+        back true
+  back false
+
+# the value a construction gives a field, the LAST one written by that name (as a Map built from them kept it)
+task field-named
+  take fields, like list, like field-value
+  take wanted, like text
+  like maybe, like expression
+  mark private
+
+  save found, make none
+  walk fields
+    take one
+    fork test, is-equal(one/name, wanted)
+      hold
+        save value, one/value
+        save found, make(some, value)
+  back found
+
+task array-term
+  take ts, like term-state
+  take node, like expression
+  take items, like list, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save terms, make list
+  walk items
+    take item
+    sift expr(ts, item, scope, ctx, no-value())
+      case some
+        link term
+        push(terms, term)
+      case none
+        back no-term()
+  # an EMPTY list takes the element type the surface checker gave it, lowered with the enclosing generics in scope
+  save inferred, no-term()
+  fork test, is-equal(terms/length, 0)
+    hold
+      sift node
+        case array
+          link type
+          sift type
+            case some
+              link written
+              sift written
+                case array
+                  link element
+                  save inferred, kernel-type-in(ts, some-type(element), ctx/level, ts/generics, scope)
+                miss
+                  save inferred, no-term()
+            case none
+              save inferred, no-term()
+        miss
+          save inferred, no-term()
+  save element, type-zero()
+  sift inferred
+    case some
+      link found
+      save element, found
+    case none
+      fork test, is-equal(terms/length, 0)
+        hold
+          save element, contextual-type-meta(ts, ctx)
+        miss
+          sift attempt-quoted-type(ts, ctx, get(terms, 0))
+            case some
+              link found
+              save element, found
+            case none
+              back no-term()
+  save out, apply-term(constant(<arrayEmpty>), element)
+  walk terms
+    take t
+    save out, apply-term(apply-term(apply-term(constant(<arrayPush>), element), out), t)
+  back some-term(out)
+
+# ---- bodies ----
+
+# a statement body as one kernel term of the result type, none outside the fragment. The result type is a value,
+# quoted at the current depth wherever a term is needed
+task body
+  take ts, like term-state
+  take statements, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  like maybe, like kernel-term
+
+  save st, ts/st
+  fork test, is-equal(statements/length, 0)
+    hold
+      back no-term()
+  save head, get(statements, 0)
+  save tail, make list
+  walk statements
+    take one
+    take i
+    fork test, is-above(i, 0)
+      hold
+        push(tail, one)
+  sift head
+    case return
+      link value
+      fork test, is-above(tail/length, 0)
+        hold
+          back no-term()
+      sift value
+        case none
+          fork test, is-unit-term(quote(st, ctx/level, result-value))
+            hold
+              back some-term(constant(<unitValue>))
+          back no-term()
+        case some
+          link returned
+          back expr(ts, returned, scope, ctx, some-value(result-value))
+    case let
+      link name
+      link init
+      sift expr(ts, init, scope, ctx, no-value())
+        case some
+          link value
+          sift attempt-type(ts, ctx, value)
+            case some
+              link value-type
+              save inner, bind-context(ctx, <many>, value-type, name)
+              save inner-scope, scope-with(scope, name, ctx/level)
+              sift body(ts, tail, inner-scope, inner, result-value)
+                case some
+                  link rest
+                  # `let x = v; rest` as an immediately applied lambda, annotated with its arrow
+                  save lambda, named-lam(rest, name)
+                  save pi-type, arrow(quote(st, ctx/level, value-type), quote(st, add(ctx/level, 1), result-value))
+                  save annotated
+                    make ann
+                      bind term, lambda
+                      bind type, pi-type
+                  back some-term(apply-term(annotated, value))
+                case none
+                  back no-term()
+            case none
+              back no-term()
+        case none
+          back no-term()
+    case if
+      link branches
+      link otherwise
+      save else-statements, tail
+      sift otherwise
+        case some
+          link written
+          fork test, is-above(tail/length, 0)
+            hold
+              back no-term()
+          save else-statements, written
+        case none
+          save else-statements, tail
+      fork test, is-equal(else-statements/length, 0)
+        hold
+          back no-term()
+      sift body(ts, else-statements, scope, ctx, result-value)
+        case some
+          link last
+          save result, last
+          save i, subtract(branches/length, 1)
+          walk test
+            hook test, is-minimum(i, 0)
+            hook hold
+              save branch, get(branches, i)
+              save condition, expr(ts, branch/cond, scope, ctx, no-value())
+              save consequent, body(ts, branch/body, scope, ctx, result-value)
+              sift condition
+                case some
+                  link c
+                  sift consequent
+                    case some
+                      link t
+                      save result, apply-term(apply-term(apply-term(apply-term(constant(<cond>), quote(st, ctx/level, result-value)), c), t), result)
+                    case none
+                      back no-term()
+                case none
+                  back no-term()
+              save i, subtract(i, 1)
+          back some-term(result)
+        case none
+          back no-term()
+    case match
+      link subject
+      link cases
+      link otherwise
+      fork test, is-above(tail/length, 0)
+        hold
+          back no-term()
+      sift otherwise
+        case some
+          back no-term()
+        case none
+          back match-term(ts, subject, cases, scope, ctx, result-value)
+    miss
+      back no-term()
+
+# the binder name a match arm gives field `index`: its rename, else the field's own
+task arm-name
+  take arm, like match-case
+  take index, like number
+  take field, like field-info
+  like text
+  mark private
+
+  save renames, make list
+  walk arm/binds
+    take one
+    push(renames, one)
+  fork test, is-below(index, renames/length)
+    hold
+      back get(renames, index)
+  back field/name
+
+task find-arm
+  take cases, like list, like match-case
+  take label, like text
+  like maybe, like match-case
+  mark private
+
+  walk cases
+    take one
+    fork test, is-equal(one/label, label)
+      hold
+        back make(some, one)
+  back make none
+
+task match-term
+  take ts, like term-state
+  take subject-node, like expression
+  take cases, like list, like match-case
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save data, ts/data
+  save subject-found, expr(ts, subject-node, scope, ctx, no-value())
+  save subject, type-zero()
+  sift subject-found
+    case some
+      link found
+      save subject, found
+    case none
+      back no-term()
+  # the subject's type: the form's constant, or its former applied to arguments
+  save enum-name, <>
+  save subject-type-args, make list
+  sift attempt-quoted-type(ts, ctx, subject)
+    case some
+      link subject-type
+      save spine, spine-of(subject-type)
+      save subject-type-args, spine/args
+      sift const-name(spine/head)
+        case some
+          link head-name
+          save enum-name, head-name
+        case none
+          save enum-name, <>
+    case none
+      back no-term()
+  fork test, or(is-equal(enum-name, <>), is-equal(data/variant-names/has(enum-name), false))
+    hold
+      back no-term()
+  save order, data/variant-names/get(enum-name)
+  save index-count, 0
+  fork test, data/type-former-indices/has(enum-name)
+    hold
+      save index-count, data/type-former-indices/get(enum-name)/length
+  # INVERSION: a constructor-headed subject index makes the variants of another head impossible
+  save impossible, make hash
+  save subject-index-head, <>
+  save discrim-pos, 0
+  save headed-pos, -1
+  save headed-head, <>
+  fork test, is-above(index-count, 0)
+    hold
+      save witness-count, subtract(subject-type-args/length, index-count)
+      save pos, 0
+      walk test
+        hook test, is-below(pos, index-count)
+        hook hold
+          save at, add(witness-count, pos)
+          save head-name, <>
+          fork test, and(is-minimum(at, 0), is-below(at, subject-type-args/length))
+            hold
+              sift const-name(spine-of(get(subject-type-args, at))/head)
+                case some
+                  link found
+                  save head-name, found
+                case none
+                  save head-name, <>
+          fork test, is-unequal(head-name, <>)
+            hold
+              save impossible-here, make list
+              save every-headed, true
+              walk order
+                take variant
+                save variant-head, <>
+                save has-head, false
+                save key, ctor-key(enum-name, variant)
+                fork test, data/variant-index-heads/has(key)
+                  hold
+                    save heads, data/variant-index-heads/get(key)
+                    fork test, is-below(pos, heads/length)
+                      hold
+                        sift get(heads, pos)
+                          case some
+                            link h
+                            save variant-head, h
+                            save has-head, true
+                          case none
+                            save has-head, false
+                save every-headed, and(every-headed, has-head)
+                fork test, and(has-head, is-unequal(variant-head, head-name))
+                  hold
+                    push(impossible-here, variant)
+              fork test, and(every-headed, is-below(headed-pos, 0))
+                hold
+                  save headed-pos, pos
+                  save headed-head, head-name
+              fork test, is-above(impossible-here/length, 0)
+                hold
+                  save discrim-pos, pos
+                  save subject-index-head, head-name
+                  walk impossible-here
+                    take v
+                    impossible/set(v, true)
+                  halt
+          save pos, add(pos, 1)
+  # invert only when an impossible branch is actually OMITTED
+  save use-inversion, false
+  walk impossible/keys()
+    take v
+    sift find-arm(cases, v)
+      case none
+        save use-inversion, true
+      case some
+        save use-inversion, use-inversion
+  save refine-at-head, and(and(is-equal(use-inversion, false), is-equal(impossible/keys()/length, 0)), is-minimum(headed-pos, 0))
+  fork test, refine-at-head
+    hold
+      save discrim-pos, headed-pos
+      save subject-index-head, headed-head
+  save branches, make list
+  walk order
+    take variant
+    save field-infos, variant-fields(data, ctor-key(enum-name, variant))
+    fork test, and(use-inversion, impossible/has(variant))
+      hold
+        push(branches, wrapped(field-infos/length, constant(<unitValue>)))
+        turn next
+    sift find-arm(cases, variant)
+      case some
+        link arm
+        save branch-scope, scope
+        save branch-ctx, ctx
+        walk field-infos
+          take field
+          take field-index
+          save local-name, arm-name(arm, field-index, field)
+          save branch-scope, scope-with(branch-scope, local-name, branch-ctx/level)
+          save no-env, no-values()
+          save field-value, evaluate(st, no-env, read-field-type(field/type))
+          save branch-ctx, bind-context(branch-ctx, <many>, field-value, local-name)
+        sift body(ts, arm/body, branch-scope, branch-ctx, result-value)
+          case some
+            link inner
+            save term, inner
+            save w, subtract(field-infos/length, 1)
+            walk test
+              hook test, is-minimum(w, 0)
+              hook hold
+                save term, named-lam(term, arm-name(arm, w, get(field-infos, w)))
+                save w, subtract(w, 1)
+            push(branches, term)
+          case none
+            back no-term()
+      case none
+        # a REACHABLE variant with no branch: non-exhaustive, decline
+        back no-term()
+  fork test, is-above(index-count, 0)
+    hold
+      back indexed-match(ts, enum-name, subject, subject-type-args, index-count, branches, use-inversion, refine-at-head, discrim-pos, subject-index-head, ctx, result-value)
+  # A DEPENDENT MATCH on a plain form: the large eliminator with the motive `\x. A[subject := x]`
+  sift subject
+    case var
+      link index
+      fork test, ctx/globals/has(<matchType__{enum-name}>)
+        hold
+          save subject-level, subtract(subtract(ctx/level, index), 1)
+          save motive-depth, add(ctx/level, 1)
+          save written, quote(st, motive-depth, result-value)
+          save refine, make hash
+          refine/set(subtract(subtract(motive-depth, subject-level), 1), 0)
+          save motive-body, substitute-vars(written, refine, 0)
+          fork test, is-unequal(show-term(motive-body), show-term(written))
+            hold
+              save out, constant(<matchType__{enum-name}>)
+              walk subject-type-args
+                take a
+                save out, apply-term(out, a)
+              save out, apply-term(out, lam-of(motive-body))
+              walk branches
+                take b
+                save out, apply-term(out, b)
+              back some-term(apply-term(out, subject))
+    miss
+      save subject, subject
+  save result-term, quote(st, ctx/level, result-value)
+  # a TYPE-returning match: the large eliminator, refused for a large form
+  sift result-term
+    case type
+      fork test, ts/data/large-forms/has(enum-name)
+        hold
+          save form-name, scope-free(enum-name)
+          save large-field, ts/data/large-forms/get(enum-name)
+          halt <kernel-type:form {form-name} is large (its field {large-field} carries a type), so a match on it cannot return a type: that would make type a retract of {form-name} and prove false (Hurkens, see test/check/paradox.ts)>
+      save out, constant(<matchType__{enum-name}>)
+      walk subject-type-args
+        take a
+        save out, apply-term(out, a)
+      save out, apply-term(out, lam-of(result-term))
+      walk branches
+        take b
+        save out, apply-term(out, b)
+      back some-term(apply-term(out, subject))
+    miss
+      save result-term, result-term
+  save out, constant(<match__{enum-name}>)
+  walk subject-type-args
+    take a
+    save out, apply-term(out, a)
+  save out, apply-term(apply-term(out, result-term), subject)
+  walk branches
+    take b
+    save out, apply-term(out, b)
+  back some-term(out)
+
+# an INDEXED family's match: the dependent eliminator `(0 p..) (P) (branches) (i..) (x)`, its motive abstracting over
+# each index that is a variable, or with inversion the discriminator motive over the index form's large eliminator
+task indexed-match
+  take ts, like term-state
+  take enum-name, like text
+  take subject, like kernel-term
+  take subject-type-args, like list, like kernel-term
+  take index-count, like number
+  take branches, like list, like kernel-term
+  take use-inversion, like boolean
+  take refine-at-head, like boolean
+  take discrim-pos, like number
+  take subject-index-head, like text
+  take ctx, like context
+  take result-value, like kernel-value
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save data, ts/data
+  save witness-count, subtract(subject-type-args/length, index-count)
+  fork test, is-below(witness-count, 0)
+    hold
+      save witness-count, add(subject-type-args/length, witness-count)
+      fork test, is-below(witness-count, 0)
+        hold
+          save witness-count, 0
+  save type-witnesses, make list
+  save index-arguments, make list
+  walk subject-type-args
+    take a
+    take i
+    fork test, is-below(i, witness-count)
+      hold
+        push(type-witnesses, a)
+      miss
+        push(index-arguments, a)
+  save motive-depth, add(add(ctx/level, index-count), 1)
+  save motive-body, quote(st, motive-depth, result-value)
+  save motive-refine, make hash
+  save t, 0
+  walk test
+    hook test, is-below(t, index-count)
+    hook hold
+      fork test, is-below(t, index-arguments/length)
+        hold
+          sift get(index-arguments, t)
+            case var
+              link index
+              save level, subtract(subtract(ctx/level, index), 1)
+              motive-refine/set(subtract(subtract(motive-depth, level), 1), subtract(index-count, t))
+            miss
+              save t, t
+      save t, add(t, 1)
+  fork test, is-above(motive-refine/keys()/length, 0)
+    hold
+      save motive-body, substitute-vars(motive-body, motive-refine, 0)
+  save constant-motive, lambdas(add(index-count, 1), motive-body)
+  save motive, some-term(constant-motive)
+  fork test, or(use-inversion, refine-at-head)
+    hold
+      save motive, no-term()
+      save index-type, <>
+      fork test, data/family-index-types/has(enum-name)
+        hold
+          save types, data/family-index-types/get(enum-name)
+          fork test, is-below(discrim-pos, types/length)
+            hold
+              sift get(types, discrim-pos)
+                case some
+                  link found
+                  save index-type, found
+                case none
+                  save index-type, <>
+      fork test, and(is-unequal(index-type, <>), data/variant-names/has(index-type))
+        hold
+          save index-variants, data/variant-names/get(index-type)
+          save index-branches, make list
+          save motive-binders, add(index-count, 1)
+          save subject-index-args, make list
+          fork test, is-below(discrim-pos, index-arguments/length)
+            hold
+              save subject-index-args, spine-of(get(index-arguments, discrim-pos))/args
+          walk index-variants
+            take index-variant
+            save index-ctor, ctor-key(index-type, index-variant)
+            save field-count, variant-fields(data, index-ctor)/length
+            save leaf, constant(<Unit>)
+            fork test, is-equal(index-ctor, subject-index-head)
+              hold
+                save leaf-depth, add(add(ctx/level, motive-binders), field-count)
+                save refine, make hash
+                save t, 0
+                walk test
+                  hook test, is-below(t, index-count)
+                  hook hold
+                    fork test, and(is-unequal(t, discrim-pos), is-below(t, index-arguments/length))
+                      hold
+                        sift get(index-arguments, t)
+                          case var
+                            link index
+                            save level, subtract(subtract(ctx/level, index), 1)
+                            refine/set(subtract(subtract(leaf-depth, level), 1), subtract(subtract(leaf-depth, add(ctx/level, t)), 1))
+                          miss
+                            save t, t
+                    save t, add(t, 1)
+                save w, 0
+                walk test
+                  hook test, and(is-below(w, subject-index-args/length), is-below(w, field-count))
+                  hook hold
+                    sift get(subject-index-args, w)
+                      case var
+                        link index
+                        save level, subtract(subtract(ctx/level, index), 1)
+                        save field-level, add(add(ctx/level, motive-binders), w)
+                        refine/set(subtract(subtract(leaf-depth, level), 1), subtract(subtract(leaf-depth, field-level), 1))
+                      miss
+                        save w, w
+                    save w, add(w, 1)
+                save leaf, quote(st, leaf-depth, result-value)
+                fork test, is-above(refine/keys()/length, 0)
+                  hold
+                    save leaf, substitute-vars(leaf, refine, 0)
+            push(index-branches, wrapped(field-count, leaf))
+          save inner, apply-term(constant(<matchType__{index-type}>), lam-of(type-zero()))
+          walk index-branches
+            take b
+            save inner, apply-term(inner, b)
+          save inner, apply-term(inner, variable(subtract(index-count, discrim-pos)))
+          save discriminator, lambdas(motive-binders, inner)
+          save motive, some-term(discriminator)
+  sift motive
+    case some
+      link found
+      save out, constant(<match__{enum-name}>)
+      walk type-witnesses
+        take w
+        save out, apply-term(out, w)
+      save out, apply-term(out, found)
+      walk branches
+        take b
+        save out, apply-term(out, b)
+      walk index-arguments
+        take a
+        save out, apply-term(out, a)
+      back some-term(apply-term(out, subject))
+    case none
+      back no-term()

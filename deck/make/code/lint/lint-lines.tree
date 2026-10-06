@@ -1,0 +1,725 @@
+# The lint driver's own work, around the dispatch: the facts every rule reads (the names written, the names read, the
+# native modules loaded twice), the text under a span, the rules about how a LINE is written (its length, a tab,
+# trailing whitespace, a run of blank lines), and the fixes written back into the source.
+#
+# Ported from lint/lint.ts (self-hosting, 2026-10-06), which stays as the face and the dispatch: a rule is a TypeScript
+# object with `check` and `checkSource` closures, the seam plugin rules drop in through (lint/seed-rule.ts), and its
+# context hands each rule sets, a memo it writes, and the `report` and `slice` closures. The decisions:
+#   - a column, a line's length and an offset count UTF-16 units, as a span's column does: a text is read through
+#     fixing.tree's `units-of` and sliced with `js-slice`, and a length is `unit-length`
+#   - `trim` and `trimEnd` are JavaScript's (compile/main-entry `whitespace-code`)
+#   - the config crosses as two tasks: a code's configured severity (`off`, a severity, or empty for none) and whether a
+#     line suppresses a code
+#   - the names come back as lists in the order a `Set` would hold them, and the face makes the sets
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find char-code-at
+  find split
+  find contains
+  find index-of
+
+load @term/base/text/unicode
+  find to-runes
+
+load ../parser/diagnostic
+  find position
+  find span
+  find severity
+
+load ../compile/node
+  find statement
+  find expression
+
+load ../fixing
+  find units-of
+  find js-slice
+
+load ../compile/main-entry
+  find whitespace-code
+
+# a source replacement: the text in `span` swapped for `text`
+form text-edit
+  link span, like span
+  link text, like text
+
+# a lint finding, its fields in the order the driver writes them
+form lint-finding
+  link rule, like text
+  link code, like text
+  link severity, like severity
+  link message, like text
+  link span, like span
+  link fix
+    like maybe, like text-edit
+    need false
+
+# ---- units ----
+
+# a text's length in UTF-16 units, as `.length` counts it
+task unit-length
+  take value, like text
+  like number
+
+  save size, 0
+  walk to-runes(value)
+    take rune
+    save size, add(size, 1)
+    fork test, is-above(rune, 65535)
+      hold
+        save size, add(size, 1)
+  back size
+
+# the UTF-16 length of a text without its trailing whitespace, as `trimEnd().length` counts it
+task trimmed-end-length
+  take value, like text
+  like number
+  mark private
+
+  save units, units-of(value)
+  save end, units/length
+  walk test
+    hook test, and(is-above(end, 0), whitespace-code(get(units, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back end
+
+# whether a line is blank, as `trim() === ''` asks
+task is-blank
+  take value, like text
+  like boolean
+  mark private
+
+  walk to-runes(value)
+    take rune
+    fork test, is-equal(whitespace-code(rune), false)
+      hold
+        back false
+  back true
+
+# ---- the text under a span ----
+
+# a line of the source, empty past the end
+task line-at
+  take lines, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, lines/length))
+    hold
+      back get(lines, at)
+  back <>
+
+# a bound of `Array.prototype.slice`: a negative one counts from the end, and either is held inside the list
+task list-bound
+  take bound, like number
+  take size, like number
+  like number
+  mark private
+
+  fork test, is-below(bound, 0)
+    hold
+      fork test, is-below(add(size, bound), 0)
+        hold
+          back 0
+      back add(size, bound)
+  fork test, is-above(bound, size)
+    hold
+      back size
+  back bound
+
+# the source a span covers, its first line from its start column, its last to its end column, the lines between whole
+task slice-span
+  take lines, like list, like text
+  take where, like span
+  like text
+
+  fork test, is-equal(where/start/line, where/end/line)
+    hold
+      back js-slice(units-of(line-at(lines, where/start/line)), where/start/column, where/end/column)
+  save first-units, units-of(line-at(lines, where/start/line))
+  save parts, make list
+  push(parts, js-slice(first-units, where/start/column, first-units/length))
+  # `lines.slice(start + 1, end)`, its bounds as JavaScript reads them: a negative one counts from the end
+  save at, list-bound(add(where/start/line, 1), lines/length)
+  save stop, list-bound(where/end/line, lines/length)
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      push(parts, get(lines, at))
+      save at, add(at, 1)
+  push(parts, js-slice(units-of(line-at(lines, where/end/line)), 0, where/end/column))
+  back join(parts, <\n>)
+
+# ---- the names every rule reads ----
+
+# what a walk gathers: the names, once each, in the order first met
+form name-set
+  mark shared
+  link names, like list, like text
+  link seen, like hash, like text, like boolean
+
+task add-name
+  take set, like name-set
+  take name, like text
+  mark private
+
+  fork test, is-equal(set/seen/has(name), false)
+    hold
+      set/seen/set(name, true)
+      push(set/names, name)
+
+task empty-names
+  like name-set
+  mark private
+
+  back
+    make name-set
+      bind names, make list
+      bind seen, make hash
+
+# a node the driver hands every rule, in the order its walk meets them, as the rule interface spells it
+form lint-target
+  mark tag, name kind
+  case statement
+    link node, like statement
+  case expression
+    link node, like expression
+
+# what one walk does at each node. `written` gathers an assignment's variable. Otherwise it gathers a variable read,
+# and walks a closure's body, unless `targets` is on: then it gathers every node, as the dispatch walk does, and a
+# closure's body is not walked
+form name-walk
+  link written, like boolean
+  link set, like name-set
+  link targets, like boolean
+  link met, like list, like lint-target
+
+task visit-expression
+  take at, like name-walk
+  take node, like expression
+  mark private
+
+  fork test, at/targets
+    hold
+      save met
+        make expression
+          bind node, node
+      push(at/met, met)
+      each-expression(at, node)
+      back
+  fork test, is-equal(at/written, false)
+    hold
+      sift node
+        case variable
+          link name
+          add-name(at/set, name)
+        case closure
+          link body
+          walk body
+            take one
+            visit-statement(at, one)
+        miss
+          save node, node
+  each-expression(at, node)
+
+# the expressions under one, as the driver's walk reaches them: a closure's body is not one of them
+task each-expression
+  take at, like name-walk
+  take node, like expression
+  mark private
+
+  sift node
+    case binary
+      link left
+      link right
+      visit-expression(at, left)
+      visit-expression(at, right)
+    case unary
+      link operand
+      visit-expression(at, operand)
+    case call
+      link callee
+      link args
+      visit-expression(at, callee)
+      walk args
+        take one
+        visit-expression(at, one)
+    case array
+      link items
+      walk items
+        take one
+        visit-expression(at, one)
+    case map
+      link entries
+      walk entries
+        take entry
+        visit-expression(at, entry/key)
+        visit-expression(at, entry/value)
+    case record
+      link fields
+      walk fields
+        take field
+        visit-expression(at, field/value)
+    case member
+      link target
+      visit-expression(at, target)
+    case await
+      link expr
+      visit-expression(at, expr)
+    case template
+      link parts
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            visit-expression(at, inner)
+          miss
+            save part, part
+    case conditional
+      link branches
+      link otherwise
+      walk branches
+        take branch
+        visit-expression(at, branch/cond)
+        visit-expression(at, branch/value)
+      sift otherwise
+        case some
+          link last
+          visit-expression(at, last)
+        case none
+          save otherwise, otherwise
+    miss
+      save node, node
+
+task visit-block
+  take at, like name-walk
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take one
+    visit-statement(at, one)
+
+task visit-maybe-block
+  take at, like name-walk
+  take given, like maybe, like list, like statement
+  mark private
+
+  sift given
+    case some
+      link body
+      visit-block(at, body)
+    case none
+      back
+
+task visit-statement
+  take at, like name-walk
+  take node, like statement
+  mark private
+
+  fork test, at/targets
+    hold
+      save met
+        make statement
+          bind node, node
+      push(at/met, met)
+  fork test, at/written
+    hold
+      sift node
+        case assign
+          link target
+          sift target
+            case variable
+              link name
+              add-name(at/set, name)
+            miss
+              save target, target
+        miss
+          save node, node
+
+  sift node
+    case let
+      link init
+      visit-expression(at, init)
+    case assign
+      link target
+      link value
+      visit-expression(at, target)
+      visit-expression(at, value)
+    case expression
+      link expr
+      visit-expression(at, expr)
+    case if
+      link branches
+      link otherwise
+      walk branches
+        take branch
+        visit-expression(at, branch/cond)
+        visit-block(at, branch/body)
+      visit-maybe-block(at, otherwise)
+    case while
+      link cond
+      link body
+      visit-expression(at, cond)
+      visit-block(at, body)
+    case match
+      link subject
+      link cases
+      link otherwise
+      visit-expression(at, subject)
+      walk cases
+        take arm
+        visit-block(at, arm/body)
+      visit-maybe-block(at, otherwise)
+    case guard
+      link body
+      link catch
+      visit-block(at, body)
+      sift catch
+        case some
+          link clause
+          visit-block(at, clause/body)
+        case none
+          save catch, catch
+    case for-each
+      link iterable
+      link body
+      visit-expression(at, iterable)
+      visit-block(at, body)
+    case return
+      link value
+      sift value
+        case some
+          link returned
+          visit-expression(at, returned)
+        case none
+          save value, value
+    case throw
+      link value
+      visit-expression(at, value)
+    case hold
+      link expr
+      visit-expression(at, expr)
+    case function
+      link body
+      visit-block(at, body)
+    miss
+      save node, node
+
+# every name that is the target of an assignment somewhere in the program
+task reassigned-names
+  take program, like list, like statement
+  like list, like text
+
+  save at
+    make name-walk
+      bind written, true
+      bind set, empty-names()
+      bind targets, false
+      bind met, make list
+  visit-block(at, program)
+  back at/set/names
+
+# every variable name read anywhere in the program, a closure's body included, so a name read only in a hook handler
+# counts as read
+task referenced-names
+  take program, like list, like statement
+  like list, like text
+
+  save at
+    make name-walk
+      bind written, false
+      bind set, empty-names()
+      bind targets, false
+      bind met, make list
+  visit-block(at, program)
+  back at/set/names
+
+# every node the driver hands its rules, in the order it meets them: a statement before what it holds, an expression
+# before its parts, and no closure's body
+task lint-targets
+  take program, like list, like statement
+  like list, like lint-target
+
+  save at
+    make name-walk
+      bind written, false
+      bind set, empty-names()
+      bind targets, true
+      bind met, make list
+  visit-block(at, program)
+  back at/met
+
+# the native modules the program loads more than once, in the order first loaded
+task duplicate-loads
+  take program, like list, like statement
+  like list, like text
+
+  save modules, make list
+  save counts, make hash
+  walk program
+    take one
+    sift one
+      case native
+        link module
+        fork test, counts/has(module)
+          hold
+            counts/set(module, add(counts/get(module), 1))
+          miss
+            counts/set(module, 1)
+            push(modules, module)
+      miss
+        turn next
+  save out, make list
+  walk modules
+    take module
+    fork test, is-above(counts/get(module), 1)
+      hold
+        push(out, module)
+  back out
+
+# ---- the line rules ----
+
+# a line rule as `term show kink` lists it: its code, its name and what it says
+form line-rule-entry
+  link code, like text
+  link name, like text
+  link message, like text
+
+task line-rule-of
+  take code, like text
+  take name, like text
+  take message, like text
+  like line-rule-entry
+  mark private
+
+  back
+    make line-rule-entry
+      bind code, code
+      bind name, name
+      bind message, message
+
+# the line rules, then the run of blank lines, which the driver reports itself
+task line-rule-entries
+  like list, like line-rule-entry
+
+  save out, make list
+  push(out, line-rule-of(<L019>, <max-line-length>, <this line is longer than 84 characters; wrap it>))
+  push(out, line-rule-of(<L020>, <no-tabs>, <this line uses a tab; indent with two spaces>))
+  push(out, line-rule-of(<L029>, <no-trailing-whitespace>, <this line has trailing whitespace>))
+  push(out, line-rule-of(<L030>, <no-multiple-empty-lines>, <more than two consecutive blank lines>))
+  back out
+
+# a code's severity as configured: the configured one, else the line rules' warning
+task line-severity
+  take configured, like text
+  like severity
+  mark private
+
+  fork test, is-equal(configured, <error>)
+    hold
+      back make error
+  fork test, is-equal(configured, <info>)
+    hold
+      back make info
+  back make warning
+
+task line-finding
+  take rule, like text
+  take code, like text
+  take configured, like text
+  take message, like text
+  take line, like number
+  take start, like number
+  take stop, like number
+  like lint-finding
+  mark private
+
+  back
+    make lint-finding
+      bind rule, rule
+      bind code, code
+      bind severity, line-severity(configured)
+      bind message, message
+      bind span
+        make span
+          bind start
+            make position
+              bind line, line
+              bind column, start
+          bind end
+            make position
+              bind line, line
+              bind column, stop
+
+# the findings about how each line is written, line rule by line rule and line by line, then the runs of blank lines.
+# `configured` answers a code's severity as set (`off`, a severity, or empty), and `suppressed` whether a line turns a
+# code off
+task line-findings
+  take source, like text
+  take configured
+    like task
+      take code, like text
+      like text
+  take suppressed
+    like task
+      take line, like number
+      take code, like text
+      like boolean
+  like list, like lint-finding
+
+  save out, make list
+  save lines, split(source, <\n>)
+
+  # L019, the line-length limit the formatter keeps
+  save long, configured(<L019>)
+  fork test, is-unequal(long, <off>)
+    hold
+      walk lines
+        take line
+        take at
+        save size, unit-length(line)
+        fork test, and(is-above(size, 84), is-equal(suppressed(at, <L019>), false))
+          hold
+            push(out, line-finding(<max-line-length>, <L019>, long, <this line is longer than 84 characters; wrap it>, at, 84, size))
+
+  # L020, a tab
+  save tabs, configured(<L020>)
+  fork test, is-unequal(tabs, <off>)
+    hold
+      walk lines
+        take line
+        take at
+        fork test, and(contains(line, <\t>), is-equal(suppressed(at, <L020>), false))
+          hold
+            save units, units-of(line)
+            save tab, 0
+            walk test
+              hook test, is-unequal(get(units, tab), 9)
+              hook hold
+                save tab, add(tab, 1)
+            push(out, line-finding(<no-tabs>, <L020>, tabs, <this line uses a tab; indent with two spaces>, at, tab, units/length))
+
+  # L029, trailing whitespace
+  save trailing, configured(<L029>)
+  fork test, is-unequal(trailing, <off>)
+    hold
+      walk lines
+        take line
+        take at
+        save size, unit-length(line)
+        save kept, trimmed-end-length(line)
+        fork test, and(and(is-above(size, 0), is-unequal(kept, size)), is-equal(suppressed(at, <L029>), false))
+          hold
+            push(out, line-finding(<no-trailing-whitespace>, <L029>, trailing, <this line has trailing whitespace>, at, kept, size))
+
+  # L030, more than two blank lines in a row: reported once, at the third
+  save blanks-configured, configured(<L030>)
+  fork test, is-unequal(blanks-configured, <off>)
+    hold
+      save blanks, 0
+      walk lines
+        take line
+        take at
+        fork test, is-blank(line)
+          hold
+            save blanks, add(blanks, 1)
+            fork test, and(is-equal(blanks, 3), is-equal(suppressed(at, <L030>), false))
+              hold
+                push(out, line-finding(<no-multiple-empty-lines>, <L030>, blanks-configured, <more than two consecutive blank lines>, at, 0, 0))
+          miss
+            save blanks, 0
+  back out
+
+# ---- fixes ----
+
+# an edit placed in the source: its start and end offsets, in UTF-16 units
+form placed-edit
+  link start, like number
+  link end, like number
+  link text, like text
+
+# a position's offset: every line before it with its line break, then the column
+task offset-in
+  take lengths, like list, like number
+  take at, like position
+  like number
+  mark private
+
+  save offset, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, at/line)
+    hook hold
+      save length, 0
+      fork test, and(is-minimum(i, 0), is-below(i, lengths/length))
+        hold
+          save length, get(lengths, i)
+      save offset, add(offset, add(length, 1))
+      save i, add(i, 1)
+  back add(offset, at/column)
+
+task later-first
+  take left, like placed-edit
+  take right, like placed-edit
+  like ordering
+  mark private
+
+  fork test, is-above(left/start, right/start)
+    hold
+      back make less
+  fork test, is-below(left/start, right/start)
+    hold
+      back make greater
+  back make equal
+
+# the source with the findings' fixes written, from the end back, an edit that overlaps one already written skipped
+task apply-fixes
+  take source, like text
+  take findings, like list, like lint-finding
+  like text
+
+  save lengths, make list
+  walk split(source, <\n>)
+    take line
+    push(lengths, unit-length(line))
+  save edits, make list
+  walk findings
+    take finding
+    sift finding/fix
+      case some
+        link edit
+        save placed
+          make placed-edit
+            bind start, offset-in(lengths, edit/span/start)
+            bind end, offset-in(lengths, edit/span/end)
+            bind text, edit/text
+        push(edits, placed)
+      case none
+        turn next
+
+  save out, source
+  save applied-start, unit-length(source)
+  walk sort(edits, later-first)
+    take edit
+    fork test, is-above(edit/end, applied-start)
+      hold
+        turn next
+    save units, units-of(out)
+    save out, <{js-slice(units, 0, edit/start)}{edit/text}{js-slice(units, edit/end, units/length)}>
+    save applied-start, edit/start
+  back out

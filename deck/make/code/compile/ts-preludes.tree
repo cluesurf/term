@@ -1,0 +1,892 @@
+# The runtime a TypeScript module carries in front of its code: the exception class, the integer check, structural
+# equality, the maybe-field helpers, the host-value check, the form walk, the checked list helpers, and the text runtime
+# shaken to the methods a module's code names.
+#
+# Ported from compile/typescript.ts (self-hosting, 2026-10-06), which stays as the face and says why each helper is
+# shaped as it is. The decisions:
+#   - each prelude is the original's text line for line, a task answering it. The tasks were written once from the
+#     original strings by `tmp/gen-ts-preludes.ts` (deck/term/deck/term), and this file is the source from now on
+#   - the integer check and the list helpers are written twice, for a module that carries the exception class and one
+#     that does not, as the original's two branches were
+#   - the text runtime is the object as written (`text-prelude-source`), read into its helpers and methods ONCE
+#     (`text-table`), as the original read it at load. A method is a function of its own, and a module carries the
+#     methods its code names, those they name in turn, and the helpers any of them mention
+#   - `/__termText_(\w+)/g` and its kin are written out by character: a name is the run of `[A-Za-z0-9_]` after the
+#     prefix, and a search that finds the prefix with no name after it goes on from the next character. `\b<name>\b`
+#     is the name with no word character on either side
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find char-code-at
+  find substring
+  find starts-with
+  find index-of
+  find split
+
+# the class every raise throws on TypeScript
+task exception-class
+  like text
+
+  back <TermException>
+
+# ---- characters ----
+
+# `\w`
+task word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+# where the run of word characters from `at` ends
+task word-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, and(is-below(end, value/length), word-code(char-code-at(value, end)))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# whether the character before `at` is a word character, false at the start
+task word-before
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-maximum(at, 0)
+    hold
+      back false
+  back word-code(char-code-at(value, subtract(at, 1)))
+
+# `/<prefix>(\w+)/g`: every name after the prefix, in order
+task names-after
+  take value, like text
+  take prefix, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save from, 0
+  walk test
+    hook test, is-maximum(from, value/length)
+    hook hold
+      save at, index-of(value, prefix, from)
+      fork test, is-below(at, 0)
+        hold
+          back out
+      save start, add(at, prefix/length)
+      save end, word-end(value, start)
+      fork test, is-above(end, start)
+        hold
+          push(out, substring(value, start, end))
+          save from, end
+        miss
+          save from, add(at, 1)
+  back out
+
+# `/\b<name>\b/.test(value)` for a name of word characters
+task has-word
+  take value, like text
+  take name, like text
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, is-maximum(from, value/length)
+    hook hold
+      save at, index-of(value, name, from)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      save end, add(at, name/length)
+      save after, false
+      fork test, is-below(end, value/length)
+        hold
+          save after, word-code(char-code-at(value, end))
+      fork test, and(is-equal(word-before(value, at), false), is-equal(after, false))
+        hold
+          back true
+      save from, add(at, 1)
+  back false
+
+# ---- the text runtime, shaken by method ----
+
+# one declaration of the text runtime: a helper before the object, or one of its methods
+form text-part
+  link name, like text
+  link code, like text
+
+form text-parts
+  link head, like list, like text-part
+  link methods, like list, like text-part
+
+task text-part-of
+  take name, like text
+  take code, like text
+  like text-part
+  mark private
+
+  back
+    make text-part
+      bind name, name
+      bind code, code
+
+# `/^ {2}(\w+)\(/`: the method a line of the object opens, or none
+task method-name
+  take line, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(starts-with(line, <  >), false)
+    hold
+      back make none
+  save end, word-end(line, 2)
+  fork test, or(is-equal(end, 2), is-minimum(end, line/length))
+    hold
+      back make none
+  fork test, is-unequal(substring(line, end, add(end, 1)), <(>)
+    hold
+      back make none
+  save name, substring(line, 2, end)
+  back make(some, name)
+
+# the text runtime read into its parts: the helpers before the object, one declaration a line, each named by what it
+# declares, and the methods, each from its comment or its first line to the `},` that closes it at the object's indent
+task text-parts-of
+  take source, like text
+  like text-parts
+  mark private
+
+  save object, <const __termText = \{\n>
+  save at, index-of(source, object)
+  save head, make list
+  walk split(substring(source, 0, at), <\n>)
+    take line
+    fork test, is-above(line/length, 0)
+      hold
+        push(head, text-part-of(substring(line, 6, word-end(line, 6)), line))
+
+  save methods, make list
+  save lines, make list
+  walk split(substring(source, add(at, object/length), source/length), <\n>)
+    take line
+    fork test, is-equal(line, <\}>)
+      hold
+        halt
+    push(lines, line)
+    fork test, is-equal(line, <  \},>)
+      hold
+        save name, <>
+        save found, false
+        walk lines
+          take one
+          fork test, is-equal(found, false)
+            hold
+              sift method-name(one)
+                case some
+                  link named
+                  save name, named
+                  save found, true
+                case none
+                  save found, false
+        push(methods, text-part-of(name, join(lines, <\n>)))
+        save lines, make list
+
+  back
+    make text-parts
+      bind head, head
+      bind methods, methods
+
+# read once, as the original read it when the module loaded
+host text-table, text-parts-of(text-prelude-source())
+
+# a method of the object as a function of its own: `trim(s: string): string {` at the object's indent is
+# `function __termText_trim(s: string): string {`, its body one level out, and every `__termText.x` it calls
+# `__termText_x`
+task text-function
+  take method, like text-part
+  like text
+  mark private
+
+  save opening, <  {method/name}(>
+  save out, make list
+  walk split(method/code, <\n>)
+    take line
+    fork test, is-equal(line, <  \},>)
+      hold
+        push(out, <\}>)
+      miss
+        fork test, starts-with(line, opening)
+          hold
+            push(out, <function __termText_{substring(line, 2, line/length)}>)
+          miss
+            push(out, substring(line, 2, line/length))
+  back dotted-to-flat(join(out, <\n>))
+
+# `/__termText\.(\w+)/g` replaced by `__termText_$1`: the dot after the prefix becomes an underscore where a name follows
+task dotted-to-flat
+  take value, like text
+  like text
+  mark private
+
+  save prefix, <__termText.>
+  save pieces, make list
+  save copied, 0
+  save from, 0
+  walk test
+    hook test, is-maximum(from, value/length)
+    hook hold
+      save at, index-of(value, prefix, from)
+      fork test, is-below(at, 0)
+        hold
+          halt
+      save start, add(at, prefix/length)
+      save end, word-end(value, start)
+      fork test, is-above(end, start)
+        hold
+          push(pieces, substring(value, copied, at))
+          push(pieces, <__termText_>)
+          save copied, start
+          save from, end
+        miss
+          save from, add(at, 1)
+  push(pieces, substring(value, copied, value/length))
+  back join(pieces, <>)
+
+# a helper whose value is computed (`new RegExp(...)`, a `.map(...).join(...)`) is marked pure, so a bundle that dropped
+# every function reading it drops it too: `/^const (\w+) = (.*)$/s`, the value starting `new ` or `[`
+task pure-helper
+  take helper, like text-part
+  like text
+  mark private
+
+  save code, helper/code
+  fork test, is-equal(starts-with(code, <const >), false)
+    hold
+      back code
+  save end, word-end(code, 6)
+  fork test, or(is-equal(end, 6), is-equal(starts-with(substring(code, end, code/length), < = >), false))
+    hold
+      back code
+  save rest, substring(code, add(end, 3), code/length)
+  fork test, or(starts-with(rest, <new >), starts-with(rest, <[>))
+    hold
+      back <const {substring(code, 6, end)} = /* @__PURE__ */ (() =\> {rest})()>
+  back code
+
+# the text runtime a module's code needs: the methods it names, what they name in turn, and the helpers they mention,
+# the methods in the object's own order
+task text-prelude
+  take code, like text
+  like text
+
+  save parts, text-table
+  save by-name, make hash
+  walk parts/methods
+    take one
+    by-name/set(one/name, one)
+  save kept, make hash
+  save queue, names-after(code, <__termText_>)
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save name, queue/pop()
+      fork test, or(is-equal(by-name/has(name), false), kept/has(name))
+        hold
+          turn next
+      kept/set(name, true)
+      save method, by-name/get(name)
+      walk names-after(method/code, <__termText.>)
+        take next
+        push(queue, next)
+
+  save bodies, make list
+  walk parts/methods
+    take one
+    fork test, kept/has(one/name)
+      hold
+        push(bodies, text-function(one))
+  save body, join(bodies, <\n>)
+
+  # a helper is kept when a kept method or a kept helper after it mentions it (`__termWhiteStart` reads `__termWhite`)
+  save chosen, make list
+  save reads, body
+  save at, subtract(parts/head/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save helper, get(parts/head, at)
+      fork test, has-word(reads, helper/name)
+        hold
+          push(chosen, helper)
+          save reads, <{helper/code}\n{reads}>
+      save at, subtract(at, 1)
+
+  save out, make list
+  save at, subtract(chosen/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      push(out, pure-helper(get(chosen, at)))
+      save at, subtract(at, 1)
+  push(out, body)
+  back join(out, <\n>)
+
+# ---- the prelude texts, each the original's line for line ----
+
+# the helpers a maybe field's read and write call (D10)
+task maybe-field-prelude
+  like text
+
+  save lines, make list
+  push(lines, <function __termMaybe\<T\>(value: T | undefined): \{ form: "some"; value: T \} | \{ form: "none" \} \{>)
+  push(lines, <  return value === undefined ? \{ form: "none" \} : \{ form: "some", value \}>)
+  push(lines, <\}>)
+  push(lines, <function __termSome\<T\>(maybe: \{ form: "some"; value: T \} | \{ form: "none" \}): T | undefined \{>)
+  push(lines, <  return maybe.form === "some" ? maybe.value : undefined>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
+# structural equality and key interning
+task equal-prelude
+  like text
+
+  save lines, make list
+  push(lines, <const __termShared = /* @__PURE__ */ Symbol.for('term.shared')>)
+  push(lines, <function __termShare\<T extends object\>(value: T): T \{>)
+  push(lines, <  Object.defineProperty(value, __termShared, \{ value: true \})>)
+  push(lines, <  return value>)
+  push(lines, <\}>)
+  push(lines, <function __termEqual(a: unknown, b: unknown): boolean \{>)
+  push(lines, <  if (a === b) return true>)
+  push(lines, <  if (a == null || b == null) return a == b>)
+  push(lines, <  if (typeof a !== 'object' || typeof b !== 'object') return false>)
+  push(lines, <  if (__termShared in (a as object) || __termShared in (b as object)) return false>)
+  push(lines, <  if (Array.isArray(a)) \{>)
+  push(lines, <    if (!Array.isArray(b) || a.length !== b.length) return false>)
+  push(lines, <    for (let i = 0; i \< a.length; i++) if (!__termEqual(a[i], b[i])) return false>)
+  push(lines, <    return true>)
+  push(lines, <  \}>)
+  push(lines, <  if (a instanceof Map) \{>)
+  push(lines, <    if (!(b instanceof Map) || a.size !== b.size) return false>)
+  push(lines, <    for (const [k, v] of a) if (!b.has(k) || !__termEqual(v, b.get(k))) return false>)
+  push(lines, <    return true>)
+  push(lines, <  \}>)
+  push(lines, <  if (a instanceof Uint8Array) \{>)
+  push(lines, <    if (!(b instanceof Uint8Array) || a.length !== b.length) return false>)
+  push(lines, <    for (let i = 0; i \< a.length; i++) if (a[i] !== b[i]) return false>)
+  push(lines, <    return true>)
+  push(lines, <  \}>)
+  push(lines, <  if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false>)
+  push(lines, <  const ka = Object.keys(a as object)>)
+  push(lines, <  if (ka.length !== Object.keys(b as object).length) return false>)
+  push(lines, <  for (const k of ka) \{>)
+  push(lines, <    if (!Object.prototype.hasOwnProperty.call(b, k)) return false>)
+  push(lines, <    if (!__termEqual((a as Record\<string, unknown\>)[k], (b as Record\<string, unknown\>)[k])) return false>)
+  push(lines, <  \}>)
+  push(lines, <  return true>)
+  push(lines, <\}>)
+  push(lines, <function __termKeyText(v: unknown): string \{>)
+  push(lines, <  if (v === undefined) return 'u'>)
+  push(lines, <  if (v === null) return 'z'>)
+  push(lines, <  switch (typeof v) \{>)
+  push(lines, <    case 'number': return 'n' + (Object.is(v, -0) ? '0' : String(v))>)
+  push(lines, <    case 'string': return 's' + JSON.stringify(v)>)
+  push(lines, <    case 'boolean': return v ? 't' : 'f'>)
+  push(lines, <    case 'bigint': return 'b' + String(v)>)
+  push(lines, <    case 'object': break>)
+  push(lines, <    default: return 'i' + __termIdentity(v as object)>)
+  push(lines, <  \}>)
+  push(lines, <  if (__termShared in (v as object)) return 'i' + __termIdentity(v as object)>)
+  push(lines, <  if (Array.isArray(v)) return '[' + v.map(__termKeyText).join(',') + ']'>)
+  push(lines, <  if (v instanceof Map) return '\{' + Array.from(v, ([k, x]) =\> __termKeyText(k) + ':' + __termKeyText(x)).sort().join(',') + '\}'>)
+  push(lines, <  if (v instanceof Uint8Array) return 'y' + Array.from(v).join('.')>)
+  push(lines, <  if (Object.getPrototypeOf(v) !== Object.prototype) return 'i' + __termIdentity(v as object)>)
+  push(lines, <  const o = v as Record\<string, unknown\>>)
+  push(lines, <  return '(' + Object.keys(o).sort().map(k =\> JSON.stringify(k) + ':' + __termKeyText(o[k])).join(',') + ')'>)
+  push(lines, <\}>)
+  push(lines, <function __termIdentity(v: object): number \{>)
+  push(lines, <  const g = globalThis as \{ __termIdentities?: WeakMap\<object, number\>; __termIdentityNext?: number \}>)
+  push(lines, <  const ids = (g.__termIdentities ??= new WeakMap())>)
+  push(lines, <  let id = ids.get(v)>)
+  push(lines, <  if (id === undefined) \{ id = g.__termIdentityNext = (g.__termIdentityNext ?? 0) + 1; ids.set(v, id) \}>)
+  push(lines, <  return id>)
+  push(lines, <\}>)
+  push(lines, <function __termKey\<T\>(k: T): T \{>)
+  push(lines, <  if (typeof k !== 'object' || k === null) return k>)
+  push(lines, <  const g = globalThis as \{ __termKeys?: Map\<string, WeakRef\<object\>\>; __termKeysGone?: FinalizationRegistry\<string\> \}>)
+  push(lines, <  const keys = (g.__termKeys ??= new Map())>)
+  push(lines, <  const gone = (g.__termKeysGone ??= new FinalizationRegistry(text =\> \{ if (keys.get(text)?.deref() === undefined) keys.delete(text) \}))>)
+  push(lines, <  const text = __termKeyText(k)>)
+  push(lines, <  const seen = keys.get(text)?.deref()>)
+  push(lines, <  if (seen !== undefined) return seen as T>)
+  push(lines, <  keys.set(text, new WeakRef(k as object))>)
+  push(lines, <  gone.register(k as object, text)>)
+  push(lines, <  return k>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
+# the class every raise throws
+task exception-prelude
+  like text
+
+  save lines, make list
+  push(lines, <export class TermException extends Error \{>)
+  push(lines, <  host!: string>)
+  push(lines, <  form!: string>)
+  push(lines, <  note!: string>)
+  push(lines, <  code!: string>)
+  push(lines, <  time!: number>)
+  push(lines, <  link!: unknown>)
+  push(lines, <  base?: unknown>)
+  push(lines, <  // the whole record a raise builds (host, form, code, time, note, link, base, site, flow), every field copied onto>)
+  push(lines, <  // the exception; typed as that record so code checked with tsc takes the fields a raise passes (TS2353 otherwise)>)
+  push(lines, <  constructor(base: \{ note: string; form: string; [field: string]: unknown \}) \{>)
+  push(lines, <    super(base.note)>)
+  push(lines, <    Object.assign(this, base)>)
+  push(lines, <    this.name = TermException.name>)
+  push(lines, <    // the frames of the raise, innermost first, in `capture-trace`'s shape, where the raise gave none: every raise>)
+  push(lines, <    // built `flow: []`, so an exception carried no stack (guides: library/exceptions, 2026-10-05)>)
+  push(lines, <    const flow = (this as \{ flow?: unknown \}).flow>)
+  push(lines, <    if (!Array.isArray(flow) || flow.length === 0) \{>)
+  push(lines, <      ;(this as \{ flow?: unknown \}).flow = (this.stack ?? '').split(String.fromCharCode(10)).slice(1).map(line =\> line.trim()).filter(line =\> line.length !== 0)>)
+  push(lines, <    \}>)
+  push(lines, <    // the hive hears every raise, once wakeHive has hooked it in>)
+  push(lines, <    const hive = (globalThis as \{ __termRaise?: (e: unknown) =\> void \}).__termRaise>)
+  push(lines, <    if (hive) hive(this)>)
+  push(lines, <  \}>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
+# the range check on an integer sum, difference, product, quotient or remainder
+task int-prelude
+  take with-class, like boolean
+  like text
+
+  save lines, make list
+  fork test, with-class
+    hold
+      push(lines, <function __termInt(x: number): number \{>)
+      push(lines, <  if (!(x \<= 9007199254740991 && x \>= -9007199254740991)) __termIntStop(x)>)
+      push(lines, <  return x>)
+      push(lines, <\}>)
+      push(lines, <function __termIntStop(x: number): never \{>)
+      push(lines, <  const base = typeof x !== "number">)
+      push(lines, <    ? \{ host: "@term/base", form: "mismatch", note: "Mismatch", code: "", time: Date.now(), link: \{ thing: "an arithmetic operand", expected: "number", actual: typeof x === "string" ? "text" : typeof x \} \}>)
+      push(lines, <    : !Number.isFinite(x)>)
+      push(lines, <    ? \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing: "a division or remainder by zero" \} \}>)
+      push(lines, <    : \{ host: "@term/base", form: x \> 0 ? "excess" : "shortage", note: x \> 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: \{ thing: "number", limit: x \> 0 ? 9007199254740991 : -9007199254740991, actual: x \} \}>)
+      push(lines, <  throw new TermException(base)>)
+      push(lines, <\}>)
+    miss
+      push(lines, <function __termInt(x: number): number \{>)
+      push(lines, <  if (!(x \<= 9007199254740991 && x \>= -9007199254740991)) __termIntStop(x)>)
+      push(lines, <  return x>)
+      push(lines, <\}>)
+      push(lines, <function __termIntStop(x: number): never \{>)
+      push(lines, <  const base = typeof x !== "number">)
+      push(lines, <    ? \{ host: "@term/base", form: "mismatch", note: "Mismatch", code: "", time: Date.now(), link: \{ thing: "an arithmetic operand", expected: "number", actual: typeof x === "string" ? "text" : typeof x \} \}>)
+      push(lines, <    : !Number.isFinite(x)>)
+      push(lines, <    ? \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing: "a division or remainder by zero" \} \}>)
+      push(lines, <    : \{ host: "@term/base", form: x \> 0 ? "excess" : "shortage", note: x \> 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: \{ thing: "number", limit: x \> 0 ? 9007199254740991 : -9007199254740991, actual: x \} \}>)
+      push(lines, <  throw Object.assign(new Error(base.note), base, \{ name: "TermException" \})>)
+      push(lines, <\}>)
+  back join(lines, <\n>)
+
+# the text runtime as one object, which `text-table` reads into its parts
+task text-prelude-source
+  like text
+
+  save lines, make list
+  push(lines, <const __termSurrogate = \{ a: "", aHas: false, b: "", bHas: false, test(s: string): boolean \{ if (s === this.a) return this.aHas; if (s === this.b) return this.bHas; let has = false; for (let i = 0; i \< s.length; i++) \{ const c = s.charCodeAt(i); if (c \>= 55296 && c \<= 57343) \{ has = true; break \} \} this.b = this.a; this.bHas = this.aHas; this.a = s; this.aHas = has; return has \} \}>)
+  push(lines, <const __termWhite = [9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288].map(c =\> String.fromCharCode(c)).join('')>)
+  push(lines, <const __termWhiteStart = new RegExp('^[' + __termWhite + ']+')>)
+  push(lines, <const __termWhiteEnd = new RegExp('[' + __termWhite + ']+$')>)
+  push(lines, <const __termText = \{>)
+  push(lines, <  length(s: string): number \{>)
+  push(lines, <    if (!__termSurrogate.test(s)) return s.length>)
+  push(lines, <    let n = 0>)
+  push(lines, <    for (const _ of s) n++>)
+  push(lines, <    return n>)
+  push(lines, <  \},>)
+  push(lines, <  // the UTF-16 offset of code point i, for a text with surrogates>)
+  push(lines, <  offset(s: string, i: number): number \{>)
+  push(lines, <    let at = 0>)
+  push(lines, <    let n = 0>)
+  push(lines, <    for (const c of s) \{>)
+  push(lines, <      if (n === i) return at>)
+  push(lines, <      at += c.length>)
+  push(lines, <      n++>)
+  push(lines, <    \}>)
+  push(lines, <    return s.length>)
+  push(lines, <  \},>)
+  push(lines, <  charAt(s: string, i: number): string \{>)
+  push(lines, <    if (!(i \>= 0)) return ''>)
+  push(lines, <    if (!__termSurrogate.test(s)) return i \< s.length ? s[i]! : ''>)
+  push(lines, <    let n = 0>)
+  push(lines, <    for (const c of s) \{>)
+  push(lines, <      if (n === i) return c>)
+  push(lines, <      n++>)
+  push(lines, <    \}>)
+  push(lines, <    return ''>)
+  push(lines, <  \},>)
+  push(lines, <  at(s: string, i: number): string \{>)
+  push(lines, <    return __termText.charAt(s, i)>)
+  push(lines, <  \},>)
+  push(lines, <  charCodeAt(s: string, i: number): number \{>)
+  push(lines, <    const c = __termText.charAt(s, i)>)
+  push(lines, <    return c === '' ? -1 : c.codePointAt(0)!>)
+  push(lines, <  \},>)
+  push(lines, <  // a code point read through a cursor, [code-point index, unit offset] of the last read, stepped forward or back>)
+  push(lines, <  // from, or restarted at the start when that is nearer. A text with no surrogates is read by unit>)
+  push(lines, <  // the unit offset of code point i, the end past the last, for a text with surrogates>)
+  push(lines, <  cursorTo(s: string, i: number, c: number[]): number \{>)
+  push(lines, <    let k = c[0]!>)
+  push(lines, <    let u = c[1]!>)
+  push(lines, <    if (i \< k) \{>)
+  push(lines, <      if (i \<= k - i) \{>)
+  push(lines, <        k = 0>)
+  push(lines, <        u = 0>)
+  push(lines, <      \} else \{>)
+  push(lines, <        while (k \> i) \{>)
+  push(lines, <          u-->)
+  push(lines, <          const x = s.charCodeAt(u)>)
+  push(lines, <          if (u \> 0 && x \>= 56320 && x \<= 57343 && s.charCodeAt(u - 1) \>= 55296 && s.charCodeAt(u - 1) \<= 56319) u-->)
+  push(lines, <          k-->)
+  push(lines, <        \}>)
+  push(lines, <      \}>)
+  push(lines, <    \}>)
+  push(lines, <    while (k \< i && u \< s.length) \{>)
+  push(lines, <      u += s.codePointAt(u)! \> 65535 ? 2 : 1>)
+  push(lines, <      k++>)
+  push(lines, <    \}>)
+  push(lines, <    c[0] = k>)
+  push(lines, <    c[1] = u>)
+  push(lines, <    return u>)
+  push(lines, <  \},>)
+  push(lines, <  cursorAt(s: string, i: number, c: number[]): number \{>)
+  push(lines, <    if (!(i \>= 0)) return -1>)
+  push(lines, <    if (!__termSurrogate.test(s)) return i \< s.length ? s.charCodeAt(i) : -1>)
+  push(lines, <    const u = __termText.cursorTo(s, i, c)>)
+  push(lines, <    return c[0] === i && u \< s.length ? s.codePointAt(u)! : -1>)
+  push(lines, <  \},>)
+  push(lines, <  // the code points from a to e, both clamped and swapped when reversed: JavaScript's own substring on a text with no>)
+  push(lines, <  // surrogates, the cursor moved to the start and the end counted on from it otherwise>)
+  push(lines, <  cursorSlice(s: string, a: number, e: number, c: number[]): string \{>)
+  push(lines, <    if (!__termSurrogate.test(s)) return s.substring(a, e)>)
+  push(lines, <    const x = Math.max(Math.min(a, e), 0)>)
+  push(lines, <    const y = Math.max(Math.max(a, e), 0)>)
+  push(lines, <    const from = __termText.cursorTo(s, x, c)>)
+  push(lines, <    let to = from>)
+  push(lines, <    let k = c[0]!>)
+  push(lines, <    while (k \< y && to \< s.length) \{>)
+  push(lines, <      to += s.codePointAt(to)! \> 65535 ? 2 : 1>)
+  push(lines, <      k++>)
+  push(lines, <    \}>)
+  push(lines, <    return s.slice(from, to)>)
+  push(lines, <  \},>)
+  push(lines, <  cursorCodeAt(s: string, i: number, c: number[]): number \{>)
+  push(lines, <    return __termText.cursorAt(s, i, c)>)
+  push(lines, <  \},>)
+  push(lines, <  cursorCharAt(s: string, i: number, c: number[]): string \{>)
+  push(lines, <    const x = __termText.cursorAt(s, i, c)>)
+  push(lines, <    return x \< 0 ? '' : String.fromCodePoint(x)>)
+  push(lines, <  \},>)
+  push(lines, <  indexOf(s: string, n: string, from: number = 0): number \{>)
+  push(lines, <    const size = __termText.length(s)>)
+  push(lines, <    const f = Math.min(Math.max(from, 0), size)>)
+  push(lines, <    if (n === '') return f>)
+  push(lines, <    const plain = !__termSurrogate.test(s)>)
+  push(lines, <    const found = s.indexOf(n, plain ? f : __termText.offset(s, f))>)
+  push(lines, <    if (found \< 0) return -1>)
+  push(lines, <    return plain ? found : __termText.length(s.slice(0, found))>)
+  push(lines, <  \},>)
+  push(lines, <  lastIndexOf(s: string, n: string): number \{>)
+  push(lines, <    const found = s.lastIndexOf(n)>)
+  push(lines, <    if (found \< 0) return -1>)
+  push(lines, <    return __termText.length(s.slice(0, found))>)
+  push(lines, <  \},>)
+  push(lines, <  split(s: string, d: string): string[] \{>)
+  push(lines, <    return d === '' ? Array.from(s) : s.split(d)>)
+  push(lines, <  \},>)
+  push(lines, <  substring(s: string, a: number, b?: number): string \{>)
+  push(lines, <    const plain = !__termSurrogate.test(s)>)
+  push(lines, <    const size = plain ? s.length : __termText.length(s)>)
+  push(lines, <    let x = Math.min(Math.max(a, 0), size)>)
+  push(lines, <    let y = Math.min(Math.max(b === undefined ? size : b, 0), size)>)
+  push(lines, <    if (x \> y) [x, y] = [y, x]>)
+  push(lines, <    if (plain) return s.slice(x, y)>)
+  push(lines, <    const from = __termText.offset(s, x)>)
+  push(lines, <    return s.slice(from, from + __termText.offset(s.slice(from), y - x))>)
+  push(lines, <  \},>)
+  push(lines, <  slice(s: string, a: number, b?: number): string \{>)
+  push(lines, <    return __termText.substring(s, a, b)>)
+  push(lines, <  \},>)
+  push(lines, <  toLowerCase(s: string): string \{>)
+  push(lines, <    return s.toLowerCase()>)
+  push(lines, <  \},>)
+  push(lines, <  toUpperCase(s: string): string \{>)
+  push(lines, <    return s.toUpperCase()>)
+  push(lines, <  \},>)
+  push(lines, <  trim(s: string): string \{>)
+  push(lines, <    return s.replace(__termWhiteStart, '').replace(__termWhiteEnd, '')>)
+  push(lines, <  \},>)
+  push(lines, <  trimStart(s: string): string \{>)
+  push(lines, <    return s.replace(__termWhiteStart, '')>)
+  push(lines, <  \},>)
+  push(lines, <  trimEnd(s: string): string \{>)
+  push(lines, <    return s.replace(__termWhiteEnd, '')>)
+  push(lines, <  \},>)
+  push(lines, <  pad(s: string, w: number, f: string, front: boolean): string \{>)
+  push(lines, <    const size = __termText.length(s)>)
+  push(lines, <    if (size \>= w || f === '') return s>)
+  push(lines, <    const fill = Array.from(f)>)
+  push(lines, <    let out = ''>)
+  push(lines, <    for (let i = 0; i \< w - size; i++) out += fill[i % fill.length]>)
+  push(lines, <    return front ? out + s : s + out>)
+  push(lines, <  \},>)
+  push(lines, <  padStart(s: string, w: number, f: string): string \{>)
+  push(lines, <    return __termText.pad(s, w, f, true)>)
+  push(lines, <  \},>)
+  push(lines, <  padEnd(s: string, w: number, f: string): string \{>)
+  push(lines, <    return __termText.pad(s, w, f, false)>)
+  push(lines, <  \},>)
+  push(lines, <  replace(s: string, a: string, b: string): string \{>)
+  push(lines, <    const at = s.indexOf(a)>)
+  push(lines, <    return at \< 0 ? s : s.slice(0, at) + b + s.slice(at + a.length)>)
+  push(lines, <  \},>)
+  push(lines, <  replaceAll(s: string, a: string, b: string): string \{>)
+  push(lines, <    if (a === '') return b + Array.from(s).join(b) + (s === '' ? '' : b)>)
+  push(lines, <    return s.split(a).join(b)>)
+  push(lines, <  \},>)
+  push(lines, <  includes(s: string, n: string): boolean \{>)
+  push(lines, <    return s.includes(n)>)
+  push(lines, <  \},>)
+  push(lines, <  startsWith(s: string, n: string): boolean \{>)
+  push(lines, <    return s.startsWith(n)>)
+  push(lines, <  \},>)
+  push(lines, <  endsWith(s: string, n: string): boolean \{>)
+  push(lines, <    return s.endsWith(n)>)
+  push(lines, <  \},>)
+  push(lines, <  repeat(s: string, n: number): string \{>)
+  push(lines, <    return n \> 0 ? s.repeat(n) : ''>)
+  push(lines, <  \},>)
+  push(lines, <  concat(s: string, b: string): string \{>)
+  push(lines, <    return s + b>)
+  push(lines, <  \},>)
+  push(lines, <  // code point order, which is UTF-8 byte order: JavaScript's \< orders by UTF-16 unit, and the two disagree above>)
+  push(lines, <  // the basic plane>)
+  push(lines, <  // read in place: up to the first unit that differs the two agree, so that position is a code point boundary in both>)
+  push(lines, <  // (or the low half of one shared high surrogate), two units outside the surrogate range order as their code points,>)
+  push(lines, <  // and only a surrogate needs the whole code point read. It built two arrays of code points per comparison, so a sort>)
+  push(lines, <  // of texts allocated on every comparison>)
+  push(lines, <  compare(a: string, b: string): number \{>)
+  push(lines, <    const n = Math.min(a.length, b.length)>)
+  push(lines, <    for (let i = 0; i \< n; i++) \{>)
+  push(lines, <      const x = a.charCodeAt(i)>)
+  push(lines, <      const y = b.charCodeAt(i)>)
+  push(lines, <      if (x !== y) \{>)
+  push(lines, <        if ((x \< 55296 || x \> 57343) && (y \< 55296 || y \> 57343)) return x \< y ? -1 : 1>)
+  push(lines, <        const p = a.codePointAt(i)!>)
+  push(lines, <        const q = b.codePointAt(i)!>)
+  push(lines, <        return p \< q ? -1 : p \> q ? 1 : 0>)
+  push(lines, <      \}>)
+  push(lines, <    \}>)
+  push(lines, <    return a.length === b.length ? 0 : a.length \< b.length ? -1 : 1>)
+  push(lines, <  \},>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
+# a list read past the end stops, and so do a write out of range and a pop of an empty list
+task list-prelude
+  take with-class, like boolean
+  like text
+
+  save lines, make list
+  fork test, with-class
+    hold
+      push(lines, <function __termStop(thing: string): never \{>)
+      push(lines, <  const base = \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing \} \}>)
+      push(lines, <  throw new TermException(base)>)
+      push(lines, <\}>)
+      push(lines, <function __termAt\<T\>(a: T[], i: number): T \{>)
+      push(lines, <  if (!(i \>= 0 && i \< a.length)) __termStop("a list read at " + i + " of " + a.length)>)
+      push(lines, <  return a[i]!>)
+      push(lines, <\}>)
+      push(lines, <function __termReadPast(a: unknown[], i: number): never \{>)
+      push(lines, <  return __termStop("a list read at " + i + " of " + a.length)>)
+      push(lines, <\}>)
+      push(lines, <function __termWritePast(a: unknown[], i: number): never \{>)
+      push(lines, <  return __termStop("a list write at " + i + " of " + a.length)>)
+      push(lines, <\}>)
+      push(lines, <function __termPut\<T\>(a: T[], i: number, v: T): T \{>)
+      push(lines, <  if (!(i \>= 0 && i \< a.length)) __termStop("a list write at " + i + " of " + a.length)>)
+      push(lines, <  return (a[i] = v)>)
+      push(lines, <\}>)
+      push(lines, <function __termPop\<T\>(a: T[]): T \{>)
+      push(lines, <  if (a.length === 0) __termStop("a pop of an empty list")>)
+      push(lines, <  return a.pop()!>)
+      push(lines, <\}>)
+      push(lines, <function __termShift\<T\>(a: T[]): T \{>)
+      push(lines, <  if (a.length === 0) __termStop("a shift of an empty list")>)
+      push(lines, <  return a.shift()!>)
+      push(lines, <\}>)
+      push(lines, <function __termSlice\<T\>(a: T[], s: number, e?: number): T[] \{>)
+      push(lines, <  const n = a.length>)
+      push(lines, <  const x = Math.min(Math.max(s, 0), n)>)
+      push(lines, <  const y = Math.min(Math.max(e === undefined ? n : e, 0), n)>)
+      push(lines, <  return x \< y ? a.slice(x, y) : []>)
+      push(lines, <\}>)
+      push(lines, <function __termSplice\<T\>(a: T[], s: number, d: number, ...items: T[]): T[] \{>)
+      push(lines, <  const x = Math.min(Math.max(s, 0), a.length)>)
+      push(lines, <  return a.splice(x, Math.min(Math.max(d, 0), a.length - x), ...items)>)
+      push(lines, <\}>)
+    miss
+      push(lines, <function __termStop(thing: string): never \{>)
+      push(lines, <  const base = \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing \} \}>)
+      push(lines, <  throw Object.assign(new Error(base.note), base, \{ name: "TermException" \})>)
+      push(lines, <\}>)
+      push(lines, <function __termAt\<T\>(a: T[], i: number): T \{>)
+      push(lines, <  if (!(i \>= 0 && i \< a.length)) __termStop("a list read at " + i + " of " + a.length)>)
+      push(lines, <  return a[i]!>)
+      push(lines, <\}>)
+      push(lines, <function __termReadPast(a: unknown[], i: number): never \{>)
+      push(lines, <  return __termStop("a list read at " + i + " of " + a.length)>)
+      push(lines, <\}>)
+      push(lines, <function __termWritePast(a: unknown[], i: number): never \{>)
+      push(lines, <  return __termStop("a list write at " + i + " of " + a.length)>)
+      push(lines, <\}>)
+      push(lines, <function __termPut\<T\>(a: T[], i: number, v: T): T \{>)
+      push(lines, <  if (!(i \>= 0 && i \< a.length)) __termStop("a list write at " + i + " of " + a.length)>)
+      push(lines, <  return (a[i] = v)>)
+      push(lines, <\}>)
+      push(lines, <function __termPop\<T\>(a: T[]): T \{>)
+      push(lines, <  if (a.length === 0) __termStop("a pop of an empty list")>)
+      push(lines, <  return a.pop()!>)
+      push(lines, <\}>)
+      push(lines, <function __termShift\<T\>(a: T[]): T \{>)
+      push(lines, <  if (a.length === 0) __termStop("a shift of an empty list")>)
+      push(lines, <  return a.shift()!>)
+      push(lines, <\}>)
+      push(lines, <function __termSlice\<T\>(a: T[], s: number, e?: number): T[] \{>)
+      push(lines, <  const n = a.length>)
+      push(lines, <  const x = Math.min(Math.max(s, 0), n)>)
+      push(lines, <  const y = Math.min(Math.max(e === undefined ? n : e, 0), n)>)
+      push(lines, <  return x \< y ? a.slice(x, y) : []>)
+      push(lines, <\}>)
+      push(lines, <function __termSplice\<T\>(a: T[], s: number, d: number, ...items: T[]): T[] \{>)
+      push(lines, <  const x = Math.min(Math.max(s, 0), a.length)>)
+      push(lines, <  return a.splice(x, Math.min(Math.max(d, 0), a.length - x), ...items)>)
+      push(lines, <\}>)
+  back join(lines, <\n>)
+
+# a host value checked where the program names a type for it
+task host-value-prelude
+  like text
+
+  save lines, make list
+  push(lines, <function __termHost\<T\>(value: unknown, kind: "string" | "number" | "boolean", name: string): T \{>)
+  push(lines, <  if (typeof value === kind) return value as T>)
+  push(lines, <  const found = value === null ? "null" : Array.isArray(value) ? "a list" : typeof value === "object" ? "an object" : typeof value === "string" ? "a text" : typeof value>)
+  push(lines, <  const wanted = kind === "string" ? "a text" : kind === "number" ? "a number" : "a boolean">)
+  push(lines, <  throw new TermException(\{ host: "@term/host", form: "data-mismatch", code: "", time: Date.now(), note: "Data does not fit the shape", link: \{ thing: "host value", path: name, reason: "is " + found + " where " + wanted + " belongs" \} \} as never)>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
+# the walk a module that lowers a `fill` or `melt` with a form carries
+task form-walk-prelude
+  like text
+
+  save lines, make list
+  push(lines, <function __termMismatch(path: string, reason: string): never \{>)
+  push(lines, <  throw new TermException(\{ host: "@term/host", form: "data-mismatch", code: "", time: Date.now(), note: "Data does not fit the shape", link: \{ thing: "data", path: path || ".", reason \} \} as never)>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termFill(value: any, spec: any, path = ""): any \{>)
+  push(lines, <  const at = (key: string) =\> (path ? path + "/" + key : key)>)
+  push(lines, <  if (value.form !== "hash") __termMismatch(path, "is " + (value.form === "array" ? "a list" : value.form === "blank" ? "void" : "a scalar") + " where a map belongs")>)
+  push(lines, <  const out: Record\<string, unknown\> = \{\}>)
+  push(lines, <  const present = new Map\<string, any\>(value.list.map((e: any) =\> [e.name, e.base]))>)
+  push(lines, <  for (const field of spec.fields) \{>)
+  push(lines, <    const found = present.get(field.name)>)
+  push(lines, <    if (found === undefined || found.form === "blank") \{>)
+  push(lines, <      if (!field.optional) __termMismatch(at(field.name), "is missing")>)
+  push(lines, <      continue>)
+  push(lines, <    \}>)
+  push(lines, <    out[field.member] = __termFillKind(found, field.kind, at(field.name))>)
+  push(lines, <  \}>)
+  push(lines, <  for (const entry of value.list) \{>)
+  push(lines, <    if (!spec.fields.some((f: any) =\> f.name === entry.name)) __termMismatch(at(entry.name), "is not in the form")>)
+  push(lines, <  \}>)
+  push(lines, <  return out>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termFillKind(value: any, kind: any, path: string): any \{>)
+  push(lines, <  const have = value.form === "hash" ? "map" : value.form === "array" ? "list" : value.form === "blank" ? "void" : value.form>)
+  push(lines, <  switch (kind.kind) \{>)
+  push(lines, <    case "any":>)
+  push(lines, <      return __termMeltless(value)>)
+  push(lines, <    case "form":>)
+  push(lines, <      return __termFill(value, kind.spec, path)>)
+  push(lines, <    case "list":>)
+  push(lines, <      if (value.form !== "array") __termMismatch(path, "is " + (have === "map" ? "a map" : have === "void" ? "void" : "a scalar") + " where a list belongs")>)
+  push(lines, <      return value.list.map((item: any, index: number) =\> __termFillKind(item, kind.item, path + "/" + index))>)
+  push(lines, <    case "decimal":>)
+  push(lines, <      if (value.form === "decimal" || value.form === "number") return value.value>)
+  push(lines, <      __termMismatch(path, "is " + have + " where decimal belongs")>)
+  push(lines, <    default:>)
+  push(lines, <      if (value.form === kind.kind) return value.value>)
+  push(lines, <      __termMismatch(path, "is " + have + " where " + kind.kind + " belongs")>)
+  push(lines, <  \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termMeltless(value: any): any \{>)
+  push(lines, <  switch (value.form) \{>)
+  push(lines, <    case "hash": return Object.fromEntries(value.list.map((e: any) =\> [e.name, __termMeltless(e.base)]))>)
+  push(lines, <    case "array": return value.list.map(__termMeltless)>)
+  push(lines, <    case "blank": return null>)
+  push(lines, <    default: return value.value>)
+  push(lines, <  \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termMelt(value: any, spec: any): any \{>)
+  push(lines, <  return \{ form: "hash", list: spec.fields.flatMap((field: any) =\> \{>)
+  push(lines, <    const held = value == null ? undefined : value[field.member]>)
+  push(lines, <    if (held === undefined || held === null) return field.optional ? [] : [\{ name: field.name, base: \{ form: "blank" \} \}]>)
+  push(lines, <    return [\{ name: field.name, base: __termMeltKind(held, field.kind) \}]>)
+  push(lines, <  \}) \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termMeltKind(value: any, kind: any): any \{>)
+  push(lines, <  switch (kind.kind) \{>)
+  push(lines, <    case "form": return __termMelt(value, kind.spec)>)
+  push(lines, <    case "list": return \{ form: "array", list: (value as unknown[]).map(item =\> __termMeltKind(item, kind.item)) \}>)
+  push(lines, <    case "text": return \{ form: "text", value: String(value) \}>)
+  push(lines, <    case "number": return \{ form: "number", value: Number(value) \}>)
+  push(lines, <    case "decimal": return \{ form: "decimal", value: Number(value) \}>)
+  push(lines, <    case "flag": return \{ form: "flag", value: Boolean(value) \}>)
+  push(lines, <    default: return __termMeltAny(value)>)
+  push(lines, <  \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termMeltAny(value: any): any \{>)
+  push(lines, <  if (value === null || value === undefined) return \{ form: "blank" \}>)
+  push(lines, <  if (Array.isArray(value)) return \{ form: "array", list: value.map(__termMeltAny) \}>)
+  push(lines, <  if (typeof value === "string") return \{ form: "text", value \}>)
+  push(lines, <  if (typeof value === "boolean") return \{ form: "flag", value \}>)
+  push(lines, <  if (typeof value === "number") return \{ form: Number.isInteger(value) ? "number" : "decimal", value \}>)
+  push(lines, <  return \{ form: "hash", list: Object.entries(value as object).map(([name, base]) =\> (\{ name, base: __termMeltAny(base) \})) \}>)
+  push(lines, <\}>)
+  back join(lines, <\n>)

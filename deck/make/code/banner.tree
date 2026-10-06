@@ -1,0 +1,276 @@
+# The banner `term` prints with no verb, and the line `term show` prints, as text. The CLI writes each as data on stdout
+# (call/code/output.ts, `printData`), byte for byte what the `console.log` lines wrote, a newline after every line.
+#
+# Ported from show.ts (self-hosting, 2026-10-06), which stays as the face and writes the text out. The decisions:
+#   - color is written as the escapes chalk 5 writes, with its rules: an empty text stays empty, a close code already
+#     inside is followed by the open again, and a line break closes the style and opens it again after (`\r\n` kept whole). A chained
+#     style opens outer first and closes inner first: `green.bold` is `\e[32m\e[1m` ... `\e[22m\e[39m`
+#   - `color` is a parameter, the face's `chalk.level > 0`, which asks the terminal
+#   - the platform, the node version and the home folder are handed in, as `os` and `process` gave them
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/math
+  find maximum
+
+load @term/base/text
+  find contains
+  find split
+  find ends-with
+  find replace-all
+  find pad-right
+
+load @term/base/text/string
+  find slice
+
+# one command of the banner, as typed, and what it does
+form banner-command
+  link command, like text
+  link description, like text
+
+form banner-section
+  link title, like text
+  link commands, like list, like banner-command
+
+task command-of
+  take command, like text
+  take description, like text
+  like banner-command
+  mark private
+
+  back
+    make banner-command
+      bind command, command
+      bind description, description
+
+task section-of
+  take title, like text
+  take commands, like list, like banner-command
+  like banner-section
+  mark private
+
+  back
+    make banner-section
+      bind title, title
+      bind commands, commands
+
+# The banner's commands, by section: the command as typed, then what it does. Data, so the description column is
+# computed rather than padded by hand: a hand-padded `term save <deck> [mark]` was one cell too long for its column and
+# pushed its description out of line with every other
+task banner-sections
+  like list, like banner-section
+
+  save sections, make list
+
+  save package, make list
+  push(package, command-of(<term load>, <Install all dependencies>))
+  push(package, command-of(<term save \<deck\> [mark]>, <Add a dependency>))
+  push(package, command-of(<term toss \<deck\>>, <Remove a dependency>))
+  push(package, command-of(<term link>, <Link local package for dev (--toss to unlink)>))
+  push(package, command-of(<term seek>, <Check if decks are installed>))
+  push(package, command-of(<term host>, <Publish to registry>))
+  push(package, command-of(<term bind>, <Log in to term.surf, for publishing>))
+  push(sections, section-of(<Package Management>, package))
+
+  save start, make list
+  push(start, command-of(<term wake \<name\>>, <Scaffold a new project>))
+  push(sections, section-of(<Start>, start))
+
+  save build, make list
+  push(build, command-of(<term make>, <Build the project>))
+  push(build, command-of(<term make --ride>, <Watch and rebuild>))
+  push(build, command-of(<term boot>, <Start the app>))
+  push(build, command-of(<term feed>, <Dev server (hot reload)>))
+  push(build, command-of(<term work>, <Background compiler worker>))
+  push(build, command-of(<term test>, <Run tests>))
+  push(build, command-of(<term time>, <Benchmark (or --cpu/--memory profile)>))
+  push(build, command-of(<term walk>, <Start REPL>))
+  push(build, command-of(<term wash>, <Clean build artifacts>))
+  push(build, command-of(<term cast>, <Build the Cloudflare Worker>))
+  push(build, command-of(<term halt>, <Stop a running boot>))
+  push(sections, section-of(<Build and Run>, build))
+
+  save check, make list
+  push(check, command-of(<term hold>, <Every file compiles and every obligation holds>))
+  push(check, command-of(<term scan \<file\>>, <Type-check one file>))
+  push(check, command-of(<term lint>, <Find and fix style problems>))
+  push(check, command-of(<term form>, <Format files in place>))
+  push(check, command-of(<term look \<module\>>, <List what a module offers>))
+  push(check, command-of(<term roll>, <The build's decks, exceptions, tasks and routes>))
+  push(check, command-of(<term view [path]>, <Check a document and print what it uses>))
+  push(check, command-of(<term mold [file]>, <Convert data files>))
+  push(check, command-of(<term hunt>, <Fuzz the compiler on this project>))
+  push(check, command-of(<term mark>, <Measure Term against hand-written code>))
+  push(check, command-of(<term mind>, <The project's memory>))
+  push(sections, section-of(<Check and Prove>, check))
+
+  save systems, make list
+  push(systems, command-of(<term base>, <The base record system>))
+  push(systems, command-of(<term zone>, <Secrets and environment>))
+  push(sections, section-of(<Systems>, systems))
+
+  save version, make list
+  push(version, command-of(<term move mark>, <Bump patch version>))
+  push(version, command-of(<term move mark 2>, <Bump minor version>))
+  push(version, command-of(<term move mark 1>, <Bump major version>))
+  push(version, command-of(<term move mark rc>, <Start or move a pre-release>))
+  push(version, command-of(<term self>, <This install of term: check, update, or go back>))
+  push(version, command-of(<term update>, <Install the newest term (term self update)>))
+  push(sections, section-of(<Version>, version))
+
+  save info, make list
+  push(info, command-of(<term show>, <Show the toolchain version and platform>))
+  push(info, command-of(<term show mark>, <Show this package's version>))
+  push(info, command-of(<term show tools>, <Show each native toolchain and its version>))
+  push(info, command-of(<term note>, <Show package info>))
+  push(info, command-of(<term fill>, <Print shell completion script>))
+  push(info, command-of(<term --version>, <Show the version number>))
+  push(sections, section-of(<Info>, info))
+
+  back sections
+
+# the fewest spaces between a command and its description
+task banner-gap
+  like number
+  mark private
+
+  back 2
+
+# ---- color ----
+
+# chalk's line rule: every line break closes the style and opens it again after, `\r\n` kept whole
+task encase-lines
+  take value, like text
+  take close, like text
+  take open, like text
+  like text
+  mark private
+
+  fork test, is-equal(contains(value, <\n>), false)
+    hold
+      back value
+  save parts, split(value, <\n>)
+  save out, <>
+  walk parts
+    take part
+    take at
+    fork test, is-equal(at, subtract(parts/length, 1))
+      hold
+        save out, <{out}{part}>
+      miss
+        fork test, ends-with(part, <\r>)
+          hold
+            save out, <{out}{slice(part, 0, subtract(part/length, 1))}{close}\r\n{open}>
+          miss
+            save out, <{out}{part}{close}\n{open}>
+  back out
+
+# one style, as chalk applies it: nothing when color is off or the text is empty, a close already inside re-opened, and
+# the line rule
+task paint
+  take on, like boolean
+  take open, like text
+  take close, like text
+  take value, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(on, false), is-equal(value, <>))
+    hold
+      back value
+  save inner, value
+  fork test, contains(inner, <\e>)
+    hold
+      save inner, replace-all(inner, close, <{close}{open}>)
+  back <{open}{encase-lines(inner, close, open)}{close}>
+
+task gray
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back paint(on, <\e[90m>, <\e[39m>, value)
+
+task white
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back paint(on, <\e[37m>, <\e[39m>, value)
+
+task magenta-bright
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back paint(on, <\e[95m>, <\e[39m>, value)
+
+# the program's name, green and bold. The text is a word, so the re-opening and line rules never apply
+task name-mark
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  fork test, is-equal(on, false)
+    hold
+      back value
+  back <\e[32m\e[1m{value}\e[22m\e[39m>
+
+# ---- the texts ----
+
+task banner-text
+  take color, like boolean
+  like text
+
+  # one column for every section, so the descriptions line up down the whole banner
+  save width, 0
+  walk banner-sections()
+    take section
+    walk section/commands
+      take one
+      save width, maximum(width, one/command/length)
+  save width, add(width, banner-gap())
+
+  save lines, make list
+  push(lines, <>)
+  push(lines, <{name-mark(color, <  term>)}{gray(color, < - the Term toolkit>)}>)
+  push(lines, <>)
+  push(lines, white(color, <  Usage: term \<verb\> [objects] [options]>))
+  push(lines, <>)
+  walk banner-sections()
+    take section
+    push(lines, magenta-bright(color, <  {section/title}>))
+    walk section/commands
+      take one
+      push(lines, <    {pad-right(one/command, width, < >)}{one/description}>)
+    push(lines, <>)
+  # `-h`, `--hint` and `--help` are one help since 2026-10-04 (`term wake --hint` used to run wake)
+  push(lines, gray(color, <  Run term \<verb\> -h for command-specific help>))
+  push(lines, <>)
+
+  back <{join(lines, <\n>)}\n>
+
+# no blank line before or after, so a paste into a bug report carries the block and nothing else
+task info-text
+  take color, like boolean
+  take version, like text
+  take platform, like text
+  take arch, like text
+  take node, like text
+  take home, like text
+  like text
+
+  save lines, make list
+  push(lines, <{name-mark(color, <term>)} {gray(color, version)}>)
+  push(lines, <>)
+  push(lines, <{white(color, <  Platform:  >)}{platform} {arch}>)
+  push(lines, <{white(color, <  Node:      >)}{node}>)
+  push(lines, <{white(color, <  Home:      >)}{home}>)
+
+  back <{join(lines, <\n>)}\n>

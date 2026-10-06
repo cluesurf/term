@@ -1,0 +1,1113 @@
+# What the Rust emitter decides about a whole program before it writes a statement: which forms compare (`PartialEq`),
+# hash (`Eq + Hash`) and can be a map key (`TermHash`), each a greatest fixpoint so a recursive form qualifies when
+# nothing outside it disqualifies it; the generic forms that need a `PhantomData` marker; the generic parameters that
+# sit in a map key, and the `PartialEq` written out for them; which module bindings are constants, slots or texts; and
+# a few spellings the statements share (a type's empty value, a condition without its own parentheses, an `impl Fn`).
+#
+# Ported from compile/rust.ts (self-hosting, 2026-10-06), which stays as the face. A type's Rust spelling reads the
+# emitter's module state, so the tasks that spell one take compile/rust-names' `rust-type-context`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find index-of
+  find to-upper-case
+
+load ./node
+  find type
+  find expression
+  find statement
+  find form-field
+  find form-variant
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./rust-names
+  find rust-type-context
+  find rust-type
+  find rust-type-of
+  find snake
+  find pascal
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task word-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, or(is-below(at, 0), is-minimum(at, value/length))
+    hold
+      back false
+  save code, char-code-at(value, at)
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+task boundary-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  back is-unequal(word-at(value, subtract(at, 1)), word-at(value, at))
+
+# `\b<word>\b` somewhere in a text
+task has-word
+  take source, like text
+  take word, like text
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, is-maximum(from, source/length)
+    hook hold
+      save at, index-of(source, word, from)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      fork test, and(boundary-at(source, at), boundary-at(source, add(at, word/length)))
+        hold
+          back true
+      save from, add(at, 1)
+  back false
+
+# a form's own fields and its cases' fields, in that order
+task all-fields
+  take fields, like list, like form-field
+  take variants, like list, like form-variant
+  like list, like type
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    push(out, field/type)
+  walk variants
+    take variant
+    walk variant/fields
+      take field
+      push(out, field/type)
+  back out
+
+# ---- the forms that compare, hash, and key a map ----
+
+# the forms by name, the last of a name kept at the place of the first, as a map built from entries keeps it
+form form-decls
+  link order, like list, like text
+  link by-name, like hash, like text, like statement
+
+task form-decls-of
+  take program, like list, like statement
+  like form-decls
+  mark private
+
+  save order, make list
+  save by-name, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link form-name
+        fork test, not(by-name/has(form-name))
+          hold
+            push(order, form-name)
+        by-name/set(form-name, one)
+      miss
+        save nothing, 0
+  back
+    make form-decls
+      bind order, order
+      bind by-name, by-name
+
+form form-sets
+  mark shared
+  link equatable, like hash, like text, like boolean
+  link hashable, like hash, like text, like boolean
+  link keyable, like hash, like text, like boolean
+
+# can a field of this type be compared (`hash` false) or hashed (`hash` true), given the forms that still qualify
+task field-qualifies
+  take known, like type
+  take params, like list, like text
+  take forms, like hash, like text, like boolean
+  take hash, like boolean
+  take sets, like form-sets
+  take context, like rust-type-context
+  like boolean
+  mark private
+
+  sift known
+    case number
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case bytes
+      back true
+    case unit
+      back true
+    case float
+      back not(hash)
+    case dynamic
+      back not(hash)
+    case array
+      link element
+      back and(not(hash), field-qualifies(element, params, forms, false, sets, context))
+    case map
+      link map-key
+      link map-value
+      back and(and(not(hash), field-qualifies(map-key, params, sets/hashable, true, sets, context)), field-qualifies(map-value, params, forms, false, sets, context))
+    case named
+      link type-name
+      link type-args
+      save args, make list
+      walk type-args
+        take arg
+        push(args, arg)
+      fork test, or(is-equal(type-name, <text>), is-equal(type-name, <boolean>))
+        hold
+          back true
+      fork test, is-equal(type-name, <list>)
+        hold
+          fork test, hash
+            hold
+              back false
+          walk args
+            take arg
+            fork test, not(field-qualifies(arg, params, forms, false, sets, context))
+              hold
+                back false
+          back true
+      fork test, is-equal(type-name, <hash>)
+        hold
+          fork test, hash
+            hold
+              back false
+          fork test, is-above(args/length, 0)
+            hold
+              fork test, not(field-qualifies(get(args, 0), params, sets/hashable, true, sets, context))
+                hold
+                  back false
+          fork test, is-above(args/length, 1)
+            hold
+              fork test, not(field-qualifies(get(args, 1), params, forms, false, sets, context))
+                hold
+                  back false
+          back true
+      # a generic parameter: derive adds the bound itself
+      fork test, has-text(params, type-name)
+        hold
+          back true
+      # a `mark shared` value compares and hashes by identity, whatever it holds
+      fork test, context/shared-forms/has(type-name)
+        hold
+          back true
+      fork test, not(forms/has(type-name))
+        hold
+          back false
+      walk args
+        take arg
+        fork test, not(field-qualifies(arg, params, forms, hash, sets, context))
+          hold
+            back false
+      back true
+    miss
+      back false
+
+# can a field of this type be a map key, by the key rule (`TermHash`): a float, a list and a map can
+task key-qualifies
+  take known, like type
+  take params, like list, like text
+  take keyable, like hash, like text, like boolean
+  take context, like rust-type-context
+  like boolean
+  mark private
+
+  sift known
+    case number
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case bytes
+      back true
+    case unit
+      back true
+    case float
+      back true
+    case array
+      link element
+      back key-qualifies(element, params, keyable, context)
+    case map
+      link map-key
+      link map-value
+      back and(key-qualifies(map-key, params, keyable, context), key-qualifies(map-value, params, keyable, context))
+    case named
+      link type-name
+      link type-args
+      fork test, or(or(is-equal(type-name, <text>), is-equal(type-name, <boolean>)), or(has-text(params, type-name), context/shared-forms/has(type-name)))
+        hold
+          back true
+      fork test, and(not(is-equal(type-name, <list>)), not(is-equal(type-name, <hash>)))
+        hold
+          fork test, not(keyable/has(type-name))
+            hold
+              back false
+      walk type-args
+        take arg
+        fork test, not(key-qualifies(arg, params, keyable, context))
+          hold
+            back false
+      back true
+    miss
+      back false
+
+# the forms' params, fields and case fields, read off a declaration
+task decl-params
+  take node, like statement
+  like list, like text
+  mark private
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      back form-params
+    miss
+      save out, make list
+      back out
+
+task decl-types
+  take node, like statement
+  like list, like type
+  mark private
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      back all-fields(form-fields, form-variants)
+    miss
+      save out, make list
+      back out
+
+task fixpoint
+  take decls, like form-decls
+  take forms, like hash, like text, like boolean
+  take hash, like boolean
+  take sets, like form-sets
+  take context, like rust-type-context
+  mark private
+
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save names, make list
+      walk forms/keys()
+        take name
+        push(names, name)
+      walk names
+        take name
+        save node, decls/by-name/get(name)
+        save params, decl-params(node)
+        save fine, true
+        walk decl-types(node)
+          take field-type
+          fork test, not(field-qualifies(field-type, params, forms, hash, sets, context))
+            hold
+              save fine, false
+              halt
+        fork test, not(fine)
+          hold
+            forms/delete(name)
+            save changed, true
+
+# the forms that compare, hash and can be a map key, each in the program's order
+form form-traits
+  link equatable, like list, like text
+  link hashable, like list, like text
+  link keyable, like list, like text
+
+task form-traits-of
+  take program, like list, like statement
+  take context, like rust-type-context
+  like form-traits
+
+  save decls, form-decls-of(program)
+  save equatable, make hash
+  save hashable, make hash
+  save keyable, make hash
+  walk decls/order
+    take name
+    equatable/set(name, true)
+    hashable/set(name, true)
+    keyable/set(name, true)
+  save sets
+    make form-sets
+      bind equatable, equatable
+      bind hashable, hashable
+      bind keyable, keyable
+  fixpoint(decls, equatable, false, sets, context)
+  fixpoint(decls, hashable, true, sets, context)
+  # a key must also compare, so a hashable form is always an equatable one
+  save hashed, make list
+  walk hashable/keys()
+    take name
+    push(hashed, name)
+  walk hashed
+    take name
+    fork test, not(equatable/has(name))
+      hold
+        hashable/delete(name)
+
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save names, make list
+      walk keyable/keys()
+        take name
+        push(names, name)
+      walk names
+        take name
+        save node, decls/by-name/get(name)
+        save params, decl-params(node)
+        save fine, true
+        walk decl-types(node)
+          take field-type
+          fork test, not(key-qualifies(field-type, params, keyable, context))
+            hold
+              save fine, false
+              halt
+        fork test, not(fine)
+          hold
+            keyable/delete(name)
+            save changed, true
+
+  save out-equatable, make list
+  walk equatable/keys()
+    take name
+    push(out-equatable, name)
+  save out-hashable, make list
+  walk hashable/keys()
+    take name
+    push(out-hashable, name)
+  save out-keyable, make list
+  walk keyable/keys()
+    take name
+    push(out-keyable, name)
+  back
+    make form-traits
+      bind equatable, out-equatable
+      bind hashable, out-hashable
+      bind keyable, out-keyable
+
+# ---- generic forms ----
+
+# a generic struct form whose fields never mention a parameter, with the marker its `PhantomData` carries: the unused
+# letters, one, or a tuple of them
+form phantom
+  link form, like text
+  link marker, like text
+
+task phantom-forms
+  take program, like list, like statement
+  take context, like rust-type-context
+  like list, like phantom
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, or(is-equal(form-params/length, 0), is-above(form-variants/length, 0))
+          hold
+            turn next
+        save spelled, make list
+        walk form-fields
+          take field
+          push(spelled, rust-type-of(field/type, context))
+        save rendered, join-texts(spelled, <, >)
+        save unused, make list
+        walk form-params
+          take param
+          save letter, to-upper-case(param)
+          fork test, not(has-word(rendered, letter))
+            hold
+              push(unused, letter)
+        fork test, is-above(unused/length, 0)
+          hold
+            save marker, get(unused, 0)
+            fork test, is-above(unused/length, 1)
+              hold
+                save marker, <({join-texts(unused, <, >)})>
+            save found
+              make phantom
+                bind form, form-name
+                bind marker, marker
+            push(out, found)
+      miss
+        save nothing, 0
+  back out
+
+task add-param
+  take into, like list, like text
+  take name, like text
+  mark private
+
+  fork test, not(has-text(into, name))
+    hold
+      push(into, name)
+
+# the parameters a type mentions, as a generic of the form, wherever they are
+task mentions-into
+  take given, like maybe, like type
+  take params, like list, like text
+  take into, like list, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          link type-args
+          fork test, has-text(params, type-name)
+            hold
+              add-param(into, type-name)
+          walk type-args
+            take arg
+            mentions-into(make(some, arg), params, into)
+        case array
+          link element
+          mentions-into(make(some, element), params, into)
+        case map
+          link map-key
+          link map-value
+          mentions-into(make(some, map-key), params, into)
+          mentions-into(make(some, map-value), params, into)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+task key-visit
+  take given, like maybe, like type
+  take params, like list, like text
+  take found, like list, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case map
+          link map-key
+          link map-value
+          mentions-into(make(some, map-key), params, found)
+          key-visit(make(some, map-value), params, found)
+        case array
+          link element
+          key-visit(make(some, element), params, found)
+        case named
+          link type-name
+          link type-args
+          save args, make list
+          walk type-args
+            take arg
+            push(args, arg)
+          fork test, is-equal(type-name, <hash>)
+            hold
+              save key-type, make none
+              fork test, is-above(args/length, 0)
+                hold
+                  save first, get(args, 0)
+                  save key-type, make(some, first)
+              mentions-into(key-type, params, found)
+              save value-type, make none
+              fork test, is-above(args/length, 1)
+                hold
+                  save second, get(args, 1)
+                  save value-type, make(some, second)
+              key-visit(value-type, params, found)
+            miss
+              walk args
+                take arg
+                key-visit(make(some, arg), params, found)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# the generic parameters of a form that sit in a map KEY somewhere in its fields: comparing the form compares that map,
+# which needs the key `Eq + Hash + Clone`, a bound `#[derive(PartialEq)]` cannot add
+task key-params
+  take node, like statement
+  like list, like text
+
+  save found, make list
+  save params, decl-params(node)
+  walk decl-types(node)
+    take field-type
+    key-visit(make(some, field-type), params, found)
+  back found
+
+# `PartialEq` written out for a form `key-params` names, with the bound the derive cannot spell: every parameter
+# `PartialEq`, and a key parameter `TermHash + Clone` too. Field by field for a struct, case by case for an enum
+task keyed-equality
+  take node, like statement
+  take keyed, like list, like text
+  like text
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      save name, pascal(form-name)
+      save generics, <>
+      save applied, <>
+      fork test, is-above(form-params/length, 0)
+        hold
+          save bounds, make list
+          save letters, make list
+          walk form-params
+            take param
+            save letter, to-upper-case(param)
+            save extra, <>
+            fork test, has-text(keyed, param)
+              hold
+                save extra, < + TermHash + Clone>
+            push(bounds, <{letter}: PartialEq{extra}>)
+            push(letters, letter)
+          save generics, <\<{join-texts(bounds, <, >)}\>>
+          save applied, <\<{join-texts(letters, <, >)}\>>
+      fork test, is-equal(form-variants/length, 0)
+        hold
+          save each, make list
+          walk form-fields
+            take field
+            save field-name, snake(field/name)
+            push(each, <&self.{field-name} == &other.{field-name}>)
+          save compared, <true>
+          fork test, is-above(each/length, 0)
+            hold
+              save compared, join-texts(each, < && >)
+          back <impl{generics} PartialEq for {name}{applied} \{ fn eq(&self, other: &Self) -\> bool \{ {compared} \} \}>
+      save arms, make list
+      walk form-variants
+        take variant
+        save left, make list
+        save right, make list
+        save each, make list
+        walk variant/fields
+          take field
+          take i
+          push(left, <{snake(field/name)}: a{i}>)
+          push(right, <{snake(field/name)}: b{i}>)
+          push(each, <a{i} == b{i}>)
+        save case-name, <{name}::{pascal(variant/name)}>
+        save left-pattern, case-name
+        save right-pattern, case-name
+        fork test, is-above(left/length, 0)
+          hold
+            save left-pattern, <{case-name} \{ {join-texts(left, <, >)} \}>
+            save right-pattern, <{case-name} \{ {join-texts(right, <, >)} \}>
+        save compared, <true>
+        fork test, is-above(each/length, 0)
+          hold
+            save compared, join-texts(each, < && >)
+        push(arms, <({left-pattern}, {right-pattern}) =\> {compared},>)
+      back <impl{generics} PartialEq for {name}{applied} \{ fn eq(&self, other: &Self) -\> bool \{ match (self, other) \{ {join-texts(arms, < >)} _ =\> false \} \} \}>
+    miss
+      back <>
+
+# for each generic form, which of its parameters (by index) flow into a map KEY position inside its fields: a `set t`
+# stores `items: hash t, boolean`, so its index 0 is a key, and a method generic that fills that slot needs `Eq + Hash`
+form key-indices
+  link form, like text
+  link indices, like list, like number
+
+task find-keys
+  take given, like type
+  take into, like list, like text
+  mark private
+
+  sift given
+    case map
+      link map-key
+      link map-value
+      sift map-key
+        case named
+          link key-name
+          add-param(into, key-name)
+        miss
+          save nothing, 0
+      find-keys(map-key, into)
+      find-keys(map-value, into)
+    case array
+      link element
+      find-keys(element, into)
+    case named
+      link type-name
+      link type-args
+      walk type-args
+        take arg
+        find-keys(arg, into)
+    miss
+      save nothing, 0
+
+task form-key-indices
+  take program, like list, like statement
+  like list, like key-indices
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, is-equal(form-params/length, 0)
+          hold
+            turn next
+        save keys, make list
+        fork test, is-above(form-variants/length, 0)
+          hold
+            walk form-variants
+              take variant
+              walk variant/fields
+                take field
+                find-keys(field/type, keys)
+          miss
+            walk form-fields
+              take field
+              find-keys(field/type, keys)
+        save indices, make list
+        walk form-params
+          take param
+          take i
+          fork test, has-text(keys, param)
+            hold
+              push(indices, i)
+        fork test, is-above(indices/length, 0)
+          hold
+            save found
+              make key-indices
+                bind form, form-name
+                bind indices, indices
+            push(out, found)
+      miss
+        save nothing, 0
+  back out
+
+# ---- module bindings ----
+
+# what each top-level binding is on Rust: a `const` (a number, float, boolean or text literal nothing assigns), a text
+# one among them (a `&'static str`), or a slot filled later (`host current, like context`), a `RefCell<Option<T>>`
+form module-bindings
+  link scalars, like list, like text
+  link texts, like list, like text
+  link slots, like list, like text
+
+form assign-scan
+  mark shared
+  link names, like list, like text
+
+task assigned-visit
+  take handle, like node-handle
+  take st, like assign-scan
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          sift assign-target
+            case variable
+              link variable-name
+              fork test, and(is-unequal(variable-name, <>), not(has-text(st/names, variable-name)))
+                hold
+                  push(st/names, variable-name)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    assigned-visit(child, st)
+
+task module-bindings-of
+  take program, like list, like statement
+  like module-bindings
+
+  save st
+    make assign-scan
+      bind names, make list
+  walk block-handles(program)
+    take handle
+    assigned-visit(handle, st)
+  save slots, make list
+  save scalars, make list
+  save texts, make list
+  walk program
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        link let-mutable
+        link let-span
+        link let-type
+        sift let-init
+          case unit
+            sift let-type
+              case some
+                link known
+                sift known
+                  case named
+                    fork test, not(has-text(slots, let-name))
+                      hold
+                        push(slots, let-name)
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk program
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        fork test, or(has-text(slots, let-name), has-text(st/names, let-name))
+          hold
+            turn next
+        save scalar, false
+        save text, false
+        sift let-init
+          case integer
+            save scalar, true
+          case float
+            save scalar, true
+          case boolean
+            save scalar, true
+          case string
+            save scalar, true
+            save text, true
+          miss
+            save nothing, 0
+        fork test, and(scalar, not(has-text(scalars, let-name)))
+          hold
+            push(scalars, let-name)
+        fork test, and(text, not(has-text(texts, let-name)))
+          hold
+            push(texts, let-name)
+      miss
+        save nothing, 0
+  back
+    make module-bindings
+      bind scalars, scalars
+      bind texts, texts
+      bind slots, slots
+
+# ---- spellings the statements share ----
+
+# the empty value of a type: what a left-out field or argument holds
+task empty-of
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back <String::new()>
+        case boolean
+          back <false>
+        case float
+          back <0.0>
+        case bytes
+          back <Vec::new()>
+        case array
+          back <std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))>
+        case map
+          back <std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))>
+        case named
+          link type-name
+          fork test, is-equal(type-name, <text>)
+            hold
+              back <String::new()>
+          fork test, is-equal(type-name, <boolean>)
+            hold
+              back <false>
+          fork test, is-equal(type-name, <maybe>)
+            hold
+              back <Maybe::None>
+          fork test, is-equal(type-name, <list>)
+            hold
+              back <std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))>
+          fork test, is-equal(type-name, <hash>)
+            hold
+              back <std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))>
+          back <0>
+        case unknown
+          back <std::rc::Rc::new(())>
+        miss
+          back <0>
+    case none
+      back <0>
+
+# a condition in a `while` / `if` head without its own outer parentheses, since rustc warns on `while (a > b)`
+# (unused_parens): stripped only when the first `(` closes at the last character, parentheses inside a string literal
+# not counted
+task cond-bare
+  take rendered, like text
+  like text
+
+  fork test, or(not(starts-with(rendered, <(>)), not(ends-with(rendered, <)>)))
+    hold
+      back rendered
+  save depth, 0
+  save in-string, false
+  save at, 0
+  save size, rendered/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(rendered, at)
+      fork test, in-string
+        hold
+          fork test, is-equal(one, <\\>)
+            hold
+              save at, add(at, 1)
+            miss
+              fork test, is-equal(one, <">)
+                hold
+                  save in-string, false
+          save at, add(at, 1)
+          turn next
+      fork test, is-equal(one, <">)
+        hold
+          save in-string, true
+        miss
+          fork test, is-equal(one, <(>)
+            hold
+              save depth, add(depth, 1)
+            miss
+              fork test, is-equal(one, <)>)
+                hold
+                  save depth, subtract(depth, 1)
+                  fork test, and(is-equal(depth, 0), is-below(at, subtract(size, 1)))
+                    hold
+                      back rendered
+      save at, add(at, 1)
+  back substring(rendered, 1, subtract(size, 1))
+
+# `[\w:.]+`, the whole text
+task is-path
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(text/length, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, text/length)
+    hook hold
+      save one, char-at(text, at)
+      fork test, not(or(word-at(text, at), or(is-equal(one, <:>), is-equal(one, <.>))))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# an argument passed to an `impl Fn` parameter: a closure literal without its `Rc`, anything else borrowed as `&dyn Fn`
+task impl-fn-arg
+  take is-closure, like boolean
+  take rendered, like text
+  like text
+
+  save wrap, <std::rc::Rc::new(move |>
+  save at, index-of(rendered, wrap, 0)
+  fork test, and(is-closure, is-minimum(at, 0))
+    hold
+      save tail, <>
+      save known, false
+      fork test, ends-with(rendered, <) \}>)
+        hold
+          save tail, < \}>
+          save known, true
+        miss
+          fork test, ends-with(rendered, <)>)
+            hold
+              save known, true
+      fork test, known
+        hold
+          save opened, add(at, 17)
+          back <{substring(rendered, 0, at)}{substring(rendered, opened, subtract(subtract(rendered/length, tail/length), 1))}{tail}>
+  fork test, is-path(rendered)
+    hold
+      back <&*{rendered}>
+  back <&*({rendered})>
+
+# the `impl Fn` spelling of a function type, for a parameter a task only calls
+task impl-fn-type
+  take params, like list, like type
+  take result, like type
+  take context, like rust-type-context
+  like text
+
+  save spelled, make list
+  walk params
+    take param
+    push(spelled, rust-type-of(param, context))
+  save answer, rust-type-of(result, context)
+  save arrow, < -\> {answer}>
+  fork test, is-equal(answer, <()>)
+    hold
+      save arrow, <>
+  back <impl Fn({join-texts(spelled, <, >)}){arrow}>
+
+# an empty list or map binding spells its checked type, so rust does not have to infer it from later use. An empty list
+# literal renders its element already, so it needs none
+task empty-annotation
+  take init, like expression
+  take context, like rust-type-context
+  like text
+
+  save empty, false
+  save literal-list, false
+  save init-type, make none
+  sift init
+    case array
+      link array-items
+      link array-span
+      link array-type
+      save empty, is-equal(array-items/length, 0)
+      save init-type, array-type
+      sift array-type
+        case some
+          link known
+          sift known
+            case array
+              save literal-list, true
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    case map
+      link map-entries
+      link map-span
+      link map-type
+      save empty, is-equal(map-entries/length, 0)
+      save init-type, map-type
+    case record
+      link record-name
+      link record-fields
+      link record-span
+      link record-type
+      save empty, and(or(is-equal(record-name, <list>), is-equal(record-name, <hash>)), is-equal(record-fields/length, 0))
+      save init-type, record-type
+    miss
+      back <>
+  save known-type, false
+  sift init-type
+    case some
+      link known
+      sift known
+        case variable
+          save known-type, false
+        case unknown
+          save known-type, false
+        miss
+          save known-type, true
+    case none
+      save nothing, 0
+  fork test, and(and(empty, known-type), not(literal-list))
+    hold
+      back <: {rust-type(init-type, context)}>
+  back <>

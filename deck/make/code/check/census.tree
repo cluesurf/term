@@ -257,6 +257,15 @@ task locals-into
           walk fn-params
             take param
             add-name(into, param/name)
+          # a method of a form named `let` or `save` read as a local, as the original's walk read any object by `form`
+          sift method
+            case some
+              link of
+              fork test, or(is-equal(of/form, <let>), is-equal(of/form, <save>))
+                hold
+                  add-name(into, of/name)
+            case none
+              save nothing, 0
         case view
           link view-name
           link view-params
@@ -415,6 +424,32 @@ task references-into
   walk node-children(handle, only-span())
     take child
     references-into(child, found)
+  # a task's `method` names its form in a `form` field, so the original's walk, which read any object by its `form`,
+  # took a method of a form named `element`, `variable` or `record` for a placed component, a variable or a
+  # construction. Its key comes after the task's parameters, body and result, so it is read last
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case function
+          sift method
+            case some
+              link of
+              fork test, is-equal(of/form, <variable>)
+                hold
+                  add-reference(found, <value>, of/name)
+              fork test, and(is-equal(of/form, <element>), not(is-html-tag(of/name)))
+                hold
+                  add-reference(found, <value>, of/name)
+              fork test, is-equal(of/form, <record>)
+                hold
+                  add-reference(found, <type>, of/name)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
 
 # ---- the census ----
 

@@ -1,20 +1,24 @@
 // The lint driver: walk the type-checked AST exactly once and dispatch every enabled rule per node, so N rules cost
 // one traversal (the ESLint/Ruff visitor-multiplexing model). Findings are returned with their fixes attached, ready
 // for the language server to render and apply. Pure and browser-safe. See plans/19-format-and-lint.
+//
+// What the driver does around the dispatch is Term, lint/lint-lines.tree (self-hosting, 2026-10-06): the nodes the walk
+// meets, the names written and read, the modules loaded twice, the text under a span, the line rules and the run of
+// blank lines, and the fixes written back. The dispatch stays here: a rule is a TypeScript object with `check` and
+// `checkSource` closures, the seam plugin rules drop in through (lint/seed-rule.ts), and each rule's context holds
+// sets, a memo the rule writes, and the `report` and `slice` closures.
 
 import type {
   Severity,
   Span,
 } from '@term/make/code/parser/diagnostic'
-import type {
-  Expression,
-  Program,
-  Statement,
-} from '@term/make/code/compile/node'
+import type { Program } from '@term/make/code/compile/node'
+import * as lines_ from '@term/make/code/lint/lint-lines'
 import type {
   Finding,
   LintContext,
   LintMemo,
+  LintNode,
   Rule,
 } from '@term/make/code/lint/rule'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
@@ -75,45 +79,15 @@ function reportAll(reports: ruleCheck.RuleReport[], context: LintContext): void 
   }
 }
 
-// the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
-const MAX_LINE_LENGTH = 84
-
-// line-based checks (over the raw source lines, not the AST): maximum line length and tab indentation. They cannot
-// be node rules because they are about layout, not structure.
-const LINE_RULES = [
-  {
-    code: 'L019',
-    name: 'max-line-length',
-    message: 'this line is longer than 84 characters; wrap it',
-    column: (line: string) => MAX_LINE_LENGTH,
-    hit: (line: string) => line.length > MAX_LINE_LENGTH,
-  },
-  {
-    code: 'L020',
-    name: 'no-tabs',
-    message: 'this line uses a tab; indent with two spaces',
-    column: (line: string) => line.indexOf('\t'),
-    hit: (line: string) => line.includes('\t'),
-  },
-  {
-    code: 'L029',
-    name: 'no-trailing-whitespace',
-    message: 'this line has trailing whitespace',
-    column: (line: string) => line.trimEnd().length,
-    hit: (line: string) =>
-      line.length > 0 && line.trimEnd().length !== line.length,
-  },
-] as const
-
-// EVERY lint finding the driver can report, one entry each: the AST and source rules, the line rules, and the run of
-// blank lines, which the driver reports inline. `term show kink L019` reads this, so a code printed by `term lint` can
-// always be looked up. The manifest findings (L050 to L055) need the file system and are listed beside their check,
-// in call/code/lint.ts
+// EVERY lint finding the driver can report, one entry each: the AST and source rules, then the line rules (the
+// line length the formatter keeps, a tab, trailing whitespace) and the run of blank lines, which are about layout
+// rather than structure and so are not node rules. `term show kink L019` reads this, so a code printed by `term lint`
+// can always be looked up. The manifest findings (L050 to L055) need the file system and are listed beside their
+// check, in call/code/lint.ts
 export function lintCatalog(): { code: string; name: string; severity: Severity; docs: string; fixable: boolean }[] {
   return [
     ...RULES.map(rule => ({ code: rule.code, name: rule.name, severity: rule.severity, docs: rule.docs, fixable: rule.fixable })),
-    ...LINE_RULES.map(rule => ({ code: rule.code, name: rule.name, severity: 'warning' as const, docs: rule.message, fixable: false })),
-    { code: 'L030', name: 'no-multiple-empty-lines', severity: 'warning', docs: 'more than two consecutive blank lines', fixable: false },
+    ...lines_.lineRuleEntries().map(rule => ({ code: rule.code, name: rule.name, severity: 'warning' as const, docs: rule.message, fixable: false })),
   ]
 }
 
@@ -171,190 +145,6 @@ export type LintConfig = {
   lean?: boolean
 }
 
-function eachExpression(
-  expr: Expression,
-  visit: (e: Expression) => void,
-): void {
-  visit(expr)
-
-  switch (expr.form) {
-    case 'binary':
-      eachExpression(expr.left, visit)
-      eachExpression(expr.right, visit)
-      break
-    case 'unary':
-      eachExpression(expr.operand, visit)
-      break
-    case 'call':
-      eachExpression(expr.callee, visit)
-      expr.args.forEach(a => eachExpression(a, visit))
-      break
-    case 'array':
-      expr.items.forEach(i => eachExpression(i, visit))
-      break
-    case 'map':
-      expr.entries.forEach(e => {
-        eachExpression(e.key, visit)
-        eachExpression(e.value, visit)
-      })
-      break
-    case 'record':
-      expr.fields.forEach(f => eachExpression(f.value, visit))
-      break
-    case 'member':
-      eachExpression(expr.target, visit)
-      break
-    case 'await':
-      eachExpression(expr.expr, visit)
-      break
-    case 'template':
-      for (const part of expr.parts) {
-        if (part.form === 'value') {
-          eachExpression(part.value, visit)
-        }
-      }
-
-      break
-    case 'conditional':
-      expr.branches.forEach(b => {
-        eachExpression(b.cond, visit)
-        eachExpression(b.value, visit)
-      })
-
-      if (expr.otherwise) {
-        eachExpression(expr.otherwise, visit)
-      }
-
-      break
-    default:
-      break
-  }
-}
-
-function eachStatement(
-  stmt: Statement,
-  onStatement: (s: Statement) => void,
-  onExpression: (e: Expression) => void,
-): void {
-  onStatement(stmt)
-
-  const block = (body: Statement[]) =>
-    body.forEach(s => eachStatement(s, onStatement, onExpression))
-
-  switch (stmt.form) {
-    case 'let':
-      eachExpression(stmt.init, onExpression)
-      break
-    case 'assign':
-      eachExpression(stmt.target, onExpression)
-      eachExpression(stmt.value, onExpression)
-      break
-    case 'expression':
-      eachExpression(stmt.expr, onExpression)
-      break
-    case 'if':
-      stmt.branches.forEach(b => {
-        eachExpression(b.cond, onExpression)
-        block(b.body)
-      })
-
-      if (stmt.otherwise) {
-        block(stmt.otherwise)
-      }
-
-      break
-    case 'while':
-      eachExpression(stmt.cond, onExpression)
-      block(stmt.body)
-      break
-    case 'match':
-      eachExpression(stmt.subject, onExpression)
-      stmt.cases.forEach(c => block(c.body))
-
-      if (stmt.otherwise) {
-        block(stmt.otherwise)
-      }
-
-      break
-    case 'guard':
-      block(stmt.body)
-
-      if (stmt.catch) {
-        block(stmt.catch.body)
-      }
-
-      break
-    case 'for-each':
-      eachExpression(stmt.iterable, onExpression)
-      block(stmt.body)
-      break
-    case 'return':
-      if (stmt.value) {
-        eachExpression(stmt.value, onExpression)
-      }
-
-      break
-    case 'throw':
-      eachExpression(stmt.value, onExpression)
-      break
-    case 'hold':
-      eachExpression(stmt.expr, onExpression)
-      break
-    case 'function':
-      block(stmt.body)
-      break
-    default:
-      break
-  }
-}
-
-// every name that is the target of an assignment somewhere in the program (used by prefer-host-for-constant)
-function reassignedNames(program: Program): Set<string> {
-  const names = new Set<string>()
-
-  const onExpression = () => {}
-
-  const onStatement = (s: Statement) => {
-    if (s.form === 'assign' && s.target.form === 'variable') {
-      names.add(s.target.name)
-    }
-  }
-
-  for (const s of program) {
-    eachStatement(s, onStatement, onExpression)
-  }
-
-  return names
-}
-
-// every variable name read anywhere in the program (used by no-unused-load to spot import aliases that are never
-// referenced). The shared expression walker does not descend into closure (callback) bodies, so this collector does
-// it explicitly: a name used only inside a hook handler must still count as referenced, or the import would be
-// wrongly flagged unused.
-function referencedNames(program: Program): Set<string> {
-  const names = new Set<string>()
-
-  const onStatement = () => {}
-
-  const onExpression = (e: Expression) => {
-    if (e.form === 'variable') {
-      names.add(e.name)
-    }
-
-    if (e.form === 'closure') {
-      for (const s of e.body) {
-        eachStatement(s, onStatement, onExpression)
-      }
-    }
-  }
-
-  for (const s of program) {
-    eachStatement(s, onStatement, onExpression)
-  }
-
-  return names
-}
-
 export function lint(
   program: Program,
   file: string,
@@ -365,41 +155,13 @@ export function lint(
   rules: Rule[] = RULES,
 ): Finding[] {
   const findings: Finding[] = []
-  const reassigned = reassignedNames(program)
-  const referenced = referencedNames(program)
-
-  // native-import modules loaded more than once (used by no-duplicate-load)
-  const loadCounts = new Map<string, number>()
-  for (const s of program) {
-    if (s.form === 'native') {
-      loadCounts.set(s.module, (loadCounts.get(s.module) ?? 0) + 1)
-    }
-  }
-  const duplicateLoads = new Set(
-    [...loadCounts]
-      .filter(([, count]) => count > 1)
-      .map(([module]) => module),
-  )
-
+  // every name assigned somewhere (prefer-host-for-constant), every name read, a closure's body included
+  // (no-unused-load), and the native modules loaded more than once (no-duplicate-load)
+  const reassigned = new Set(lines_.reassignedNames(program))
+  const referenced = new Set(lines_.referencedNames(program))
+  const duplicateLoads = new Set(lines_.duplicateLoads(program))
   const lines = source.split('\n')
-
-  const slice = (span: Span): string => {
-    if (span.start.line === span.end.line) {
-      return (lines[span.start.line] ?? '').slice(
-        span.start.column,
-        span.end.column,
-      )
-    }
-
-    const first = (lines[span.start.line] ?? '').slice(
-      span.start.column,
-    )
-
-    const middle = lines.slice(span.start.line + 1, span.end.line)
-    const last = (lines[span.end.line] ?? '').slice(0, span.end.column)
-
-    return [first, ...middle, last].join('\n')
-  }
+  const slice = (span: Span): string => lines_.sliceSpan(lines, span)
 
   const enabled = rules.filter(r => config.severity?.[r.code] !== 'off')
 
@@ -442,20 +204,10 @@ export function lint(
     }
   })
 
-  const onStatement = (node: Statement): void => {
+  for (const target of lines_.lintTargets(program) as LintNode[]) {
     for (let i = 0; i < enabled.length; i++) {
-      enabled[i]!.check({ kind: 'statement', node }, contexts[i]!)
+      enabled[i]!.check({ kind: target.kind, node: target.node } as LintNode, contexts[i]!)
     }
-  }
-
-  const onExpression = (node: Expression): void => {
-    for (let i = 0; i < enabled.length; i++) {
-      enabled[i]!.check({ kind: 'expression', node }, contexts[i]!)
-    }
-  }
-
-  for (const stmt of program) {
-    eachStatement(stmt, onStatement, onExpression)
   }
 
   // the rules about how a line is WRITTEN read the concrete tree, once per file. Parsed only when one is enabled,
@@ -468,61 +220,14 @@ export function lint(
     }
   }
 
-  for (const lr of LINE_RULES) {
-    if (config.severity?.[lr.code] === 'off') {
-      continue
-    }
-
-    const severity =
-      (config.severity?.[lr.code] as Severity | undefined) ?? 'warning'
-
-    lines.forEach((line, i) => {
-      if (!lr.hit(line)) {
-        return
-      }
-
-      if (config.suppress?.get(i)?.has(lr.code)) {
-        return
-      }
-
-      findings.push({
-        rule: lr.name,
-        code: lr.code,
-        severity,
-        message: lr.message,
-        span: {
-          start: { line: i, column: lr.column(line) },
-          end: { line: i, column: line.length },
-        },
-      })
-    })
-  }
-
-  // no more than two consecutive blank lines (L030): reported once at the start of each over-long run of blanks
-  if (config.severity?.['L030'] !== 'off') {
-    let blanks = 0
-    lines.forEach((line, i) => {
-      if (line.trim() === '') {
-        blanks++
-        if (blanks === 3 && !config.suppress?.get(i)?.has('L030')) {
-          findings.push({
-            rule: 'no-multiple-empty-lines',
-            code: 'L030',
-            severity:
-              (config.severity?.['L030'] as Severity | undefined) ??
-              'warning',
-            message: 'more than two consecutive blank lines',
-            span: {
-              start: { line: i, column: 0 },
-              end: { line: i, column: 0 },
-            },
-          })
-        }
-      } else {
-        blanks = 0
-      }
-    })
-  }
+  // the line rules and the run of blank lines, each code as configured
+  findings.push(
+    ...(lines_.lineFindings(
+      source,
+      code => config.severity?.[code] ?? '',
+      (line, code) => config.suppress?.get(line)?.has(code) ?? false,
+    ) as Finding[]),
+  )
 
   return findings
 }
@@ -534,36 +239,5 @@ export function applyFixes(
   source: string,
   findings: Finding[],
 ): string {
-  const lines = source.split('\n')
-
-  const offsetOf = (pos: { line: number; column: number }): number => {
-    let offset = 0
-    for (let i = 0; i < pos.line; i++) {
-      offset += (lines[i]?.length ?? 0) + 1 // + the newline
-    }
-    return offset + pos.column
-  }
-
-  const edits = findings
-    .flatMap(f => (f.fix ? [f.fix] : []))
-    .map(fix => ({
-      start: offsetOf(fix.span.start),
-      end: offsetOf(fix.span.end),
-      text: fix.text,
-    }))
-    .sort((a, b) => b.start - a.start) // back to front
-
-  let out = source
-  let appliedStart = source.length
-
-  for (const edit of edits) {
-    if (edit.end > appliedStart) {
-      continue
-    } // overlaps an already-applied edit; skip
-
-    out = out.slice(0, edit.start) + edit.text + out.slice(edit.end)
-    appliedStart = edit.start
-  }
-
-  return out
+  return lines_.applyFixes(source, findings as never)
 }

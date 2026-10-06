@@ -35,6 +35,8 @@ load @term/base/text
   find starts-with
   find ends-with
   find trim
+  find split
+  find contains
 
 load ../parser/tree
   find node
@@ -45,6 +47,7 @@ load ../parser/tree
 
 load ../parser/token
   find token-source
+  find grammar-names-of
 
 load ../parser/event
   find follows
@@ -82,6 +85,11 @@ form layout-options
   link role, like maybe, like text
   # a grammar's dialect: no rule 3, and no stacking a group for a block beneath it
   link dialect, like maybe, like boolean
+  # the names the file imports as grammars (parser/token.tree `grammar-names-of`), so a line re-read on its own lexes
+  # the way the whole file does: `note x + y` is a scope only where `note` was imported
+  link grammars
+    like maybe, like list, like text
+    need false
 
 form layout-report
   link text, like text
@@ -124,6 +132,17 @@ task is-false
       back not(value)
     case none
       back false
+
+task is-none
+  take given, like maybe, like text
+  like boolean
+  mark private
+
+  sift given
+    case some
+      back false
+    case none
+      back true
 
 task role-is
   take options, like layout-options
@@ -203,7 +222,7 @@ task term-words
   like list, like text
   mark private
 
-  back words-of(<load form task host hook bind bear deck dock note save tell hold suit mask wear book kink lace cast tune view rule roll beam slot call head take like mark wait risk hide fold tag link case bond rein send back fork walk turn halt bust rest free move read make fuse loan code text term meet true false void miss fall else have must down name tree seed sift tick want show calm cite seek melt test seat>)
+  back words-of(<load form task host hook bind bear deck dock note save tell hold suit mask wear book kink lace cast tune view rule roll beam slot call head take like mark wait risk hide fold tag link case bond rein send back fork walk turn halt bust rest free move read make fuse loan code text term meet true false void miss fall else have must down name tree seed sift tick want show calm cite seek melt test seat role>)
 
 # the other heads that hold a body: a proof and its induction step, a test, a mask, a template definition
 task bodies
@@ -960,6 +979,12 @@ task flatten
             hold
               save closer, <()>
           back <{h}{closer}{mark}>
+      sift scope-written(value, h, options)
+        case some
+          link written
+          back written
+        case none
+          save nothing, 0
       save places, value-kids(value)
       save args, make list
       save at, 0
@@ -1017,11 +1042,32 @@ task flatten
     case text
       link text-parts
       link text-raw
+      link text-scope
+      # A GRAMMAR SCOPE is written back as it was written: `role note, x + y`, `note(x + y)`. A block's text is laid out
+      # under its opener by format-group, and here, where it must stand inline, it is the literal it reads the same as
+      sift text-scope
+        case some
+          link spelling
+          sift text-raw
+            case some
+              link scope-text
+              fork test, is-unequal(spelling, <block>)
+                hold
+                  back scope-text
+              fork test, not(or(contains(scope-text, <\n>), contains(scope-text, <\>\>>)))
+                hold
+                  back <\<\<{scope-text}\>\>>
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
       # a raw literal is written back as it was
       sift text-raw
         case some
           link raw-value
-          back <\<\<{raw-value}\>\>>
+          fork test, is-none(text-scope)
+            hold
+              back <\<\<{raw-value}\>\>>
         case none
           save nothing, 0
       # the same re-escaping printTree does, computed across the WHOLE literal
@@ -1114,10 +1160,12 @@ task group-of-nodes
     make group
       bind nodes, nodes
 
-# does `text`, read alone as one line, parse to exactly `nodes` under one group?
+# does `text`, read alone as one line, parse to exactly `nodes` under one group? It is read with the file's grammar
+# names, so a scope (`note x + y`) reads as it does in the file
 task reads-as
   take text, like text
   take nodes, like list, like node
+  take options, like layout-options
   like boolean
   mark private
 
@@ -1125,6 +1173,7 @@ task reads-as
     make token-source
       bind file, <format>
       bind text, text
+      bind grammars, options/grammars
   save reparsed, parse(source)
   fork test, not(reparsed/ok)
     hold
@@ -1660,7 +1709,7 @@ task head-line
                   walk riders
                     take kid
                     push(checked, kid)
-                  fork test, and(is-maximum(add(utf16-length(indent), utf16-length(text)), width-limit()), reads-as(text, checked))
+                  fork test, and(is-maximum(add(utf16-length(indent), utf16-length(text)), width-limit()), reads-as(text, checked, options))
                     hold
                       back head-line-of(n, <{indent}{text}>)
       save n, subtract(n, 1)
@@ -1735,7 +1784,7 @@ task fits-one-line
   like boolean
   mark private
 
-  fork test, or(is-block(group, depth, parent, options), holds-block(group, options))
+  fork test, or(is-block(group, depth, parent, options), or(holds-block(group, options), holds-block-scope(group)))
     hold
       back false
   walk nodes-of(group)
@@ -1761,7 +1810,186 @@ task fits-one-line
   fork test, is-above(add(utf16-length(indent-of(depth)), utf16-length(flat)), width-limit())
     hold
       back false
-  back reads-as(flat, nodes-of(group))
+  back reads-as(flat, nodes-of(group), options)
+
+# ---- grammar scopes ----
+
+# the spelling of a grammar scope's literal, `line`, `paren` or `block`, or empty for any other node
+task scope-spelling
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case text
+      sift scope
+        case some
+          link spelling
+          back spelling
+        case none
+          back <>
+    miss
+      back <>
+
+task scope-raw
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case text
+      sift raw
+        case some
+          link written
+          back written
+        case none
+          back <>
+    miss
+      back <>
+
+# A group that opens a one-line grammar scope, as it was written, and never in the parentheses rule 3 would give a
+# call: `note x + y`, `note(x + y)`, `role note, x + y`, `role note x + y`. None for any other group
+task scope-written
+  take group, like node
+  take head, like text
+  take options, like layout-options
+  like maybe, like text
+  mark private
+
+  save kids, kids-of(group)
+  fork test, is-equal(kids/length, 1)
+    hold
+      save only, get(kids, 0)
+      save spelling, scope-spelling(only)
+      fork test, is-equal(spelling, <line>)
+        hold
+          save line, <{head} {scope-raw(only)}>
+          back make(some, line)
+      fork test, is-equal(spelling, <paren>)
+        hold
+          save closed, <{head}({scope-raw(only)})>
+          back make(some, closed)
+      fork test, and(is-equal(head, <role>), is-group-node(only))
+        hold
+          sift scope-written(only, head-name(only), options)
+            case some
+              link inner
+              save nested, <role {inner}>
+              back make(some, nested)
+            case none
+              back make none
+      back make none
+  fork test, and(is-equal(head, <role>), and(is-equal(kids/length, 2), is-equal(scope-spelling(get(kids, 1)), <line>)))
+    hold
+      save beside, <role {flatten(get(kids, 0), false, false, options, true)}, {scope-raw(get(kids, 1))}>
+      back make(some, beside)
+  back make none
+
+# ---- block grammar scopes ----
+
+# a text node that is a block grammar scope's (parser/token.tree)
+task is-block-text
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case text
+      sift scope
+        case some
+          link spelling
+          back is-equal(spelling, <block>)
+        case none
+          back false
+    miss
+      back false
+
+# the block scope this group opens: its text among the group's parts, or under its second (`role > note > text`)
+task block-scope-in
+  take group, like node
+  like maybe, like node
+  mark private
+
+  save kids, nodes-of(group)
+  walk kids
+    take kid
+    fork test, is-block-text(kid)
+      hold
+        back make(some, kid)
+  fork test, is-above(kids/length, 1)
+    hold
+      walk nodes-of(get(kids, 1))
+        take inner
+        fork test, is-block-text(inner)
+          hold
+            back make(some, inner)
+  back make none
+
+# whether a block scope stands anywhere in the group, which then cannot be one line
+task holds-block-scope
+  take group, like node
+  like boolean
+  mark private
+
+  walk nodes-of(group)
+    take kid
+    fork test, or(is-block-text(kid), holds-block-scope(kid))
+      hold
+        back true
+  back false
+
+# the group with its block scope's text taken out: the opener's own line
+task without-block
+  take group, like node
+  like node
+  mark private
+
+  save out, make list
+  walk nodes-of(group)
+    take kid
+    fork test, is-block-text(kid)
+      hold
+        turn next
+    fork test, and(is-group-node(kid), holds-block-text(kid))
+      hold
+        save inner, make list
+        walk nodes-of(kid)
+          take part
+          fork test, not(is-block-text(part))
+            hold
+              push(inner, part)
+        push(out, group-of-nodes(inner))
+        turn next
+    push(out, kid)
+  back group-of-nodes(out)
+
+task holds-block-text
+  take group, like node
+  like boolean
+  mark private
+
+  walk nodes-of(group)
+    take kid
+    fork test, is-block-text(kid)
+      hold
+        back true
+  back false
+
+task block-text
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case text
+      sift raw
+        case some
+          link written
+          back written
+        case none
+          back <>
+    miss
+      back <>
 
 task first-word-of
   take text, like text
@@ -1797,6 +2025,22 @@ task format-group
       fork test, not(is-group-node(first))
         hold
           append-lines(lines, comment-lines(first, indent, options))
+    case none
+      save nothing, 0
+  # a group opening a BLOCK grammar scope (`role note` over its lines) is its opener's line, and the scope's text
+  # under it one level in, as written
+  sift block-scope-in(group)
+    case some
+      link block
+      push(lines, <{indent}{flatten(without-block(group), false, in-value, options, false)}>)
+      walk split(block-text(block), <\n>)
+        take line
+        fork test, is-equal(line, <>)
+          hold
+            push(lines, <>)
+          miss
+            push(lines, <{indent-of(add(depth, 1))}{line}>)
+      back lines
     case none
       save nothing, 0
   save closed, printed-closed(group, in-value, options)
@@ -1944,6 +2188,23 @@ task calling
       bind lean, options/lean
       bind role, options/role
       bind dialect, dialect
+      bind grammars, options/grammars
+
+task with-grammars
+  take options, like layout-options
+  take names, like list, like text
+  like layout-options
+  mark private
+
+  back
+    make layout-options
+      bind wrap, options/wrap
+      bind stack, options/stack
+      bind calls, options/calls
+      bind lean, options/lean
+      bind role, options/role
+      bind dialect, options/dialect
+      bind grammars, make(some, names)
 
 # one blank line between top-level definitions; comments ride with their group
 task print-tree-laid
@@ -1991,6 +2252,7 @@ task format-report
       like text
   like layout-report
 
+  save options, with-grammars(options, grammar-names-of(split(text, <\n>)))
   save written
     make layout-report
       bind text, text

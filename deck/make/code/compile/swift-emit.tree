@@ -1,0 +1,4590 @@
+# THE SWIFT EMITTER: a statement and an expression written as idiomatic, type-static Swift (compile/swift.ts says what
+# each choice buys and when it was made), and a type's Swift spelling.
+#
+# Ported from compile/swift.ts's `emitSwift` (self-hosting, 2026-10-06). swift.ts stays the face: it reads the program's
+# forms and tasks into the tables below, runs the analyses, keeps the preludes, and assembles the module, asking this
+# for each statement and reading back what the emitter recorded (the helpers it needs, the forms it declared, the forms
+# a `fill` or `melt` walks, the tasks a guarded loop called unchecked).
+#
+# What crosses, and how:
+#   - the program's tables (its forms' fields and cases, its tasks' parameters, labels and arities, which raise and
+#     which wait, its masks and instances, its binds, its list facts) as one `swift-facts`
+#   - every analysis answer keyed by a NODE (a proven step, a loop's guard, an ASCII text, a cursor read, a redeclared
+#     `let`, an owned inner list, a consumed subject, a slot local, a place write, a task's owned locals) as a test the
+#     face answers on its own maps, so nothing here needs identity
+#   - the emitter's mutable state as one `mark shared` `swift-state`, which the face reads back
+#
+# The original kept the calls of the loop copy being written as a set, `fastCalls`: here the loops whose fast copy is
+# being written are a stack, and the face is asked whether a call is one of a loop's. The original's `innerRendering`
+# set of nodes is a stack the face's `same-node` searches.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find split
+  find to-upper-case
+
+load ./node
+  find type
+  find expression
+  find statement
+  find field-value
+  find function-param
+  find match-case
+  find expression-type
+
+load ./swift-names
+  find escape
+  find camelize
+  find vname
+  find camel
+  find labeled
+  find labeled-argument
+  find default-of
+  find float-text
+  find pascal
+  find swift-primitive
+  find open-try
+  find collect-vars
+  find collect-array-eq
+  find body-throws
+  find join-texts
+
+load ./backend-shapes
+  find collection-call
+  find collection-read
+  find string-call
+  find string-read
+  find is-text
+  find text-valued
+  find reassigned
+  find has-valued-return
+  find escaping-params
+  find swap-at
+  find form-spec-of
+  find spec-forms
+  find refuse-any
+  find form-spec
+  find record-field
+  find collection-op
+
+load ./backend-names
+  find names-in
+  find text-append-of
+  find ascii-char-append
+  find map-update-of
+  find fill-call-of
+  find empty-text
+  find declared-later
+  find fill
+
+load ./node-children
+  find block-handles
+
+load ./node-reach
+  find reach-statements
+  find reach-expression
+
+load ./type-text
+  find integer-text
+
+load ./bind
+  find render-bind
+  find bind-gap
+
+load ./lowered-members
+  find list-length-tasks
+
+load ../check/arm
+  find arm-locals
+  find arm-local
+
+load ../term/quote
+  find json-quote
+
+# ---- what the face hands in ----
+
+# a form held by node class (swift.ts `nodeClasses`): its payload case, the class's name, and the case's fields
+form node-class
+  link label, like text
+  link name, like text
+  link fields, like list, like record-field
+
+# the same by its case, with the form it belongs to
+form node-case
+  link form, like text
+  link label, like text
+  link name, like text
+  link fields, like list, like record-field
+
+# a bound on a name the guard reads, `name >= 0` (`low`) or `name <= high` (ir/facts/bounds.ts `Limit`)
+form bound-limit
+  link name, like text
+  link low, like boolean
+  link high, like number
+
+# a counted loop's guard as this backend reads it: whether it lets any call run a task's wrapping copy, and the bounds
+form loop-guard
+  link fast, like boolean
+  link limits, like list, like bound-limit
+
+# a record read from a slot and only ever read through it after (compile/place.ts `SlotLocal`)
+form slot-local
+  link list, like expression
+  link index, like expression
+
+# a record written back to its slot, only its changed fields (compile/place.ts `PlaceWrite`)
+form place-write
+  link local, like text
+  link fields, like list, like field-value
+  link temps, like boolean
+
+form swift-facts
+  link variant-set, like hash, like text, like boolean
+  link variant-fields, like hash, like text, like list, like text
+  # by form and case, `rope/leaf`
+  link case-field-names, like hash, like text, like list, like text
+  link record-fields, like hash, like text, like list, like record-field
+  link shared-forms, like hash, like text, like boolean
+  link exception-forms, like hash, like text, like boolean
+  link union-forms, like hash, like text, like boolean
+  link generic-arity, like hash, like text, like number
+  link opaque, like hash, like text, like text
+  link form-key-indices, like hash, like text, like list, like number
+  link function-params, like hash, like text, like list, like function-param
+  link function-labels, like hash, like text, like list, like text
+  link task-arity, like hash, like text, like number
+  link hidden-generic, like hash, like text, like boolean
+  link binds, like hash, like text, like statement
+  link fills, like hash, like text, like fill
+  link throwing, like hash, like text, like boolean
+  link async-tasks, like hash, like text, like boolean
+  link mask-methods, like hash, like text, like boolean
+  link mask-of, like hash, like text, like text
+  link instance-targets, like hash, like text, like list, like text
+  link impl-fn, like hash, like text, like statement
+  link aliases, like hash, like text, like boolean
+  link lend-params, like hash, like text, like hash, like number, like text
+  link fresh-lists, like hash, like text, like boolean
+  link field-lists, like hash, like text, like boolean
+  link node-classes, like hash, like text, like node-class
+  link node-cases, like hash, like text, like node-case
+  link spare-tasks, like hash, like text, like list, like text
+  link recursive, like hash, like text, like boolean
+  link has-hive-tell, like boolean
+  link assigned-anywhere, like hash, like text, like boolean
+  # the analyses' answers about nodes, each asked of the face
+  link is-proven
+    like task
+      take node, like expression
+      like boolean
+  link loop-guard-of
+    like task
+      take node, like statement
+      like maybe, like loop-guard
+  link is-fast-in
+    like task
+      take node, like expression
+      take loop, like statement
+      like boolean
+  link is-ascii
+    like task
+      take node, like expression
+      like boolean
+  link cursor-names
+    like task
+      take fn, like statement
+      like list, like text
+  link cursor-of
+    like task
+      take fn, like statement
+      take node, like expression
+      like maybe, like text
+  link is-redeclared
+    like task
+      take fn, like statement
+      take node, like statement
+      like boolean
+  link owns-inner-let
+    like task
+      take node, like statement
+      like boolean
+  link owns-inner-walk
+    like task
+      take node, like statement
+      like boolean
+  link owns-inner-item
+    like task
+      take node, like expression
+      like boolean
+  link is-consumed
+    like task
+      take node, like expression
+      like boolean
+  link slot-local-of
+    like task
+      take node, like statement
+      like maybe, like slot-local
+  link place-of
+    like task
+      take node, like statement
+      like maybe, like place-write
+  link owned-locals-of
+    like task
+      take fn, like statement
+      like hash, like text, like boolean
+  link same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+
+# ---- the emitter's state ----
+
+form swift-state
+  mark shared
+  # the prelude helpers the emitted text calls (swift.ts `SWIFT_HELPERS`), each by its key
+  link needs, like hash, like text, like boolean
+  # the forms written as a struct or an enum, for the conformances the face writes after them
+  link declared-forms, like hash, like text, like boolean
+  # the forms a `fill` / `melt` with a form walks, in the order first met
+  link fill-specs, like hash, like text, like form-spec
+  link melt-specs, like hash, like text, like form-spec
+  # the loops whose fast copy is being written, innermost last, and the tasks some such call reached
+  link fast-loops, like list, like statement
+  link fast-tasks, like list, like text
+  link unchecked-ints, like boolean
+  # the letters a task's free inference variables are written as, by id
+  link var-names, like hash, like number, like text
+  link loop-labels, like list, like text
+  link loop-count, like number
+  # the names the task being written reassigns, none at the module level
+  link current-assigned
+    like maybe, like list, like text
+  link spares, like list, like text
+  link fn-returns-array, like boolean
+  link current-result
+    like maybe, like type
+  link current-throws, like boolean
+  link guard-depth, like number
+  link awaiting, like boolean
+  link bound-names, like list, like text
+  link plain-names, like hash, like text, like text
+  link walk-count, like number
+  link owned-names, like hash, like text, like boolean
+  link slot-names, like hash, like text, like slot-local
+  # the task being written: its cursors and redeclared `let`s are asked of it
+  link current-fn
+    like maybe, like statement
+  link raw-fresh, like boolean
+  link emitting-fresh, like boolean
+  # the element types whose lists of lists own their inner lists (backend.ts `ownedElements`)
+  link inner-keys, like hash, like text, like boolean
+  link inner-rendering, like list, like expression
+
+task new-swift-state
+  take needs, like hash, like text, like boolean
+  like swift-state
+
+  back
+    make swift-state
+      bind needs, needs
+      bind declared-forms, make hash
+      bind fill-specs, make hash
+      bind melt-specs, make hash
+      bind fast-loops, make list
+      bind fast-tasks, make list
+      bind unchecked-ints, false
+      bind var-names, make hash
+      bind loop-labels, make list
+      bind loop-count, 0
+      bind current-assigned, make none
+      bind spares, make list
+      bind fn-returns-array, false
+      bind current-result, make none
+      bind current-throws, false
+      bind guard-depth, 0
+      bind awaiting, false
+      bind bound-names, make list
+      bind plain-names, make hash
+      bind walk-count, 0
+      bind owned-names, make hash
+      bind slot-names, make hash
+      bind current-fn, make none
+      bind raw-fresh, false
+      bind emitting-fresh, false
+      bind inner-keys, make hash
+      bind inner-rendering, make list
+
+# ---- small helpers ----
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+
+task copy-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}  >
+      save at, add(at, 1)
+  back out
+
+task mark-need
+  take st, like swift-state
+  take helper, like text
+  mark private
+
+  save st/needs/{helper}, true
+
+task need
+  take st, like swift-state
+  take helper, like text
+  take code, like text
+  like text
+  mark private
+
+  save st/needs/{helper}, true
+  back code
+
+# whether an emitted text holds `try ` anywhere
+task holds-try
+  take text, like text
+  like boolean
+  mark private
+
+  back is-above(split(text, <try >)/length, 1)
+
+# `/^[a-z]$/`: one lower-case letter, a generic written as a name
+task is-letter
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(char-count(name), 1)
+    hold
+      back false
+  save code, char-code-at(name, 0)
+  back and(is-minimum(code, 97), is-maximum(code, 122))
+
+# `/^\d+$/`
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task max-number
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-above(a, b)
+    hold
+      back a
+  back b
+
+task min-number
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# ---- reading a type ----
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case unit
+          back <unit>
+        case unknown
+          back <unknown>
+        case dynamic
+          back <dynamic>
+        case bytes
+          back <bytes>
+        case array
+          back <array>
+        case map
+          back <map>
+        case named
+          back <named>
+        case function
+          back <function>
+        case variable
+          back <variable>
+    case none
+      back <>
+
+task kind-of-node
+  take node, like expression
+  like text
+  mark private
+
+  back kind-of(expression-type(node))
+
+task named-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          back type-name
+        miss
+          back <>
+    case none
+      back <>
+
+# a named type's arguments, copied, empty for any other
+task args-of
+  take given, like maybe, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          walk args
+            take one
+            push(out, one)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back out
+
+task element-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          link element
+          back make(some, element)
+        miss
+          back make none
+    case none
+      back make none
+
+# the variable a node names, `''` for any other
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      link variable-name
+      back variable-name
+    miss
+      back <>
+
+task is-bound
+  take name, like text
+  take st, like swift-state
+  like boolean
+  mark private
+
+  back has-text(st/bound-names, name)
+
+# a task the program declares under the name: not a local or a parameter named like one
+task free-task
+  take name, like text
+  take st, like swift-state
+  like boolean
+  mark private
+
+  back and(is-unequal(name, <>), not(is-bound(name, st)))
+
+task is-generic-letter
+  take given, like type
+  take st, like swift-state
+  like boolean
+  mark private
+
+  sift given
+    case variable
+      link var-id
+      back st/var-names/has(var-id)
+    case unknown
+      back true
+    case named
+      link type-name
+      back is-letter(type-name)
+    miss
+      back false
+
+# ---- types ----
+
+# how the element of a list type is held: an inner list a list of lists owns is the plain array
+task swift-element
+  take list-type, like type
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  sift list-type
+    case array
+      link element
+      sift element
+        case array
+          link inner
+          save inner-text, swift-type(make(some, inner), st, facts)
+          fork test, st/inner-keys/has(inner-text)
+            hold
+              back <[{swift-type(make(some, inner), st, facts)}]>
+        miss
+          save nothing, 0
+      back swift-type(make(some, element), st, facts)
+    miss
+      back swift-type(make(some, list-type), st, facts)
+
+# a checked type's Swift spelling
+task swift-type
+  take given, like maybe, like type
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  sift given
+    case none
+      back <Void>
+    case some
+      link known
+      sift known
+        case boolean
+          back <Bool>
+        case string
+          back <String>
+        case unit
+          back <Void>
+        case array
+          mark-need(st, <list>)
+          back <SeedList\<{swift-element(known, st, facts)}\>>
+        case map
+          link map-key
+          link map-value
+          save key-text, <AnyHashable>
+          save free-key, false
+          sift map-key
+            case variable
+              link var-id
+              save free-key, not(st/var-names/has(var-id))
+            case unknown
+              save free-key, true
+            case dynamic
+              save free-key, true
+            miss
+              save nothing, 0
+          fork test, not(free-key)
+            hold
+              save key-text, swift-type(make(some, map-key), st, facts)
+          mark-need(st, <map>)
+          back <SeedMap\<{key-text}, {swift-type(make(some, map-value), st, facts)}\>>
+        case named
+          link type-name
+          fork test, facts/opaque/has(type-name)
+            hold
+              back facts/opaque/get(type-name)
+          save primitive, swift-primitive(type-name)
+          fork test, is-unequal(primitive, <>)
+            hold
+              back primitive
+          save type-args, args-of(given)
+          fork test, is-above(type-args/length, 0)
+            hold
+              save spelled, make list
+              walk type-args
+                take one
+                push(spelled, swift-type(make(some, one), st, facts))
+              back <{pascal(type-name)}\<{join-texts(spelled, <, >)}\>>
+          save arity, 0
+          fork test, facts/generic-arity/has(type-name)
+            hold
+              save arity, facts/generic-arity/get(type-name)
+          fork test, is-above(arity, 0)
+            hold
+              save anys, make list
+              save at, 0
+              walk test
+                hook test, is-below(at, arity)
+                hook hold
+                  push(anys, <Any>)
+                  save at, add(at, 1)
+              back <{pascal(type-name)}\<{join-texts(anys, <, >)}\>>
+          back pascal(type-name)
+        case function
+          link fn-params
+          link fn-result
+          save marker, <>
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                save marker, < async>
+          save spelled, make list
+          walk fn-params
+            take one
+            push(spelled, swift-type(make(some, one), st, facts))
+          back <({join-texts(spelled, <, >)}){marker} -\> {swift-type(make(some, fn-result), st, facts)}>
+        case number
+          back <Int>
+        case float
+          back <Double>
+        case dynamic
+          back <Any>
+        case bytes
+          back <Data>
+        case variable
+          link var-id
+          fork test, st/var-names/has(var-id)
+            hold
+              back st/var-names/get(var-id)
+          back <Any>
+        case unknown
+          back <Any>
+
+# the empty value of a type: what a left-out field holds
+task empty-of
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back <"">
+        case boolean
+          back <false>
+        case number
+          back <0>
+        case float
+          back <0.0>
+        case bytes
+          back <Data()>
+        case array
+          back <SeedList()>
+        case map
+          back <SeedMap()>
+        case named
+          link type-name
+          fork test, is-equal(type-name, <text>)
+            hold
+              back <"">
+          fork test, is-equal(type-name, <boolean>)
+            hold
+              back <false>
+          fork test, or(is-equal(type-name, <number>), is-equal(type-name, <integer>))
+            hold
+              back <0>
+          fork test, is-equal(type-name, <float>)
+            hold
+              back <0.0>
+          fork test, is-equal(type-name, <maybe>)
+            hold
+              back <.none>
+          fork test, is-equal(type-name, <list>)
+            hold
+              back <SeedList()>
+          fork test, is-equal(type-name, <hash>)
+            hold
+              back <SeedMap()>
+          back <0>
+        miss
+          back <0>
+    case none
+      back <0>
+
+# the generic ids and names in a map KEY position, following form arguments transitively
+form key-marks
+  link ids, like list, like number
+  link names, like list, like text
+
+task mark-keys
+  take given, like maybe, like type
+  take is-key, like boolean
+  take marks, like key-marks
+  take facts, like swift-facts
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case variable
+          link var-id
+          fork test, is-key
+            hold
+              push(marks/ids, var-id)
+        case map
+          link map-key
+          link map-value
+          mark-keys(make(some, map-key), true, marks, facts)
+          mark-keys(make(some, map-value), false, marks, facts)
+        case array
+          link element
+          mark-keys(make(some, element), false, marks, facts)
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            mark-keys(make(some, one), false, marks, facts)
+          mark-keys(make(some, fn-result), false, marks, facts)
+        case named
+          link type-name
+          fork test, is-key
+            hold
+              push(marks/names, to-upper-case(type-name))
+          save key-args, make list
+          save has-keys, facts/form-key-indices/has(type-name)
+          fork test, has-keys
+            hold
+              walk facts/form-key-indices/get(type-name)
+                take one
+                push(key-args, one)
+          save at, 0
+          walk args
+            take one
+            save marked, false
+            walk key-args
+              take index
+              fork test, is-equal(index, at)
+                hold
+                  save marked, true
+            mark-keys(make(some, one), marked, marks, facts)
+            save at, add(at, 1)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task generic-bound
+  take name, like text
+  take is-key, like boolean
+  take is-eq, like boolean
+  like text
+  mark private
+
+  fork test, is-key
+    hold
+      back <{name}: Hashable>
+  fork test, is-eq
+    hold
+      back <{name}: Equatable>
+  back name
+
+# the declared generics' names a signature mentions as named types
+task scan-named
+  take given, like maybe, like type
+  take found, like list, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          push(found, to-upper-case(type-name))
+          walk args
+            take one
+            scan-named(make(some, one), found)
+        case array
+          link element
+          scan-named(make(some, element), found)
+        case map
+          link map-key
+          link map-value
+          scan-named(make(some, map-key), found)
+          scan-named(make(some, map-value), found)
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            scan-named(make(some, one), found)
+          scan-named(make(some, fn-result), found)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# the `<...>` clause for a task: its declared generics that survive, plus a fresh letter for each free inference variable
+# in the signature. Sets the letters for the rest of the task's emission
+task generic-clause
+  take node, like statement
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      link result-width
+      link fn-generics
+      save ids, make list
+      walk fn-params
+        take param
+        collect-vars(param/type, ids)
+      collect-vars(fn-result, ids)
+      save declared, make list
+      walk fn-generics
+        take generic
+        push(declared, to-upper-case(generic/name))
+      save pool, split(<T U V W X Y Z A B C>, < >)
+      save used, copy-texts(declared)
+      save st/var-names, make hash
+      save marks
+        make key-marks
+          bind ids, make list
+          bind names, make list
+      walk fn-params
+        take param
+        mark-keys(param/type, false, marks, facts)
+      mark-keys(fn-result, false, marks, facts)
+      save array-eq, collect-array-eq(fn-body)
+      save fresh, make list
+      walk ids
+        take id-number
+        save letter, <T{id-number}>
+        save found, false
+        walk pool
+          take candidate
+          fork test, and(not(found), not(has-text(used, candidate)))
+            hold
+              save letter, candidate
+              save found, true
+        push(used, letter)
+        save st/var-names/{id-number}, letter
+        push(fresh, generic-bound(letter, has-number(marks/ids, id-number), has-number(array-eq/ids, id-number)))
+      save named-in-sig, make list
+      walk fn-params
+        take param
+        scan-named(param/type, named-in-sig)
+      scan-named(fn-result, named-in-sig)
+      save need-trait, make hash
+      walk fn-generics
+        take generic
+        fork test, is-unequal(generic/need, <>)
+          hold
+            save need-trait/{to-upper-case(generic/name)}, pascal(generic/need)
+      save all, make list
+      walk declared
+        take one
+        fork test, has-text(named-in-sig, one)
+          hold
+            save base, generic-bound(one, has-text(marks/names, one), has-text(array-eq/names, one))
+            fork test, not(need-trait/has(one))
+              hold
+                push(all, base)
+              miss
+                fork test, is-above(split(base, <:>)/length, 1)
+                  hold
+                    push(all, <{base} & {need-trait/get(one)}>)
+                  miss
+                    push(all, <{base}: {need-trait/get(one)}>)
+      walk fresh
+        take one
+        push(all, one)
+      fork test, is-above(all/length, 0)
+        hold
+          back <\<{join-texts(all, <, >)}\>>
+      back <>
+    miss
+      back <>
+
+# ---- what a node is ----
+
+# a value answered by an untyped SHIM: a call to a Term task, or to a `dock load` module, awaited or not
+task shim-call
+  take value, like expression
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  save call-node, value
+  sift value
+    case await
+      link awaited
+      save call-node, awaited
+    miss
+      save nothing, 0
+  sift call-node
+    case call
+      link callee
+      sift callee
+        case variable
+          link callee-name
+          back not(facts/aliases/has(callee-name))
+        case member
+          link member-target
+          sift member-target
+            case variable
+              link target-name
+              back facts/aliases/has(target-name)
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+task root-name
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      link variable-name
+      back variable-name
+    case member
+      link member-target
+      back root-name(member-target)
+    miss
+      back <>
+
+# a call into a native dock module, seen through an await
+task is-native-call
+  take node, like expression
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  save call-node, node
+  sift node
+    case await
+      link awaited
+      save call-node, awaited
+    miss
+      save nothing, 0
+  sift call-node
+    case call
+      link callee
+      sift callee
+        case member
+          save root, root-name(callee)
+          back and(is-unequal(root, <>), facts/aliases/has(root))
+        miss
+          back false
+    miss
+      back false
+
+# a path `r/field` to a list field the record owns
+task owned-path
+  take target, like expression
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  sift target
+    case member
+      link member-target
+      link member-name
+      link member-index
+      sift member-index
+        case some
+          back false
+        case none
+          save owner, named-of(expression-type(member-target))
+          fork test, is-equal(kind-of-node(member-target), <named>)
+            hold
+              back facts/field-lists/has(<{owner}/{member-name}>)
+          back false
+    miss
+      back false
+
+# a list's storage: the plain array itself, or the SeedList's `.data`
+task view
+  take target, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save name, variable-name-of(target)
+  fork test, or(and(is-unequal(name, <>), st/plain-names/has(name)), owned-path(target, facts))
+    hold
+      back emit-expr(target, field-scope, st, facts)
+  back <{emit-expr(target, field-scope, st, facts)}.data>
+
+# a type with the receiver's form written `Self`
+task sub-self
+  take given, like maybe, like type
+  take target, like text
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          fork test, is-equal(type-name, target)
+            hold
+              save self-type
+                make type/named
+                  bind name, <Self>
+              back make(some, self-type)
+          fork test, is-above(args/length, 0)
+            hold
+              save mapped, make list
+              walk args
+                take one
+                push(mapped, sub-self-type(one, target))
+              save made
+                make type/named
+                  bind name, type-name
+                  bind args, mapped
+              back make(some, made)
+          back given
+        case array
+          link element
+          save made
+            make type/array
+              bind element, sub-self-type(element, target)
+          back make(some, made)
+        case map
+          link map-key
+          link map-value
+          save made
+            make type/map
+              bind key, sub-self-type(map-key, target)
+              bind value, sub-self-type(map-value, target)
+          back make(some, made)
+        case function
+          link fn-params
+          link fn-result
+          save mapped, make list
+          walk fn-params
+            take one
+            push(mapped, sub-self-type(one, target))
+          save marks, make list
+          walk effects
+            take effect
+            push(marks, effect)
+          save made
+            make type/function
+              bind params, mapped
+              bind result, sub-self-type(fn-result, target)
+              bind effects, marks
+          back make(some, made)
+        miss
+          back given
+    case none
+      back given
+
+task sub-self-type
+  take given, like type
+  take target, like text
+  like type
+  mark private
+
+  sift sub-self(make(some, given), target)
+    case some
+      link known
+      back known
+    case none
+      back given
+
+# ---- masks ----
+
+# a requirement throws when any conforming task does
+task requirement-throws
+  take mask, like text
+  take method, like text
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  fork test, or(is-equal(mask, <>), not(facts/instance-targets/has(mask)))
+    hold
+      back false
+  walk facts/instance-targets/get(mask)
+    take target
+    save key, <{target}:{method}>
+    fork test, facts/impl-fn/has(key)
+      hold
+        save fn, facts/impl-fn/get(key)
+        sift fn
+          case function
+            link fn-name
+            fork test, facts/throwing/has(fn-name)
+              hold
+                back true
+          miss
+            save nothing, 0
+  back false
+
+task method-name-of
+  take fn, like statement
+  like text
+  mark private
+
+  sift fn
+    case function
+      sift read(method)
+        case some
+          link known
+          back known/name
+        case none
+          back <>
+    miss
+      back <>
+
+task mask-of-text
+  take name, like text
+  take facts, like swift-facts
+  like text
+  mark private
+
+  fork test, facts/mask-of/has(name)
+    hold
+      back facts/mask-of/get(name)
+  back <>
+
+# a method's inputs past the receiver, as a protocol requirement writes them
+task rest-params
+  take fn, like statement
+  take target, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like list, like text
+  mark private
+
+  save out, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      save at, 0
+      walk fn-params
+        take param
+        fork test, is-above(at, 0)
+          hold
+            push(out, <_ {camel(param/name)}: {swift-type(sub-self(param/type, target), st, facts)}>)
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+  back out
+
+task protocol-head
+  take fn, like statement
+  take target, like text
+  take rest, like list, like text
+  take throws, like boolean
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save throws-text, <>
+  fork test, throws
+    hold
+      save throws-text, < throws>
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      back <func {camel(method-name-of(fn))}({join-texts(rest, <, >)}){throws-text} -\> {swift-type(sub-self(fn-result, target), st, facts)}>
+    miss
+      back <>
+
+# a protocol method requirement: the receiver is the implicit `self`, so the first input is dropped
+task protocol-method
+  take fn, like maybe, like statement
+  take target, like text
+  take mask, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift fn
+    case some
+      link known
+      save rest, rest-params(known, target, st, facts)
+      back protocol-head(known, target, rest, requirement-throws(mask, method-name-of(known), facts), st, facts)
+    case none
+      back <>
+
+# a conformance method that delegates to the free implementation task
+task extension-method
+  take fn, like maybe, like statement
+  take target, like text
+  take mask, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift fn
+    case some
+      link known
+      sift known
+        case function
+          link fn-name
+          link fn-params
+          save rest-names, make list
+          save names, make list
+          save at, 0
+          walk fn-params
+            take param
+            push(names, param/name)
+            fork test, is-above(at, 0)
+              hold
+                push(rest-names, camel(param/name))
+            save at, add(at, 1)
+          save rest, rest-params(known, target, st, facts)
+          save call-args, make list
+          push(call-args, labeled-argument(name-at(names, 0), <self>))
+          save at, 1
+          walk rest-names
+            take one
+            push(call-args, labeled-argument(name-at(names, at), one))
+            save at, add(at, 1)
+          save throws, requirement-throws(mask, method-name-of(known), facts)
+          save invoke, <{camel(fn-name)}({join-texts(call-args, <, >)})>
+          fork test, facts/throwing/has(fn-name)
+            hold
+              save word, <try!>
+              fork test, throws
+                hold
+                  save word, <try>
+              save invoke, <{word} {invoke}>
+          back <{protocol-head(known, target, rest, throws, st, facts)} \{ return {invoke} \}>
+        miss
+          back <>
+    case none
+      back <>
+
+# the name at a position of a list, none past its end
+task name-at
+  take names, like list, like text
+  take at, like number
+  like maybe, like text
+  mark private
+
+  fork test, is-below(at, names/length)
+    hold
+      save found, get(names, at)
+      back make(some, found)
+  back make none
+
+# ---- expressions ----
+
+task try-word
+  take st, like swift-state
+  like text
+  mark private
+
+  fork test, or(st/current-throws, is-above(st/guard-depth, 0))
+    hold
+      back <try>
+  back <try!>
+
+task inner-rendering-has
+  take node, like expression
+  take st, like swift-state
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  walk st/inner-rendering
+    take one
+    fork test, facts/same-node(one, node)
+      hold
+        back true
+  back false
+
+# a value rendered with a fresh task's answer taken as it is, the plain array
+task emit-raw
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save st/raw-fresh, true
+  save made, emit-expr(node, field-scope, st, facts)
+  save st/raw-fresh, false
+  back made
+
+task emit-expr
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  # an inner list put into a list of lists that owns it is the plain array
+  fork test, and(facts/owns-inner-item(node), not(inner-rendering-has(node, st, facts)))
+    hold
+      sift node
+        case call
+          push(st/inner-rendering, node)
+          save made, emit-raw(node, field-scope, st, facts)
+          pop(st/inner-rendering)
+          back made
+        case variable
+          save nothing, 0
+        miss
+          back <[]>
+  sift node
+    case integer
+      back integer-text(node)
+    case float
+      link float-value
+      back float-text(float-value)
+    case boolean
+      link boolean-value
+      fork test, boolean-value
+        hold
+          back <true>
+      back <false>
+    case string
+      link string-value
+      back json-quote(string-value)
+    case template
+      link template-parts
+      # one text value alone is that value, where the interpolation built a copy of it
+      fork test, is-equal(template-parts/length, 1)
+        hold
+          sift get(template-parts, 0)
+            case value
+              link alone
+              sift alone
+                case variable
+                  save nothing, 0
+                miss
+                  fork test, text-valued(alone)
+                    hold
+                      back emit-expr(alone, field-scope, st, facts)
+            miss
+              save nothing, 0
+      save out, <>
+      walk template-parts
+        take part
+        sift part
+          case chunk
+            link chunk-value
+            save quoted, json-quote(chunk-value)
+            save out, <{out}{substring(quoted, 1, subtract(char-count(quoted), 1))}>
+          case value
+            link part-value
+            fork test, is-equal(kind-of-node(part-value), <float>)
+              hold
+                save out, <{out}{need(st, <number>, <\\(termNumber({emit-expr(part-value, field-scope, st, facts)}))>)}>
+              miss
+                save out, <{out}\\({emit-expr(part-value, field-scope, st, facts)})>
+      back <"{out}">
+    case unit
+      back <()>
+    case null
+      back <NSNull()>
+    case variable
+      link variable-name
+      # a throwing task passed as a VALUE is wrapped in a closure whose call is `try!`
+      fork test, and(and(not(is-bound(variable-name, st)), facts/task-arity/has(variable-name)), facts/throwing/has(variable-name))
+        hold
+          save defined, facts/task-arity/get(variable-name)
+          save names, make list
+          save at, 0
+          walk test
+            hook test, is-below(at, defined)
+            hook hold
+              push(names, <p{at}>)
+              save at, add(at, 1)
+          save is-async, facts/async-tasks/has(variable-name)
+          save async-mark, <>
+          save await-mark, <>
+          fork test, is-async
+            hold
+              save async-mark, < async>
+              save await-mark, <await >
+          back <\{ ({join-texts(names, <, >)}){async-mark} in try! {await-mark}{vname(variable-name)}({join-texts(names, <, >)}) \}>
+      back vname(variable-name)
+    case hole
+      link hole-name
+      back vname(hole-name)
+    case unary
+      link unary-op
+      link operand
+      save operand-text, emit-expr(operand, field-scope, st, facts)
+      save op, to-text(unary-op)
+      fork test, starts-with(operand-text, <await >)
+        hold
+          back <{op}({operand-text})>
+      fork test, open-try(operand-text)
+        hold
+          back <(try {op}{operand-text})>
+      back <{op}{operand-text}>
+    case binary
+      back emit-binary(node, field-scope, st, facts)
+    case call
+      back emit-call(node, field-scope, st, facts)
+    case array
+      link items
+      save arg, <>
+      save node-type, expression-type(node)
+      sift node-type
+        case some
+          link list-type
+          sift list-type
+            case array
+              link element
+              save union-element, false
+              sift element
+                case named
+                  link element-name
+                  save union-element, facts/union-forms/has(element-name)
+                miss
+                  save nothing, 0
+              fork test, or(is-equal(items/length, 0), union-element)
+                hold
+                  save arg, <\<{swift-element(list-type, st, facts)}\>>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save rendered, make list
+      walk items
+        take one
+        push(rendered, emit-expr(one, field-scope, st, facts))
+      back <SeedList{arg}([{join-texts(rendered, <, >)}])>
+    case map
+      link entries
+      save arg, <>
+      sift expression-type(node)
+        case some
+          link known
+          sift known
+            case map
+              link map-key
+              link map-value
+              save arg, <\<{swift-type(make(some, map-key), st, facts)}, {swift-type(make(some, map-value), st, facts)}\>>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, is-equal(entries/length, 0)
+        hold
+          back <SeedMap{arg}()>
+      save pairs, make list
+      walk entries
+        take entry
+        save key, emit-expr(entry/key, field-scope, st, facts)
+        push(pairs, <({key}, {emit-expr(entry/value, field-scope, st, facts)})>)
+      back <SeedMap{arg}(pairs: [{join-texts(pairs, <, >)}])>
+    case record
+      back emit-record(node, field-scope, st, facts)
+    case member
+      back emit-member(node, field-scope, st, facts)
+    case await
+      link awaited
+      save st/awaiting, true
+      save operand-text, emit-expr(awaited, field-scope, st, facts)
+      save st/awaiting, false
+      back <await {operand-text}>
+    case closure
+      back emit-closure(node, field-scope, st, facts)
+    case conditional
+      link branches
+      link otherwise
+      save text, <()>
+      sift otherwise
+        case some
+          link other
+          save text, emit-expr(other, field-scope, st, facts)
+        case none
+          save nothing, 0
+      # the chain is built from the last branch back, as `reduceRight` built it
+      save at, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(at, 0)
+        hook hold
+          save branch, get(branches, at)
+          save cond, emit-expr(branch/cond, field-scope, st, facts)
+          save value-text, emit-expr(branch/value, field-scope, st, facts)
+          save text, <({cond} ? {value-text} : {text})>
+          save at, subtract(at, 1)
+      back text
+
+task emit-binary
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case binary
+      link binary-op
+      link left
+      link right
+      save op, to-text(binary-op)
+      save left-kind, kind-of-node(left)
+      save right-kind, kind-of-node(right)
+      save node-kind, kind-of-node(node)
+      fork test, and(is-equal(op, <%>), or(or(is-equal(left-kind, <float>), is-equal(right-kind, <float>)), is-equal(node-kind, <float>)))
+        hold
+          save left-text, emit-expr(left, field-scope, st, facts)
+          back <({left-text}).truncatingRemainder(dividingBy: {emit-expr(right, field-scope, st, facts)})>
+      # comparing an unknown slot to `make void` is a presence check
+      save void-side, make none
+      fork test, is-void-record(right)
+        hold
+          save void-side, make(some, left)
+        miss
+          fork test, is-void-record(left)
+            hold
+              save void-side, make(some, right)
+      sift void-side
+        case some
+          link side
+          fork test, or(is-equal(op, <==>), is-equal(op, <!=>))
+            hold
+              save check, <({emit-expr(side, field-scope, st, facts)} is Void)>
+              fork test, is-equal(op, <==>)
+                hold
+                  back check
+              back <!{check}>
+        case none
+          save nothing, 0
+      save left-text, comparison-operand(left, op, field-scope, st, facts)
+      save right-text, comparison-operand(right, op, field-scope, st, facts)
+      save mark, <>
+      fork test, or(is-equal(op, <&&>), is-equal(op, <||>))
+        hold
+          fork test, or(holds-try(left-text), holds-try(right-text))
+            hold
+              save mark, <try >
+        miss
+          fork test, or(open-try(left-text), open-try(right-text))
+            hold
+              save mark, <try >
+      # a `note shared` form is a class, so `is-equal` on two of them is identity
+      save shared, or(facts/shared-forms/has(named-of(expression-type(left))), facts/shared-forms/has(named-of(expression-type(right))))
+      fork test, and(shared, or(is-equal(op, <==>), is-equal(op, <!=>)))
+        hold
+          save same, <===>
+          fork test, is-equal(op, <!=>)
+            hold
+              save same, <!==>
+          back <({mark}{left-text} {same} {right-text})>
+      # two texts are equal when their code points are, and order by code point
+      fork test, and(is-text(expression-type(left)), is-text(expression-type(right)))
+        hold
+          fork test, or(is-equal(op, <==>), is-equal(op, <!=>))
+            hold
+              save negate, <>
+              fork test, is-equal(op, <!=>)
+                hold
+                  save negate, <!>
+              back need(st, <text>, <({negate}{mark}TermText.equal({left-text}, {right-text}))>)
+          fork test, or(or(is-equal(op, <\<>), is-equal(op, <\>>)), or(is-equal(op, <\<=>), is-equal(op, <\>=>)))
+            hold
+              back need(st, <text>, <({mark}TermText.compare({left-text}, {right-text}) {op} 0)>)
+      save arithmetic, and(or(or(is-equal(op, <+>), is-equal(op, <->)), is-equal(op, <*>)), and(is-equal(left-kind, <number>), is-equal(right-kind, <number>)))
+      # a counted step the range fact proved cannot overflow is the wrapping `&+`
+      fork test, and(arithmetic, facts/is-proven(node))
+        hold
+          back <({mark}{left-text} &{op} {right-text})>
+      # in a task's unchecked copy every integer `+`, `-` and `*` is proven inside the bound
+      fork test, and(st/unchecked-ints, arithmetic)
+        hold
+          back <({mark}{left-text} &{op} {right-text})>
+      back <({mark}{left-text} {op} {right-text})>
+    miss
+      back <>
+
+task is-void-record
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case record
+      link record-name
+      back is-equal(record-name, <void>)
+    miss
+      back false
+
+# an enum variant built right inside a comparison has no type from context, so `.circle(radius: 2)` is spelled
+# `Shape.circle(radius: 2)` there
+task comparison-operand
+  take side, like expression
+  take op, like text
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save text, emit-expr(side, field-scope, st, facts)
+  fork test, not(or(is-equal(op, <==>), is-equal(op, <!=>)))
+    hold
+      back text
+  sift side
+    case record
+      link record-name
+      save owner, named-of(expression-type(side))
+      fork test, and(and(facts/variant-set/has(record-name), is-equal(kind-of-node(side), <named>)), starts-with(text, <.>))
+        hold
+          back <{pascal(owner)}{text}>
+    miss
+      save nothing, 0
+  back text
+
+task renamed-call
+  take node, like expression
+  take suffix, like text
+  like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      link call-span
+      sift call-callee
+        case variable
+          link callee-name
+          link callee-span
+          save renamed
+            make expression/variable
+              bind name, <{callee-name}{suffix}>
+              bind span, callee-span
+          save made
+            make expression/call
+              bind callee, renamed
+              bind args, call-args
+              bind span, call-span
+          back made
+        miss
+          back node
+    miss
+      back node
+
+# whether the call is one of a loop's fast calls, for a loop whose fast copy is being written
+task is-fast-call
+  take node, like expression
+  take st, like swift-state
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  walk st/fast-loops
+    take loop
+    fork test, facts/is-fast-in(node, loop)
+      hold
+        back true
+  back false
+
+task emit-all
+  take values, like list, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, emit-expr(one, field-scope, st, facts))
+  back out
+
+task emit-call
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case call
+      link callee
+      link args
+      link into
+      save callee-name, variable-name-of(callee)
+      # a call the guarded loop copy may make to the task's wrapping copy
+      fork test, and(is-fast-call(node, st, facts), is-unequal(callee-name, <>))
+        hold
+          add-text(st/fast-tasks, callee-name)
+          back emit-expr(renamed-call(node, <-fast>), field-scope, st, facts)
+      # whether this call sits directly under `wait true`, and a fresh task's answer taken raw, each read once and cleared
+      save awaited, st/awaiting
+      save st/awaiting, false
+      save raw, st/raw-fresh
+      save st/raw-fresh, false
+      save first-arg-name, <>
+      fork test, is-above(args/length, 0)
+        hold
+          save first-arg-name, variable-name-of(get(args, 0))
+      # a push onto, or the size of, an owned list local is the array's own
+      save length-task, has-text(list-length-tasks(), callee-name)
+      fork test, and(and(is-unequal(callee-name, <>), or(is-equal(callee-name, <list_push>), length-task)), and(is-unequal(first-arg-name, <>), st/owned-names/has(first-arg-name)))
+        hold
+          save list-text, emit-expr(get(args, 0), field-scope, st, facts)
+          fork test, length-task
+            hold
+              back <{list-text}.count>
+          back <(\{ () -\> Int in {list-text}.append({emit-expr(get(args, 1), field-scope, st, facts)}); return {list-text}.count \})()>
+      # `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form
+      fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
+        hold
+          sift into
+            case some
+              link filled-type
+              save spec, form-spec-of(filled-type, facts/record-fields, make list)
+              sift refuse-any(spec, <Swift>)
+                case some
+                  link message
+                  halt <{message}>
+                case none
+                  save nothing, 0
+              fork test, is-equal(callee-name, <fill-form>)
+                hold
+                  add-specs(st/fill-specs, spec)
+                  mark-need(st, <exception>)
+                  back <({try-word(st)} __fill{pascal(spec/form)}({emit-expr(get(args, 0), field-scope, st, facts)}, ""))>
+              add-specs(st/melt-specs, spec)
+              back <__melt{pascal(spec/form)}({emit-expr(get(args, 0), field-scope, st, facts)})>
+            case none
+              save nothing, 0
+      # a declarative native binding renders its `case swift` template
+      fork test, and(is-unequal(callee-name, <>), facts/binds/has(callee-name))
+        hold
+          save one-bind, facts/binds/get(callee-name)
+          # the code-point count of an ASCII text is its UTF-8 length
+          fork test, and(is-equal(callee-name, <code-point-count>), is-above(args/length, 0))
+            hold
+              fork test, facts/is-ascii(get(args, 0))
+                hold
+                  back <{emit-expr(get(args, 0), field-scope, st, facts)}.utf8.count>
+          sift render-bind(one-bind, <swift>, emit-all(args, field-scope, st, facts))
+            case some
+              link rendered
+              back rendered
+            case none
+              back bind-gap(callee-name)
+      # a native map / list operation lowers to swift's collection API
+      sift collection-call(callee)
+        case some
+          link operation
+          back collection-expr(operation, args, field-scope, st, facts)
+        case none
+          save nothing, 0
+      # a host string method lowers to the code-point text runtime
+      sift string-call(callee)
+        case some
+          link text-op
+          back text-call(node, text-op/op, text-op/target, args, field-scope, st, facts)
+        case none
+          save nothing, 0
+      # a generic trait-method call lowers to a protocol method call on the receiver
+      fork test, and(and(is-unequal(callee-name, <>), facts/mask-methods/has(callee-name)), is-minimum(args/length, 1))
+        hold
+          save rest, make list
+          save at, 1
+          walk test
+            hook test, is-below(at, args/length)
+            hook hold
+              push(rest, emit-expr(get(args, at), field-scope, st, facts))
+              save at, add(at, 1)
+          save call-text, <{emit-expr(get(args, 0), field-scope, st, facts)}.{camel(callee-name)}({join-texts(rest, <, >)})>
+          fork test, requirement-throws(mask-of-text(callee-name, facts), callee-name, facts)
+            hold
+              back <({try-word(st)} {call-text})>
+          back call-text
+      save free, and(is-unequal(callee-name, <>), not(is-bound(callee-name, st)))
+      # a list the callee takes lent: `&` the storage for one it writes, the storage itself for one it reads
+      save lending, make hash
+      fork test, and(free, facts/lend-params/has(callee-name))
+        hold
+          save lending, facts/lend-params/get(callee-name)
+      save rendered-args, make list
+      save at, 0
+      walk args
+        take arg
+        fork test, not(lending/has(at))
+          hold
+            push(rendered-args, emit-expr(arg, field-scope, st, facts))
+          miss
+            save how, lending/get(at)
+            save fresh-arg, false
+            sift arg
+              case call
+                link arg-callee
+                save arg-callee-name, variable-name-of(arg-callee)
+                fork test, and(is-unequal(arg-callee-name, <>), facts/fresh-lists/has(arg-callee-name))
+                  hold
+                    save fresh-arg, true
+              miss
+                save nothing, 0
+            fork test, and(is-equal(how, <read>), fresh-arg)
+              hold
+                push(rendered-args, emit-raw(arg, field-scope, st, facts))
+              miss
+                save amp, <>
+                fork test, is-equal(how, <write>)
+                  hold
+                    save amp, <&>
+                push(rendered-args, <{amp}{view(arg, field-scope, st, facts)}>)
+        save at, add(at, 1)
+      # a fresh task answers a plain array: into a SeedList here, unless an owned local takes it as it is
+      save fresh, and(and(not(raw), free), facts/fresh-lists/has(callee-name))
+      # a call to a task that only fills a list is the array made at its size
+      save node-type, expression-type(node)
+      fork test, and(free, is-equal(kind-of(node-type), <array>))
+        hold
+          sift fill-call-of(node, facts/fills)
+            case some
+              link filled
+              save count, <>
+              sift filled/size
+                case integer
+                  link size-value
+                  save count, <{max-number(size-value, 0)}>
+                miss
+                  save count, <max({emit-expr(filled/size, field-scope, st, facts)}, 0)>
+              save element-text, <>
+              sift node-type
+                case some
+                  link list-type
+                  save element-text, swift-element(list-type, st, facts)
+                case none
+                  save nothing, 0
+              save made, <[{element-text}](repeating: {emit-expr(filled/item, field-scope, st, facts)}, count: {count})>
+              fork test, raw
+                hold
+                  back made
+              back <SeedList({made})>
+            case none
+              save nothing, 0
+      # a trailing `need false` input left out still exists in the native signature: its type's empty value
+      fork test, and(free, facts/function-params/has(callee-name))
+        hold
+          save declared-params, facts/function-params/get(callee-name)
+          save at, rendered-args/length
+          walk test
+            hook test, is-below(at, declared-params/length)
+            hook hold
+              save missing, get(declared-params, at)
+              save missing-kind, kind-of(missing/type)
+              fork test, or(is-equal(missing-kind, <>), is-equal(missing-kind, <unknown>))
+                hold
+                  push(rendered-args, <()>)
+                miss
+                  push(rendered-args, empty-of(missing/type))
+              save at, add(at, 1)
+      # a call to a task names each argument by its input; a task's wrapping copy takes the task's labels
+      save has-labels, false
+      save labels, make list
+      fork test, free
+        hold
+          fork test, facts/function-labels/has(callee-name)
+            hold
+              save labels, facts/function-labels/get(callee-name)
+              save has-labels, true
+            miss
+              fork test, ends-with(callee-name, <-fast>)
+                hold
+                  save base-name, substring(callee-name, 0, subtract(char-count(callee-name), 5))
+                  fork test, facts/function-labels/has(base-name)
+                    hold
+                      save labels, facts/function-labels/get(base-name)
+                      save has-labels, true
+      fork test, has-labels
+        hold
+          save labeled-args, make list
+          save at, 0
+          walk rendered-args
+            take argument
+            push(labeled-args, labeled-argument(name-at(labels, at), argument))
+            save at, add(at, 1)
+          save rendered-args, labeled-args
+      # a callee is CALLED, never passed: a bare name, not the closure a throwing task becomes as a value
+      save callee-text, <>
+      fork test, is-unequal(callee-name, <>)
+        hold
+          save callee-text, vname(callee-name)
+        miss
+          save callee-text, emit-expr(callee, field-scope, st, facts)
+      save joined, join-texts(rendered-args, <, >)
+      # an async task called WITHOUT `wait true` runs on its own and the caller goes on
+      fork test, and(and(free, facts/async-tasks/has(callee-name)), not(awaited))
+        hold
+          save raise, <>
+          fork test, facts/throwing/has(callee-name)
+            hold
+              save raise, <try! >
+          mark-need(st, <spawn>)
+          back <__termSpawn \{ {raise}await {callee-text}({joined}) \}>
+      save call-text, <{callee-text}({joined})>
+      fork test, and(is-unequal(callee-name, <>), facts/throwing/has(callee-name))
+        hold
+          save call-text, <({try-word(st)} {callee-text}({joined}))>
+      fork test, fresh
+        hold
+          back <SeedList({call-text})>
+      back call-text
+    miss
+      back <>
+
+# every form a spec reaches, added to the map that does not hold it yet
+task add-specs
+  take into, like hash, like text, like form-spec
+  take spec, like form-spec
+  mark private
+
+  save known, make list
+  walk into/keys()
+    take one
+    push(known, one)
+  walk spec-forms(spec, known)
+    take one
+    save into/{one/form}, one
+
+# a host string method on a text: through the text's cursor, by byte on an ASCII text, else the code-point runtime
+task text-call
+  take node, like expression
+  take op, like text
+  take target, like expression
+  take args, like list, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save cursor, <>
+  sift st/current-fn
+    case some
+      link fn
+      sift facts/cursor-of(fn, node)
+        case some
+          link found
+          save cursor, found
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save slice, or(is-equal(op, <substring>), is-equal(op, <slice>))
+  fork test, and(is-unequal(cursor, <>), slice)
+    hold
+      save until, <Int.max>
+      fork test, is-above(args/length, 1)
+        hold
+          save until, emit-expr(get(args, 1), field-scope, st, facts)
+      save receiver, emit-expr(target, field-scope, st, facts)
+      save from, emit-expr(get(args, 0), field-scope, st, facts)
+      back need(st, <text>, <TermText.cursorSlice({receiver}, {from}, {until}, &__cursor{camelize(<-{cursor}>)})>)
+  fork test, is-unequal(cursor, <>)
+    hold
+      save which, <cursorCharAt>
+      fork test, is-equal(op, <charCodeAt>)
+        hold
+          save which, <cursorCodeAt>
+      save receiver, emit-expr(target, field-scope, st, facts)
+      back need(st, <text>, <TermText.{which}({receiver}, {emit-expr(get(args, 0), field-scope, st, facts)}, &__cursor{camelize(<-{cursor}>)})>)
+  save on-ascii, facts/is-ascii(target)
+  fork test, and(on-ascii, or(or(is-equal(op, <charAt>), is-equal(op, <at>)), is-equal(op, <charCodeAt>)))
+    hold
+      save which, <asciiCharAt>
+      fork test, is-equal(op, <charCodeAt>)
+        hold
+          save which, <asciiCodeAt>
+      save receiver, emit-expr(target, field-scope, st, facts)
+      back need(st, <text>, <TermText.{which}({receiver}, {emit-expr(get(args, 0), field-scope, st, facts)})>)
+  save parts, make list
+  fork test, and(on-ascii, or(slice, or(is-equal(op, <indexOf>), is-equal(op, <lastIndexOf>))))
+    hold
+      push(parts, emit-expr(target, field-scope, st, facts))
+      walk args
+        take arg
+        push(parts, emit-expr(arg, field-scope, st, facts))
+      save helper, <asciiSubstring>
+      fork test, is-equal(op, <indexOf>)
+        hold
+          save helper, <asciiIndexOf>
+      fork test, is-equal(op, <lastIndexOf>)
+        hold
+          save helper, <asciiLastIndexOf>
+      back need(st, <text>, <TermText.{helper}({join-texts(parts, <, >)})>)
+  save receiver, emit-expr(target, field-scope, st, facts)
+  back string-expr(op, receiver, emit-all(args, field-scope, st, facts), st)
+
+# the text operations go through `TermText`, over unicodeScalars. `repeat` is a Swift keyword, spelled `repeated`
+task string-expr
+  take op, like text
+  take receiver, like text
+  take rendered, like list, like text
+  take st, like swift-state
+  like text
+  mark private
+
+  save name, op
+  fork test, is-equal(op, <at>)
+    hold
+      save name, <charAt>
+  fork test, is-equal(op, <repeat>)
+    hold
+      save name, <repeated>
+  save parts, make list
+  push(parts, receiver)
+  walk rendered
+    take one
+    push(parts, one)
+  save call-text, need(st, <text>, <TermText.{name}({join-texts(parts, <, >)})>)
+  fork test, is-equal(name, <split>)
+    hold
+      back <SeedList({call-text})>
+  back call-text
+
+# a native map / list operation as swift's collection API: a map through the SeedMap wrapper, a list through SeedList
+task collection-expr
+  take op, like collection-op
+  take args, like list, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save target, emit-expr(op/target, field-scope, st, facts)
+  save arg, emit-all(args, field-scope, st, facts)
+  save first, <undefined>
+  fork test, is-above(arg/length, 0)
+    hold
+      save first, get(arg, 0)
+  save second, <undefined>
+  fork test, is-above(arg/length, 1)
+    hold
+      save second, get(arg, 1)
+  fork test, is-equal(op/kind, <map>)
+    hold
+      save name, op/op
+      fork test, is-equal(name, <has>)
+        hold
+          back <({target}.data[{first}] != nil)>
+      fork test, is-equal(name, <get>)
+        hold
+          back <{target}.data[{first}]!>
+      fork test, is-equal(name, <set>)
+        hold
+          back <{target}.setting({first}, {second})>
+      fork test, is-equal(name, <delete>)
+        hold
+          back <{target}.removing({first})>
+      fork test, is-equal(name, <keys>)
+        hold
+          back <SeedList(Array({target}.data.keys))>
+      fork test, is-equal(name, <values>)
+        hold
+          back <SeedList(Array({target}.data.values))>
+      back <>
+  save data, view(op/target, field-scope, st, facts)
+  save name, op/op
+  save target-name, variable-name-of(op/target)
+  fork test, is-equal(name, <push>)
+    hold
+      fork test, and(is-unequal(target-name, <>), st/owned-names/has(target-name))
+        hold
+          back <(\{ () -\> Int in {target}.append({first}); return {target}.count \})()>
+      back <{target}.appending({first})>
+  fork test, is-equal(name, <pop>)
+    hold
+      back <{target}.popping()>
+  fork test, or(is-equal(name, <at>), is-equal(name, <get>))
+    hold
+      back <{data}[{first}]>
+  fork test, is-equal(name, <set>)
+    hold
+      back <{target}.storing({first}, {second})>
+  fork test, is-equal(name, <includes>)
+    hold
+      back <{data}.contains({first})>
+  fork test, is-equal(name, <indexOf>)
+    hold
+      back <Int({data}.firstIndex(of: {first}) ?? -1)>
+  fork test, is-equal(name, <lastIndexOf>)
+    hold
+      back <Int({data}.lastIndex(of: {first}) ?? -1)>
+  fork test, is-equal(name, <concat>)
+    hold
+      back <SeedList({data} + {first}.data)>
+  fork test, is-equal(name, <slice>)
+    hold
+      fork test, is-above(arg/length, 1)
+        hold
+          back <{target}.slicing({first}, {second})>
+      back <{target}.slicing({first})>
+  fork test, is-equal(name, <toReversed>)
+    hold
+      back <SeedList({data}.reversed())>
+  save element-kind, kind-of(element-of(expression-type(op/target)))
+  fork test, is-equal(name, <join>)
+    hold
+      fork test, is-equal(element-kind, <float>)
+        hold
+          back need(st, <number>, <{data}.map \{ termNumber($0) \}.joined(separator: {first})>)
+      back <{data}.map \{ String(describing: $0) \}.joined(separator: {first})>
+  fork test, is-equal(name, <map>)
+    hold
+      back <SeedList({data}.map({first}))>
+  fork test, is-equal(name, <filter>)
+    hold
+      back <SeedList({data}.filter({first}))>
+  fork test, is-equal(name, <some>)
+    hold
+      back <{data}.contains(where: {first})>
+  fork test, is-equal(name, <every>)
+    hold
+      back <{data}.allSatisfy({first})>
+  fork test, is-equal(name, <reduce>)
+    hold
+      back <{data}.reduce({second}, {first})>
+  fork test, is-equal(name, <findIndex>)
+    hold
+      back <Int({data}.firstIndex(where: {first}) ?? -1)>
+  fork test, is-equal(name, <flat>)
+    hold
+      fork test, is-equal(element-kind, <array>)
+        hold
+          back <SeedList({data}.flatMap \{ $0.data \})>
+      back <SeedList({data})>
+  fork test, is-equal(name, <unshift>)
+    hold
+      back <{target}.unshifting({first})>
+  fork test, is-equal(name, <shift>)
+    hold
+      back <{target}.shifting()>
+  fork test, is-equal(name, <splice>)
+    hold
+      save rest, make list
+      save at, 2
+      walk test
+        hook test, is-below(at, arg/length)
+        hook hold
+          push(rest, get(arg, at))
+          save at, add(at, 1)
+      back <{target}.splicing({first}, {second}, [{join-texts(rest, <, >)}])>
+  back <>
+
+# a variable put into a field the record owns: as it is when it is a plain array itself, else the array in its SeedList
+task plain-or-data
+  take value, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save name, variable-name-of(value)
+  fork test, and(is-unequal(name, <>), not(st/plain-names/has(name)))
+    hold
+      back <{emit-expr(value, field-scope, st, facts)}.data>
+  back emit-expr(value, field-scope, st, facts)
+
+# a list a record or a case owns is the plain array: an owned local as it is, a fresh task's answer taken as it is, an
+# empty list `[]`
+task owned-value
+  take value, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift value
+    case call
+      back emit-raw(value, field-scope, st, facts)
+    case variable
+      back plain-or-data(value, field-scope, st, facts)
+    miss
+      back <[]>
+
+task is-empty-list-literal
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case record
+      link record-name
+      link record-fields
+      back and(is-equal(record-name, <list>), is-equal(record-fields/length, 0))
+    case array
+      link items
+      back is-equal(items/length, 0)
+    miss
+      back false
+
+task is-empty-map-literal
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case record
+      link record-name
+      link record-fields
+      back and(is-equal(record-name, <hash>), is-equal(record-fields/length, 0))
+    case map
+      link entries
+      back is-equal(entries/length, 0)
+    miss
+      back false
+
+# text up to the first `<`, as `.replace(/<.*$/, '')` left it
+task before-angle
+  take text, like text
+  like text
+  mark private
+
+  save size, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      fork test, is-equal(char-code-at(text, at), 60)
+        hold
+          back substring(text, 0, at)
+      save at, add(at, 1)
+  back text
+
+task emit-record
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case record
+      link record-name
+      link record-fields
+      save node-type, expression-type(node)
+      save empty, is-equal(record-fields/length, 0)
+      # `make hash` / `make list` with no binds are the native collections
+      fork test, and(is-equal(record-name, <hash>), empty)
+        hold
+          save type-args, <>
+          sift node-type
+            case some
+              link known
+              sift known
+                case map
+                  link map-key
+                  link map-value
+                  fork test, and(is-unequal(kind-of(make(some, map-key)), <variable>), is-unequal(kind-of(make(some, map-value)), <variable>))
+                    hold
+                      save type-args, <\<{swift-type(make(some, map-key), st, facts)}, {swift-type(make(some, map-value), st, facts)}\>>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          back <SeedMap{type-args}()>
+      fork test, and(is-equal(record-name, <list>), empty)
+        hold
+          save type-args, <>
+          sift node-type
+            case some
+              link known
+              sift known
+                case array
+                  link element
+                  fork test, is-unequal(kind-of(make(some, element)), <variable>)
+                    hold
+                      save type-args, <\<{swift-element(known, st, facts)}\>>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          back <SeedList{type-args}()>
+      # `make void` is the absent value: the unit tuple
+      fork test, and(is-equal(record-name, <void>), empty)
+        hold
+          back <()>
+      # leading-dot construction: Swift infers the enum or struct type from context
+      fork test, facts/variant-set/has(record-name)
+        hold
+          save labelled, make list
+          walk record-fields
+            take field
+            fork test, facts/field-lists/has(<{record-name}/{field/name}>)
+              hold
+                push(labelled, <{camel(field/name)}: {owned-value(field/value, field-scope, st, facts)}>)
+              miss
+                push(labelled, <{camel(field/name)}: {emit-expr(field/value, field-scope, st, facts)}>)
+          save owner-name, named-of(node-type)
+          # a case held by node class builds its node: in the spare a match kept, else new
+          fork test, facts/node-cases/has(record-name)
+            hold
+              save held, facts/node-cases/get(record-name)
+              fork test, and(is-equal(kind-of(node-type), <named>), is-equal(owner-name, held/form))
+                hold
+                  save made, <{held/name}({join-texts(labelled, <, >)})>
+                  fork test, has-text(st/spares, held/form)
+                    hold
+                      save made, <termNode{held/name}(&{spare-name(held/form)}, {join-texts(labelled, <, >)})>
+                  back <.{camel(record-name)}({made})>
+          # a type argument nothing constrains is any type, named `Never`, the others left as `_`
+          save type-args, args-of(node-type)
+          save any-free, false
+          save spelled, make list
+          walk type-args
+            take one
+            save free, false
+            sift one
+              case variable
+                link var-id
+                save free, not(st/var-names/has(var-id))
+              miss
+                save nothing, 0
+            fork test, free
+              hold
+                save any-free, true
+                push(spelled, <Never>)
+              miss
+                push(spelled, <_>)
+          save owner, <>
+          fork test, any-free
+            hold
+              save owner, <{before-angle(swift-type(node-type, st, facts))}\<{join-texts(spelled, <, >)}\>>
+          fork test, is-above(labelled/length, 0)
+            hold
+              back <{owner}.{camel(record-name)}({join-texts(labelled, <, >)})>
+          back <{owner}.{camel(record-name)}>
+      # a struct: the type named and the fields passed in declared order, a left-out field its type's empty value
+      fork test, facts/record-fields/has(record-name)
+        hold
+          save declared, facts/record-fields/get(record-name)
+          save given, make hash
+          walk record-fields
+            take field
+            save given/{field/name}, field/value
+          save parts, make list
+          walk declared
+            take field
+            fork test, given/has(field/name)
+              hold
+                push(parts, <{camel(field/name)}: {field-value(record-name, field/name, given/get(field/name), declared, field-scope, st, facts)}>)
+              miss
+                fork test, facts/field-lists/has(<{record-name}/{field/name}>)
+                  hold
+                    push(parts, <{camel(field/name)}: []>)
+                  miss
+                    push(parts, <{camel(field/name)}: {empty-of(make(some, field/type))}>)
+          back <{pascal(record-name)}({join-texts(parts, <, >)})>
+      save parts, make list
+      walk record-fields
+        take field
+        push(parts, <{camel(field/name)}: {emit-expr(field/value, field-scope, st, facts)}>)
+      back <{pascal(record-name)}({join-texts(parts, <, >)})>
+    miss
+      back <>
+
+task spare-name
+  take form, like text
+  like text
+  mark private
+
+  back <__spare{pascal(form)}>
+
+# a struct field's value: an empty collection spells the DECLARED element type, since the checker's gradual unify leaves
+# it free
+task field-value
+  take form, like text
+  take name, like text
+  take value, like expression
+  take declared, like list, like record-field
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  # only for a non-generic form: a generic form's declared element is its own type parameter
+  fork test, facts/generic-arity/has(form)
+    hold
+      fork test, is-above(facts/generic-arity/get(form), 0)
+        hold
+          back emit-expr(value, field-scope, st, facts)
+  save declared-type, make none
+  save found, false
+  walk declared
+    take field
+    fork test, and(not(found), is-equal(field/name, name))
+      hold
+        save declared-type, make(some, field/type)
+        save found, true
+  fork test, facts/field-lists/has(<{form}/{name}>)
+    hold
+      back owned-value(value, field-scope, st, facts)
+  sift declared-type
+    case some
+      link known
+      sift known
+        case array
+          fork test, is-empty-list-literal(value)
+            hold
+              back <SeedList\<{swift-element(known, st, facts)}\>([])>
+        case map
+          link map-key
+          link map-value
+          fork test, is-empty-map-literal(value)
+            hold
+              back <SeedMap\<{swift-type(make(some, map-key), st, facts)}, {swift-type(make(some, map-value), st, facts)}\>()>
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back emit-expr(value, field-scope, st, facts)
+
+task emit-member
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      link member-index
+      link member-nick
+      link member-tag
+      # a form's tag read as a field: its case's name
+      fork test, is-unequal(member-tag, <>)
+        hold
+          back <{emit-expr(member-target, field-scope, st, facts)}.termTag>
+      save target-name, variable-name-of(member-target)
+      save no-index, true
+      sift member-index
+        case some
+          save no-index, false
+        case none
+          save nothing, 0
+      # a field of a slot local is read off its slot
+      fork test, and(and(is-unequal(target-name, <>), no-index), st/slot-names/has(target-name))
+        hold
+          save slot, st/slot-names/get(target-name)
+          save list-text, view(slot/list, field-scope, st, facts)
+          back <{list-text}[{emit-expr(slot/index, field-scope, st, facts)}].{camel(member-name)}>
+      # a DYNAMIC segment subscripts the wrapper's storage
+      sift member-index
+        case some
+          link index-node
+          save list-text, view(member-target, field-scope, st, facts)
+          back <{list-text}[{emit-expr(index-node, field-scope, st, facts)}]>
+        case none
+          save nothing, 0
+      sift collection-read(node)
+        case some
+          link read-op
+          back <{view(read-op/target, field-scope, st, facts)}.count>
+        case none
+          save nothing, 0
+      sift string-read(node)
+        case some
+          link text-read
+          back need(st, <text>, <TermText.length({emit-expr(text-read/target, field-scope, st, facts)})>)
+        case none
+          save nothing, 0
+      # a LITERAL index segment on a list subscripts the SeedList's storage
+      fork test, and(is-digits(member-name), is-equal(kind-of-node(member-target), <array>))
+        hold
+          back <{view(member-target, field-scope, st, facts)}[{member-name}]>
+      # a matched variant's field reads the bound local
+      fork test, and(is-unequal(target-name, <>), field-scope/has(target-name))
+        hold
+          fork test, has-text(field-scope/get(target-name), member-name)
+            hold
+              back camel(member-name)
+      back <{emit-expr(member-target, field-scope, st, facts)}.{camel(member-name)}>
+    miss
+      back <>
+
+# a function literal as a Swift closure. The trailing `send back X` becomes the closure's value expression when it stands
+# alone; a raise in its body is `try!`, since a Term task type is a non-throwing Swift function type
+task emit-closure
+  take node, like expression
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case closure
+      link closure-params
+      link closure-body
+      link closure-result
+      link closure-async
+      save outer-throws, st/current-throws
+      save outer-guard, st/guard-depth
+      save outer-bound, st/bound-names
+      save outer-spares, st/spares
+      save st/spares, make list
+      save st/current-throws, false
+      save st/guard-depth, 0
+      save inner-bound, copy-texts(outer-bound)
+      walk closure-params
+        take param
+        add-text(inner-bound, param/name)
+      save st/bound-names, inner-bound
+      save count, closure-body/length
+      save lead, make list
+      save at, 0
+      walk closure-body
+        take one
+        fork test, is-below(at, subtract(count, 1))
+          hold
+            save line, emit-statement-in(one, 0, field-scope, st, facts)
+            fork test, is-unequal(line, <>)
+              hold
+                push(lead, line)
+        save at, add(at, 1)
+      save tail, <>
+      fork test, is-above(count, 0)
+        hold
+          save last, get(closure-body, subtract(count, 1))
+          save valued, false
+          sift last
+            case return
+              link return-value
+              sift return-value
+                case some
+                  link returned
+                  save valued, true
+                  fork test, is-above(lead/length, 0)
+                    hold
+                      save tail, <return {emit-expr(returned, field-scope, st, facts)}>
+                    miss
+                      save tail, emit-expr(returned, field-scope, st, facts)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          fork test, not(valued)
+            hold
+              save tail, emit-statement-in(last, 0, field-scope, st, facts)
+      save st/spares, outer-spares
+      save st/current-throws, outer-throws
+      save st/guard-depth, outer-guard
+      save st/bound-names, outer-bound
+      save names, make list
+      walk closure-params
+        take param
+        push(names, camel(param/name))
+      save signature, <({join-texts(names, <, >)}) in >
+      fork test, closure-async
+        hold
+          save typed, make list
+          walk closure-params
+            take param
+            push(typed, <{camel(param/name)}: {swift-type(param/type, st, facts)}>)
+          save signature, <({join-texts(typed, <, >)}) async -\> {swift-type(closure-result, st, facts)} in >
+        miss
+          sift closure-result
+            case some
+              save signature, <({join-texts(names, <, >)}) -\> {swift-type(closure-result, st, facts)} in >
+            case none
+              save nothing, 0
+      save parts, copy-texts(lead)
+      fork test, is-unequal(tail, <>)
+        hold
+          push(parts, tail)
+      back <\{ {signature}{join-texts(parts, <; >)} \}>
+    miss
+      back <>
+
+# ---- statements ----
+
+# a loop's label: a named walk by its name, any other `loop<n>`, pushed as the innermost
+task open-loop
+  take name, like text
+  take st, like swift-state
+  like text
+  mark private
+
+  save st/loop-count, add(st/loop-count, 1)
+  save label, <loop{st/loop-count}>
+  fork test, is-unequal(name, <>)
+    hold
+      save label, camel(name)
+  push(st/loop-labels, label)
+  back label
+
+# the body of a statement list, a three-statement swap on a plain array written as `swapAt`, and an owned list filled
+# by a counted loop after it given room first
+task emit-block
+  take body, like list, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save lines, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, body/length)
+    hook hold
+      save swapped, false
+      sift swap-at(body, at)
+        case some
+          link swap
+          save list-name, variable-name-of(swap/list)
+          fork test, and(is-unequal(list-name, <>), st/plain-names/has(list-name))
+            hold
+              save first, emit-expr(swap/first, field-scope, st, facts)
+              push(lines, <{pad(depth)}{vname(list-name)}.swapAt({first}, {emit-expr(swap/second, field-scope, st, facts)})>)
+              save at, add(at, 3)
+              save swapped, true
+        case none
+          save nothing, 0
+      fork test, not(swapped)
+        hold
+          save line, emit-statement-in(get(body, at), depth, field-scope, st, facts)
+          fork test, is-unequal(line, <>)
+            hold
+              push(lines, <{pad(depth)}{line}>)
+          sift reserve-at(body, at, st)
+            case some
+              link reserve
+              push(lines, <{pad(depth)}{vname(reserve/list)}.reserveCapacity({reserve/room})>)
+            case none
+              save nothing, 0
+          save at, add(at, 1)
+  back join-texts(lines, <\n>)
+
+form reserve
+  link list, like text
+  link room, like text
+
+# An owned list local made empty and then filled by a counted loop later in the same block, `while i < n` with `i` from
+# a literal and k pushes onto it among the loop's own statements, is given room for k * (n - base) first, clamped to
+# [0, 2^20]
+task reserve-at
+  take body, like list, like statement
+  take at, like number
+  take st, like swift-state
+  like maybe, like reserve
+  mark private
+
+  save made, get(body, at)
+  save list-name, <>
+  save empty, false
+  sift made
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      fork test, not(is-equal(kind-of(let-type), <array>))
+        hold
+          back make none
+      fork test, not(st/owned-names/has(let-name))
+        hold
+          back make none
+      fork test, not(st/owned-names/get(let-name))
+        hold
+          back make none
+      save list-name, let-name
+      sift let-init
+        case array
+          link items
+          save empty, is-equal(items/length, 0)
+        case record
+          link record-name
+          link record-fields
+          save empty, and(is-equal(record-name, <list>), is-equal(record-fields/length, 0))
+        miss
+          save nothing, 0
+    miss
+      back make none
+  fork test, not(empty)
+    hold
+      back make none
+  save loop-at, -1
+  save k, add(at, 1)
+  walk test
+    hook test, and(is-below(k, body/length), is-below(loop-at, 0))
+    hook hold
+      sift get(body, k)
+        case while
+          save loop-at, k
+        miss
+          save nothing, 0
+      save k, add(k, 1)
+  fork test, is-below(loop-at, 0)
+    hold
+      back make none
+  save counter, <>
+  save bound, make none
+  save loop-body, make list
+  sift get(body, loop-at)
+    case while
+      link loop-cond
+      link loop-statements
+      save loop-body, loop-statements
+      sift loop-cond
+        case binary
+          link cond-op
+          link cond-left
+          link cond-right
+          fork test, is-unequal(to-text(cond-op), <\<>)
+            hold
+              back make none
+          save counter, variable-name-of(cond-left)
+          fork test, is-equal(counter, <>)
+            hold
+              back make none
+          save bound, make(some, cond-right)
+        miss
+          back make none
+    miss
+      back make none
+  # the statements between the list and the loop: where the counter starts, and whether the bound is declared there
+  save start, make none
+  save declared-names, make list
+  save k, add(at, 1)
+  walk test
+    hook test, is-below(k, loop-at)
+    hook hold
+      sift get(body, k)
+        case let
+          link between-name
+          link between-init
+          push(declared-names, between-name)
+          sift start
+            case none
+              fork test, is-equal(between-name, counter)
+                hold
+                  save start, make(some, between-init)
+            case some
+              save nothing, 0
+        miss
+          save nothing, 0
+      save k, add(k, 1)
+  save pushes, 0
+  walk loop-body
+    take one
+    sift one
+      case expression
+        link pushed
+        sift pushed
+          case call
+            link push-callee
+            link push-args
+            fork test, and(is-equal(variable-name-of(push-callee), <list_push>), is-above(push-args/length, 0))
+              hold
+                fork test, is-equal(variable-name-of(get(push-args, 0)), list-name)
+                  hold
+                    save pushes, add(pushes, 1)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  save base, 0
+  sift start
+    case some
+      link start-init
+      sift start-init
+        case integer
+          link start-value
+          save base, start-value
+        miss
+          back make none
+    case none
+      back make none
+  fork test, is-equal(pushes, 0)
+    hold
+      back make none
+  save room, <>
+  sift bound
+    case some
+      link bound-node
+      sift bound-node
+        case integer
+          link bound-value
+          save room, <{multiply(min-number(max-number(subtract(bound-value, base), 0), 1048576), pushes)}>
+        case variable
+          link bound-name
+          fork test, has-text(declared-names, bound-name)
+            hold
+              back make none
+          save offset, <>
+          fork test, is-unequal(base, 0)
+            hold
+              save offset, < - {base}>
+          save times, <>
+          fork test, is-unequal(pushes, 1)
+            hold
+              save times, < * {pushes}>
+          save room, <min(max({vname(bound-name)}{offset}, 0), 1048576){times}>
+        miss
+          back make none
+    case none
+      back make none
+  save found
+    make reserve
+      bind list, list-name
+      bind room, room
+  back make(some, found)
+
+# a `switch` case with no statement is a Swift error, so an empty arm is an explicit `break`
+task arm-block
+  take body, like list, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save text, emit-block(body, depth, field-scope, st, facts)
+  fork test, is-equal(text, <>)
+    hold
+      back <{pad(depth)}break>
+  back text
+
+task assigned-here
+  take name, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  sift st/current-assigned
+    case some
+      link names
+      back has-text(names, name)
+    case none
+      back facts/assigned-anywhere/has(name)
+
+task in-task
+  take st, like swift-state
+  like boolean
+  mark private
+
+  sift st/current-assigned
+    case some
+      back true
+    case none
+      back false
+
+# `var` where the binding is reassigned
+task binding-word
+  take name, like text
+  take mutable, like boolean
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  fork test, or(and(mutable, not(in-task(st))), assigned-here(name, st, facts))
+    hold
+      back <var>
+  back <let>
+
+# a type spelled with every free inference variable `Never`, which every constraint a form puts on its argument accepts
+task spell-never
+  take given, like type
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save free, make list
+  collect-vars(make(some, given), free)
+  save saved, st/var-names
+  save widened, make hash
+  walk saved/keys()
+    take id-number
+    save widened/{id-number}, saved/get(id-number)
+  walk free
+    take id-number
+    fork test, not(saved/has(id-number))
+      hold
+        save widened/{id-number}, <Never>
+  save st/var-names, widened
+  save text, swift-type(make(some, given), st, facts)
+  save st/var-names, saved
+  back text
+
+task emit-let
+  take node, like statement
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      add-text(st/bound-names, let-name)
+      # an inner list read out of a list of lists that owns it is a plain array, read as one
+      fork test, facts/owns-inner-let(node)
+        hold
+          save st/plain-names/{let-name}, <read>
+      # a second declaration of a name the same statement list declared already is an assignment to it
+      sift st/current-fn
+        case some
+          link fn
+          fork test, facts/is-redeclared(fn, node)
+            hold
+              back <{vname(let-name)} = {emit-expr(let-init, field-scope, st, facts)}>
+        case none
+          save nothing, 0
+      # a bare `save x`, given its value by a later assignment: declared with its type and no value
+      fork test, declared-later(node)
+        hold
+          back <var {vname(let-name)}: {swift-type(let-type, st, facts)}>
+      # a record read from a slot and only ever read through it after: no copy is made
+      sift facts/slot-local-of(node)
+        case some
+          link slot
+          save st/slot-names/{let-name}, slot
+          back <>
+        case none
+          save nothing, 0
+      save type-kind, kind-of(let-type)
+      # an owned list local is a plain array: made empty, or taken as it is from a fresh task
+      fork test, and(st/owned-names/has(let-name), is-equal(type-kind, <array>))
+        hold
+          save keyword, <let>
+          fork test, st/owned-names/get(let-name)
+            hold
+              save keyword, <var>
+          sift let-init
+            case call
+              save made, emit-raw(let-init, field-scope, st, facts)
+              back <{keyword} {vname(let-name)} = {made}>
+            miss
+              save nothing, 0
+          save element-text, <>
+          sift let-type
+            case some
+              link list-type
+              save element-text, swift-element(list-type, st, facts)
+            case none
+              save nothing, 0
+          back <{keyword} {vname(let-name)}: [{element-text}] = []>
+      save type-name, named-of(let-type)
+      # a valueless typed module slot: an implicitly-unwrapped optional
+      sift let-init
+        case unit
+          fork test, and(is-equal(type-kind, <named>), is-unequal(type-name, <>))
+            hold
+              back <var {vname(let-name)}: {swift-type(let-type, st, facts)}!>
+        miss
+          save nothing, 0
+      # the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
+      sift let-init
+        case member
+          save init-kind, kind-of-node(let-init)
+          fork test, and(and(is-equal(type-kind, <named>), facts/record-fields/has(type-name)), or(is-equal(init-kind, <unknown>), is-equal(init-kind, <dynamic>)))
+            hold
+              save word, binding-word(let-name, let-mutable, st, facts)
+              save value-text, emit-expr(let-init, field-scope, st, facts)
+              back <{word} {vname(let-name)} = {value-text} as! {swift-type(let-type, st, facts)}>
+        miss
+          save nothing, 0
+      # a call carries its own type, so it is not annotated, except a call to a generic task that nothing at the call
+      # pins, where the binding says it
+      save init-call, make none
+      sift let-init
+        case call
+          save init-call, make(some, let-init)
+        case await
+          link awaited
+          sift awaited
+            case call
+              save init-call, make(some, awaited)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      save carries-own-type, false
+      save uninferable, false
+      sift init-call
+        case some
+          link call-node
+          save carries-own-type, true
+          sift call-node
+            case call
+              link call-callee
+              link call-args
+              save callee-name, variable-name-of(call-callee)
+              fork test, or(is-equal(call-args/length, 0), and(is-unequal(callee-name, <>), facts/hidden-generic/has(callee-name)))
+                hold
+                  save type-args, args-of(let-type)
+                  fork test, and(is-equal(type-kind, <named>), is-above(type-args/length, 0))
+                    hold
+                      save open, false
+                      walk type-args
+                        take one
+                        fork test, is-generic-letter(one, st)
+                          hold
+                            save open, true
+                      save uninferable, not(open)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save annotation, <>
+      fork test, and(and(is-equal(type-kind, <named>), is-unequal(type-name, <>)), or(not(carries-own-type), uninferable))
+        hold
+          sift let-type
+            case some
+              link known
+              fork test, uninferable
+                hold
+                  save annotation, <: {spell-never(known, st, facts)}>
+                miss
+                  save annotation, <: {swift-type(let-type, st, facts)}>
+            case none
+              save nothing, 0
+      save word, binding-word(let-name, let-mutable, st, facts)
+      back <{word} {vname(let-name)}{annotation} = {emit-expr(let-init, field-scope, st, facts)}>
+    miss
+      back <>
+
+task emit-assign
+  take node, like statement
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case assign
+      link assign-target
+      link assign-op
+      link assign-value
+      # an append to a text variable is `s += ..`, which appends in place
+      sift text-append-of(node)
+        case some
+          link append
+          save ascii-test
+            task
+              take one, like expression
+              like boolean
+              back facts/is-ascii(one)
+          sift ascii-char-append(append/rest, ascii-test)
+            case some
+              link char
+              save target-text, emit-expr(assign-target, field-scope, st, facts)
+              save char-text, emit-expr(char/text, field-scope, st, facts)
+              back need(st, <text>, <TermText.asciiAppend(&{target-text}, {char-text}, {emit-expr(char/index, field-scope, st, facts)})>)
+            case none
+              save nothing, 0
+          save target-text, emit-expr(assign-target, field-scope, st, facts)
+          back <{target-text} += {emit-expr(append/rest, field-scope, st, facts)}>
+        case none
+          save nothing, 0
+      save op, to-text(assign-op)
+      # a text variable reset to the empty text keeps its storage for the next build
+      fork test, is-equal(op, <=>)
+        hold
+          sift assign-target
+            case variable
+              fork test, and(is-equal(kind-of-node(assign-target), <string>), empty-text(make(some, assign-value)))
+                hold
+                  back <{emit-expr(assign-target, field-scope, st, facts)}.removeAll(keepingCapacity: true)>
+            miss
+              save nothing, 0
+      # a record written back to the slot it was read from: only its changed fields
+      sift facts/place-of(node)
+        case some
+          link place
+          sift assign-target
+            case member
+              link slot-target
+              link slot-name
+              link slot-index
+              save list-text, view(slot-target, field-scope, st, facts)
+              save key, slot-name
+              sift slot-index
+                case some
+                  link index-node
+                  save key, emit-expr(index-node, field-scope, st, facts)
+                case none
+                  save nothing, 0
+              save slot, <{list-text}[{key}]>
+              fork test, not(place/temps)
+                hold
+                  save sets, make list
+                  walk place/fields
+                    take field
+                    push(sets, <{slot}.{camel(field/name)} = {emit-expr(field/value, field-scope, st, facts)}>)
+                  back join-texts(sets, <; >)
+              save parts, make list
+              save at, 0
+              walk place/fields
+                take field
+                push(parts, <let __place{at} = {emit-expr(field/value, field-scope, st, facts)}>)
+                save at, add(at, 1)
+              save at, 0
+              walk place/fields
+                take field
+                push(parts, <{slot}.{camel(field/name)} = __place{at}>)
+                save at, add(at, 1)
+              back <do \{ {join-texts(parts, <; >)} \}>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save target-text, emit-expr(assign-target, field-scope, st, facts)
+      back <{target-text} {op} {emit-expr(assign-value, field-scope, st, facts)}>
+    miss
+      back <>
+
+task emit-expression-statement
+  take node, like statement
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case expression
+      link expr
+      # a map entry updated from its own value is one probe through the ordered map's `update`
+      sift map-update-of(node)
+        case some
+          link update
+          sift expression-type(update/map)
+            case some
+              link known
+              sift known
+                case map
+                  link map-key
+                  link map-value
+                  save value-kind, kind-of(make(some, map-value))
+                  fork test, or(is-equal(value-kind, <number>), is-equal(value-kind, <float>))
+                    hold
+                      save map-text, emit-expr(update/map, field-scope, st, facts)
+                      save key-text, emit-expr(update/key, field-scope, st, facts)
+                      save fallback-text, emit-expr(update/fallback, field-scope, st, facts)
+                      back <{map-text}.data.update({key-text}, {fallback-text}) \{ $0 + {emit-expr(update/step, field-scope, st, facts)} \}>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      # a push onto an owned list whose new length nothing reads is the array's `append`
+      sift expr
+        case call
+          link call-callee
+          link call-args
+          save first-name, <>
+          fork test, is-above(call-args/length, 0)
+            hold
+              save first-name, variable-name-of(get(call-args, 0))
+          fork test, and(and(is-equal(variable-name-of(call-callee), <list_push>), is-unequal(first-name, <>)), st/owned-names/has(first-name))
+            hold
+              save list-text, emit-expr(get(call-args, 0), field-scope, st, facts)
+              back <{list-text}.append({emit-expr(get(call-args, 1), field-scope, st, facts)})>
+          # the same through the collection operation `list_push` inlines to, `out.push(v)`
+          sift call-callee
+            case member
+              sift collection-call(call-callee)
+                case some
+                  link op
+                  save target-name, variable-name-of(op/target)
+                  fork test, and(and(is-equal(op/kind, <array>), is-equal(op/op, <push>)), and(is-unequal(target-name, <>), st/owned-names/has(target-name)))
+                    hold
+                      save list-text, emit-expr(op/target, field-scope, st, facts)
+                      back <{list-text}.append({emit-expr(get(call-args, 0), field-scope, st, facts)})>
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      save rendered, emit-expr(expr, field-scope, st, facts)
+      # a VALUED call in statement position discards explicitly, or swiftc warns
+      sift expr
+        case call
+          save kind, kind-of-node(expr)
+          fork test, and(is-unequal(kind, <>), is-unequal(kind, <unit>))
+            hold
+              fork test, or(is-equal(kind, <unknown>), is-equal(kind, <dynamic>))
+                hold
+                  mark-need(st, <discard>)
+                  back <termDiscard({rendered})>
+              back <_ = {rendered}>
+        miss
+          save nothing, 0
+      back rendered
+    miss
+      back <>
+
+task emit-return
+  take node, like statement
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case return
+      link return-value
+      sift return-value
+        case none
+          fork test, is-equal(kind-of(st/current-result), <unknown>)
+            hold
+              back <return ()>
+          back <return>
+        case some
+          link value
+          # an owned list local leaves whole: the array itself from a fresh task, otherwise into a SeedList
+          save value-name, variable-name-of(value)
+          fork test, and(is-unequal(value-name, <>), st/owned-names/has(value-name))
+            hold
+              fork test, st/emitting-fresh
+                hold
+                  back <return {emit-expr(value, field-scope, st, facts)}>
+              back <return SeedList({emit-expr(value, field-scope, st, facts)})>
+          # a list-returning task that returns a native dock call directly wraps the shim's plain Array
+          fork test, and(st/fn-returns-array, is-native-call(value, facts))
+            hold
+              back <return SeedList({emit-expr(value, field-scope, st, facts)})>
+          # the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly
+          save value-kind, kind-of-node(value)
+          sift value
+            case await
+              link awaited
+              sift expression-type(value)
+                case some
+                  save nothing, 0
+                case none
+                  save value-kind, kind-of-node(awaited)
+            miss
+              save nothing, 0
+          save unknown-value, or(is-equal(value-kind, <unknown>), is-equal(value-kind, <dynamic>))
+          save result-kind, kind-of(st/current-result)
+          save result-name, named-of(st/current-result)
+          save generic, is-equal(result-kind, <variable>)
+          fork test, and(and(is-equal(result-kind, <named>), is-letter(result-name)), not(facts/record-fields/has(result-name)))
+            hold
+              fork test, is-equal(args-of(st/current-result)/length, 0)
+                hold
+                  save generic, true
+          save is-member, false
+          sift value
+            case member
+              save is-member, true
+            miss
+              save nothing, 0
+          save cast, <>
+          fork test, and(and(is-member, unknown-value), and(and(is-equal(result-kind, <named>), is-unequal(result-name, <>)), facts/record-fields/has(result-name)))
+            hold
+              save cast, < as! {swift-type(st/current-result, st, facts)}>
+            miss
+              fork test, and(and(unknown-value, shim-call(value, facts)), generic)
+                hold
+                  save cast, < as! {swift-type(st/current-result, st, facts)}>
+          back <return {emit-expr(value, field-scope, st, facts)}{cast}>
+    miss
+      back <>
+
+task emit-throw
+  take node, like statement
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case throw
+      link thrown
+      mark-need(st, <exception>)
+      save tell-part, <>
+      fork test, facts/has-hive-tell
+        hold
+          save tell-part, <; hiveTell(entry: HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))>
+      # an interpolated text is a text too, and raises `failure` like a plain one
+      save is-text-value, false
+      save exception-record, false
+      sift thrown
+        case string
+          save is-text-value, true
+        case template
+          save is-text-value, true
+        case record
+          link record-name
+          save exception-record, facts/exception-forms/has(record-name)
+        miss
+          save nothing, 0
+      fork test, and(is-text-value, not(facts/has-hive-tell))
+        hold
+          back <throw TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil)>
+      fork test, is-text-value
+        hold
+          back <throw (\{ () -\> TermException in let told = TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil){tell-part}; return told \})()>
+      fork test, exception-record
+        hold
+          back <throw try (\{ () throws -\> TermException in let raised = {emit-expr(thrown, field-scope, st, facts)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised){tell-part}; return told \})()>
+      back <throw termException({emit-expr(thrown, field-scope, st, facts)})>
+    miss
+      back <>
+
+# one counted loop, labeled, its body written before its condition
+task emit-loop
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case while
+      link loop-cond
+      link loop-body
+      link loop-span
+      link loop-must
+      link loop-down
+      link loop-label
+      save label, open-loop(loop-label, st)
+      save body-text, emit-block(loop-body, add(depth, 1), field-scope, st, facts)
+      pop(st/loop-labels)
+      back <{label}: while {emit-expr(loop-cond, field-scope, st, facts)} \{\n{body-text}\n{pad(depth)}\}>
+    miss
+      back <>
+
+task emit-while
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  # a counted loop calling a task whose arithmetic is safe below a bound: written twice, the guard true running a copy
+  # that calls the task's wrapping copy
+  sift facts/loop-guard-of(node)
+    case some
+      link guard
+      fork test, and(guard/fast, is-above(guard/limits/length, 0))
+        hold
+          save tests, make list
+          walk guard/limits
+            take limit
+            fork test, limit/low
+              hold
+                push(tests, <{vname(limit/name)} \>= 0>)
+              miss
+                push(tests, <{vname(limit/name)} \<= {limit/high}>)
+          push(st/fast-loops, node)
+          save fast, emit-loop(node, add(depth, 1), field-scope, st, facts)
+          pop(st/fast-loops)
+          save slow, emit-loop(node, add(depth, 1), field-scope, st, facts)
+          back <if {join-texts(tests, < && >)} \{\n{pad(add(depth, 1))}{fast}\n{pad(depth)}\} else \{\n{pad(add(depth, 1))}{slow}\n{pad(depth)}\}>
+    case none
+      save nothing, 0
+  back emit-loop(node, depth, field-scope, st, facts)
+
+task emit-guard
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case guard
+      link guarded
+      link caught
+      save st/guard-depth, add(st/guard-depth, 1)
+      save body-text, emit-block(guarded, add(depth, 1), field-scope, st, facts)
+      save st/guard-depth, subtract(st/guard-depth, 1)
+      save handler, <catch \{\}>
+      sift caught
+        case some
+          link clause
+          mark-need(st, <exception>)
+          # the caught value is bound only where the handler reads it
+          save binding, <>
+          fork test, has-text(names-in(block-handles(clause/body)), clause/name)
+            hold
+              save binding, <{pad(add(depth, 1))}let {camel(clause/name)} = termException(error)\n>
+          save handler, <catch \{\n{binding}{emit-block(clause/body, add(depth, 1), field-scope, st, facts)}\n{pad(depth)}\}>
+        case none
+          save nothing, 0
+      back <do \{\n{body-text}\n{pad(depth)}\} {handler}>
+    miss
+      back <>
+
+task emit-for-each
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case for-each
+      link walk-item
+      link walk-index
+      link walk-iterable
+      link walk-body
+      link walk-span
+      link walk-must
+      link walk-label
+      add-text(st/bound-names, walk-item)
+      fork test, is-unequal(walk-index, <>)
+        hold
+          add-text(st/bound-names, walk-index)
+      # an inner list of a list of lists that owns it is a plain array, read as one
+      fork test, facts/owns-inner-walk(node)
+        hold
+          save st/plain-names/{walk-item}, <read>
+      # a list is a SeedList: walk its backing `.data` (or the plain array)
+      save on-list, is-equal(kind-of-node(walk-iterable), <array>)
+      save iterable, <>
+      fork test, on-list
+        hold
+          save iterable, view(walk-iterable, field-scope, st, facts)
+        miss
+          save iterable, emit-expr(walk-iterable, field-scope, st, facts)
+      # a walk by POSITION, the length read every turn, where the body may push onto the list it walks
+      save iterable-name, variable-name-of(walk-iterable)
+      fork test, and(and(on-list, is-unequal(iterable-name, <>)), has-text(names-in(block-handles(walk-body)), iterable-name))
+        hold
+          save at, <__at{st/walk-count}>
+          save st/walk-count, add(st/walk-count, 1)
+          save label, open-loop(walk-label, st)
+          save body-text, emit-block(walk-body, add(depth, 1), field-scope, st, facts)
+          pop(st/loop-labels)
+          save index-text, <>
+          fork test, is-unequal(walk-index, <>)
+            hold
+              save index-text, < let {vname(walk-index)} = {at};>
+          back <var {at} = 0\n{pad(depth)}{label}: while {at} \< {iterable}.count \{\n{pad(add(depth, 1))}let {vname(walk-item)} = {iterable}[{at}];{index-text} {at} += 1\n{body-text}\n{pad(depth)}\}>
+      # a walk that names its INDEX enumerates, lazily
+      save label, open-loop(walk-label, st)
+      save body-text, emit-block(walk-body, add(depth, 1), field-scope, st, facts)
+      pop(st/loop-labels)
+      fork test, is-unequal(walk-index, <>)
+        hold
+          back <{label}: for ({vname(walk-index)}, {vname(walk-item)}) in {iterable}.enumerated() \{\n{body-text}\n{pad(depth)}\}>
+      back <{label}: for {vname(walk-item)} in {iterable} \{\n{body-text}\n{pad(depth)}\}>
+    miss
+      back <>
+
+task arm-binds
+  take arm, like match-case
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  back out
+
+task otherwise-of
+  take given, like maybe, like list, like statement
+  like list, like statement
+  mark private
+
+  sift given
+    case some
+      link known
+      back known
+    case none
+      back make list
+
+task empty-scope
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task copy-bind
+  take field-scope, like hash, like text, like list, like text
+  like hash, like text, like list, like text
+  mark private
+
+  save out, make hash
+  walk field-scope/keys()
+    take key
+    save out/{key}, field-scope/get(key)
+  back out
+
+# the swift type an `unknown` arm tests for, by the arm's label
+task type-arm-type
+  take label, like text
+  like text
+  mark private
+
+  fork test, is-equal(label, <number>)
+    hold
+      back <Int>
+  fork test, is-equal(label, <float>)
+    hold
+      back <Double>
+  fork test, is-equal(label, <text>)
+    hold
+      back <String>
+  fork test, is-equal(label, <boolean>)
+    hold
+      back <Bool>
+  back <undefined>
+
+task local-of
+  take locals, like list, like arm-local
+  take field, like text
+  like text
+  mark private
+
+  save out, field
+  walk locals
+    take one
+    fork test, is-equal(one/field, field)
+      hold
+        save out, one/local
+  back out
+
+task emit-match
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      link match-span
+      link match-exception-arms
+      link match-closed
+      link match-type-arms
+      save subject, emit-expr(match-subject, field-scope, st, facts)
+      save subject-name, variable-name-of(match-subject)
+      save inner, add(depth, 1)
+      save arm-depth, add(depth, 2)
+      # an `unknown` narrowed by type: a `switch` over the `Any` with a cast pattern per arm
+      fork test, match-type-arms
+        hold
+          save arms, make list
+          walk match-cases
+            take arm
+            save arm-name, subject-name
+            save binds, arm-binds(arm)
+            fork test, is-above(binds/length, 0)
+              hold
+                save arm-name, get(binds, 0)
+            save tested, type-arm-type(arm/label)
+            save pattern, <is {tested}>
+            fork test, is-unequal(arm-name, <>)
+              hold
+                save pattern, <let {camel(arm-name)} as {tested}>
+            push(arms, <{pad(inner)}case {pattern}:\n{arm-block(arm/body, arm-depth, field-scope, st, facts)}>)
+          push(arms, <{pad(inner)}default:\n{arm-block(otherwise-of(match-otherwise), arm-depth, field-scope, st, facts)}>)
+          back <switch {subject} \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      # a fork case over a caught TermException: switch on `form`, the record recovered from `base` by its form
+      fork test, is-above(match-exception-arms/length, 0)
+        hold
+          save arms, make list
+          walk match-cases
+            take arm
+            save shared-names, make list
+            save link-names, make list
+            save matched, false
+            walk match-exception-arms
+              take one
+              fork test, and(not(matched), is-equal(one/label, arm/label))
+                hold
+                  save matched, true
+                  walk one/shared
+                    take name
+                    push(shared-names, name)
+                  walk one/link
+                    take name
+                    push(link-names, name)
+            save body-text, arm-block(arm/body, arm-depth, field-scope, st, facts)
+            save read-names, names-in(block-handles(arm/body))
+            save all-fields, copy-texts(shared-names)
+            walk link-names
+              take name
+              push(all-fields, name)
+            save lines, make list
+            walk arm-locals(all-fields, arm-binds(arm))
+              take one
+              fork test, has-text(read-names, one/local)
+                hold
+                  fork test, has-text(link-names, one/field)
+                    hold
+                      push(lines, <{pad(arm-depth)}let {camel(one/local)} = ({subject}.base as! {pascal(arm/label)}).link.{camel(one/field)}>)
+                    miss
+                      push(lines, <{pad(arm-depth)}let {camel(one/local)} = {subject}.{camel(one/field)}>)
+            push(lines, body-text)
+            push(arms, <{pad(inner)}case {json-quote(arm/label)}:\n{join-texts(lines, <\n>)}>)
+          sift match-otherwise
+            case some
+              link other
+              push(arms, <{pad(inner)}default:\n{arm-block(other, arm-depth, field-scope, st, facts)}>)
+            case none
+              push(arms, <{pad(inner)}default:\n{pad(arm-depth)}fatalError("\\({subject}.form): \\({subject}.note)")>)
+          back <switch {subject}.form \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      # a `fork case` over a TEXT subject: the labels are string values, matched by literal
+      fork test, is-equal(kind-of-node(match-subject), <string>)
+        hold
+          save arms, make list
+          walk match-cases
+            take arm
+            push(arms, <{pad(inner)}case {json-quote(arm/label)}:\n{arm-block(arm/body, arm-depth, field-scope, st, facts)}>)
+          push(arms, <{pad(inner)}default:\n{arm-block(otherwise-of(match-otherwise), arm-depth, field-scope, st, facts)}>)
+          back <switch {subject} \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      # a match whose labels are only true / false is a switch over a native Bool
+      save booleans, is-above(match-cases/length, 0)
+      walk match-cases
+        take arm
+        fork test, not(or(is-equal(arm/label, <true>), is-equal(arm/label, <false>)))
+          hold
+            save booleans, false
+      save subject-form, named-of(expression-type(match-subject))
+      save consumed, facts/is-consumed(match-subject)
+      save consumes, and(and(is-unequal(subject-form, <>), has-text(st/spares, subject-form)), consumed)
+      save arms, make list
+      walk match-cases
+        take arm
+        fork test, booleans
+          hold
+            push(arms, <{pad(inner)}case {arm/label}:\n{arm-block(arm/body, arm-depth, field-scope, st, facts)}>)
+          miss
+            push(arms, emit-case-arm(arm, match-subject, subject, subject-name, subject-form, consumed, depth, field-scope, st, facts))
+      sift match-otherwise
+        case some
+          link other
+          push(arms, <{pad(inner)}default:\n{arm-block(other, arm-depth, field-scope, st, facts)}>)
+        case none
+          fork test, and(booleans, is-below(match-cases/length, 2))
+            hold
+              push(arms, <{pad(inner)}default:\n{pad(arm-depth)}break>)
+      save consume-word, <>
+      fork test, consumes
+        hold
+          save consume-word, <consume >
+      back <switch {consume-word}{subject} \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# the field names an arm reads through its subject, `subject/field`
+task fields-through
+  take body, like list, like statement
+  take subject-name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-equal(subject-name, <>)
+    hold
+      back out
+  walk reach-statements(body, type-and-span())/expressions
+    take one
+    sift one
+      case member
+        link member-target
+        link member-name
+        fork test, is-equal(variable-name-of(member-target), subject-name)
+          hold
+            add-text(out, member-name)
+      miss
+        save nothing, 0
+  back out
+
+# one arm of a match over a form's cases: each field the arm reads bound by its local name, the rest `_`
+task emit-case-arm
+  take arm, like match-case
+  take match-subject, like expression
+  take subject, like text
+  take subject-name, like text
+  take subject-form, like text
+  take consumed, like boolean
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save inner, add(depth, 1)
+  save arm-depth, add(depth, 2)
+  save label, arm/label
+  # the case of the subject's own form, where two forms name a case alike
+  save fields, make list
+  save case-key, <{subject-form}/{label}>
+  fork test, and(is-unequal(subject-form, <>), facts/case-field-names/has(case-key))
+    hold
+      save fields, copy-texts(facts/case-field-names/get(case-key))
+    miss
+      fork test, facts/variant-fields/has(label)
+        hold
+          save fields, copy-texts(facts/variant-fields/get(label))
+  save branch-scope, copy-bind(field-scope)
+  fork test, and(is-unequal(subject-name, <>), is-above(fields/length, 0))
+    hold
+      save branch-scope/{subject-name}, copy-texts(fields)
+  save locals, arm-locals(fields, arm-binds(arm))
+  save named, names-in(block-handles(arm/body))
+  save through, fields-through(arm/body, subject-name)
+  save reads, make list
+  walk fields
+    take field
+    fork test, or(has-text(named, local-of(locals, field)), has-text(through, field))
+      hold
+        push(reads, field)
+  # a case held by node class binds its node and reads the fields the arm reads off it
+  fork test, facts/node-cases/has(label)
+    hold
+      save held, facts/node-cases/get(label)
+      fork test, and(is-equal(kind-of-node(match-subject), <named>), is-equal(subject-form, held/form))
+        hold
+          save keep, and(has-text(st/spares, held/form), consumed)
+          save body-text, arm-block(arm/body, arm-depth, branch-scope, st, facts)
+          fork test, and(not(keep), is-equal(reads/length, 0))
+            hold
+              back <{pad(inner)}case .{camel(label)}:\n{body-text}>
+          save lines, make list
+          fork test, keep
+            hold
+              push(lines, <{pad(arm-depth)}defer \{ if isKnownUniquelyReferenced(&__node) \{ {spare-name(held/form)} = __node \} \}>)
+          walk reads
+            take field
+            push(lines, <{pad(arm-depth)}let {camel(local-of(locals, field))} = __node.{camel(field)}>)
+          push(lines, body-text)
+          save word, <let>
+          fork test, keep
+            hold
+              save word, <var>
+          back <{pad(inner)}case {word} .{camel(label)}(__node):\n{join-texts(lines, <\n>)}>
+  save pattern, <case .{camel(label)}:>
+  fork test, is-above(reads/length, 0)
+    hold
+      save bound-parts, make list
+      walk fields
+        take field
+        fork test, has-text(reads, field)
+          hold
+            push(bound-parts, camel(local-of(locals, field)))
+          miss
+            push(bound-parts, <_>)
+      save pattern, <case let .{camel(label)}({join-texts(bound-parts, <, >)}):>
+  # a field the variant owns as a plain array binds a plain array, which the arm only reads
+  save outer-plain, st/plain-names
+  save owned-locals, make list
+  walk fields
+    take field
+    fork test, and(has-text(reads, field), facts/field-lists/has(<{label}/{field}>))
+      hold
+        push(owned-locals, local-of(locals, field))
+  fork test, is-above(owned-locals/length, 0)
+    hold
+      save widened, make hash
+      walk outer-plain/keys()
+        take key
+        save widened/{key}, outer-plain/get(key)
+      walk owned-locals
+        take one
+        save widened/{one}, <read>
+      save st/plain-names, widened
+  save arm-text, arm-block(arm/body, arm-depth, branch-scope, st, facts)
+  save st/plain-names, outer-plain
+  back <{pad(inner)}{pattern}\n{arm-text}>
+
+task emit-if
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case if
+      link if-branches
+      link if-otherwise
+      save out, <>
+      save first, true
+      walk if-branches
+        take branch
+        save opener, < else >
+        fork test, first
+          hold
+            save opener, <>
+            save first, false
+        save cond, emit-expr(branch/cond, field-scope, st, facts)
+        save out, <{out}{opener}if {cond} \{\n{emit-block(branch/body, add(depth, 1), field-scope, st, facts)}\n{pad(depth)}\}>
+      sift if-otherwise
+        case some
+          link other
+          save out, <{out} else \{\n{emit-block(other, add(depth, 1), field-scope, st, facts)}\n{pad(depth)}\}>
+        case none
+          save nothing, 0
+      back out
+    miss
+      back <>
+
+# whether every path of a body's last statement returns or throws
+task terminates
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back false
+  sift get(body, subtract(body/length, 1))
+    case return
+      back true
+    case throw
+      back true
+    case if
+      link if-branches
+      link if-otherwise
+      sift if-otherwise
+        case some
+          link other
+          walk if-branches
+            take branch
+            fork test, not(terminates(branch/body))
+              hold
+                back false
+          back terminates(other)
+        case none
+          back false
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      walk match-cases
+        take arm
+        fork test, not(terminates(arm/body))
+          hold
+            back false
+      sift match-otherwise
+        case some
+          link other
+          back terminates(other)
+        case none
+          back true
+    miss
+      back false
+
+# whether a `fall` default can be Swift's own: no closure, no read of another input, no call to a raising or async task,
+# a value or a module
+task default-fits
+  take fallback, like expression
+  take inputs, like list, like text
+  take facts, like swift-facts
+  like boolean
+  mark private
+
+  walk reach-expression(fallback, type-and-span())/expressions
+    take one
+    sift one
+      case closure
+        back false
+      case variable
+        link variable-name
+        fork test, has-text(inputs, variable-name)
+          hold
+            back false
+      case call
+        link call-callee
+        save callee-name, variable-name-of(call-callee)
+        fork test, or(is-equal(callee-name, <>), or(facts/throwing/has(callee-name), facts/async-tasks/has(callee-name)))
+          hold
+            back false
+      miss
+        save nothing, 0
+  back true
+
+# AN INPUT'S `fall` AS SWIFT'S OWN DEFAULT, a literal as written and any other expression Swift can evaluate as one
+task swift-default
+  take fallback, like maybe, like expression
+  take inputs, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  save literal, default-of(fallback)
+  fork test, is-unequal(literal, <>)
+    hold
+      back literal
+  sift fallback
+    case some
+      link known
+      fork test, default-fits(known, inputs, facts)
+        hold
+          back < = {emit-expr(known, empty-scope(), st, facts)}>
+      back <>
+    case none
+      back <>
+
+task emit-function
+  take node, like statement
+  take depth, like number
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      save generics, generic-clause(node, st, facts)
+      save escaping, escaping-params(node)
+      save lend, make hash
+      fork test, facts/lend-params/has(fn-name)
+        hold
+          save lend, facts/lend-params/get(fn-name)
+      save inputs, make list
+      walk fn-params
+        take param
+        push(inputs, param/name)
+      save params, make list
+      save at, 0
+      walk fn-params
+        take param
+        save param-kind, kind-of(param/type)
+        fork test, and(lend/has(at), is-equal(param-kind, <array>))
+          hold
+            save how, lend/get(at)
+            save inout-word, <>
+            fork test, is-equal(how, <write>)
+              hold
+                save inout-word, <inout >
+            save element-text, <>
+            sift param/type
+              case some
+                link list-type
+                save element-text, swift-element(list-type, st, facts)
+              case none
+                save nothing, 0
+            push(params, labeled(param/name, <{inout-word}[{element-text}]>))
+          miss
+            save escape-word, <>
+            fork test, and(is-equal(param-kind, <function>), has-text(escaping, param/name))
+              hold
+                save escape-word, <@escaping >
+            save type-text, swift-type(param/type, st, facts)
+            push(params, labeled(param/name, <{escape-word}{type-text}{swift-default(param/fallback, inputs, st, facts)}>))
+        save at, add(at, 1)
+      save previous-plain, st/plain-names
+      save previous-owned, st/owned-names
+      save previous-fresh, st/emitting-fresh
+      save previous-slots, st/slot-names
+      save previous-fn, st/current-fn
+      save st/slot-names, make hash
+      save st/current-fn, make(some, node)
+      fork test, read(async)
+        hold
+          save st/owned-names, make hash
+        miss
+          save st/owned-names, facts/owned-locals-of(node)
+      save st/emitting-fresh, facts/fresh-lists/has(fn-name)
+      save plain, make hash
+      save at, 0
+      walk fn-params
+        take param
+        fork test, lend/has(at)
+          hold
+            save plain/{param/name}, lend/get(at)
+        save at, add(at, 1)
+      walk st/owned-names/keys()
+        take owned
+        save plain/{owned}, <write>
+      save st/plain-names, plain
+      save async-mark, <>
+      fork test, read(async)
+        hold
+          save async-mark, < async>
+      save throws-mark, <>
+      fork test, or(facts/throwing/has(fn-name), body-throws(fn-body))
+        hold
+          save throws-mark, < throws>
+      save st/current-throws, is-unequal(throws-mark, <>)
+      save st/bound-names, copy-texts(inputs)
+      # a reassigned parameter is shadowed by a mutable local
+      save mutated, reassigned(fn-body)
+      save shadows, make list
+      walk fn-params
+        take param
+        fork test, has-text(mutated, param/name)
+          hold
+            push(shadows, <{pad(add(depth, 1))}var {vname(param/name)} = {vname(param/name)}>)
+      save previous-returns-array, st/fn-returns-array
+      save st/fn-returns-array, is-equal(kind-of(fn-result), <array>)
+      # a task with no declared result but a valued `send back` is Any, not Void
+      save result, fn-result
+      save result-kind, kind-of(fn-result)
+      fork test, or(is-equal(result-kind, <>), is-equal(result-kind, <unit>))
+        hold
+          fork test, has-valued-return(fn-body)
+            hold
+              save unknown-type, make type/unknown
+              save result, make(some, unknown-type)
+      save st/current-result, result
+      # a valued task whose body ends in branching that may fall through traps
+      save unreachable, <>
+      fork test, is-above(fn-body/length, 0)
+        hold
+          save last-branches, false
+          sift get(fn-body, subtract(fn-body/length, 1))
+            case if
+              save last-branches, true
+            case while
+              save last-branches, true
+            case match
+              save last-branches, true
+            miss
+              save nothing, 0
+          fork test, and(and(last-branches, and(is-unequal(result-kind, <>), is-unequal(result-kind, <unit>))), not(terminates(fn-body)))
+            hold
+              save unreachable, <{pad(add(depth, 1))}fatalError("unreachable")>
+      save previous-assigned, st/current-assigned
+      save st/current-assigned, make(some, mutated)
+      save previous-spares, st/spares
+      save st/spares, make list
+      fork test, facts/spare-tasks/has(fn-name)
+        hold
+          save st/spares, copy-texts(facts/spare-tasks/get(fn-name))
+      save body-text, <>
+      fork test, is-equal(fn-body/length, 0)
+        hold
+          save body-text, <{pad(add(depth, 1))}fatalError({json-quote(<stub: {fn-name}>)})>
+        miss
+          save lines, copy-texts(shadows)
+          walk facts/cursor-names(node)
+            take cursor
+            push(lines, <{pad(add(depth, 1))}var __cursor{camelize(<-{cursor}>)} = (0, 0)>)
+          walk st/spares
+            take form
+            push(lines, <{pad(add(depth, 1))}var {spare-name(form)}: {facts/node-classes/get(form)/name}? = nil>)
+          push(lines, emit-block(fn-body, add(depth, 1), empty-scope(), st, facts))
+          push(lines, unreachable)
+          save kept, make list
+          walk lines
+            take line
+            fork test, is-unequal(line, <>)
+              hold
+                push(kept, line)
+          save body-text, join-texts(kept, <\n>)
+      save st/spares, previous-spares
+      save st/current-assigned, previous-assigned
+      save st/fn-returns-array, previous-returns-array
+      save st/plain-names, previous-plain
+      save st/owned-names, previous-owned
+      save st/slot-names, previous-slots
+      save st/current-fn, previous-fn
+      save fresh, st/emitting-fresh
+      save st/emitting-fresh, previous-fresh
+      # a task answering a fresh list answers the plain array
+      save result-type, <>
+      sift result
+        case some
+          link known
+          sift known
+            case array
+              fork test, fresh
+                hold
+                  save result-type, <[{swift-element(known, st, facts)}]>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, is-equal(result-type, <>)
+        hold
+          save result-type, swift-type(result, st, facts)
+      back <func {camel(fn-name)}{generics}({join-texts(params, <, >)}){async-mark}{throws-mark} -\> {result-type} \{\n{body-text}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# a field's Swift type: a list the form owns is the plain array
+task field-type-text
+  take owner, like text
+  take name, like text
+  take given, like type
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  fork test, facts/field-lists/has(<{owner}/{name}>)
+    hold
+      sift given
+        case array
+          back <[{swift-element(given, st, facts)}]>
+        miss
+          save nothing, 0
+  back swift-type(make(some, given), st, facts)
+
+task emit-form
+  take node, like statement
+  take depth, like number
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      link form-alias
+      # an ALIAS form (a base and nothing of its own) is its base
+      sift form-alias
+        case some
+          link base
+          fork test, and(is-equal(form-fields/length, 0), is-equal(form-variants/length, 0))
+            hold
+              back <typealias {pascal(form-name)} = {swift-type(form-alias, st, facts)}>
+        case none
+          save nothing, 0
+      # a generic that flows into a map key inside the fields must be `Hashable`
+      save keys, make list
+      fork test, facts/form-key-indices/has(form-name)
+        hold
+          walk facts/form-key-indices/get(form-name)
+            take one
+            push(keys, one)
+      save generics, <>
+      fork test, is-above(form-params/length, 0)
+        hold
+          save heads, make list
+          save at, 0
+          walk form-params
+            take param
+            fork test, has-number(keys, at)
+              hold
+                push(heads, <{to-upper-case(param)}: Hashable>)
+              miss
+                push(heads, to-upper-case(param))
+            save at, add(at, 1)
+          save generics, <\<{join-texts(heads, <, >)}\>>
+      save inner, add(depth, 1)
+      fork test, is-above(form-variants/length, 0)
+        hold
+          # a native enum: each variant a case, its fields the associated values
+          save cases, make list
+          walk form-variants
+            take variant
+            save parts, make list
+            walk variant/fields
+              take field
+              push(parts, <{camel(field/name)}: {field-type-text(variant/name, field/name, field/type, st, facts)}>)
+            save payload, <>
+            fork test, is-above(parts/length, 0)
+              hold
+                save payload, <({join-texts(parts, <, >)})>
+            push(cases, <{pad(inner)}case {camel(variant/name)}{payload}>)
+          save st/declared-forms/{form-name}, true
+          # a form held by node class: its payload case holds the class
+          fork test, facts/node-classes/has(form-name)
+            hold
+              save held, facts/node-classes/get(form-name)
+              save opener, <{pad(inner)}case {camel(held/label)}(>
+              save own, make list
+              walk cases
+                take one
+                fork test, starts-with(one, opener)
+                  hold
+                    push(own, <{pad(inner)}case {camel(held/label)}({held/name})>)
+                  miss
+                    push(own, one)
+              save fields, make list
+              save params, make list
+              save assigns, make list
+              save builds, make list
+              save passes, make list
+              walk held/fields
+                take field
+                save field-text, camel(field/name)
+                save type-text, swift-type(make(some, field/type), st, facts)
+                push(fields, <{pad(inner)}var {field-text}: {type-text}>)
+                push(params, <{field-text}: {swift-type(make(some, field/type), st, facts)}>)
+                push(assigns, <self.{field-text} = {field-text}>)
+                push(builds, <{pad(inner)}node.{field-text} = {field-text}>)
+                push(passes, <{field-text}: {field-text}>)
+              save param-text, join-texts(params, <, >)
+              save parts, make list
+              push(parts, <enum {pascal(form-name)} \{\n{join-texts(own, <\n>)}\n{pad(depth)}\}>)
+              push(parts, <final class {held/name} \{\n{join-texts(fields, <\n>)}\n{pad(inner)}init({param-text}) \{ {join-texts(assigns, <; >)} \}\n{pad(depth)}\}>)
+              push(parts, <// a node built in the one a match kept (`spare`), which nothing else holds, or a new one\n{pad(depth)}@inline(__always) func termNode{held/name}(_ spare: inout {held/name}?, {param-text}) -\> {held/name} \{\n{pad(inner)}guard let node = spare else \{ return {held/name}({join-texts(passes, <, >)}) \}\n{pad(inner)}spare = nil\n{join-texts(builds, <\n>)}\n{pad(inner)}return node\n{pad(depth)}\}>)
+              back join-texts(parts, <\n\n{pad(depth)}>)
+          save indirect, <>
+          fork test, facts/recursive/has(form-name)
+            hold
+              save indirect, <indirect >
+          back <{indirect}enum {pascal(form-name)}{generics} \{\n{join-texts(cases, <\n>)}\n{pad(depth)}\}>
+      # a list the record owns is a plain array
+      save fields, make list
+      walk form-fields
+        take field
+        push(fields, <{pad(inner)}var {camel(field/name)}: {field-type-text(form-name, field/name, field/type, st, facts)}>)
+      save conforms, <>
+      fork test, facts/exception-forms/has(form-name)
+        hold
+          save conforms, <: Error>
+      # `note shared`: a reference type, with a memberwise init written out
+      fork test, read(shared)
+        hold
+          save params, make list
+          save assigns, make list
+          walk form-fields
+            take field
+            save escape-word, <>
+            sift field/type
+              case function
+                save escape-word, <@escaping >
+              miss
+                save nothing, 0
+            push(params, <{camel(field/name)}: {escape-word}{swift-type(make(some, field/type), st, facts)}>)
+            push(assigns, <{pad(add(depth, 2))}self.{camel(field/name)} = {camel(field/name)}>)
+          back <final class {pascal(form-name)}{generics}{conforms} \{\n{join-texts(fields, <\n>)}\n{pad(inner)}init({join-texts(params, <, >)}) \{\n{join-texts(assigns, <\n>)}\n{pad(inner)}\}\n{pad(depth)}\}>
+      save st/declared-forms/{form-name}, true
+      back <struct {pascal(form-name)}{generics}{conforms} \{\n{join-texts(fields, <\n>)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+task emit-mask
+  take node, like statement
+  take depth, like number
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case mask
+      link mask-name
+      link mask-methods
+      save methods, make list
+      fork test, facts/instance-targets/has(mask-name)
+        hold
+          save targets, facts/instance-targets/get(mask-name)
+          fork test, is-above(targets/length, 0)
+            hold
+              save target, get(targets, 0)
+              walk mask-methods
+                take method
+                save key, <{target}:{method}>
+                save fn, make none
+                fork test, facts/impl-fn/has(key)
+                  hold
+                    save found, facts/impl-fn/get(key)
+                    save fn, make(some, found)
+                save line, protocol-method(fn, target, mask-name, st, facts)
+                fork test, is-unequal(line, <>)
+                  hold
+                    push(methods, <{pad(add(depth, 1))}{line}>)
+      fork test, is-above(methods/length, 0)
+        hold
+          back <protocol {pascal(mask-name)} \{\n{join-texts(methods, <\n>)}\n{pad(depth)}\}>
+      back <protocol {pascal(mask-name)} \{\}>
+    miss
+      back <>
+
+task emit-instance
+  take node, like statement
+  take depth, like number
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case instance
+      link instance-mask
+      link instance-target
+      link instance-methods
+      save methods, make list
+      walk instance-methods
+        take method
+        save key, <{instance-target}:{method}>
+        save fn, make none
+        fork test, facts/impl-fn/has(key)
+          hold
+            save found, facts/impl-fn/get(key)
+            save fn, make(some, found)
+        save line, extension-method(fn, instance-target, instance-mask, st, facts)
+        fork test, is-unequal(line, <>)
+          hold
+            push(methods, <{pad(add(depth, 1))}{line}>)
+      fork test, is-above(methods/length, 0)
+        hold
+          back <extension {pascal(instance-target)}: {pascal(instance-mask)} \{\n{join-texts(methods, <\n>)}\n{pad(depth)}\}>
+      back <extension {pascal(instance-target)}: {pascal(instance-mask)} \{\}>
+    miss
+      back <>
+
+task emit-statement-in
+  take node, like statement
+  take depth, like number
+  take field-scope, like hash, like text, like list, like text
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+  mark private
+
+  sift node
+    case let
+      back emit-let(node, field-scope, st, facts)
+    case assign
+      back emit-assign(node, field-scope, st, facts)
+    case expression
+      back emit-expression-statement(node, field-scope, st, facts)
+    case return
+      back emit-return(node, field-scope, st, facts)
+    case throw
+      back emit-throw(node, field-scope, st, facts)
+    case while
+      back emit-while(node, depth, field-scope, st, facts)
+    case guard
+      back emit-guard(node, depth, field-scope, st, facts)
+    case for-each
+      back emit-for-each(node, depth, field-scope, st, facts)
+    case match
+      back emit-match(node, depth, field-scope, st, facts)
+    case if
+      back emit-if(node, depth, field-scope, st, facts)
+    # labelled, because a bare `break` inside a `switch` arm leaves the switch and not the loop
+    case break
+      link break-label
+      fork test, is-unequal(break-label, <>)
+        hold
+          back <break {camel(break-label)}>
+      fork test, is-above(st/loop-labels/length, 0)
+        hold
+          back <break {get(st/loop-labels, subtract(st/loop-labels/length, 1))}>
+      back <break>
+    case continue
+      link continue-label
+      fork test, is-unequal(continue-label, <>)
+        hold
+          back <continue {camel(continue-label)}>
+      fork test, is-above(st/loop-labels/length, 0)
+        hold
+          back <continue {get(st/loop-labels, subtract(st/loop-labels/length, 1))}>
+      back <continue>
+    case exit
+      back <exit(0)>
+    case debug
+      back <// breakpoint>
+    case function
+      back emit-function(node, depth, st, facts)
+    case record-type
+      back emit-form(node, depth, st, facts)
+    case mask
+      back emit-mask(node, depth, st, facts)
+    case instance
+      back emit-instance(node, depth, st, facts)
+    case hold
+      back <// hold: verified at compile time>
+    miss
+      back <>
+
+# ---- what the face calls ----
+
+# one statement at a depth, outside every match arm
+task emit-statement
+  take node, like statement
+  take depth, like number
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  back emit-statement-in(node, depth, empty-scope(), st, facts)
+
+# a task's copy with wrapping arithmetic (`aValueFast`), behind the bound a guarded loop proved
+task emit-unchecked
+  take fn, like statement
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  save st/unchecked-ints, true
+  save text, emit-statement-in(fn, 0, empty-scope(), st, facts)
+  save st/unchecked-ints, false
+  back text
+
+# a checked type's Swift spelling, for the face's own analyses
+task swift-type-of
+  take given, like maybe, like type
+  take st, like swift-state
+  take facts, like swift-facts
+  like text
+
+  back swift-type(given, st, facts)

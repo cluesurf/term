@@ -1,0 +1,771 @@
+# The Rust module around the emitted statements: the `use` lines, which statements are written, and the module itself,
+# the runtime it needs in front (the insertion-ordered `TermMap` and the `TermHash` keys, `TermShared`, the text cursor,
+# `term_number`, the exception carrier, the preemption budget, the executor, `TermKey`), each task's spare boxes, the
+# box pools of the forms an arm opened and a construction built, and the `fill` / `melt` walkers and the wake chain
+# after.
+#
+# Ported from compile/rust.ts (self-hosting, 2026-10-06), which stays as the face and the driver: it writes each
+# statement's text and hands the texts in, with what the pass recorded while writing them (a raise, a budget check, a
+# spawn, a boxed future, the boxes opened and built). The wake chain stays there: its entries are open JSON records.
+# The regular expressions are written out by character: `\b` is a place where a word character (`[A-Za-z0-9_]`) meets
+# a non-word one or an end, and `\w+` a run of word characters.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find index-of
+  find split
+  find to-upper-case
+
+load ./node
+  find statement
+  find bind-import
+
+load ./rust-names
+  find snake
+  find pascal
+
+load ./unit-split
+  find mark-unit
+
+# ---- small helpers ----
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task contains-text
+  take value, like text
+  take part, like text
+  like boolean
+  mark private
+
+  back is-minimum(index-of(value, part, 0), 0)
+
+# every occurrence of `part` replaced by `with`, left to right, as `split(part).join(with)`
+task replace-text
+  take value, like text
+  take part, like text
+  take with, like text
+  like text
+  mark private
+
+  back join-texts(split(value, part), with)
+
+task word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+task word-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, or(is-below(at, 0), is-minimum(at, value/length))
+    hold
+      back false
+  back word-code(char-code-at(value, at))
+
+task boundary-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  back is-unequal(word-at(value, subtract(at, 1)), word-at(value, at))
+
+# `part` somewhere in a text with `\b` before it, and after it too when `after` says so
+task has-bounded
+  take source, like text
+  take part, like text
+  take after, like boolean
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, is-maximum(from, source/length)
+    hook hold
+      save at, index-of(source, part, from)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      fork test, and(boundary-at(source, at), or(not(after), boundary-at(source, add(at, part/length))))
+        hold
+          back true
+      save from, add(at, 1)
+  back false
+
+# ---- the `use` lines ----
+
+# a native module's path as a `use` writes it: `::`, `:` and `/` each `::`
+task use-path
+  take module, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, module/length)
+    hook hold
+      save one, char-at(module, at)
+      fork test, and(is-equal(one, <:>), and(is-below(add(at, 1), module/length), is-equal(char-at(module, add(at, 1)), <:>)))
+        hold
+          save out, <{out}::>
+          save at, add(at, 2)
+          turn next
+      fork test, or(is-equal(one, <:>), is-equal(one, </>))
+        hold
+          save out, <{out}::>
+          save at, add(at, 1)
+          turn next
+      save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# the end of a run of word characters starting at `at`
+task word-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, word-at(value, end)
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# the name a `use` line binds, `/use .*?(\w+)(?: as (\w+))?;$/`: the alias, else the last path segment, else none. The
+# earliest place a run of word characters can start and still reach the `;` at the end is the one the lazy prefix takes
+task use-name
+  take line, like text
+  like maybe, like text
+  mark private
+
+  save start, index-of(line, <use >, 0)
+  fork test, is-below(start, 0)
+    hold
+      back make none
+  save at, add(start, 4)
+  walk test
+    hook test, is-below(at, line/length)
+    hook hold
+      save one, char-at(line, at)
+      fork test, or(is-equal(one, <\n>), is-equal(one, <\r>))
+        hold
+          back make none
+      fork test, word-at(line, at)
+        hold
+          save end, word-end(line, at)
+          save rest, substring(line, end, line/length)
+          fork test, is-equal(rest, <;>)
+            hold
+              save name, substring(line, at, end)
+              back make(some, name)
+          fork test, starts-with(rest, < as >)
+            hold
+              save alias-start, add(end, 4)
+              save alias-end, word-end(line, alias-start)
+              fork test, and(is-above(alias-end, alias-start), is-equal(substring(line, alias-end, line/length), <;>))
+                hold
+                  save alias, substring(line, alias-start, alias-end)
+                  back make(some, alias)
+      save at, add(at, 1)
+  back make none
+
+# the last `::` segment of a path
+task last-segment
+  take path, like text
+  like text
+  mark private
+
+  save parts, split(path, <::>)
+  back get(parts, subtract(parts/length, 1))
+
+# `use` declarations for native module bindings (a `<global:X>` binding needs no use, a `type` dock is an inline type
+# reference), then the `use` each called bind needs. Two paths that bind the same final name collide (E0252), so the
+# first binds the name and a later one comes in anonymously with `as _`
+task rust-uses
+  take program, like list, like statement
+  take needs, like list, like bind-import
+  like list, like text
+
+  save uses, make list
+  walk program
+    take one
+    sift one
+      case native
+        link native-alias
+        link native-module
+        link native-kind
+        save is-type, false
+        sift native-kind
+          case some
+            link known
+            fork test, is-equal(to-text(known), <type>)
+              hold
+                save is-type, true
+          case none
+            save nothing, 0
+        fork test, and(not(is-type), not(starts-with(native-module, <global:>)))
+          hold
+            push(uses, <use {use-path(native-module)};>)
+      miss
+        save nothing, 0
+  save bound, make list
+  walk uses
+    take line
+    sift use-name(line)
+      case some
+        link name
+        fork test, not(has-text(bound, name))
+          hold
+            push(bound, name)
+      case none
+        save nothing, 0
+  walk needs
+    take need
+    save path, use-path(need/module)
+    save alias, read(need/alias)
+    save name, alias
+    fork test, is-equal(alias, <>)
+      hold
+        save name, last-segment(path)
+    save line, <use {path};>
+    fork test, is-unequal(alias, <>)
+      hold
+        save line, <use {path} as {alias};>
+      miss
+        fork test, has-text(bound, name)
+          hold
+            save line, <use {path} as _;>
+    fork test, not(has-text(bound, name))
+      hold
+        push(bound, name)
+    fork test, not(has-text(uses, line))
+      hold
+        push(uses, line)
+  back uses
+
+# ---- which statements are written ----
+
+# the statements written, in order: no native binding, no signature-only task another module implements, a task once
+# per name and arity (a module collected twice emits its functions twice), and a form once, an empty declaration
+# yielding to a full one
+task kept-statements
+  take program, like list, like statement
+  like list, like statement
+
+  save implemented, make list
+  save full-forms, make list
+  walk program
+    take one
+    sift one
+      case function
+        link task-name
+        link task-params
+        link task-body
+        fork test, is-above(task-body/length, 0)
+          hold
+            push(implemented, task-name)
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, or(is-above(form-fields/length, 0), is-above(form-variants/length, 0))
+          hold
+            push(full-forms, form-name)
+      miss
+        save nothing, 0
+  save seen-forms, make list
+  save seen-tasks, make list
+  save out, make list
+  walk program
+    take one
+    sift one
+      case native
+        turn next
+      case function
+        link task-name
+        link task-params
+        link task-body
+        fork test, and(is-equal(task-body/length, 0), has-text(implemented, task-name))
+          hold
+            turn next
+        save key, <{task-name}/{task-params/length}>
+        fork test, has-text(seen-tasks, key)
+          hold
+            turn next
+        push(seen-tasks, key)
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, and(and(is-equal(form-fields/length, 0), is-equal(form-variants/length, 0)), has-text(full-forms, form-name))
+          hold
+            turn next
+        fork test, has-text(seen-forms, form-name)
+          hold
+            turn next
+        push(seen-forms, form-name)
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+# ---- the module ----
+
+# a payload case's struct, keyed `form/case`
+form payload-entry
+  link key, like text
+  link name, like text
+
+# what the pass recorded while it wrote the statements, and the texts around them
+form rust-module-input
+  link uses, like list, like text
+  link body, like list, like text
+  link body-files, like list, like text
+  link carries, like boolean
+  link fills, like boolean
+  link budget-uses, like number
+  link spawn-uses, like number
+  link boxed-futures, like boolean
+  link text-keys, like boolean
+  link reuse-opened, like list, like text
+  link reuse-built, like list, like text
+  link boxed-forms, like list, like text
+  link payloads, like list, like payload-entry
+  link form-walk, like list, like text
+  link wake, like list, like text
+
+# the payload a form's reused boxes hold: its one payload case's, none for a form with two or more
+task reused-payload
+  take payloads, like list, like payload-entry
+  take owner, like text
+  like maybe, like text
+  mark private
+
+  save own, make list
+  walk payloads
+    take entry
+    fork test, starts-with(entry/key, <{owner}/>)
+      hold
+        push(own, entry/name)
+  fork test, is-equal(own/length, 1)
+    hold
+      save only, get(own, 0)
+      back make(some, only)
+  back make none
+
+# the field-less case of a form, the first the program declares
+task empty-case
+  take program, like list, like statement
+  take form, like text
+  like text
+  mark private
+
+  walk program
+    take one
+    sift one
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        fork test, is-equal(form-name, form)
+          hold
+            walk form-variants
+              take variant
+              fork test, is-equal(variant/fields/length, 0)
+                hold
+                  back variant/name
+            back <>
+      miss
+        save nothing, 0
+  back <>
+
+# each call to `helper(` in a text with one more argument, `, extra`, inserted at its own closing parenthesis, and the
+# helper renamed
+task add-argument
+  take text, like text
+  take helper, like text
+  take renamed, like text
+  take extra, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, true
+    hook hold
+      save start, index-of(text, <{helper}(>, at)
+      fork test, is-below(start, 0)
+        hold
+          fork test, is-below(at, text/length)
+            hold
+              back <{out}{substring(text, at, text/length)}>
+          back out
+      save depth, 0
+      save end, add(start, helper/length)
+      walk test
+        hook test, is-below(end, text/length)
+        hook hold
+          save one, char-at(text, end)
+          fork test, is-equal(one, <(>)
+            hold
+              save depth, add(depth, 1)
+          fork test, is-equal(one, <)>)
+            hold
+              save depth, subtract(depth, 1)
+              fork test, is-equal(depth, 0)
+                hold
+                  halt
+          save end, add(end, 1)
+      save inside, <>
+      save inner-start, add(add(start, helper/length), 1)
+      fork test, is-below(inner-start, end)
+        hold
+          save inside, substring(text, inner-start, end)
+      save out, <{out}{substring(text, at, start)}{renamed}({inside}, {extra})>
+      save at, add(end, 1)
+  back out
+
+# `term_open_<name>(<word>)` rewritten, `\w+` the argument, every one
+task rewrite-open
+  take text, like text
+  take name, like text
+  take boxed, like boolean
+  like text
+  mark private
+
+  save head, <term_open_{name}(>
+  save out, <>
+  save at, 0
+  walk test
+    hook test, true
+    hook hold
+      save start, index-of(text, head, at)
+      fork test, is-below(start, 0)
+        hold
+          fork test, is-below(at, text/length)
+            hold
+              back <{out}{substring(text, at, text/length)}>
+          back out
+      save word-start, add(start, head/length)
+      save word-stop, word-end(text, word-start)
+      fork test, and(is-above(word-stop, word-start), and(is-below(word-stop, text/length), is-equal(char-at(text, word-stop), <)>)))
+        hold
+          save word, substring(text, word-start, word-stop)
+          save made, <std::rc::Rc::unwrap_or_clone({word})>
+          fork test, boxed
+            hold
+              save made, <*{word}>
+          save out, <{out}{substring(text, at, start)}{made}>
+          save at, add(word-stop, 1)
+        miss
+          save out, <{out}{substring(text, at, add(start, 1))}>
+          save at, add(start, 1)
+  back out
+
+# the box pools of one form a program both opens and builds
+task reuse-pool
+  take form, like text
+  take empty, like text
+  take boxed, like boolean
+  take payload, like maybe, like text
+  take local, like boolean
+  like text
+  mark private
+
+  save type, pascal(form)
+  save name, snake(form)
+  save pool, <TERM_POOL_{to-upper-case(name)}>
+  sift payload
+    case some
+      link held-payload
+      save kept, <Box\<std::mem::MaybeUninit\<{held-payload}\>\>>
+      save local-text, <>
+      fork test, local
+        hold
+          save local-text, <\n// the same, through a task's own spare first (`localForms`): a box opened is kept there, a box built takes it\n#[inline]\nfn term_open_local_{name}(held: Box\<{held-payload}\>, spare: &mut Option\<{kept}\>) -\> {held-payload} \{\n    let (value, held) = term_split_{name}(held);\n    if let Some(before) = spare.replace(held) \{\n        {pool}.with(|pool| pool.keep(before));\n    \}\n    value\n\}\n#[inline]\nfn term_box_local_{name}(value: {held-payload}, spare: &mut Option\<{kept}\>) -\> Box\<{held-payload}\> \{\n    match spare.take() \{\n        Some(held) =\> Box::write(held, value),\n        None =\> term_box_{name}(value),\n    \}\n\}>
+      back <// the boxes of `{form}` an arm opened, kept for the next `{form}` built: a spare, and up to 64 more behind it\n// for a run of frees before a run of builds (rust.ts, `reusable`). Each is the memory of a `{held-payload}`, holding none\n#[allow(clippy::vec_box)]\nstruct TermPool{type} \{ spare: std::cell::Cell\<Option\<{kept}\>\>, more: std::cell::RefCell\<Vec\<{kept}\>\> \}\nimpl TermPool{type} \{\n    #[inline]\n    fn keep(&self, held: {kept}) \{\n        if let Some(before) = self.spare.replace(Some(held)) \{\n            let mut more = self.more.borrow_mut();\n            if more.len() \< 64 \{ more.push(before); \}\n        \}\n    \}\n    #[inline]\n    fn take(&self) -\> Option\<{kept}\> \{\n        self.spare.take().or_else(|| self.more.borrow_mut().pop())\n    \}\n\}\nthread_local! \{ static {pool}: TermPool{type} = const \{ TermPool{type} \{ spare: std::cell::Cell::new(None), more: std::cell::RefCell::new(Vec::new()) \} \}; \}\n// a node read out of its box, and the box kept as memory of the same layout\n#[inline]\nfn term_split_{name}(held: Box\<{held-payload}\>) -\> ({held-payload}, {kept}) \{\n    let raw = Box::into_raw(held);\n    // SAFETY: `raw` came from a live box: the node is read out once, and the allocation is handed back as uninitialized\n    unsafe \{ (std::ptr::read(raw), Box::from_raw(raw.cast::\<std::mem::MaybeUninit\<{held-payload}\>\>())) \}\n\}\n#[inline]\nfn term_open_{name}(held: Box\<{held-payload}\>) -\> {held-payload} \{\n    let (value, held) = term_split_{name}(held);\n    {pool}.with(|pool| pool.keep(held));\n    value\n\}\n#[inline]\nfn term_box_{name}(value: {held-payload}) -\> Box\<{held-payload}\> \{\n    match {pool}.with(|pool| pool.take()) \{\n        Some(held) =\> Box::write(held, value),\n        None =\> Box::new(value),\n    \}\n\}{local-text}>
+    case none
+      save nothing, 0
+
+  save holder, <std::rc::Rc\<{type}\>>
+  fork test, boxed
+    hold
+      save holder, <Box\<{type}\>>
+  save open, <fn term_open_{name}(mut held: {holder}) -\> {type} \{\n    match std::rc::Rc::get_mut(&mut held) \{\n        Some(inner) =\> \{\n            let value = std::mem::replace(inner, {empty});\n            {pool}.with(|pool| pool.keep(held));\n            value\n        \}\n        None =\> (*held).clone(),\n    \}\n\}>
+  save make, <fn term_box_{name}(value: {type}) -\> {holder} \{\n    match {pool}.with(|pool| pool.take()) \{\n        Some(mut held) =\> match std::rc::Rc::get_mut(&mut held) \{\n            Some(inner) =\> \{\n                std::mem::forget(std::mem::replace(inner, value));\n                held\n            \}\n            None =\> std::rc::Rc::new(value),\n        \},\n        None =\> std::rc::Rc::new(value),\n    \}\n\}>
+  fork test, boxed
+    hold
+      save open, <fn term_open_{name}(mut held: {holder}) -\> {type} \{\n    let value = std::mem::replace(&mut *held, {empty});\n    {pool}.with(|pool| pool.keep(held));\n    value\n\}>
+      save make, <fn term_box_{name}(value: {type}) -\> {holder} \{\n    match {pool}.with(|pool| pool.take()) \{\n        Some(mut held) =\> \{\n            // a kept box holds the field-less case its opening left, so it is forgotten rather than dropped\n            std::mem::forget(std::mem::replace(&mut *held, value));\n            held\n        \}\n        None =\> Box::new(value),\n    \}\n\}>
+  save local-text, <>
+  fork test, local
+    hold
+      save local-text, <\n// the same, through a task's own spare first (`localForms`): a box opened is kept there, a box built takes it\n#[inline]\nfn term_open_local_{name}(mut held: {holder}, spare: &mut Option\<{holder}\>) -\> {type} \{\n    let value = std::mem::replace(&mut *held, {empty});\n    if let Some(before) = spare.replace(held) \{\n        {pool}.with(|pool| pool.keep(before));\n    \}\n    value\n\}\n#[inline]\nfn term_box_local_{name}(value: {type}, spare: &mut Option\<{holder}\>) -\> {holder} \{\n    match spare.take() \{\n        Some(mut held) =\> \{\n            std::mem::forget(std::mem::replace(&mut *held, value));\n            held\n        \}\n        None =\> term_box_{name}(value),\n    \}\n\}>
+  back <// the boxes of `{form}` an arm unboxed, kept for the next `{form}` built: a spare, and up to 64 more behind it\n// for a run of frees before a run of builds (rust.ts, `reusable`)\n#[allow(clippy::vec_box)]\nstruct TermPool{type} \{ spare: std::cell::Cell\<Option\<{holder}\>\>, more: std::cell::RefCell\<Vec\<{holder}\>\> \}\nimpl TermPool{type} \{\n    #[inline]\n    fn keep(&self, held: {holder}) \{\n        if let Some(before) = self.spare.replace(Some(held)) \{\n            let mut more = self.more.borrow_mut();\n            if more.len() \< 64 \{ more.push(before); \}\n        \}\n    \}\n    #[inline]\n    fn take(&self) -\> Option\<{holder}\> \{\n        self.spare.take().or_else(|| self.more.borrow_mut().pop())\n    \}\n\}\nthread_local! \{ static {pool}: TermPool{type} = const \{ TermPool{type} \{ spare: std::cell::Cell::new(None), more: std::cell::RefCell::new(Vec::new()) \} \}; \}\n#[inline]\n{open}\n#[inline]\n{make}{local-text}>
+
+# whether any text of the body starts a task, `\basync fn\b`, sleeps, `__term_sleep(`, or reads a job, `\bjob::`
+task runs-async
+  take body, like list, like text
+  like boolean
+  mark private
+
+  walk body
+    take line
+    fork test, or(or(has-bounded(line, <async fn>, true), contains-text(line, <__term_sleep(>)), has-bounded(line, <job::>, false))
+      hold
+        back true
+  back false
+
+# The module: the `use` lines, the runtime in front, the statements with their spares and their modules marked, the
+# box pools, and the walkers and wake chain after
+task rust-module
+  take input, like rust-module-input
+  take program, like list, like statement
+  like text
+
+  save body, input/body
+  save drains, false
+  walk body
+    take line
+    fork test, contains-text(line, <__term_drain(>)
+      hold
+        save drains, true
+  save runs, or(or(or(is-above(input/spawn-uses, 0), drains), is-above(input/budget-uses, 0)), runs-async(body))
+
+  # a task that both opens and builds a boxed form keeps the box it opened in a local spare
+  save local-forms, make list
+  walk input/reuse-opened
+    take form
+    fork test, and(has-text(input/reuse-built, form), has-text(input/boxed-forms, form))
+      hold
+        push(local-forms, form)
+  save local-used, make list
+  save local-body, make list
+  walk body
+    take text
+    take index
+    save out, text
+    save spares, make list
+    walk local-forms
+      take form
+      save name, snake(form)
+      fork test, and(not(starts-with(out, <fn >)), not(starts-with(out, <pub fn >)))
+        hold
+          turn next
+      fork test, or(not(contains-text(out, <term_open_{name}(>)), not(contains-text(out, <term_box_{name}(>)))
+        hold
+          turn next
+      save spare, <__spare_{name}>
+      save out, add-argument(out, <term_open_{name}>, <term_open_local_{name}>, <&mut {spare}>)
+      save out, add-argument(out, <term_box_{name}>, <term_box_local_{name}>, <&mut {spare}>)
+      save open, index-of(out, <\{\n>, 0)
+      save kept, pascal(form)
+      sift reused-payload(input/payloads, form)
+        case some
+          link payload
+          save kept, <std::mem::MaybeUninit\<{payload}\>>
+        case none
+          save nothing, 0
+      save cut, add(open, 2)
+      save out, <{substring(out, 0, cut)}    let mut {spare}: Option\<Box\<{kept}\>\> = None;\n{substring(out, cut, out/length)}>
+      fork test, not(has-text(local-used, form))
+        hold
+          push(local-used, form)
+      push(spares, spare)
+    fork test, and(is-above(spares/length, 0), and(and(not(contains-text(out, <move |>)), not(contains-text(out, <(|| >))), not(contains-text(out, <async \{>))))
+      hold
+        save held, get(spares, 0)
+        fork test, is-above(spares/length, 1)
+          hold
+            save held, <({join-texts(spares, <, >)})>
+        save out, replace-text(out, <return std::result::Result::Err(term_fail(>, <return std::result::Result::Err(term_fail_with({held}, >)
+    push(local-body, mark-unit(get(input/body-files, index), out))
+  save assembled, join-texts(local-body, <\n\n>)
+
+  save reuse, make list
+  save forms, make list
+  walk input/reuse-opened
+    take form
+    fork test, not(has-text(forms, form))
+      hold
+        push(forms, form)
+  walk input/reuse-built
+    take form
+    fork test, not(has-text(forms, form))
+      hold
+        push(forms, form)
+  walk forms
+    take form
+    save type, pascal(form)
+    save name, snake(form)
+    save empty, <{type}::{pascal(empty-case(program, form))}>
+    save boxed, has-text(input/boxed-forms, form)
+    fork test, or(not(has-text(input/reuse-opened, form)), not(has-text(input/reuse-built, form)))
+      hold
+        save made, <std::rc::Rc::new(>
+        fork test, boxed
+          hold
+            save made, <Box::new(>
+        save assembled, rewrite-open(replace-text(assembled, <term_box_{name}(>, made), name, boxed)
+        turn next
+    push(reuse, reuse-pool(form, empty, boxed, reused-payload(input/payloads, form), has-text(local-used, form)))
+
+  # the order the original joined them in: the uses, the map and its keys, `TermKey`, the carrier, the budget, the
+  # executor, the pools, the statements, the walkers, the wake chain
+  save ordered, make list
+  walk input/uses
+    take line
+    push(ordered, line)
+  push(ordered, term-map-text())
+  push(ordered, term-shared-text())
+  push(ordered, term-cursor-text())
+  push(ordered, term-number-text())
+  fork test, input/text-keys
+    hold
+      push(ordered, term-key-text())
+  fork test, or(input/carries, input/fills)
+    hold
+      push(ordered, carrier-text())
+  fork test, is-above(input/budget-uses, 0)
+    hold
+      push(ordered, budget-text())
+  fork test, runs
+    hold
+      push(ordered, executor-text())
+  # an async closure's boxed future is written whether or not the executor is
+  fork test, input/boxed-futures
+    hold
+      push(ordered, boxed-text())
+  walk reuse
+    take one
+    push(ordered, one)
+  fork test, is-above(body/length, 0)
+    hold
+      push(ordered, assembled)
+  walk input/form-walk
+    take one
+    push(ordered, one)
+  walk input/wake
+    take one
+    push(ordered, one)
+  back <{join-texts(ordered, <\n\n>)}\n>
+
+# ---- the runtime texts ----
+
+# the preemption budget: BEAM's 4,000 reductions, counted per thread, refilled on a yield
+task budget-text
+  like text
+  mark private
+
+  back <// the preemption budget (note/term/research/beam-otp-lessons.md, design 5): an asynchronous loop yields to the\n// scheduler once every 4000 turns, so no task starves the others on its runtime\nthread_local! \{ static __TERM_BUDGET: std::cell::Cell\<u32\> = std::cell::Cell::new(4000); \}\nasync fn __term_budget() \{\n    let left = __TERM_BUDGET.with(|b| \{ let n = b.get().saturating_sub(1); b.set(n); n \});\n    if left == 0 \{\n        __TERM_BUDGET.with(|b| b.set(4000));\n        __term_yield().await;\n    \}\n\}>
+
+# the Term `hash` on this backend: an insertion-ordered map, and a value as a map key
+task term-map-text
+  like text
+  mark private
+
+  back <// an insertion-ordered map, the Term `hash` (note/term/optimize/meaning.md, question 1)\n#[allow(dead_code)]\n#[derive(Clone)]\npub struct TermMap\<K, V\> \{ table: Vec\<u32\>, entry: Vec\<Option\<(u64, K, V)\>\>, live: usize, tombs: usize, dead: usize, state: std::collections::hash_map::RandomState \}\n#[allow(dead_code)]\nimpl\<K: TermHash + Clone, V\> TermMap\<K, V\> \{\n    // each key is held once, in its entry: the table holds entry indexes (EMPTY, or TOMB where one was removed), probed\n    // linearly from the key's hash, and a key is compared in its entry. The entries keep insertion order, which is\n    // what a walk visits\n    const EMPTY: u32 = u32::MAX;\n    const TOMB: u32 = u32::MAX - 1;\n    pub fn new() -\> Self \{ TermMap \{ table: Vec::new(), entry: Vec::new(), live: 0, tombs: 0, dead: 0, state: std::collections::hash_map::RandomState::new() \} \}\n    pub fn len(&self) -\> usize \{ self.live \}\n    pub fn is_empty(&self) -\> bool \{ self.live == 0 \}\n    // a key hashed and compared AS A KEY (TermHash), never by value equality: a NaN key is one key and `-0.0` is\n    // `0.0`, as on every backend\n    fn hash\<Q: TermHash + ?Sized\>(&self, key: &Q) -\> u64 \{ let mut h = std::hash::BuildHasher::build_hasher(&self.state); key.term_hash(&mut h); std::hash::Hasher::finish(&h) \}\n    // the table slot holding the key, if it is present\n    fn find\<Q: TermHash + ?Sized\>(&self, h: u64, key: &Q) -\> Option\<usize\> where K: std::borrow::Borrow\<Q\> \{\n        if self.table.is_empty() \{ return None; \}\n        let mask = self.table.len() - 1;\n        let mut at = (h as usize) & mask;\n        loop \{\n            let i = self.table[at];\n            if i == Self::EMPTY \{ return None; \}\n            if i != Self::TOMB \{ if let Some((eh, k, _)) = &self.entry[i as usize] \{ if *eh == h && k.borrow().term_eq(key) \{ return Some(at); \} \} \}\n            at = (at + 1) & mask;\n        \}\n    \}\n    // the table rebuilt at a size for the live entries, which also clears every tomb\n    fn rebuild(&mut self, size: usize) \{\n        let size = size.max(8).next_power_of_two();\n        self.table = vec![Self::EMPTY; size];\n        self.tombs = 0;\n        let mask = size - 1;\n        for (i, e) in self.entry.iter().enumerate() \{\n            if let Some((h, _, _)) = e \{\n                let mut at = (*h as usize) & mask;\n                while self.table[at] != Self::EMPTY \{ at = (at + 1) & mask; \}\n                self.table[at] = i as u32;\n            \}\n        \}\n    \}\n    pub fn contains_key(&self, key: &K) -\> bool \{ self.find(self.hash(key), key).is_some() \}\n    // a text key looked up as the `str` it is, so a `String` key and a `TermKey` are read alike, with nothing made\n    pub fn has_text(&self, key: &str) -\> bool where K: std::borrow::Borrow\<str\> \{ self.find(self.hash(key), key).is_some() \}\n    pub fn get_text(&self, key: &str) -\> Option\<&V\> where K: std::borrow::Borrow\<str\> \{\n        let at = self.find(self.hash(key), key)?;\n        self.entry[self.table[at] as usize].as_ref().map(|e| &e.2)\n    \}\n    pub fn remove_text(&mut self, key: &str) -\> Option\<V\> where K: std::borrow::Borrow\<str\> \{\n        let at = self.find(self.hash(key), key)?;\n        self.take_at(at)\n    \}\n    pub fn get(&self, key: &K) -\> Option\<&V\> \{\n        let at = self.find(self.hash(key), key)?;\n        self.entry[self.table[at] as usize].as_ref().map(|e| &e.2)\n    \}\n    pub fn get_mut(&mut self, key: &K) -\> Option\<&mut V\> \{\n        let at = self.find(self.hash(key), key)?;\n        let i = self.table[at] as usize;\n        self.entry[i].as_mut().map(|e| &mut e.2)\n    \}\n    pub fn insert(&mut self, key: K, value: V) -\> Option\<V\> \{\n        let h = self.hash(&key);\n        if let Some(at) = self.find(h, &key) \{\n            let i = self.table[at] as usize;\n            return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.2, value));\n        \}\n        self.push(h, key, value);\n        None\n    \}\n    // a new entry for a key that is not present, its index answered\n    fn push(&mut self, h: u64, key: K, value: V) -\> usize \{\n        // at most half full, tombs counted, so a probe always ends at an EMPTY\n        if (self.live + self.tombs + 1) * 2 \> self.table.len() \{ self.rebuild((self.live + 1) * 4); \}\n        let mask = self.table.len() - 1;\n        let mut at = (h as usize) & mask;\n        while self.table[at] != Self::EMPTY && self.table[at] != Self::TOMB \{ at = (at + 1) & mask; \}\n        if self.table[at] == Self::TOMB \{ self.tombs -= 1; \}\n        self.table[at] = self.entry.len() as u32;\n        self.entry.push(Some((h, key, value)));\n        self.live += 1;\n        self.entry.len() - 1\n    \}\n    // the value of a key, made `fallback` first when it is absent: one hash and one probe for a read and write\n    // (backend.ts, `mapUpdate`)\n    pub fn upsert(&mut self, key: K, fallback: V) -\> &mut V \{\n        let h = self.hash(&key);\n        let i = match self.find(h, &key) \{ Some(at) =\> self.table[at] as usize, None =\> self.push(h, key, fallback) \};\n        &mut self.entry[i].as_mut().unwrap().2\n    \}\n    // the same through a borrowed key (a `&str` for a String key or a `TermKey`), made owned only when it is new: a\n    // key read out of a larger text costs nothing for an entry already there\n    pub fn upsert_ref\<Q: TermHash + ?Sized\>(&mut self, key: &Q, fallback: V) -\> &mut V where K: std::borrow::Borrow\<Q\> + for\<'a\> From\<&'a Q\> \{\n        let h = self.hash(key);\n        let i = match self.find(h, key) \{ Some(at) =\> self.table[at] as usize, None =\> self.push(h, K::from(key), fallback) \};\n        &mut self.entry[i].as_mut().unwrap().2\n    \}\n    pub fn remove(&mut self, key: &K) -\> Option\<V\> \{\n        let at = self.find(self.hash(key), key)?;\n        self.take_at(at)\n    \}\n    // the entry at a table slot taken out, its slot a tomb\n    fn take_at(&mut self, at: usize) -\> Option\<V\> \{\n        let i = self.table[at] as usize;\n        self.table[at] = Self::TOMB;\n        self.tombs += 1;\n        self.live -= 1;\n        let out = self.entry[i].take().map(|e| e.2);\n        self.dead += 1;\n        if self.dead \> 16 && self.dead * 2 \> self.entry.len() \{ self.compact(); \}\n        out\n    \}\n    fn compact(&mut self) \{\n        self.entry.retain(|e| e.is_some());\n        self.dead = 0;\n        let size = self.table.len();\n        self.rebuild(size);\n    \}\n    pub fn clear(&mut self) \{ self.table.clear(); self.entry.clear(); self.live = 0; self.tombs = 0; self.dead = 0; \}\n    pub fn iter(&self) -\> impl Iterator\<Item = (&K, &V)\> \{ self.entry.iter().filter_map(|e| e.as_ref().map(|(_, k, v)| (k, v))) \}\n    pub fn keys(&self) -\> impl Iterator\<Item = &K\> \{ self.iter().map(|(k, _)| k) \}\n    pub fn values(&self) -\> impl Iterator\<Item = &V\> \{ self.iter().map(|(_, v)| v) \}\n\}\nimpl\<K: TermHash + Clone, V\> Default for TermMap\<K, V\> \{ fn default() -\> Self \{ Self::new() \} \}\nimpl\<K: TermHash + Clone, V, const N: usize\> From\<[(K, V); N]\> for TermMap\<K, V\> \{\n    fn from(items: [(K, V); N]) -\> Self \{ let mut m = Self::new(); for (k, v) in items \{ m.insert(k, v); \} m \}\n\}\nimpl\<K: TermHash + Clone, V\> std::iter::FromIterator\<(K, V)\> for TermMap\<K, V\> \{\n    fn from_iter\<I: IntoIterator\<Item = (K, V)\>\>(items: I) -\> Self \{ let mut m = Self::new(); for (k, v) in items \{ m.insert(k, v); \} m \}\n\}\n// two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)\nimpl\<K: TermHash + Clone, V: PartialEq\> PartialEq for TermMap\<K, V\> \{\n    fn eq(&self, other: &Self) -\> bool \{ self.len() == other.len() && self.iter().all(|(k, v)| other.get(k) == Some(v)) \}\n\}\nimpl\<K: TermHash + Clone + std::fmt::Debug, V: std::fmt::Debug\> std::fmt::Debug for TermMap\<K, V\> \{\n    fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ f.debug_map().entries(self.iter()).finish() \}\n\}\n// A VALUE AS A MAP KEY: hashed and compared the way a JavaScript `Map` compares keys, the rule on every backend. A\n// NaN is one key and `-0.0` is `0.0`; a record by its fields, a list by its items, a shared value by identity. Value\n// equality (`PartialEq`, `is-equal`) stays IEEE: NaN is not equal to itself. A float key did not build on Rust, nor\n// did a record holding a float, a list or a map (guides: language/forms, language/collections, 2026-10-05)\npub trait TermHash \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H);\n    fn term_eq(&self, other: &Self) -\> bool;\n\}\nmacro_rules! term_hash_by_value \{ ($($t:ty),*) =\> \{ $(impl TermHash for $t \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ std::hash::Hash::hash(self, h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self == other \}\n\})* \} \}\nterm_hash_by_value!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize, bool, char, (), str, std::string::String);\n// the canonical key of a float: one NaN, and `-0.0` folded into `0.0`\nimpl TermHash for f64 \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ let x = if self.is_nan() \{ f64::NAN \} else if *self == 0.0 \{ 0.0 \} else \{ *self \}; std::hash::Hash::hash(&x.to_bits(), h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ (self.is_nan() && other.is_nan()) || self == other \}\n\}\nimpl TermHash for f32 \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ (*self as f64).term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ (*self as f64).term_eq(&(*other as f64)) \}\n\}\nimpl\<T: TermHash\> TermHash for std::vec::Vec\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ std::hash::Hash::hash(&self.len(), h); for x in self \{ x.term_hash(h) \} \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) \}\n\}\nimpl\<T: TermHash\> TermHash for [T] \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ std::hash::Hash::hash(&self.len(), h); for x in self \{ x.term_hash(h) \} \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) \}\n\}\nimpl\<T: TermHash\> TermHash for std::option::Option\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ match self \{ std::option::Option::Some(x) =\> \{ std::hash::Hash::hash(&1u8, h); x.term_hash(h) \} std::option::Option::None =\> std::hash::Hash::hash(&0u8, h) \} \}\n    fn term_eq(&self, other: &Self) -\> bool \{ match (self, other) \{ (std::option::Option::Some(a), std::option::Option::Some(b)) =\> a.term_eq(b), (std::option::Option::None, std::option::Option::None) =\> true, _ =\> false \} \}\n\}\nimpl\<T: TermHash + ?Sized\> TermHash for std::rc::Rc\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ (**self).term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ (**self).term_eq(&**other) \}\n\}\nimpl\<T: TermHash + ?Sized\> TermHash for std::cell::RefCell\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ self.borrow().term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.borrow().term_eq(&*other.borrow()) \}\n\}\nimpl\<T: TermHash + ?Sized\> TermHash for std::boxed::Box\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ (**self).term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ (**self).term_eq(&**other) \}\n\}\n// a map as a key: by its entries in any order, so the hash is the sum of each entry's own hash\nimpl\<K: TermHash + Clone, V: TermHash\> TermHash for TermMap\<K, V\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{\n        let mut sum: u64 = 0;\n        for (k, v) in self.iter() \{ let mut one = std::collections::hash_map::DefaultHasher::new(); k.term_hash(&mut one); v.term_hash(&mut one); sum = sum.wrapping_add(std::hash::Hasher::finish(&one)); \}\n        std::hash::Hash::hash(&(self.len(), sum), h)\n    \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.len() == other.len() && self.iter().all(|(k, v)| other.get(k).is_some_and(|w| v.term_eq(w))) \}\n\}\nimpl\<A: TermHash, B: TermHash\> TermHash for (A, B) \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ self.0.term_hash(h); self.1.term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.0.term_eq(&other.0) && self.1.term_eq(&other.1) \}\n\}>
+
+# a value of a `mark shared` form: one object, compared and hashed by identity
+task term-shared-text
+  like text
+  mark private
+
+  back <// a value of a `mark shared` form (optimize-0042): one object, compared and hashed by identity\n#[allow(dead_code)]\npub struct TermShared\<T\>(pub std::rc::Rc\<std::cell::RefCell\<T\>\>);\n#[allow(dead_code)]\nimpl\<T\> TermShared\<T\> \{ pub fn new(value: T) -\> Self \{ TermShared(std::rc::Rc::new(std::cell::RefCell::new(value))) \} \}\nimpl\<T\> Clone for TermShared\<T\> \{ fn clone(&self) -\> Self \{ TermShared(self.0.clone()) \} \}\nimpl\<T\> PartialEq for TermShared\<T\> \{ fn eq(&self, other: &Self) -\> bool \{ std::rc::Rc::ptr_eq(&self.0, &other.0) \} \}\nimpl\<T\> Eq for TermShared\<T\> \{\}\nimpl\<T\> TermHash for TermShared\<T\> \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ std::hash::Hash::hash(&(std::rc::Rc::as_ptr(&self.0) as *const () as usize), h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ std::rc::Rc::ptr_eq(&self.0, &other.0) \}\n\}\nimpl\<T\> std::hash::Hash for TermShared\<T\> \{\n    fn hash\<H: std::hash::Hasher\>(&self, state: &mut H) \{ (std::rc::Rc::as_ptr(&self.0) as *const () as usize).hash(state) \}\n\}\nimpl\<T\> std::ops::Deref for TermShared\<T\> \{ type Target = std::cell::RefCell\<T\>; fn deref(&self) -\> &Self::Target \{ &self.0 \} \}>
+
+# a code point of a text read through its cursor
+task term-cursor-text
+  like text
+  mark private
+
+  back <// a code point read through a cursor, the code-point index and byte offset of the last read: the byte offset of code\n// point i, stepped forward or back from the last, or from the start when that is nearer, the end past the last\n#[allow(dead_code)]\npub fn term_cursor_to(h: &str, i: usize, c: &mut (usize, usize)) -\> usize \{\n    let b = h.as_bytes();\n    if i \< c.0 \{\n        if i \<= c.0 - i \{\n            *c = (0, 0);\n        \} else \{\n            while c.0 \> i \{\n                c.1 -= 1;\n                while b[c.1] & 0xC0 == 0x80 \{ c.1 -= 1; \}\n                c.0 -= 1;\n            \}\n        \}\n    \}\n    while c.0 \< i \{\n        if c.1 \>= b.len() \{ return b.len(); \}\n        c.1 += term_width(b[c.1]);\n        c.0 += 1;\n    \}\n    c.1\n\}\n// the UTF-8 width of a code point from its first byte\n#[allow(dead_code)]\n#[inline]\npub fn term_width(x: u8) -\> usize \{ if x \< 0x80 \{ 1 \} else if x \< 0xE0 \{ 2 \} else if x \< 0xF0 \{ 3 \} else \{ 4 \} \}\n#[allow(dead_code)]\npub fn term_cursor(h: &str, i: i64, c: &mut (usize, usize)) -\> Option\<char\> \{\n    if i \< 0 \{ return None; \}\n    let o = term_cursor_to(h, i as usize, c);\n    h[o..].chars().next()\n\}\n// the code points from a to e through the cursor, both clamped to the text and swapped when reversed (the Term\n// meaning): the cursor moves to the start, and the end is counted on from it\n#[allow(dead_code)]\npub fn term_cursor_slice(h: &str, a: i64, e: i64, c: &mut (usize, usize)) -\> String \{\n    let (x, y) = if a \<= e \{ (a, e) \} else \{ (e, a) \};\n    let (x, y) = (x.max(0) as usize, y.max(0) as usize);\n    let b = h.as_bytes();\n    let from = term_cursor_to(h, x, c);\n    let mut to = from;\n    let mut k = x;\n    while k \< y && to \< b.len() \{\n        to += term_width(b[to]);\n        k += 1;\n    \}\n    h[from..to].to_string()\n\}>
+
+# a float as text, ECMAScript's layout over the shortest round-trip digits
+task term-number-text
+  like text
+  mark private
+
+  back <// a float as text, ECMAScript's layout over the shortest round-trip digits\n#[allow(dead_code)]\npub fn term_number(x: f64) -\> String \{\n    if x.is_nan() \{ return "NaN".to_string(); \}\n    if x.is_infinite() \{ return if x \> 0.0 \{ "Infinity".to_string() \} else \{ "-Infinity".to_string() \}; \}\n    if x == 0.0 \{ return "0".to_string(); \}\n    let shortest = format!("\{:e\}", x.abs());\n    let (mantissa, exponent) = shortest.split_once('e').unwrap_or((shortest.as_str(), "0"));\n    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();\n    let digits = digits.trim_end_matches('0').to_string();\n    let digits = if digits.is_empty() \{ "0".to_string() \} else \{ digits \};\n    let k = digits.len() as i64;\n    let n = exponent.parse::\<i64\>().unwrap_or(0) + 1;\n    let body = if k \<= n && n \<= 21 \{\n        format!("\{\}\{\}", digits, "0".repeat((n - k) as usize))\n    \} else if 0 \< n && n \<= 21 \{\n        format!("\{\}.\{\}", &digits[..n as usize], &digits[n as usize..])\n    \} else if -6 \< n && n \<= 0 \{\n        format!("0.\{\}\{\}", "0".repeat((-n) as usize), digits)\n    \} else \{\n        let e = n - 1;\n        let sign = if e \< 0 \{ "-" \} else \{ "+" \};\n        if k == 1 \{ format!("\{\}e\{\}\{\}", digits, sign, e.abs()) \} else \{ format!("\{\}.\{\}e\{\}\{\}", &digits[..1], &digits[1..], sign, e.abs()) \}\n    \};\n    if x \< 0.0 \{ format!("-\{\}", body) \} else \{ body \}\n\}>
+
+# the one exception value of a Term program on this backend
+task carrier-text
+  like text
+  mark private
+
+  back <// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md). Its fields\n// are boxed, so the carrier is one pointer and every `Result` a raising task answers stays the size of its value: the\n// fields inline made each `Ok` 136 bytes, copied on every return (clippy's result_large_err). Read through Deref\n#[derive(Clone)]\npub struct TermException(pub Box\<TermRaised\>);\n#[derive(Clone)]\npub struct TermRaised \{ pub host: String, pub form: String, pub note: String, pub code: String, pub time: i64, pub link: std::rc::Rc\<dyn std::any::Any\>, pub base: std::rc::Rc\<dyn std::any::Any\> \}\nimpl std::ops::Deref for TermException \{ type Target = TermRaised; fn deref(&self) -\> &TermRaised \{ &self.0 \} \}\nimpl std::ops::DerefMut for TermException \{ fn deref_mut(&mut self) -\> &mut TermRaised \{ &mut self.0 \} \}\nimpl std::fmt::Display for TermException \{ fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ write!(f, "\{\}: \{\}", self.form, self.note) \} \}\nimpl std::fmt::Debug for TermException \{ fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ write!(f, "\{\}: \{\}", self.form, self.note) \} \}\nimpl std::error::Error for TermException \{\}\n// a text raised as `failure`, built out of line: the carrier's seven fields written at each raise kept the task that\n// raises too large for LLVM to lay out its happy path tight (Towers 69 ms to 63, `tmp/rust-towers-rest4-ab.ts`)\n#[allow(dead_code)]\n#[cold]\n#[inline(never)]\nfn term_fail(note: impl Into\<String\>) -\> TermException \{\n    TermException(Box::new(TermRaised \{ host: String::new(), form: "failure".to_string(), note: note.into(), code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) \}))\n\}\n// the same, given what the raising task held that it would otherwise drop on the way out (its spare boxes, rust.ts\n// `localForms`), so the raise path drops nothing inline\n#[allow(dead_code)]\n#[cold]\n#[inline(never)]\nfn term_fail_with\<T\>(held: T, note: impl Into\<String\>) -\> TermException \{\n    drop(held);\n    term_fail(note)\n\}>
+
+# the executor: every Term future on this thread, interleaved only where each one waits
+task executor-text
+  like text
+  mark private
+
+  back <// fire and forget: a future nobody awaits runs NOW to its first wait, as an async function called on node does,\n// and what is still waiting is queued here and polled by `__term_drain` or whatever is waiting, never dropped unrun\nthread_local! \{ static __TERM_SPAWNED: std::cell::RefCell\<Vec\<std::pin::Pin\<Box\<dyn std::future::Future\<Output = ()\>\>\>\>\> = std::cell::RefCell::new(Vec::new()); \}\n// how many waits have ended: a round of the driver that moves it nothing has nothing to run until a timer is due\nthread_local! \{ static __TERM_PROGRESS: std::cell::Cell\<u64\> = std::cell::Cell::new(0); \}\n// the soonest a timer waited on is due, written by each timer that is not\nthread_local! \{ static __TERM_WAKE: std::cell::Cell\<Option\<std::time::Instant\>\> = std::cell::Cell::new(None); \}\n#[allow(dead_code)]\nfn __term_progressed() \{ __TERM_PROGRESS.with(|p| p.set(p.get() + 1)); \}\n#[allow(dead_code)]\nfn __term_spawn\<T: 'static\>(work: impl std::future::Future\<Output = T\> + 'static) \{\n    let mut work: std::pin::Pin\<Box\<dyn std::future::Future\<Output = ()\>\>\> = Box::pin(async move \{ let _ = work.await; \});\n    let mut context = std::task::Context::from_waker(std::task::Waker::noop());\n    if work.as_mut().poll(&mut context).is_pending() \{\n        __TERM_SPAWNED.with(|queue| queue.borrow_mut().push(work));\n    \} else \{\n        __term_progressed();\n    \}\n\}\n// one round over the queued work, each polled once: what finishes is dropped, and what the polled work queued in turn\n// goes after what is still waiting\n#[allow(dead_code)]\nfn __term_step() \{\n    let mut context = std::task::Context::from_waker(std::task::Waker::noop());\n    let pending: Vec\<_\> = __TERM_SPAWNED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));\n    let mut waiting = Vec::new();\n    for mut work in pending \{\n        if work.as_mut().poll(&mut context).is_ready() \{\n            __term_progressed();\n        \} else \{\n            waiting.push(work);\n        \}\n    \}\n    __TERM_SPAWNED.with(|queue| \{\n        let mut queued = queue.borrow_mut();\n        waiting.append(&mut queued);\n        *queued = waiting;\n    \});\n\}\n// run the queued work until none of it can go further without waiting (`run-pending`)\n#[allow(dead_code)]\nfn __term_drain() \{\n    loop \{\n        let before = __TERM_PROGRESS.with(|p| p.get());\n        __term_step();\n        if __TERM_PROGRESS.with(|p| p.get()) == before || __TERM_SPAWNED.with(|queue| queue.borrow().is_empty()) \{\n            break;\n        \}\n    \}\n\}\n// a timer: ready once its time is due. Not due, it notes when it will be, so a driver with nothing else to run sleeps\n// the thread until then rather than spinning\nstruct __TermSleep \{ at: std::time::Instant \}\nimpl std::future::Future for __TermSleep \{\n    type Output = ();\n    fn poll(self: std::pin::Pin\<&mut Self\>, cx: &mut std::task::Context\<'_\>) -\> std::task::Poll\<()\> \{\n        if std::time::Instant::now() \>= self.at \{\n            __term_progressed();\n            return std::task::Poll::Ready(());\n        \}\n        let at = self.at;\n        __TERM_WAKE.with(|wake| wake.set(Some(wake.get().map_or(at, |soonest| soonest.min(at)))));\n        cx.waker().wake_by_ref();\n        std::task::Poll::Pending\n    \}\n\}\n#[allow(dead_code)]\nfn __term_sleep(ms: i64) -\> __TermSleep \{\n    __TermSleep \{ at: std::time::Instant::now() + std::time::Duration::from_millis(ms.max(0) as u64) \}\n\}\n// a wait for `done` to hold, running the queued work meanwhile: a job's `wait` is one, so the job it waits on runs\nstruct __TermUntil\<F: Fn() -\> bool\> \{ done: F \}\nimpl\<F: Fn() -\> bool\> std::future::Future for __TermUntil\<F\> \{\n    type Output = ();\n    fn poll(self: std::pin::Pin\<&mut Self\>, cx: &mut std::task::Context\<'_\>) -\> std::task::Poll\<()\> \{\n        if (self.done)() \{\n            __term_progressed();\n            return std::task::Poll::Ready(());\n        \}\n        __term_step();\n        if (self.done)() \{\n            __term_progressed();\n            return std::task::Poll::Ready(());\n        \}\n        cx.waker().wake_by_ref();\n        std::task::Poll::Pending\n    \}\n\}\n#[allow(dead_code)]\nfn __term_until\<F: Fn() -\> bool\>(done: F) -\> __TermUntil\<F\> \{\n    __TermUntil \{ done \}\n\}\n// give the other work a turn once: the preemption budget's yield\nstruct __TermYield \{ yielded: bool \}\nimpl std::future::Future for __TermYield \{\n    type Output = ();\n    fn poll(mut self: std::pin::Pin\<&mut Self\>, cx: &mut std::task::Context\<'_\>) -\> std::task::Poll\<()\> \{\n        __term_progressed();\n        if self.yielded \{\n            return std::task::Poll::Ready(());\n        \}\n        self.yielded = true;\n        cx.waker().wake_by_ref();\n        std::task::Poll::Pending\n    \}\n\}\n#[allow(dead_code)]\nfn __term_yield() -\> __TermYield \{\n    __TermYield \{ yielded: false \}\n\}\n// run an asynchronous entry to its answer, with the queued work running beside it, sleeping the thread only while\n// every future waits on a timer. A round that ends no wait with no timer due is a program waiting on something nothing\n// can finish, and it stops rather than hanging\n#[allow(dead_code)]\nfn __term_block_on\<T\>(entry: impl std::future::Future\<Output = T\>) -\> T \{\n    let mut entry = std::pin::pin!(entry);\n    let mut context = std::task::Context::from_waker(std::task::Waker::noop());\n    loop \{\n        let before = __TERM_PROGRESS.with(|p| p.get());\n        __TERM_WAKE.with(|wake| wake.set(None));\n        if let std::task::Poll::Ready(value) = entry.as_mut().poll(&mut context) \{\n            return value;\n        \}\n        __term_step();\n        if __TERM_PROGRESS.with(|p| p.get()) == before \{\n            match __TERM_WAKE.with(|wake| wake.get()) \{\n                Some(at) =\> \{\n                    let now = std::time::Instant::now();\n                    if at \> now \{\n                        std::thread::sleep(at - now);\n                    \}\n                \}\n                None =\> panic!("defect: the program waits on work that nothing can finish"),\n            \}\n        \}\n    \}\n\}>
+
+# an async closure's future, boxed with its answer stated
+task boxed-text
+  like text
+  mark private
+
+  back <#[allow(dead_code)]\nfn __term_boxed\<T, F: std::future::Future\<Output = T\> + 'static\>(work: F) -\> std::pin::Pin\<Box\<dyn std::future::Future\<Output = T\>\>\> \{\n    Box::pin(work)\n\}>
+
+# a map key that holds a short text in place
+task term-key-text
+  like text
+  mark private
+
+  back <// a map key that holds a text of up to 22 bytes in place and allocates only past that (rust.ts, `textKeysOf`).\n// It hashes, compares and prints as the `str` it holds, so a map of them means what a map of `String`s does\n#[derive(Clone)]\npub enum TermKey \{ Inline(u8, [u8; 22]), Heap(Box\<str\>) \}\nimpl TermKey \{\n    #[inline]\n    pub fn as_str(&self) -\> &str \{\n        match self \{\n            // SAFETY: the bytes were copied whole from a `str`, and `len` of them are set\n            TermKey::Inline(len, bytes) =\> unsafe \{ std::str::from_utf8_unchecked(&bytes[..*len as usize]) \},\n            TermKey::Heap(text) =\> text,\n        \}\n    \}\n\}\nimpl From\<&str\> for TermKey \{\n    #[inline]\n    fn from(text: &str) -\> Self \{\n        if text.len() \<= 22 \{\n            let mut bytes = [0u8; 22];\n            bytes[..text.len()].copy_from_slice(text.as_bytes());\n            TermKey::Inline(text.len() as u8, bytes)\n        \} else \{\n            TermKey::Heap(text.into())\n        \}\n    \}\n\}\n// a key built by formatting (`TermKey::from(&(format!(..)))`) is a `&String`, which trait lookup does not deref to a `&str`\nimpl From\<&String\> for TermKey \{\n    #[inline]\n    fn from(text: &String) -\> Self \{ TermKey::from(text.as_str()) \}\n\}\nimpl std::borrow::Borrow\<str\> for TermKey \{ fn borrow(&self) -\> &str \{ self.as_str() \} \}\nimpl PartialEq for TermKey \{ fn eq(&self, other: &Self) -\> bool \{ self.as_str() == other.as_str() \} \}\nimpl Eq for TermKey \{\}\nimpl std::hash::Hash for TermKey \{ fn hash\<H: std::hash::Hasher\>(&self, state: &mut H) \{ self.as_str().hash(state) \} \}\n// hashed as the `str` it holds, so a `TermKey` key is found by a `&str` lookup (TermMap's `get_text`)\nimpl TermHash for TermKey \{\n    fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ self.as_str().term_hash(h) \}\n    fn term_eq(&self, other: &Self) -\> bool \{ self.as_str() == other.as_str() \}\n\}\nimpl std::fmt::Display for TermKey \{ fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ std::fmt::Display::fmt(self.as_str(), f) \} \}\nimpl std::fmt::Debug for TermKey \{ fn fmt(&self, f: &mut std::fmt::Formatter\<'_\>) -\> std::fmt::Result \{ std::fmt::Debug::fmt(self.as_str(), f) \} \}>

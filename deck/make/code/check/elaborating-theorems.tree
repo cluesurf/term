@@ -1,0 +1,947 @@
+# Elaboration, part seven: what a `hold` asks about the theorem around it. The theorem that holds it alone
+# (`enclosing-theorem`) and its guards (`rule-guards`), whether a goal is an order, applies a task taking a function or a
+# recursive task, a goal's two sides elaborated each guiding the other (`elaborate-goal-sides`), whether a term is a
+# number, a proven goal recorded as a citable lemma, function extensionality by a cited pointwise lemma, and a
+# theorem's universal hypotheses instantiated at the terms the goal and its guards name (`universal-instances`).
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures these were. The decisions:
+#   - the original found the hold BY IDENTITY (`only === hold`), which is a host bind, `same-statement`
+#   - `appliesRecursion` asked whether a task's body calls itself by reading every key of every node, which the face
+#     still answers (`calls-itself`, handed in)
+#   - a bare `catch` is an `attempt`, as in the other parts
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find universal
+  find function-param
+
+load ./alias
+  find through-alias
+
+load ./unfolding
+  find substitute
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find infer
+  find are-convertible
+  find apply-value
+  find neutral-var
+  find show-term
+
+load ./elaborating-data
+  find constant
+  find kernel-type-at
+
+load ./elaborating-cases
+  find attempt-boolean
+
+load ./elaborating-terms
+  find term-state
+  find expr
+
+load ./elaborating-commands
+  find expression-pair
+
+load ./elaborating-proof
+  find lemma-state
+  find lemma
+  find lemma-rule
+
+bind same-statement
+  take a, like statement
+  take b, like statement
+  like boolean
+  case node
+    text <($a === $b)>
+  case browser
+    text <($a === $b)>
+  case rust
+    text <std::ptr::eq(&$a, &$b)>
+  case swift
+    text <false>
+  case kotlin
+    text <($a === $b)>
+
+task some-value
+  take given, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  back make(some, given)
+
+task no-value
+  like maybe, like kernel-value
+  mark private
+
+  back make none
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+# a task's body with its pure lets and returns left out, which the walk below steps into
+task bare-body
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    sift one
+      case let
+        link mutable
+        fork test, mutable
+          hold
+            push(out, one)
+      case return
+        save one, one
+      miss
+        push(out, one)
+  back out
+
+# the one guarded statement of a body that is a single `if` with one branch and no `otherwise`, none otherwise
+task only-branch
+  take one, like statement
+  like maybe, like list, like statement
+  mark private
+
+  sift one
+    case if
+      link branches
+      link otherwise
+      sift otherwise
+        case some
+          back make none
+        case none
+          fork test, is-equal(branches/length, 1)
+            hold
+              save inner, get(branches, 0)/body
+              back make(some, inner)
+          back make none
+    miss
+      back make none
+
+task only-cond
+  take one, like statement
+  like expression
+  mark private
+
+  sift one
+    case if
+      link branches
+      back get(branches, 0)/cond
+    miss
+      halt <not a guard>
+
+# the theorem whose body is, past its pure lets and through single-branch guards, this hold alone
+task enclosing-theorem
+  take program, like list, like statement
+  take hold, like statement
+  like maybe, like statement
+
+  walk program
+    take fn
+    sift fn
+      case function
+        link body
+        link theorem
+        fork test, is-unequal(theorem, true)
+          hold
+            turn next
+        save steps, bare-body(body)
+        walk test
+          hook test, is-equal(steps/length, 1)
+          hook hold
+            save only, get(steps, 0)
+            fork test, same-statement(only, hold)
+              hold
+                back make(some, fn)
+            sift only-branch(only)
+              case some
+                link inner
+                save steps, inner
+              case none
+                halt
+      miss
+        turn next
+  back make none
+
+task in-universal-theorem
+  take program, like list, like statement
+  take hold, like statement
+  like boolean
+
+  walk program
+    take fn
+    sift fn
+      case function
+        link body
+        link universals
+        save count, 0
+        walk universals
+          take u
+          save count, add(count, 1)
+        fork test, is-equal(count, 0)
+          hold
+            turn next
+        save steps, bare-body(body)
+        walk test
+          hook test, is-equal(steps/length, 1)
+          hook hold
+            save only, get(steps, 0)
+            fork test, same-statement(only, hold)
+              hold
+                back true
+            sift only-branch(only)
+              case some
+                link inner
+                save steps, inner
+              case none
+                halt
+      miss
+        turn next
+  back false
+
+# the guards on the way down to this hold, in any task, none when no task holds it so
+task rule-guards
+  take program, like list, like statement
+  take hold, like statement
+  like maybe, like list, like expression
+
+  walk program
+    take fn
+    sift fn
+      case function
+        link body
+        save steps, bare-body(body)
+        save guards, make list
+        walk test
+          hook test, is-equal(steps/length, 1)
+          hook hold
+            save only, get(steps, 0)
+            fork test, same-statement(only, hold)
+              hold
+                back make(some, guards)
+            sift only-branch(only)
+              case some
+                link inner
+                push(guards, only-cond(only))
+                save steps, inner
+              case none
+                halt
+      miss
+        turn next
+  back make none
+
+# a comparison, or a conjunction of comparisons: what `checkFoldOrder` inducts over
+task is-order-goal
+  take e, like expression
+  like boolean
+
+  sift e
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case below
+          back true
+        case at-most
+          back true
+        case above
+          back true
+        case at-least
+          back true
+        case both
+          back and(is-order-goal(left), is-order-goal(right))
+        miss
+          back false
+    miss
+      back false
+
+# a task type, written as one or named through an alias
+task is-function-type
+  take ts, like term-state
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link written
+      sift written
+        case function
+          back true
+        miss
+          sift through-alias(written, ts/aliases/aliases)/type
+            case function
+              back true
+            miss
+              back false
+    case none
+      back false
+
+# does the expression apply one of the named tasks
+task applies-one-of
+  take e, like expression
+  take names, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  save applies, false
+  sift e
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link callee-name
+          save applies, names/has(callee-name)
+        miss
+          save applies, false
+      walk args
+        take arg
+        fork test, applies-one-of(arg, names)
+          hold
+            save applies, true
+      back applies
+    case binary
+      link left
+      link right
+      save l, applies-one-of(left, names)
+      save r, applies-one-of(right, names)
+      back or(l, r)
+    case unary
+      link operand
+      back applies-one-of(operand, names)
+    miss
+      back false
+
+# does the expression apply a task that takes a function (`total(f, n)`)
+task applies-higher-order
+  take ts, like term-state
+  take program, like list, like statement
+  take e, like expression
+  like boolean
+
+  save higher, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        walk params
+          take p
+          fork test, is-function-type(ts, p/type)
+            hold
+              higher/set(name, true)
+              halt
+      miss
+        turn next
+  back applies-one-of(e, higher)
+
+# does the expression apply a task whose body calls itself, asked of the face (`calls-itself`, a reflective walk)
+task applies-recursion
+  take program, like list, like statement
+  take e, like expression
+  take calls-itself
+    like task
+      take statement, like statement
+      like boolean
+  like boolean
+
+  save recursive, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link theorem
+        fork test, and(is-unequal(theorem, true), calls-itself(one))
+          hold
+            recursive/set(name, true)
+      miss
+        turn next
+  back applies-one-of(e, recursive)
+
+# `fold n` on a number in a theorem about functions
+task number-fold-over-functions
+  take ts, like term-state
+  take program, like list, like statement
+  take hold, like statement
+  take calls-itself
+    like task
+      take statement, like statement
+      like boolean
+  like boolean
+
+  save counter-name, <>
+  save has-counter-name, false
+  sift hold
+    case hold
+      link proof
+      walk proof
+        take step
+        save counter-name, step/arg
+        save has-counter-name, true
+        halt
+    miss
+      back false
+  sift enclosing-theorem(program, hold)
+    case some
+      link fn
+      sift fn
+        case function
+          link params
+          save found, false
+          save counter-ok, false
+          walk params
+            take p
+            fork test, and(has-counter-name, is-equal(p/name, counter-name))
+              hold
+                save found, true
+                save counter-ok, or(is-natural(p), is-number-type(p/type))
+                halt
+          fork test, is-equal(and(found, counter-ok), false)
+            hold
+              back false
+          save takes-function, false
+          walk params
+            take p
+            fork test, is-function-type(ts, p/type)
+              hold
+                save takes-function, true
+          fork test, takes-function
+            hold
+              back true
+          sift hold
+            case hold
+              link expr
+              fork test, applies-higher-order(ts, program, expr)
+                hold
+                  back true
+              back applies-recursion(program, expr, calls-itself)
+            miss
+              back false
+        miss
+          back false
+    case none
+      back false
+
+bind is-natural
+  take p, like function-param
+  like boolean
+  case node
+    text <($p.refine === 'natural')>
+  case browser
+    text <($p.refine === 'natural')>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+task is-number-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link written
+      sift written
+        case number
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# ---- the goal's sides ----
+
+form goal-sides
+  link left, like maybe, like kernel-term
+  link right, like maybe, like kernel-term
+
+task inferred-guide
+  take ts, like term-state
+  take ctx, like context
+  take term, like kernel-term
+  like maybe, like kernel-value
+  mark private
+
+  save st, ts/st
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save found, infer(st, ctx, term)/type
+    back make(some, found)
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back make none
+  back make none
+
+# the two sides of an equality goal, each guiding the other's overloaded constructors: the concrete side first, its
+# type synthesized, the other elaborated against it
+task elaborate-goal-sides
+  take ts, like term-state
+  take left-node, like expression
+  take right-node, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like goal-sides
+
+  save left, expr(ts, left-node, scope, ctx, no-value())
+  sift left
+    case some
+      link found
+      save right, expr(ts, right-node, scope, ctx, inferred-guide(ts, ctx, found))
+      back
+        make goal-sides
+          bind left, left
+          bind right, right
+    case none
+      save left, left
+  save right, expr(ts, right-node, scope, ctx, no-value())
+  sift right
+    case some
+      link found
+      save guided, expr(ts, left-node, scope, ctx, inferred-guide(ts, ctx, found))
+      back
+        make goal-sides
+          bind left, guided
+          bind right, right
+    case none
+      back
+        make goal-sides
+          bind left, make none
+          bind right, make none
+
+# whether a term is a number, or cannot be typed (read as a number, leaving it to the arithmetic provers)
+task numeric-term
+  take ts, like term-state
+  take ctx, like context
+  take term, like kernel-term
+  like boolean
+
+  save st, ts/st
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    back are-convertible(st, ctx/level, infer(st, ctx, term)/type, evaluate(st, no-values(), constant(<Number>)))
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back true
+  back true
+
+# a proven equation recorded as a citable lemma and a rewrite rule, nothing on any raise
+task record-lemma-rule
+  take ts, like term-state
+  take ls, like lemma-state
+  take name, like text
+  take goal, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+
+  fork test, is-equal(name, <>)
+    hold
+      back
+  save st, ts/st
+  sift goal
+    case binary
+      link left
+      link right
+      save step
+        task
+          like boolean
+          save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
+          sift sides/left
+            case some
+              link l
+              sift sides/right
+                case some
+                  link r
+                  save lhs, quote(st, ctx/level, evaluate(st, ctx/env, l))
+                  save rhs, quote(st, ctx/level, evaluate(st, ctx/env, r))
+                  save rule
+                    make lemma-rule
+                      bind binder-count, ctx/level
+                      bind lhs, lhs
+                      bind rhs, rhs
+                  ls/rules/set(name, rule)
+                  save printed
+                    make lemma
+                      bind left, show-term(lhs)
+                      bind right, show-term(rhs)
+                  ls/lemmas/set(name, printed)
+                  back true
+                case none
+                  back false
+            case none
+              back false
+      attempt-boolean(st, step)
+    miss
+      back
+
+# FUNCTION EXTENSIONALITY: `f == g` between functions by a cited lemma stating `f x == g x` for one fresh x
+task try-funext
+  take ts, like term-state
+  take ls, like lemma-state
+  take goal, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take cited, like text
+  like boolean
+
+  save st, ts/st
+  sift goal
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case equal
+          fork test, is-equal(ls/rules/has(cited), false)
+            hold
+              back false
+          save lemma, ls/rules/get(cited)
+          fork test, is-unequal(lemma/binder-count, 1)
+            hold
+              back false
+          save step
+            task
+              like boolean
+              save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
+              sift sides/left
+                case some
+                  link l
+                  sift sides/right
+                    case some
+                      link r
+                      sift quote(st, ctx/level, infer(st, ctx, l)/type)
+                        case pi
+                          save point, neutral-var(ctx/level)
+                          save left-at, apply-value(st, evaluate(st, ctx/env, l), point)
+                          save right-at, apply-value(st, evaluate(st, ctx/env, r), point)
+                          save at-point, make list
+                          push(at-point, point)
+                          save lemma-left, evaluate(st, at-point, lemma/lhs)
+                          save lemma-right, evaluate(st, at-point, lemma/rhs)
+                          fork test, are-convertible(st, add(ctx/level, 1), left-at, lemma-left)
+                            hold
+                              back are-convertible(st, add(ctx/level, 1), right-at, lemma-right)
+                          back false
+                        miss
+                          back false
+                    case none
+                      back false
+                case none
+                  back false
+          back attempt-boolean(st, step)
+        miss
+          back false
+    miss
+      back false
+
+# ---- universal hypotheses ----
+
+form candidate
+  link expression, like expression
+  link type, like kernel-value
+
+task named-terms
+  take e, like expression
+  take into, like list, like expression
+  mark private
+
+  sift e
+    case variable
+      push(into, e)
+    case member
+      push(into, e)
+    case call
+      link args
+      push(into, e)
+      walk args
+        take arg
+        named-terms(arg, into)
+    case binary
+      link left
+      link right
+      named-terms(left, into)
+      named-terms(right, into)
+    case unary
+      link operand
+      named-terms(operand, into)
+    miss
+      back
+
+task universal-sides
+  take u, like universal
+  like maybe, like expression-pair
+  mark private
+
+  sift u/expr
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case equal
+          save pair
+            make expression-pair
+              bind left, left
+              bind right, right
+          back make(some, pair)
+        miss
+          back make none
+    miss
+      back make none
+
+# the candidates of each binder: those the kernel types at its declared type, none when a binder's type does not read
+# or is a number
+task binder-candidates
+  take ts, like term-state
+  take u, like universal
+  take at, like number
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take candidates, like list, like candidate
+  like maybe, like list, like expression
+  mark private
+
+  save st, ts/st
+  save declared, make none
+  save types, make list
+  walk u/types
+    take one
+    push(types, one)
+  fork test, is-below(at, types/length)
+    hold
+      save declared, get(types, at)/type
+  sift declared
+    case some
+      link written
+      save visible, make hash
+      walk scope/keys()
+        take key
+        save level, scope/get(key)
+        fork test, is-minimum(level, 0)
+          hold
+            visible/set(key, level)
+      sift kernel-type-at(ts/aliases, make(some, written), ctx/level, ts/generics, ts/data/named-types, visible, ts/data/variant-to-enum)
+        case some
+          link binder-type
+          save type-value, evaluate(st, ctx/env, binder-type)
+          fork test, are-convertible(st, ctx/level, type-value, evaluate(st, no-values(), constant(<Number>)))
+            hold
+              back make none
+          save fitting, make list
+          walk candidates
+            take c
+            fork test, are-convertible(st, ctx/level, c/type, type-value)
+              hold
+                push(fitting, c/expression)
+          back make(some, fitting)
+        case none
+          back make none
+    case none
+      back make none
+
+# THE UNIVERSAL HYPOTHESES OF A THEOREM at the goal's own terms: each instance an equation true on this path, kept
+# when its sides type alike. One whose instances would pass 512 is skipped whole
+task universal-instances
+  take ts, like term-state
+  take program, like list, like statement
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take assumptions, like list, like expression-pair
+  like list, like expression-pair
+
+  save st, ts/st
+  save out, make list
+  save theorem-statement, statement
+  sift enclosing-theorem(program, statement)
+    case some
+      link found
+      save theorem-statement, found
+    case none
+      back out
+  save hypotheses, make list
+  save theorem-body, make list
+  sift theorem-statement
+    case function
+      link universals
+      link body
+      save theorem-body, body
+      walk universals
+        take u
+        push(hypotheses, u)
+    miss
+      back out
+  fork test, is-equal(hypotheses/length, 0)
+    hold
+      back out
+  # every term the goal, the guards and the witnesses name
+  save named, make list
+  sift statement
+    case hold
+      link expr
+      named-terms(expr, named)
+    miss
+      back out
+  walk assumptions
+    take pair
+    named-terms(pair/left, named)
+    named-terms(pair/right, named)
+  walk theorem-body
+    take step
+    sift step
+      case let
+        link mutable
+        link init
+        fork test, is-equal(mutable, false)
+          hold
+            named-terms(init, named)
+      miss
+        turn next
+  # each candidate once, by its kernel term, with its type
+  save candidates, make list
+  save seen, make hash
+  walk named
+    take expression
+    save term-type, make none
+    save term-key, <>
+    save fuel, st/unfold-fuel
+    fork
+      mark unsafe
+      sift expr(ts, expression, scope, ctx, no-value())
+        case some
+          link term
+          save printed, show-term(term)
+          fork test, is-equal(seen/has(printed), false)
+            hold
+              seen/set(printed, true)
+              save found, infer(st, ctx, term)/type
+              save c
+                make candidate
+                  bind expression, expression
+                  bind type, found
+              push(candidates, c)
+        case none
+          save fuel, fuel
+    halt take
+      take problem
+      save st/unfold-fuel, fuel
+  walk hypotheses
+    take u
+    sift universal-sides(u)
+      case some
+        link sides
+        save per-binder, make list
+        save complete, true
+        walk u/binders
+          take binder
+          take at
+          sift binder-candidates(ts, u, at, scope, ctx, candidates)
+            case some
+              link list-of
+              push(per-binder, list-of)
+            case none
+              save complete, false
+              save none-list, make list
+              push(per-binder, none-list)
+        fork test, is-equal(complete, false)
+          hold
+            turn next
+        save count, 1
+        walk per-binder
+          take one
+          save count, multiply(count, one/length)
+        fork test, or(is-equal(count, 0), is-above(count, 512))
+          hold
+            turn next
+        save n, 0
+        walk test
+          hook test, is-below(n, count)
+          hook hold
+            save binding, make hash
+            save rest, n
+            walk u/binders
+              take binder
+              take at
+              save options, get(per-binder, at)
+              save pick, rest
+              walk test
+                hook test, is-minimum(pick, options/length)
+                hook hold
+                  save pick, subtract(pick, options/length)
+              binding/set(binder, get(options, pick))
+              save rest, divide-down(rest, options/length)
+            save left, substitute(sides/left, binding)
+            save right, substitute(sides/right, binding)
+            save fuel, st/unfold-fuel
+            fork
+              mark unsafe
+              sift expr(ts, left, scope, ctx, no-value())
+                case some
+                  link lt
+                  sift expr(ts, right, scope, ctx, no-value())
+                    case some
+                      link rt
+                      fork test, are-convertible(st, ctx/level, infer(st, ctx, lt)/type, infer(st, ctx, rt)/type)
+                        hold
+                          save pair
+                            make expression-pair
+                              bind left, left
+                              bind right, right
+                          push(out, pair)
+                    case none
+                      save n, n
+                case none
+                  save n, n
+            halt take
+              take problem
+              save st/unfold-fuel, fuel
+            save n, add(n, 1)
+      case none
+        turn next
+  back out
+
+# a whole quotient, `Math.floor(a / b)` of naturals
+task divide-down
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  save q, 0
+  save r, a
+  walk test
+    hook test, is-minimum(r, b)
+    hook hold
+      save r, subtract(r, b)
+      save q, add(q, 1)
+  back q

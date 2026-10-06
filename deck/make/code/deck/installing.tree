@@ -1,0 +1,489 @@
+# The package-manager install: resolve a project's dependencies, fetch them into the content-addressed store, link them
+# into the project, and write the lockfile. End to end against a registry (a directory of packages; the network registry
+# is a swappable source). See note/research/vibe/computation/plans/16-package-manager.md.
+#
+# Ported from deck/install.ts (self-hosting, 2026-10-06), which stays as the face and holds the disk and the hash: every
+# read, listing, copy, link and write goes through a task of `install-disk`, called where the original called it and in
+# its order. The decisions:
+#   - an answer is `installed` or `refused`, which the face spells `{ ok: true, lockfile }` and `{ ok: false, error }`
+#   - a path is joined as node's posix `join` joins it (package-paths.tree)
+#   - versions sort by UTF-16 unit, as `sort()` with no comparator does, and a range's `<` and `>` are dropped and it is
+#     trimmed as JavaScript trims
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find substring
+  find char-code-at
+  find replace-all
+
+load @term/base/text/unicode
+  find to-runes
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ./resolve
+  find parse-package
+  find store-path
+
+load ./lock
+  find lockfile
+  find lock-request
+  find lock-link
+  find lock-dependency
+  find serialize-lockfile
+
+load ../package-paths
+  find join-two
+  find join-three
+  find dirname-of
+
+load ../compile/main-entry
+  find js-trim
+
+# a deck.tree read for installing: the package's name, its version, and what it links
+form manifest
+  link name, like text
+  link version, like text
+  link deps, like list, like manifest-dep
+
+form manifest-dep
+  link name, like text
+  link range, like text
+
+# ---- reading the manifest ----
+
+# a name node's text, its chunks joined
+task name-text
+  take parts, like list, like node
+  like text
+  mark private
+
+  save out, <>
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        save out, out
+  back out
+
+# a group's head, when its first node is a name
+task head-name
+  take members, like list, like node
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(members/length, 0)
+    hold
+      back make none
+  save first, get(members, 0)
+  sift first
+    case name
+      link parts
+      save head, name-text(parts)
+      back make(some, head)
+    miss
+      back make none
+
+# a group's value: its second node, a text's chunks, a name, or a group's head
+task value-of
+  take members, like list, like node
+  like text
+  mark private
+
+  fork test, is-below(members/length, 2)
+    hold
+      back <>
+  save arg, get(members, 1)
+  sift arg
+    case text
+      link parts
+      back name-text(parts)
+    case name
+      link parts
+      back name-text(parts)
+    case group
+      link nodes
+      sift head-name(nodes)
+        case some
+          link head
+          back head
+        case none
+          back <>
+    miss
+      back <>
+
+# whether a node is a group headed by `keyword`, and its members
+task members-if
+  take one, like node
+  take keyword, like text
+  like maybe, like list, like node
+  mark private
+
+  sift one
+    case group
+      link nodes
+      sift head-name(nodes)
+        case some
+          link head
+          fork test, is-equal(head, keyword)
+            hold
+              back make(some, nodes)
+        case none
+          back make none
+      back make none
+    miss
+      back make none
+
+# the first child group of a group headed by `keyword`
+task child-of
+  take members, like list, like node
+  take keyword, like text
+  like maybe, like list, like node
+  mark private
+
+  walk members
+    take one
+    take index
+    fork test, is-equal(index, 0)
+      hold
+        turn next
+    sift members-if(one, keyword)
+      case some
+        link found
+        back make(some, found)
+      case none
+        turn next
+  back make none
+
+task parse-deck
+  take text, like text
+  like manifest
+
+  save manifest
+    make manifest
+      bind name, <>
+      bind version, <>
+      bind deps, make list
+  save given
+    make token-source
+      bind file, <deck.tree>
+      bind text, text
+  save parsed, parse(given)
+  fork test, is-equal(parsed/ok, false)
+    hold
+      back manifest
+  save top, make list
+  sift parsed/tree
+    case root
+      link nodes
+      save top, nodes
+
+  walk top
+    take one
+    sift members-if(one, <deck>)
+      case some
+        link deck
+        save version, <>
+        sift child-of(deck, <mark>)
+          case some
+            link mark
+            save version, value-of(mark)
+          case none
+            save version, version
+        save deps, make list
+        walk deck
+          take member
+          take index
+          fork test, is-equal(index, 0)
+            hold
+              turn next
+          sift members-if(member, <link>)
+            case some
+              link linked
+              save range, <*>
+              sift child-of(linked, <mark>)
+                case some
+                  link mark
+                  save range, value-of(mark)
+                case none
+                  save range, range
+              save dep
+                make manifest-dep
+                  bind name, value-of(linked)
+                  bind range, range
+              push(deps, dep)
+            case none
+              turn next
+        back
+          make manifest
+            bind name, value-of(deck)
+            bind version, version
+            bind deps, deps
+      case none
+        turn next
+  back manifest
+
+# ---- installing ----
+
+# what the install reads and writes, handed in by the face
+form install-disk
+  link read-file
+    like task
+      take path, like text
+      like text
+  link exists
+    like task
+      take path, like text
+      like boolean
+  link read-dir
+    like task
+      take path, like text
+      like list, like text
+  link make-dirs
+    like task
+      take path, like text
+  link copy-tree
+    like task
+      take from, like text
+      take to, like text
+  link remove-tree
+    like task
+      take path, like text
+  link link-to
+    like task
+      take target, like text
+      take path, like text
+  link write-file
+    like task
+      take path, like text
+      take text, like text
+  link sha512-hex
+    like task
+      take text, like text
+      like text
+
+# texts in UTF-16 unit order, as `sort()` with no comparator orders them
+task unit-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  save a, units-of(left)
+  save b, units-of(right)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, a/length), is-below(at, b/length))
+    hook hold
+      fork test, is-below(get(a, at), get(b, at))
+        hold
+          back make less
+      fork test, is-above(get(a, at), get(b, at))
+        hold
+          back make greater
+      save at, add(at, 1)
+  fork test, is-below(a/length, b/length)
+    hold
+      back make less
+  fork test, is-above(a/length, b/length)
+    hold
+      back make greater
+  back make equal
+
+task units-of
+  take value, like text
+  like list, like number
+  mark private
+
+  save units, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-above(rune, 65535)
+      hold
+        save rest, subtract(rune, 65536)
+        save low, modulo(rest, 1024)
+        push(units, add(55296, divide(subtract(rest, low), 1024)))
+        push(units, add(56320, low))
+      miss
+        push(units, rune)
+  back units
+
+# a version from the registry for a range: the exact one when it is there, else the highest, by text
+task pick-version
+  take disk, like install-disk
+  take registry, like text
+  take host, like text
+  take deck, like text
+  take range, like text
+  like maybe, like text
+  mark private
+
+  save dir, join-three(registry, host, deck)
+  fork test, is-equal(disk/exists(dir), false)
+    hold
+      back make none
+  save versions, make list
+  walk disk/read-dir(dir)
+    take version
+    fork test, disk/exists(join-three(dir, version, <deck.tree>))
+      hold
+        push(versions, version)
+  fork test, is-equal(versions/length, 0)
+    hold
+      back make none
+  save cleaned, js-trim(replace-all(replace-all(range, <\<>, <>), <\>>, <>))
+  fork test, and(is-unequal(cleaned, <*>), is-unequal(cleaned, <>))
+    hold
+      walk versions
+        take version
+        fork test, is-equal(version, cleaned)
+          hold
+            back make(some, cleaned)
+  save sorted, sort(versions, unit-order)
+  save highest, get(sorted, subtract(sorted/length, 1))
+  back make(some, highest)
+
+# one install's state: the lockfile's links, and each dependency's version once resolved
+form install-state
+  mark shared
+  link links, like list, like lock-link
+  link visited, like hash, like text, like text
+
+# resolve one dependency: pick its version, fetch it into the store, resolve what it links, record it, and link it into
+# the project. None when no version answers
+task resolve-dep
+  take disk, like install-disk
+  take state, like install-state
+  take project, like text
+  take registry, like text
+  take store, like text
+  take dep-name, like text
+  take range, like text
+  like maybe, like text
+  mark private
+
+  save parts, parse-package(dep-name)
+  save host, parts/host
+  save name, parts/name
+  sift pick-version(disk, registry, host, name, range)
+    case none
+      back make none
+    case some
+      link version
+      save ref, <{dep-name}:{version}>
+      fork test, state/visited/has(dep-name)
+        hold
+          save known, state/visited/get(dep-name)
+          back make(some, known)
+      state/visited/set(dep-name, version)
+
+      # fetch: copy from the registry into the content-addressed store, verify-by-hash
+      save source, join-two(join-three(registry, host, name), version)
+      save target, store-path(store, host, name, version)
+      fork test, is-equal(disk/exists(target), false)
+        hold
+          disk/make-dirs(dirname-of(target))
+          disk/copy-tree(source, target)
+      save hash, <sha512-{substring(disk/sha512-hex(disk/read-file(join-two(target, <deck.tree>))), 0, 32)}>
+
+      # transitive: resolve the dependency's own dependencies
+      save dep-manifest, parse-deck(disk/read-file(join-two(target, <deck.tree>)))
+      save deps, make list
+      walk dep-manifest/deps
+        take d
+        sift resolve-dep(disk, state, project, registry, store, d/name, d/range)
+          case some
+            link resolved
+            save one
+              make lock-dependency
+                bind name, d/name
+                bind version, resolved
+            push(deps, one)
+          case none
+            turn next
+      save linked
+        make lock-link
+          bind ref, ref
+          bind hash, hash
+          bind deps, deps
+      push(state/links, linked)
+
+      # link into the project's local store: project/link/<host>/<name> -> the store's version
+      save link-dir, join-three(join-two(project, <link>), host, name)
+      disk/make-dirs(dirname-of(link-dir))
+      fork test, disk/exists(link-dir)
+        hold
+          disk/remove-tree(link-dir)
+      disk/link-to(target, link-dir)
+      back make(some, version)
+
+# what an install answers: the lockfile it wrote, or why it could not resolve
+form install-answer
+  case installed
+    link lockfile, like lockfile
+  case refused
+    link error, like text
+
+# install a project's dependencies. `registry` holds `<host>/<deck>/<version>/` packages, and `store` is the
+# content-addressed store's root
+task install
+  take disk, like install-disk
+  take project, like text
+  take registry, like text
+  take store, like text
+  like install-answer
+
+  save manifest, parse-deck(disk/read-file(join-two(project, <deck.tree>)))
+  save state
+    make install-state
+      bind links, make list
+      bind visited, make hash
+  save requests, make list
+  walk manifest/deps
+    take dep
+    sift resolve-dep(disk, state, project, registry, store, dep/name, dep/range)
+      case some
+        link version
+        save request
+          make lock-request
+            bind name, dep/name
+            bind range, dep/range
+            bind locked, version
+        push(requests, request)
+      case none
+        back
+          make refused
+            bind error, <cannot resolve {dep/name}>
+  save base, manifest/version
+  fork test, is-equal(base, <>)
+    hold
+      save base, <0.0.0>
+  save lock
+    make lockfile
+      bind base, base
+      bind requests, requests
+      bind links, state/links
+  disk/write-file(join-two(project, <deck.lock.tree>), serialize-lockfile(lock))
+  back
+    make installed
+      bind lockfile, lock

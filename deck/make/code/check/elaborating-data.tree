@@ -1,0 +1,1900 @@
+# Elaboration, part one: the kernel's reading of a program's types and data. A surface type to a kernel type term at a
+# binder depth (`kernel-type-at`), a value index to a kernel term (`index-term-at`), the base signature of postulated
+# constants, each form's encoding (constructors, projections, eliminators, the large eliminator, the self-type encoding
+# and their computing definitions), and each task's kernel type. Everything the elaborator reads before it opens a
+# kernel context.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), which stays as the face and says why each encoding is shaped
+# as it is. The decisions:
+#   - a field type the kernel cannot read is `null` in the original, and some of those it put INSIDE a term (a match
+#     eliminator's branch built from a field type it never checked), where only `hasFreeVar` read it, as a free
+#     variable. Here a type that does not read is `none`, and a term built over one is never built: the flag `broken`
+#     says so, and a broken term is not closed, which is everything the original read of it
+#   - a transparent alias read through is marked open while it is read, so one naming itself is read as the constant it
+#     is (`alias-state`, shared: the face holds one per elaboration, since its own closures read types through here too)
+#   - `sameValueArgs` compared two lists of value arguments by `JSON.stringify` of each with its spans, types and bindings
+#     left out, key order and all. It is handed in (`same-value-args`), so the comparison is the original's exactly
+#   - a set is a hash of its members to `true`, in the order they were added; a `(string | undefined)[]` is a list of
+#     maybes; `kindsApart` and the numeric literals the program holds are read by the face, which walks every key of a
+#     node by reflection, and handed in
+#   - a task registered as a truncation constructor is listed (`truncations`), and the face registers each with the
+#     kernel in that order, where the original called it
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+
+load ../compile/node
+  find statement
+  find expression
+  find type
+  find form-variant
+  find form-field
+  find variant-field
+  find function-param
+
+load ../compile/type-text
+  find integer-text
+
+load ./alias
+  find type-alias
+  find through-alias
+
+load ./judging
+  find kernel-term
+  find signature-entry
+  find level
+  find lit-level
+
+# ---- term builders ----
+
+task constant
+  take name, like text
+  like kernel-term
+
+  back
+    make const
+      bind name, name
+
+task variable
+  take index, like number
+  like kernel-term
+
+  back
+    make var
+      bind index, index
+
+task type-zero
+  like kernel-term
+
+  back
+    make type
+      bind level, lit-level(0)
+
+task type-one
+  like kernel-term
+  mark private
+
+  back
+    make type
+      bind level, lit-level(1)
+
+# the multiplicities, the judge's own values
+task mult-many
+  like unknown
+  mark private
+
+  back <many>
+
+task mult-zero
+  like unknown
+  mark private
+
+  back 0
+
+task arrow
+  take domain, like kernel-term
+  take codomain, like kernel-term
+  like kernel-term
+
+  back
+    make pi
+      bind mult, mult-many()
+      bind domain, domain
+      bind codomain, codomain
+
+task erased-pi
+  take domain, like kernel-term
+  take codomain, like kernel-term
+  like kernel-term
+
+  back
+    make pi
+      bind mult, mult-zero()
+      bind domain, domain
+      bind codomain, codomain
+
+task apply-term
+  take fun, like kernel-term
+  take arg, like kernel-term
+  like kernel-term
+
+  back
+    make app
+      bind fun, fun
+      bind arg, arg
+
+# a function applied to each argument in turn
+task apply-all
+  take fun, like kernel-term
+  take args, like list, like kernel-term
+  like kernel-term
+
+  save out, fun
+  walk args
+    take one
+    save out, apply-term(out, one)
+  back out
+
+task lam-term
+  take body, like kernel-term
+  like kernel-term
+
+  back
+    make lam
+      bind body, body
+
+# a body wrapped in `count` lambdas
+task lambdas
+  take count, like number
+  take body, like kernel-term
+  like kernel-term
+
+  save out, body
+  save i, 0
+  walk test
+    hook test, is-below(i, count)
+    hook hold
+      save out, lam-term(out)
+      save i, add(i, 1)
+  back out
+
+# does a term have a FREE de Bruijn variable below `depth`, an index that escapes all its binders? The safety gate on a
+# datatype's generated types: one that is not closed falls back to an opaque postulate
+task has-free-var
+  take term, like kernel-term
+  take depth, like number
+  like boolean
+
+  sift term
+    case var
+      link index
+      back is-minimum(index, depth)
+    case app
+      link fun
+      link arg
+      back or(has-free-var(fun, depth), has-free-var(arg, depth))
+    case lam
+      link body
+      back has-free-var(body, add(depth, 1))
+    case self
+      link body
+      back has-free-var(body, add(depth, 1))
+    case pi
+      link domain
+      link codomain
+      back or(has-free-var(domain, depth), has-free-var(codomain, add(depth, 1)))
+    case sigma
+      link domain
+      link codomain
+      back or(has-free-var(domain, depth), has-free-var(codomain, add(depth, 1)))
+    case ann
+      link term
+      link type
+      back or(has-free-var(term, depth), has-free-var(type, depth))
+    case pair
+      link first
+      link second
+      back or(has-free-var(first, depth), has-free-var(second, depth))
+    case fst
+      link pair
+      back has-free-var(pair, depth)
+    case snd
+      link pair
+      back has-free-var(pair, depth)
+    case id
+      link type
+      link left
+      link right
+      back or(or(has-free-var(type, depth), has-free-var(left, depth)), has-free-var(right, depth))
+    case refl
+      link type
+      link value
+      back or(has-free-var(type, depth), has-free-var(value, depth))
+    case j
+      link proof
+      link motive
+      link base
+      back or(or(has-free-var(proof, depth), has-free-var(motive, depth)), has-free-var(base, depth))
+    miss
+      back false
+
+# does a term mention a universe anywhere? A form with such a field is LARGE, and gets no large eliminator (paradox K0)
+task mentions-universe
+  take term, like kernel-term
+  like boolean
+
+  sift term
+    case type
+      back true
+    case app
+      link fun
+      link arg
+      back or(mentions-universe(fun), mentions-universe(arg))
+    case lam
+      link body
+      back mentions-universe(body)
+    case self
+      link body
+      back mentions-universe(body)
+    case pi
+      link domain
+      link codomain
+      back or(mentions-universe(domain), mentions-universe(codomain))
+    case sigma
+      link domain
+      link codomain
+      back or(mentions-universe(domain), mentions-universe(codomain))
+    case ann
+      link term
+      link type
+      back or(mentions-universe(term), mentions-universe(type))
+    case pair
+      link first
+      link second
+      back or(mentions-universe(first), mentions-universe(second))
+    case fst
+      link pair
+      back mentions-universe(pair)
+    case snd
+      link pair
+      back mentions-universe(pair)
+    case id
+      link type
+      link left
+      link right
+      back or(or(mentions-universe(type), mentions-universe(left)), mentions-universe(right))
+    case refl
+      link type
+      link value
+      back or(mentions-universe(type), mentions-universe(value))
+    case j
+      link proof
+      link motive
+      link base
+      back or(or(mentions-universe(proof), mentions-universe(motive)), mentions-universe(base))
+    miss
+      back false
+
+# the self-encoding of constructor `variant-index` of a datatype with `variant-count` variants, this one carrying
+# `field-count` fields, after `param-count` erased type parameters: \p.. \f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}
+task constructor-encoding
+  take variant-index, like number
+  take field-count, like number
+  take variant-count, like number
+  take param-count, like number
+  like kernel-term
+
+  save body, variable(subtract(subtract(variant-count, 1), variant-index))
+  save j, 0
+  walk test
+    hook test, is-below(j, field-count)
+    hook hold
+      save body, apply-term(body, variable(subtract(add(variant-count, field-count), j)))
+      save j, add(j, 1)
+  back lambdas(add(add(add(param-count, field-count), 1), variant-count), body)
+
+# ---- the base signature ----
+
+task number-term
+  like kernel-term
+
+  back constant(<Number>)
+
+task boolean-term
+  like kernel-term
+
+  back constant(<Boolean>)
+
+task signature-of
+  take name, like text
+  take type, like kernel-term
+  like signature-entry
+
+  back
+    make signature-entry
+      bind name, name
+      bind type, type
+
+# a number to number to number, the arithmetic
+task number-operator
+  like kernel-term
+  mark private
+
+  back arrow(number-term(), arrow(number-term(), number-term()))
+
+task number-comparison
+  like kernel-term
+  mark private
+
+  back arrow(number-term(), arrow(number-term(), boolean-term()))
+
+task boolean-operator
+  like kernel-term
+  mark private
+
+  back arrow(boolean-term(), arrow(boolean-term(), boolean-term()))
+
+# equal : (0 A : Type 0) -> A -> A -> Boolean, the witness type erased
+task poly-equality
+  like kernel-term
+  mark private
+
+  back erased-pi(type-zero(), arrow(variable(0), arrow(variable(1), boolean-term())))
+
+# the base types and the primitive operations, postulated constants of the kernel
+task base-signature
+  like list, like signature-entry
+
+  save out, make list
+  push(out, signature-of(<Number>, type-zero()))
+  push(out, signature-of(<Boolean>, type-zero()))
+  push(out, signature-of(<String>, type-zero()))
+  push(out, signature-of(<Unit>, type-zero()))
+  # a canonical inhabitant per base type, so a literal elaborates to a genuine term of that type
+  push(out, signature-of(<numberValue>, number-term()))
+  push(out, signature-of(<stringValue>, constant(<String>)))
+  push(out, signature-of(<unitValue>, constant(<Unit>)))
+  push(out, signature-of(<boolTrue>, boolean-term()))
+  push(out, signature-of(<boolFalse>, boolean-term()))
+  push(out, signature-of(<add>, number-operator()))
+  push(out, signature-of(<sub>, number-operator()))
+  push(out, signature-of(<mul>, number-operator()))
+  push(out, signature-of(<div>, number-operator()))
+  push(out, signature-of(<mod>, number-operator()))
+  push(out, signature-of(<neg>, arrow(number-term(), number-term())))
+  push(out, signature-of(<lt>, number-comparison()))
+  push(out, signature-of(<le>, number-comparison()))
+  push(out, signature-of(<gt>, number-comparison()))
+  push(out, signature-of(<ge>, number-comparison()))
+  push(out, signature-of(<and>, boolean-operator()))
+  push(out, signature-of(<or>, boolean-operator()))
+  push(out, signature-of(<not>, arrow(boolean-term(), boolean-term())))
+  push(out, signature-of(<equal>, poly-equality()))
+  push(out, signature-of(<notequal>, poly-equality()))
+  # cond : (0 A : Type 0) -> Boolean -> A -> A -> A
+  push(out, signature-of(<cond>, erased-pi(type-zero(), arrow(boolean-term(), arrow(variable(1), arrow(variable(2), variable(3)))))))
+  # arrays: a type former and its constructors, the element type erased
+  push(out, signature-of(<Array>, arrow(type-zero(), type-zero())))
+  push(out, signature-of(<arrayEmpty>, erased-pi(type-zero(), apply-term(constant(<Array>), variable(0)))))
+  push(out, signature-of(<arrayPush>, erased-pi(type-zero(), arrow(apply-term(constant(<Array>), variable(0)), arrow(variable(1), apply-term(constant(<Array>), variable(2)))))))
+  back out
+
+# a numeric literal's own postulated constant, so the kernel tells `24` from `999`
+task number-literal-constant
+  take value, like text
+  like text
+
+  back <numberValue#{value}>
+
+# ---- the kernel's reading of a type ----
+
+# the program's transparent aliases, and the ones being read through right now
+form alias-state
+  mark shared
+  link aliases, like hash, like text, like type-alias
+  link open, like hash, like text, like boolean
+
+task new-alias-state
+  take aliases, like hash, like text, like type-alias
+  like alias-state
+
+  back
+    make alias-state
+      bind aliases, aliases
+      bind open, make hash
+
+# a value index (a variable an enclosing telescope binds, a literal, a construction, a call of a function value in
+# scope) as a kernel term at binder `depth`, none for anything else. `value-scope` maps a name to its binder level
+task index-term-at
+  take node, like expression
+  take depth, like number
+  take value-scope, like hash, like text, like number
+  take owners, like hash, like text, like list, like text
+  like maybe, like kernel-term
+
+  sift node
+    case variable
+      link name
+      fork test, value-scope/has(name)
+        hold
+          save found, variable(subtract(subtract(depth, value-scope/get(name)), 1))
+          back make(some, found)
+      back make none
+    case integer
+      save found, constant(number-literal-constant(integer-text(node)))
+      back make(some, found)
+    case record
+      link name
+      link fields
+      save head, <make__{name}>
+      sift resolve-in(owners, name)
+        case some
+          link resolved
+          save head, resolved
+        case none
+          save head, head
+      save term, constant(head)
+      walk fields
+        take field
+        sift index-term-at(field/value, depth, value-scope, owners)
+          case some
+            link argument
+            save term, apply-term(term, argument)
+          case none
+            back make none
+      back make(some, term)
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link callee-name
+          fork test, is-equal(value-scope/has(callee-name), false)
+            hold
+              back make none
+          save term, variable(subtract(subtract(depth, value-scope/get(callee-name)), 1))
+          walk args
+            take arg
+            sift index-term-at(arg, depth, value-scope, owners)
+              case some
+                link argument
+                save term, apply-term(term, argument)
+              case none
+                back make none
+          back make(some, term)
+        miss
+          back make none
+    miss
+      back make none
+
+# no constructor resolves: the default of the original's `resolveCtor`
+task empty-owners
+  like hash, like text, like list, like text
+
+  back make hash
+
+# a variant's surface name to its `enum__variant` key, when exactly one encoded enum declares it (`owners` maps a
+# variant to the forms encoding it, read as it is at the call: the encoding loop adds to it as it goes)
+task resolve-in
+  take owners, like hash, like text, like list, like text
+  take variant, like text
+  like maybe, like text
+
+  fork test, owners/has(variant)
+    hold
+      save found, owners/get(variant)
+      fork test, is-equal(found/length, 1)
+        hold
+          save key, ctor-key(get(found, 0), variant)
+          back make(some, key)
+  back make none
+
+# a named type's type arguments, copied where they are read (a `need false` list bound in an arm is written `[]`)
+task type-args-of
+  take given, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  sift given
+    case named
+      walk given/args
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task value-args-of
+  take given, like type
+  like list, like expression
+  mark private
+
+  save out, make list
+  sift given
+    case named
+      walk given/value-args
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task param-names-of
+  take given, like type
+  like list, like text
+  mark private
+
+  save out, make list
+  sift given
+    case function
+      walk given/param-names
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+# the value scope with the first `count` named parameters of a function type bound at `depth + p`, the same hash when
+# none is named (a copy is made at the first name, as the original did)
+task scope-with
+  take value-scope, like hash, like text, like number
+  take names, like list, like text
+  take depth, like number
+  take count, like number
+  like hash, like text, like number
+  mark private
+
+  save scope, value-scope
+  save copied, false
+  save p, 0
+  walk test
+    hook test, is-below(p, count)
+    hook hold
+      fork test, is-below(p, names/length)
+        hold
+          save name, get(names, p)
+          fork test, is-unequal(name, <>)
+            hold
+              fork test, is-equal(copied, false)
+                hold
+                  save fresh, make hash
+                  walk value-scope/keys()
+                    take key
+                    fresh/set(key, value-scope/get(key))
+                  save scope, fresh
+                  save copied, true
+              scope/set(name, add(depth, p))
+      save p, add(p, 1)
+  back scope
+
+# a surface type as a kernel type term at binder `depth`: a generic by its de Bruijn variable, a value parameter used as
+# a type family applied to its value arguments, a transparent alias as the type it names, a known named type as its
+# constant applied to its type and value arguments, an array, a function type as an arrow chain. None for anything else
+task kernel-type-at
+  take state, like alias-state
+  take given, like maybe, like type
+  take depth, like number
+  take generics, like hash, like text, like number
+  take known, like hash, like text, like boolean
+  take value-scope, like hash, like text, like number
+  take owners, like hash, like text, like list, like text
+  like maybe, like kernel-term
+
+  sift given
+    case none
+      back make none
+    case some
+      link one
+      sift one
+        case number
+          save found, number-term()
+          back make(some, found)
+        case boolean
+          save found, boolean-term()
+          back make(some, found)
+        case string
+          save found, constant(<String>)
+          back make(some, found)
+        case unit
+          save found, constant(<Unit>)
+          back make(some, found)
+        case named
+          link name
+          # `type` is the UNIVERSE (Type0): the type of types
+          fork test, is-equal(name, <type>)
+            hold
+              save found, type-zero()
+              back make(some, found)
+          fork test, generics/has(name)
+            hold
+              save found, variable(subtract(subtract(depth, generics/get(name)), 1))
+              back make(some, found)
+          save type-args, type-args-of(one)
+          save index-args, value-args-of(one)
+          # A TYPE FAMILY: a value parameter used as a type, applied to values
+          fork test, and(value-scope/has(name), is-equal(type-args/length, 0))
+            hold
+              save family, variable(subtract(subtract(depth, value-scope/get(name)), 1))
+              walk index-args
+                take value-arg
+                sift index-term-at(value-arg, depth, value-scope, owners)
+                  case some
+                    link arg-term
+                    save family, apply-term(family, arg-term)
+                  case none
+                    back make none
+              back make(some, family)
+          # a TRANSPARENT ALIAS is the type it names, unless it is being read through right now
+          fork test, is-equal(state/open/has(name), false)
+            hold
+              save through, through-alias(one, state/aliases)
+              fork test, through/found
+                hold
+                  state/open/set(name, true)
+                  save aliased, through/type
+                  save read, kernel-type-at(state, make(some, aliased), depth, generics, known, value-scope, owners)
+                  state/open/delete(name)
+                  back read
+          fork test, is-equal(known/has(name), false)
+            hold
+              back make none
+          save base, constant(name)
+          walk type-args
+            take arg
+            sift kernel-type-at(state, make(some, arg), depth, generics, known, value-scope, owners)
+              case some
+                link arg-term
+                save base, apply-term(base, arg-term)
+              case none
+                back make none
+          walk index-args
+            take value-arg
+            sift index-term-at(value-arg, depth, value-scope, owners)
+              case some
+                link arg-term
+                save base, apply-term(base, arg-term)
+              case none
+                back make none
+          back make(some, base)
+        case array
+          link element
+          sift kernel-type-at(state, make(some, element), depth, generics, known, value-scope, owners)
+            case some
+              link element-term
+              save found, apply-term(constant(<Array>), element-term)
+              back make(some, found)
+            case none
+              back make none
+        case function
+          link params
+          link result
+          save n, params/length
+          save names, param-names-of(one)
+          sift kernel-type-at(state, make(some, result), add(depth, n), generics, known, scope-with(value-scope, names, depth, n), owners)
+            case some
+              link result-term
+              save out, result-term
+              save i, subtract(n, 1)
+              walk test
+                hook test, is-minimum(i, 0)
+                hook hold
+                  save param, get(params, i)
+                  sift kernel-type-at(state, make(some, param), add(depth, i), generics, known, scope-with(value-scope, names, depth, i), owners)
+                    case some
+                      link param-term
+                      save out, arrow(param-term, out)
+                    case none
+                      back make none
+                  save i, subtract(i, 1)
+              back make(some, out)
+            case none
+              back make none
+        miss
+          back make none
+
+# the closed case, no generics and no value scope, for a struct's fields
+task kernel-type
+  take state, like alias-state
+  take given, like type
+  take known, like hash, like text, like boolean
+  like maybe, like kernel-term
+
+  save no-generics, make hash
+  save no-scope, make hash
+  back kernel-type-at(state, make(some, given), 0, no-generics, known, no-scope, empty-owners())
+
+# ---- the type the kernel reads for a parameter or a result ----
+
+# the type as WRITTEN when the surface checker's seeding lost something from it, the checked one otherwise
+task faithful
+  take declared, like maybe, like type
+  take checked, like maybe, like type
+  take same-value-args
+    like task
+      take left, like type
+      take right, like type
+      like boolean
+  like maybe, like type
+
+  sift declared
+    case some
+      link written
+      fork test, lost-in(written, checked, same-value-args)
+        hold
+          back declared
+      back checked
+    case none
+      back checked
+
+# did seeding lose anything from `declared` on its way to `checked`: a dropped type argument, a dropped value argument,
+# or a written name with value arguments that became something else
+task lost-in
+  take declared, like type
+  take checked, like maybe, like type
+  take same-value-args
+    like task
+      take left, like type
+      take right, like type
+      like boolean
+  like boolean
+
+  sift checked
+    case none
+      back true
+    case some
+      link seeded
+      sift declared
+        case named
+          link name
+          sift seeded
+            case named
+              link seeded-name
+              fork test, is-unequal(seeded-name, name)
+                hold
+                  back or(is-above(value-args-of(declared)/length, 0), is-above(type-args-of(declared)/length, 0))
+              save d-args, type-args-of(declared)
+              save c-args, type-args-of(seeded)
+              fork test, is-above(d-args/length, c-args/length)
+                hold
+                  back true
+              # value arguments are expressions the programmer wrote, and any change at all means the written type is
+              # the faithful one
+              fork test, is-equal(same-value-args(declared, seeded), false)
+                hold
+                  back true
+              walk d-args
+                take a
+                take i
+                save c, make none
+                fork test, is-below(i, c-args/length)
+                  hold
+                    save c-arg, get(c-args, i)
+                    save c, make(some, c-arg)
+                fork test, lost-in(a, c, same-value-args)
+                  hold
+                    back true
+              back false
+            miss
+              back or(is-above(value-args-of(declared)/length, 0), is-above(type-args-of(declared)/length, 0))
+        case function
+          link params
+          link result
+          sift seeded
+            case function
+              link seeded-params
+              link seeded-result
+              walk params
+                take p
+                take i
+                save c, make none
+                fork test, is-below(i, seeded-params/length)
+                  hold
+                    save c-param, get(seeded-params, i)
+                    save c, make(some, c-param)
+                fork test, lost-in(p, c, same-value-args)
+                  hold
+                    back true
+              back lost-in(result, make(some, seeded-result), same-value-args)
+            miss
+              back false
+        case array
+          link element
+          sift seeded
+            case array
+              link seeded-element
+              back lost-in(element, make(some, seeded-element), same-value-args)
+            miss
+              back false
+        miss
+          back false
+
+# ---- the encoding of the program's data ----
+
+# a field's surface name and its kernel type, none where the kernel cannot read it
+form field-info
+  link name, like text
+  link type, like maybe, like kernel-term
+
+# a computing definition: a constructor's or an eliminator's self-encoding lambda
+form named-term
+  link name, like text
+  link term, like kernel-term
+
+form truncation-entry
+  link name, like text
+  link arity, like number
+
+# everything the elaborator reads of a program's types and data, before it opens a kernel context
+form elaboration-data
+  mark shared
+  link named-types, like hash, like text, like boolean
+  link signature, like list, like signature-entry
+  link record-fields, like hash, like text, like list, like text
+  link record-field-info, like hash, like text, like list, like field-info
+  link variant-names, like hash, like text, like list, like text
+  link variant-to-enum, like hash, like text, like list, like text
+  link declared-owners, like hash, like text, like hash, like text, like boolean
+  link variant-field-info, like hash, like text, like list, like field-info
+  link enum-encodings, like list, like named-term
+  link enum-defs, like list, like named-term
+  link type-former-arity, like hash, like text, like number
+  link large-forms, like hash, like text, like text
+  link type-former-indices, like hash, like text, like list, like kernel-term
+  link family-index-type, like hash, like text, like text
+  link variant-index-head, like hash, like text, like text
+  link variant-index-expr, like hash, like text, like expression
+  link family-index-types, like hash, like text, like list, like maybe, like text
+  link variant-index-heads, like hash, like text, like list, like maybe, like text
+  link truncations, like list, like truncation-entry
+  link function-type, like hash, like text, like kernel-term
+  link function-generics, like hash, like text, like number
+  link representable, like hash, like text, like boolean
+  link unreadable, like hash, like text, like text
+
+task ctor-key
+  take enum-name, like text
+  take variant, like text
+  like text
+
+  back <{enum-name}__{variant}>
+
+# a variant's surface name to its `enum__variant` key, when exactly one encoded enum declares it
+task resolve-index-ctor
+  take data, like elaboration-data
+  take variant, like text
+  like maybe, like text
+
+  back resolve-in(data/variant-to-enum, variant)
+
+# the type former applied to its `m` parameter variables, then to the index terms, at binder `depth`
+task applied-self
+  take name, like text
+  take m, like number
+  take depth, like number
+  take index-terms, like list, like kernel-term
+  like kernel-term
+  mark private
+
+  save out, constant(name)
+  save p, 0
+  walk test
+    hook test, is-below(p, m)
+    hook hold
+      save out, apply-term(out, variable(subtract(subtract(depth, p), 1)))
+      save p, add(p, 1)
+  walk index-terms
+    take one
+    save out, apply-term(out, one)
+  back out
+
+task no-terms
+  like list, like kernel-term
+  mark private
+
+  back make list
+
+# `m` erased type parameters around a term
+task with-params
+  take m, like number
+  take inner, like kernel-term
+  like kernel-term
+  mark private
+
+  save out, inner
+  save p, 0
+  walk test
+    hook test, is-below(p, m)
+    hook hold
+      save out, erased-pi(type-zero(), out)
+      save p, add(p, 1)
+  back out
+
+# the first `count` fields of a variant, each at level `base + i`
+task field-scope
+  take fields, like list, like variant-field
+  take count, like number
+  take base, like number
+  like hash, like text, like number
+  mark private
+
+  save scope, make hash
+  walk fields
+    take field
+    take i
+    fork test, is-below(i, count)
+      hold
+        scope/set(field/name, add(base, i))
+  back scope
+
+task push-owner
+  take hash, like hash, like text, like list, like text
+  take key, like text
+  take owner, like text
+  mark private
+
+  fork test, is-equal(hash/has(key), false)
+    hold
+      hash/set(key, make list)
+  save owners, hash/get(key)
+  push(owners, owner)
+
+task named-term-of
+  take name, like text
+  take term, like kernel-term
+  like named-term
+  mark private
+
+  back
+    make named-term
+      bind name, name
+      bind term, term
+
+# a kernel term built from parts that may not read: `broken` when one did not
+form built-term
+  link term, like kernel-term
+  link broken, like boolean
+
+task some-type
+  take given, like type
+  like maybe, like type
+  mark private
+
+  back make(some, given)
+
+# the name a construction makes, none for any other expression
+task record-name-of
+  take node, like expression
+  like maybe, like text
+  mark private
+
+  sift node
+    case record
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+task some-term
+  take given, like kernel-term
+  like maybe, like kernel-term
+  mark private
+
+  back make(some, given)
+
+task empty-scope
+  like hash, like text, like number
+  mark private
+
+  back make hash
+
+# the encoding of one form with cases (an enum, polymorphic or an indexed family): its constructors, its eliminators and
+# their computing definitions, or nothing when it cannot be encoded soundly
+task encode-enum
+  take data, like elaboration-data
+  take state, like alias-state
+  take one, like statement
+  mark private
+
+  sift one
+    case record-type
+      link name
+      link params
+      link variants
+      link truncation
+      save m, params/length
+      save data-generics, make hash
+      walk params
+        take p
+        take i
+        data-generics/set(p, i)
+      save indices, make list
+      walk one/indices
+        take ix
+        push(indices, ix)
+      save l, indices/length
+      save n, variants/length
+
+      # the index types at the former's kind: index t after the m parameters and the t earlier indices
+      save index-types, make list
+      save index-ok, true
+      walk indices
+        take ix
+        take t
+        sift kernel-type-at(state, some-type(ix/type), add(m, t), data-generics, data/named-types, empty-scope(), empty-owners())
+          case some
+            link found
+            push(index-types, found)
+          case none
+            save index-ok, false
+      fork test, is-equal(index-ok, false)
+        hold
+          back
+      walk variants
+        take variant
+        walk variant/fields
+          take field
+          sift kernel-type-at(state, some-type(field/type), m, data-generics, data/named-types, field-scope(variant/fields, variant/fields/length, m), data/variant-to-enum)
+            case none
+              back
+            case some
+              save field, field
+      fork test, is-above(l, 0)
+        hold
+          data/type-former-indices/set(name, index-types)
+
+      # constructor types, closed-checked
+      save ctor-types, make list
+      save sound, true
+      walk variants
+        take variant
+        save fields, variant/fields
+        save k, fields/length
+        save index-terms, make list
+        fork test, is-above(l, 0)
+          hold
+            save values, make list
+            walk variant/index-values
+              take v
+              push(values, v)
+            save i, 0
+            walk test
+              hook test, is-below(i, l)
+              hook hold
+                save read-ok, false
+                fork test, is-below(i, values/length)
+                  hold
+                    sift index-term-at(get(values, i), add(m, k), field-scope(fields, k, m), data/variant-to-enum)
+                      case some
+                        link term
+                        push(index-terms, term)
+                        save read-ok, true
+                      case none
+                        save read-ok, false
+                fork test, is-equal(read-ok, false)
+                  hold
+                    save sound, false
+                    halt
+                save i, add(i, 1)
+        save ctor-type, applied-self(name, m, add(m, k), index-terms)
+        save j, subtract(k, 1)
+        walk test
+          hook test, is-minimum(j, 0)
+          hook hold
+            sift kernel-type-at(state, some-type(get(fields, j)/type), add(m, j), data-generics, data/named-types, field-scope(fields, j, m), data/variant-to-enum)
+              case some
+                link field-type
+                save ctor-type, arrow(field-type, ctor-type)
+              case none
+                save sound, false
+                halt
+            save j, subtract(j, 1)
+        fork test, is-equal(sound, false)
+          hold
+            turn next
+        save ctor-type, with-params(m, ctor-type)
+        fork test, has-free-var(ctor-type, 0)
+          hold
+            save sound, false
+        push(ctor-types, signature-of(ctor-key(name, variant/name), ctor-type))
+
+      fork test, is-above(l, 0)
+        hold
+          encode-family(data, state, one, ctor-types, sound, index-types)
+          back
+      encode-plain-enum(data, state, one, ctor-types, sound)
+    miss
+      back
+
+# the field infos of a variant: field j at depth `base + j`, the preceding fields in scope
+task variant-field-infos
+  take data, like elaboration-data
+  take state, like alias-state
+  take fields, like list, like variant-field
+  take base, like number
+  take generics, like hash, like text, like number
+  like list, like field-info
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    take j
+    save info
+      make field-info
+        bind name, field/name
+        bind type, kernel-type-at(state, some-type(field/type), add(base, j), generics, data/named-types, field-scope(fields, j, base), data/variant-to-enum)
+    push(out, info)
+  back out
+
+# AN INDEXED FAMILY: the index-carrying constructor types, their computing definitions, the inversion data, and the fully
+# dependent eliminator `match__T`
+task encode-family
+  take data, like elaboration-data
+  take state, like alias-state
+  take one, like statement
+  take ctor-types, like list, like signature-entry
+  take sound, like boolean
+  take index-types, like list, like kernel-term
+  mark private
+
+  fork test, is-equal(sound, false)
+    hold
+      back
+  sift one
+    case record-type
+      link name
+      link params
+      link variants
+      save m, params/length
+      save n, variants/length
+      save data-generics, make hash
+      walk params
+        take p
+        take i
+        data-generics/set(p, i)
+      save indices, make list
+      walk one/indices
+        take ix
+        push(indices, ix)
+      save l, indices/length
+
+      walk ctor-types
+        take ctor
+        push(data/signature, ctor)
+      walk variants
+        take variant
+        push-owner(data/variant-to-enum, variant/name, name)
+        data/variant-field-info/set(ctor-key(name, variant/name), variant-field-infos(data, state, variant/fields, m, data-generics))
+      save names, make list
+      walk variants
+        take variant
+        push(names, variant/name)
+      data/variant-names/set(name, names)
+      data/type-former-arity/set(name, m)
+
+      # MULTI-INDEX inversion data
+      save index-type-names, make list
+      walk indices
+        take ix
+        sift ix/type
+          case named
+            link index-type-name
+            push(index-type-names, make(some, index-type-name))
+          miss
+            push(index-type-names, make none)
+      data/family-index-types/set(name, index-type-names)
+      walk variants
+        take variant
+        save heads, make list
+        walk variant/index-values
+          take head
+          sift head
+            case record
+              link head-name
+              push(heads, resolve-index-ctor(data, head-name))
+            miss
+              push(heads, make none)
+        data/variant-index-heads/set(ctor-key(name, variant/name), heads)
+
+      # the single index type name and each variant's first output index, for inversion
+      fork test, is-equal(l, 1)
+        hold
+          sift get(indices, 0)/type
+            case named
+              link single-name
+              data/family-index-type/set(name, single-name)
+              walk variants
+                take variant
+                save values, make list
+                walk variant/index-values
+                  take v
+                  push(values, v)
+                fork test, is-above(values/length, 0)
+                  hold
+                    save head, get(values, 0)
+                    data/variant-index-expr/set(ctor-key(name, variant/name), head)
+                    sift record-name-of(head)
+                      case some
+                        link head-name
+                        sift resolve-index-ctor(data, head-name)
+                          case some
+                            link resolved
+                            data/variant-index-head/set(ctor-key(name, variant/name), resolved)
+                          case none
+                            save head, head
+                      case none
+                        save head, head
+            miss
+              save l, l
+
+      walk variants
+        take variant
+        take i
+        push(data/enum-defs, named-term-of(ctor-key(name, variant/name), constructor-encoding(i, variant/fields/length, n, m)))
+
+      # the dependent eliminator. Levels: p (0..m-1), P (m), b_v (m+1..m+n), i_t (m+1+n..m+n+l), x (m+n+l+1)
+      save eliminator-sound, true
+      save motive-index-vars, make list
+      save t, 0
+      walk test
+        hook test, is-below(t, l)
+        hook hold
+          push(motive-index-vars, variable(subtract(subtract(l, t), 1)))
+          save t, add(t, 1)
+      save motive-type, arrow(applied-self(name, m, add(m, l), motive-index-vars), type-zero())
+      save t, subtract(l, 1)
+      walk test
+        hook test, is-minimum(t, 0)
+        hook hold
+          sift kernel-type-at(state, some-type(get(indices, t)/type), add(m, t), data-generics, data/named-types, empty-scope(), empty-owners())
+            case some
+              link index-type
+              save motive-type, arrow(index-type, motive-type)
+            case none
+              save eliminator-sound, false
+          save t, subtract(t, 1)
+
+      save branch-types, make list
+      walk variants
+        take variant
+        take v
+        fork test, is-equal(eliminator-sound, false)
+          hold
+            halt
+        save fields, variant/fields
+        save k, fields/length
+        save depth-b, add(add(m, 1), v)
+        save result-depth, add(depth-b, k)
+        save values, make list
+        walk variant/index-values
+          take value
+          push(values, value)
+        save iv-terms, make list
+        save t, 0
+        walk test
+          hook test, is-below(t, l)
+          hook hold
+            save read-ok, false
+            fork test, is-below(t, values/length)
+              hold
+                sift index-term-at(get(values, t), result-depth, field-scope(fields, k, depth-b), data/variant-to-enum)
+                  case some
+                    link ivt
+                    push(iv-terms, ivt)
+                    save read-ok, true
+                  case none
+                    save read-ok, false
+            fork test, is-equal(read-ok, false)
+              hold
+                save eliminator-sound, false
+                halt
+            save t, add(t, 1)
+        fork test, is-equal(eliminator-sound, false)
+          hold
+            halt
+        save ctor-term, constant(ctor-key(name, variant/name))
+        save p, 0
+        walk test
+          hook test, is-below(p, m)
+          hook hold
+            save ctor-term, apply-term(ctor-term, variable(subtract(subtract(result-depth, p), 1)))
+            save p, add(p, 1)
+        save j, 0
+        walk test
+          hook test, is-below(j, k)
+          hook hold
+            save ctor-term, apply-term(ctor-term, variable(subtract(subtract(result-depth, add(depth-b, j)), 1)))
+            save j, add(j, 1)
+        save branch, variable(subtract(subtract(result-depth, m), 1))
+        walk iv-terms
+          take ivt
+          save branch, apply-term(branch, ivt)
+        save branch, apply-term(branch, ctor-term)
+        save j, subtract(k, 1)
+        walk test
+          hook test, is-minimum(j, 0)
+          hook hold
+            sift kernel-type-at(state, some-type(get(fields, j)/type), add(depth-b, j), data-generics, data/named-types, field-scope(fields, j, depth-b), data/variant-to-enum)
+              case some
+                link field-type
+                save branch, arrow(field-type, branch)
+              case none
+                save eliminator-sound, false
+                halt
+            save j, subtract(j, 1)
+        push(branch-types, branch)
+
+      fork test, is-equal(eliminator-sound, false)
+        hold
+          back
+      save res-depth, add(add(add(m, n), l), 2)
+      save dependent, variable(subtract(subtract(res-depth, m), 1))
+      save t, 0
+      walk test
+        hook test, is-below(t, l)
+        hook hold
+          save dependent, apply-term(dependent, variable(subtract(subtract(res-depth, add(add(add(m, 1), n), t)), 1)))
+          save t, add(t, 1)
+      save dependent, apply-term(dependent, variable(subtract(subtract(res-depth, add(add(add(m, 1), n), l)), 1)))
+      save subj-depth, add(add(add(m, 1), n), l)
+      save subj-index-vars, make list
+      save t, 0
+      walk test
+        hook test, is-below(t, l)
+        hook hold
+          push(subj-index-vars, variable(subtract(subtract(subj-depth, add(add(add(m, 1), n), t)), 1)))
+          save t, add(t, 1)
+      save dependent, arrow(applied-self(name, m, subj-depth, subj-index-vars), dependent)
+      save t, subtract(l, 1)
+      walk test
+        hook test, is-minimum(t, 0)
+        hook hold
+          sift kernel-type-at(state, some-type(get(indices, t)/type), add(add(add(m, 1), n), t), data-generics, data/named-types, empty-scope(), empty-owners())
+            case some
+              link index-type
+              save dependent, arrow(index-type, dependent)
+            case none
+              # a null domain in the original, which `hasFreeVar` read as not closed
+              back
+          save t, subtract(t, 1)
+      save v, subtract(n, 1)
+      walk test
+        hook test, is-minimum(v, 0)
+        hook hold
+          save dependent, arrow(get(branch-types, v), dependent)
+          save v, subtract(v, 1)
+      save dependent, arrow(motive-type, dependent)
+      save dependent, with-params(m, dependent)
+      fork test, has-free-var(dependent, 0)
+        hold
+          back
+      push(data/signature, signature-of(<match__{name}>, dependent))
+      save dependent-body, apply-term(variable(0), variable(add(add(l, n), 1)))
+      save v, 0
+      walk test
+        hook test, is-below(v, n)
+        hook hold
+          save dependent-body, apply-term(dependent-body, variable(subtract(add(l, n), v)))
+          save v, add(v, 1)
+      push(data/enum-defs, named-term-of(<match__{name}>, lambdas(add(add(add(m, n), l), 2), dependent-body)))
+    miss
+      back
+
+# A MONOMORPHIC OR POLYMORPHIC ENUM (no value indices): the eliminator `match__T`, the large eliminator `matchType__T`
+# when no field carries a type, the self-type encoding when it has no parameters, and the computing definitions
+task encode-plain-enum
+  take data, like elaboration-data
+  take state, like alias-state
+  take one, like statement
+  take ctor-types, like list, like signature-entry
+  take sound, like boolean
+  mark private
+
+  sift one
+    case record-type
+      link name
+      link params
+      link variants
+      link truncation
+      save m, params/length
+      save n, variants/length
+      save data-generics, make hash
+      walk params
+        take p
+        take i
+        data-generics/set(p, i)
+
+      # match__e : (0 p..) -> (0 A : Type0) -> (T p..) -> (F_0 -> .. -> A) -> ... -> A
+      save sound, sound
+      save eliminator, variable(add(n, 1))
+      save i, n
+      walk test
+        hook test, is-minimum(i, 1)
+        hook hold
+          save fields, get(variants, subtract(i, 1))/fields
+          save k, fields/length
+          save branch, variable(add(i, k))
+          save j, subtract(k, 1)
+          walk test
+            hook test, is-minimum(j, 0)
+            hook hold
+              sift kernel-type-at(state, some-type(get(fields, j)/type), add(add(add(m, i), 1), j), data-generics, data/named-types, field-scope(fields, j, add(add(m, i), 1)), data/variant-to-enum)
+                case some
+                  link field-type
+                  save branch, arrow(field-type, branch)
+                case none
+                  # a null domain in the original, which `hasFreeVar` read as not closed
+                  save sound, false
+              save j, subtract(j, 1)
+          save eliminator, arrow(branch, eliminator)
+          save i, subtract(i, 1)
+      save eliminator, with-params(m, erased-pi(type-zero(), arrow(applied-self(name, m, add(m, 1), no-terms()), eliminator)))
+      fork test, has-free-var(eliminator, 0)
+        hold
+          save sound, false
+      fork test, is-equal(sound, false)
+        hold
+          back
+
+      walk ctor-types
+        take ctor
+        push(data/signature, ctor)
+      walk variants
+        take variant
+        push-owner(data/variant-to-enum, variant/name, name)
+        data/variant-field-info/set(ctor-key(name, variant/name), variant-field-infos(data, state, variant/fields, m, data-generics))
+      save names, make list
+      walk variants
+        take variant
+        push(names, variant/name)
+      data/variant-names/set(name, names)
+      data/type-former-arity/set(name, m)
+      push(data/signature, signature-of(<match__{name}>, eliminator))
+
+      # the LARGE eliminator matchType__T, into Type1
+      save large-sound, true
+      save large-motive, arrow(applied-self(name, m, m, no-terms()), type-one())
+      save large-branches, make list
+      walk variants
+        take variant
+        take v
+        fork test, is-equal(large-sound, false)
+          hold
+            halt
+        save fields, variant/fields
+        save k, fields/length
+        save depth-b, add(add(m, 1), v)
+        save result-depth, add(depth-b, k)
+        save ctor-term, constant(ctor-key(name, variant/name))
+        save p, 0
+        walk test
+          hook test, is-below(p, m)
+          hook hold
+            save ctor-term, apply-term(ctor-term, variable(subtract(subtract(result-depth, p), 1)))
+            save p, add(p, 1)
+        save j, 0
+        walk test
+          hook test, is-below(j, k)
+          hook hold
+            save ctor-term, apply-term(ctor-term, variable(subtract(subtract(result-depth, add(depth-b, j)), 1)))
+            save j, add(j, 1)
+        save branch, apply-term(variable(subtract(subtract(result-depth, m), 1)), ctor-term)
+        save j, subtract(k, 1)
+        walk test
+          hook test, is-minimum(j, 0)
+          hook hold
+            sift kernel-type-at(state, some-type(get(fields, j)/type), add(depth-b, j), data-generics, data/named-types, field-scope(fields, j, depth-b), data/variant-to-enum)
+              case some
+                link field-type
+                fork test, mentions-universe(field-type)
+                  hold
+                    data/large-forms/set(name, get(fields, j)/name)
+                    save large-sound, false
+                    halt
+                save branch, arrow(field-type, branch)
+              case none
+                save large-sound, false
+                halt
+            save j, subtract(j, 1)
+        push(large-branches, branch)
+      fork test, large-sound
+        hold
+          save large, apply-term(variable(add(n, 1)), variable(0))
+          save large, arrow(applied-self(name, m, add(add(m, n), 1), no-terms()), large)
+          save v, subtract(n, 1)
+          walk test
+            hook test, is-minimum(v, 0)
+            hook hold
+              save large, arrow(get(large-branches, v), large)
+              save v, subtract(v, 1)
+          save large, arrow(large-motive, large)
+          save large, with-params(m, large)
+          fork test, is-equal(has-free-var(large, 0), false)
+            hold
+              push(data/signature, signature-of(<matchType__{name}>, large))
+              save large-body, apply-term(variable(0), variable(add(n, 1)))
+              save v, 0
+              walk test
+                hook test, is-below(v, n)
+                hook hold
+                  save large-body, apply-term(large-body, variable(subtract(n, v)))
+                  save v, add(v, 1)
+              push(data/enum-defs, named-term-of(<matchType__{name}>, lambdas(add(add(m, n), 2), large-body)))
+
+      # the self-type encoding, for a param-less enum
+      fork test, is-equal(m, 0)
+        hold
+          save body, apply-term(variable(n), variable(add(n, 1)))
+          save i, subtract(n, 1)
+          walk test
+            hook test, is-minimum(i, 0)
+            hook hold
+              save body, arrow(apply-term(variable(i), constant(ctor-key(name, get(variants, i)/name))), body)
+              save i, subtract(i, 1)
+          save body, arrow(arrow(constant(name), type-zero()), body)
+          save encoding
+            make self
+              bind body, body
+          push(data/enum-encodings, named-term-of(name, encoding))
+
+      # the computing definitions: a truncation's constructors are registered and kept rigid
+      fork test, is-equal(truncation, true)
+        hold
+          walk variants
+            take variant
+            save entry
+              make truncation-entry
+                bind name, ctor-key(name, variant/name)
+                bind arity, add(m, variant/fields/length)
+            push(data/truncations, entry)
+        miss
+          walk variants
+            take variant
+            take i
+            push(data/enum-defs, named-term-of(ctor-key(name, variant/name), constructor-encoding(i, variant/fields/length, n, m)))
+      save motive
+        make lam
+          bind body, variable(add(n, 2))
+      save ebody, apply-term(variable(n), motive)
+      save j, 0
+      walk test
+        hook test, is-below(j, n)
+        hook hold
+          save ebody, apply-term(ebody, variable(subtract(subtract(n, 1), j)))
+          save j, add(j, 1)
+      push(data/enum-defs, named-term-of(<match__{name}>, lambdas(add(add(m, n), 2), ebody)))
+    miss
+      back
+
+# A STRUCT: a constructor and one projection per field, with their computing definitions
+task encode-struct
+  take data, like elaboration-data
+  take state, like alias-state
+  take one, like statement
+  mark private
+
+  sift one
+    case record-type
+      link name
+      link fields
+      save field-types, make list
+      walk fields
+        take field
+        sift kernel-type(state, field/type, data/named-types)
+          case some
+            link found
+            push(field-types, found)
+          case none
+            back
+      save self, constant(name)
+      save ctor, self
+      save i, subtract(field-types/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save ctor, arrow(get(field-types, i), ctor)
+          save i, subtract(i, 1)
+      push(data/signature, signature-of(<make__{name}>, ctor))
+      walk fields
+        take field
+        take i
+        push(data/signature, signature-of(<{name}__{field/name}>, arrow(self, get(field-types, i))))
+      save names, make list
+      walk fields
+        take field
+        push(names, field/name)
+      data/record-fields/set(name, names)
+      save infos, make list
+      walk fields
+        take field
+        take i
+        save info
+          make field-info
+            bind name, field/name
+            bind type, some-term(get(field-types, i))
+        push(infos, info)
+      data/record-field-info/set(name, infos)
+      save k, fields/length
+      push(data/enum-defs, named-term-of(<make__{name}>, constructor-encoding(0, k, 1, 0)))
+      walk fields
+        take field
+        take i
+        save selector, lambdas(k, variable(subtract(subtract(k, 1), i)))
+        save motive
+          make lam
+            bind body, get(field-types, i)
+        push(data/enum-defs, named-term-of(<{name}__{field/name}>, lambdas(1, apply-term(apply-term(variable(0), motive), selector))))
+    miss
+      back
+
+# the type former's kind: `Type0 -> .. -> nat -> .. -> Type0`, a type parameter per arrow and then a value index
+task former-type
+  take data, like elaboration-data
+  take name, like text
+  like kernel-term
+  mark private
+
+  save arity, 0
+  fork test, data/type-former-arity/has(name)
+    hold
+      save arity, data/type-former-arity/get(name)
+  save index-kinds, make list
+  fork test, data/type-former-indices/has(name)
+    hold
+      save index-kinds, data/type-former-indices/get(name)
+  save type, type-zero()
+  save i, subtract(index-kinds/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save type, arrow(get(index-kinds, i), type)
+      save i, subtract(i, 1)
+  save p, 0
+  walk test
+    hook test, is-below(p, arity)
+    hook hold
+      save type, arrow(type-zero(), type)
+      save p, add(p, 1)
+  back type
+
+# each function the kernel can give a type: a constant in the signature, with its generics' count
+task encode-functions
+  take data, like elaboration-data
+  take state, like alias-state
+  take program, like list, like statement
+  take same-value-args
+    like task
+      take left, like type
+      take right, like type
+      like boolean
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link generics
+        link params
+        link result
+        save generic-levels, make hash
+        walk generics
+          take g
+          take i
+          generic-levels/set(g/name, i)
+        save arity, add(generics/length, params/length)
+        save declared-result, make none
+        save declared-params, make list
+        sift one/declared
+          case some
+            link signature
+            save declared-result, signature/result
+            walk signature/params
+              take p
+              push(declared-params, p)
+          case none
+            save declared-result, declared-result
+        save result-type, kernel-type-at(state, faithful(declared-result, result, same-value-args), arity, generic-levels, data/named-types, value-param-scope(params, generics/length, params/length), data/variant-to-enum)
+        save param-types, make list
+        save unread, -1
+        walk params
+          take p
+          take i
+          save declared-type, make none
+          fork test, is-below(i, declared-params/length)
+            hold
+              save declared-type, get(declared-params, i)/type
+          sift kernel-type-at(state, faithful(declared-type, p/type, same-value-args), add(generics/length, i), generic-levels, data/named-types, value-param-scope(params, generics/length, i), data/variant-to-enum)
+            case some
+              link found
+              push(param-types, found)
+            case none
+              fork test, is-below(unread, 0)
+                hold
+                  save unread, i
+        save readable, true
+        sift result-type
+          case none
+            save readable, false
+          case some
+            save readable, is-below(unread, 0)
+        fork test, is-equal(readable, false)
+          hold
+            fork test, is-minimum(unread, 0)
+              hold
+                data/unreadable/set(name, <parameter `{get(params, unread)/name}`>)
+              miss
+                data/unreadable/set(name, <the result>)
+            turn next
+        sift result-type
+          case some
+            link found-result
+            save type, found-result
+            save i, subtract(param-types/length, 1)
+            walk test
+              hook test, is-minimum(i, 0)
+              hook hold
+                save type, arrow(get(param-types, i), type)
+                save i, subtract(i, 1)
+            walk generics
+              take g
+              save type, erased-pi(type-zero(), type)
+            data/function-type/set(name, type)
+            data/function-generics/set(name, generics/length)
+            data/representable/set(name, true)
+            push(data/signature, signature-of(name, type))
+          case none
+            turn next
+      miss
+        turn next
+
+# a task's value parameters before `up-to`, each at its binder level after the generics
+task value-param-scope
+  take params, like list, like function-param
+  take generic-count, like number
+  take up-to, like number
+  like hash, like text, like number
+  mark private
+
+  save scope, make hash
+  walk params
+    take p
+    take k
+    fork test, is-below(k, up-to)
+      hold
+        scope/set(p/name, add(generic-count, k))
+  back scope
+
+# Everything the elaborator reads of a program before it opens a kernel context: the named types, each form's encoding,
+# the signature (the base, one constant per numeric literal `literals` lists, each named type's former, the data, each
+# task the kernel can type), and each task's kernel type
+task elaboration-data-of
+  take program, like list, like statement
+  take state, like alias-state
+  take literals, like list, like text
+  take same-value-args
+    like task
+      take left, like type
+      take right, like type
+      like boolean
+  like elaboration-data
+
+  save data
+    make elaboration-data
+      bind named-types, make hash
+      bind signature, make list
+      bind record-fields, make hash
+      bind record-field-info, make hash
+      bind variant-names, make hash
+      bind variant-to-enum, make hash
+      bind declared-owners, make hash
+      bind variant-field-info, make hash
+      bind enum-encodings, make list
+      bind enum-defs, make list
+      bind type-former-arity, make hash
+      bind large-forms, make hash
+      bind type-former-indices, make hash
+      bind family-index-type, make hash
+      bind variant-index-head, make hash
+      bind variant-index-expr, make hash
+      bind family-index-types, make hash
+      bind variant-index-heads, make hash
+      bind truncations, make list
+      bind function-type, make hash
+      bind function-generics, make hash
+      bind representable, make hash
+      bind unreadable, make hash
+
+  # the named types: each form, and each task answering `type` (a type former the program may apply)
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        data/named-types/set(name, true)
+      case function
+        link name
+        link result
+        sift result
+          case some
+            link written
+            sift written
+              case named
+                link result-name
+                fork test, is-equal(result-name, <type>)
+                  hold
+                    data/named-types/set(name, true)
+              miss
+                save written, written
+          case none
+            save result, result
+      miss
+        turn next
+
+  # every form each case is declared in
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link variants
+        walk variants
+          take variant
+          fork test, is-equal(data/declared-owners/has(variant/name), false)
+            hold
+              data/declared-owners/set(variant/name, make hash)
+          save owners, data/declared-owners/get(variant/name)
+          owners/set(name, true)
+      miss
+        turn next
+
+  # every polymorphic form's former takes its type parameters, a struct's included
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        fork test, is-above(params/length, 0)
+          hold
+            data/type-former-arity/set(name, params/length)
+      miss
+        turn next
+
+  # the data signature, in the program's order (the signature itself is assembled below)
+  walk program
+    take one
+    sift one
+      case record-type
+        link variants
+        fork test, is-above(variants/length, 0)
+          hold
+            encode-enum(data, state, one)
+          miss
+            encode-struct(data, state, one)
+      miss
+        turn next
+  save encoded, data/signature
+
+  save assembled, base-signature()
+  walk literals
+    take value
+    push(assembled, signature-of(number-literal-constant(value), number-term()))
+  walk data/named-types/keys()
+    take name
+    push(assembled, signature-of(name, former-type(data, name)))
+  walk encoded
+    take entry
+    push(assembled, entry)
+  save data/signature, assembled
+  encode-functions(data, state, program, same-value-args)
+  back data

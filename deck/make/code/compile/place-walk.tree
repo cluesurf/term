@@ -1,0 +1,600 @@
+# A program as a table of places: every expression and statement, in the pre-order a reflective walk meets them
+# (fields as node.tree declares them, `type` and `span` never entered, as compile/node-reach.tree walks), each with the
+# place of the nearest node above it, whether that node is what holds it directly or a record between does (a branch,
+# a field's value, a map entry, a template's part, a type), the field it stands in, where its subtree ends, and for a
+# statement the list it is one of. Every statement list is a BLOCK, with the place of the node that holds it.
+#
+# Written for self-hosting, 2026-10-06, for the analyses of compile/place.ts and compile/backend.ts `ownedElements`,
+# which walk by reflection and read the PARENT a value stands in and the KEY it stands under (`parent.form === 'member'
+# && key === 'target'`), and keep facts by node identity. A place stands for the node, and a face numbers each place
+# by the object it holds where a program shares nodes (ir/facts/intervals.tree's pattern). A field under `declared` (a
+# task's signature as written, which holds only types) is marked, for a walk that skipped it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find expression
+  find statement
+  find type
+  find view-node
+  find dock-route
+  find dock-argument
+  find dock-call
+  find dock-send
+  find field-value
+  find function-param
+  find declared-signature
+  find form-extend
+
+load ./node-children
+  find node-handle
+
+# the table: one row per place, each list read at the place's number
+form place-walk
+  mark shared
+  link handles, like list, like node-handle
+  link parents, like list, like number
+  link directs, like list, like boolean
+  link keys, like list, like text
+  link ends, like list, like number
+  link blocks, like list, like number
+  link ats, like list, like number
+  link declareds, like list, like boolean
+  # each block's places, in order, and the place of the node holding it
+  link block-items, like list, like list, like number
+  link block-holders, like list, like number
+  # the place of each top-level statement of the program
+  link roots, like list, like number
+
+task new-walk
+  like place-walk
+  mark private
+
+  back
+    make place-walk
+      bind handles, make list
+      bind parents, make list
+      bind directs, make list
+      bind keys, make list
+      bind ends, make list
+      bind blocks, make list
+      bind ats, make list
+      bind declareds, make list
+      bind block-items, make list
+      bind block-holders, make list
+      bind roots, make list
+
+# where a value stands: the place above it, whether that place holds it directly, the field, and whether it is under
+# `declared`
+form standing
+  link parent, like number
+  link direct, like boolean
+  link key, like text
+  link declared, like boolean
+
+task stand
+  take parent, like number
+  take direct, like boolean
+  take key, like text
+  take declared, like boolean
+  like standing
+  mark private
+
+  back
+    make standing
+      bind parent, parent
+      bind direct, direct
+      bind key, key
+      bind declared, declared
+
+# the same place, through a record between it and the value
+task through
+  take at, like standing
+  take key, like text
+  like standing
+  mark private
+
+  back stand(at/parent, false, key, at/declared)
+
+# directly under place `parent`, in field `key`
+task under
+  take parent, like number
+  take key, like text
+  take declared, like boolean
+  like standing
+  mark private
+
+  back stand(parent, true, key, declared)
+
+task add-row
+  take w, like place-walk
+  take handle, like node-handle
+  take at, like standing
+  take block, like number
+  take index, like number
+  like number
+  mark private
+
+  push(w/handles, handle)
+  push(w/parents, at/parent)
+  push(w/directs, at/direct)
+  push(w/keys, at/key)
+  push(w/ends, 0)
+  push(w/blocks, block)
+  push(w/ats, index)
+  push(w/declareds, at/declared)
+  back subtract(w/handles/length, 1)
+
+task close-row
+  take w, like place-walk
+  take row, like number
+  like void
+  mark private
+
+  save w/ends/{row}, w/handles/length
+
+# ---- the walk ----
+
+# a whole program, each top-level statement a root
+task walk-program
+  take program, like list, like statement
+  like place-walk
+
+  save w, new-walk()
+  walk program
+    take one
+    save row, walk-statement(w, one, stand(-1, false, <>, false), -1, -1)
+    push(w/roots, row)
+  back w
+
+# a statement list: a block, held by the place above it
+task walk-block
+  take w, like place-walk
+  take statements, like list, like statement
+  take at, like standing
+  like void
+  mark private
+
+  save block, w/block-items/length
+  save items, make list
+  push(w/block-items, items)
+  push(w/block-holders, at/parent)
+  walk statements
+    take one
+    take index
+    save row, walk-statement(w, one, at, block, index)
+    save listed, get(w/block-items, block)
+    push(listed, row)
+
+task walk-expressions
+  take w, like place-walk
+  take values, like list, like expression
+  take at, like standing
+  like void
+  mark private
+
+  walk values
+    take one
+    walk-expression(w, one, at)
+
+task walk-maybe
+  take w, like place-walk
+  take given, like maybe, like expression
+  take at, like standing
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      walk-expression(w, inner, at)
+    case none
+      back
+
+task walk-maybe-type
+  take w, like place-walk
+  take given, like maybe, like type
+  take at, like standing
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      walk-type(w, inner, at)
+    case none
+      back
+
+# a type holds no place of its own, but a named type's value arguments are expressions, held through it
+task walk-type
+  take w, like place-walk
+  take node, like type
+  take at, like standing
+  like void
+  mark private
+
+  sift node
+    case array
+      walk-type(w, element, at)
+    case map
+      walk-type(w, key, at)
+      walk-type(w, value, at)
+    case named
+      walk args
+        take one
+        walk-type(w, one, at)
+      walk value-args
+        take one
+        walk-expression(w, one, through(at, <valueArgs>))
+    case function
+      walk params
+        take one
+        walk-type(w, one, at)
+      walk-type(w, result, at)
+    miss
+      back
+
+task walk-field-values
+  take w, like place-walk
+  take values, like list, like field-value
+  take at, like standing
+  like void
+  mark private
+
+  walk values
+    take one
+    walk-expression(w, one/value, through(at, <value>))
+
+task walk-expression
+  take w, like place-walk
+  take node, like expression
+  take at, like standing
+  like number
+
+  save handle
+    make node-handle/expression-handle
+      bind node, node
+  save row, add-row(w, handle, at, -1, -1)
+  save d, at/declared
+  sift node
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            walk-expression(w, inner, stand(row, false, <value>, d))
+          case chunk
+            turn next
+    case binary
+      walk-expression(w, left, under(row, <left>, d))
+      walk-expression(w, right, under(row, <right>, d))
+    case unary
+      walk-expression(w, operand, under(row, <operand>, d))
+    case call
+      walk-expression(w, callee, under(row, <callee>, d))
+      walk-expressions(w, args, under(row, <args>, d))
+      walk-maybe-type(w, into, under(row, <into>, d))
+    case array
+      walk-expressions(w, items, under(row, <items>, d))
+    case map
+      walk entries
+        take entry
+        walk-expression(w, entry/key, stand(row, false, <key>, d))
+        walk-expression(w, entry/value, stand(row, false, <value>, d))
+    case record
+      walk-field-values(w, fields, under(row, <fields>, d))
+      walk positional
+        take one
+        walk-expression(w, one, under(row, <positional>, d))
+    case member
+      walk-expression(w, target, under(row, <target>, d))
+      walk-maybe(w, index, under(row, <index>, d))
+    case await
+      walk-expression(w, expr, under(row, <expr>, d))
+    case closure
+      walk-block(w, body, under(row, <body>, d))
+      walk-maybe-type(w, result, under(row, <result>, d))
+    case conditional
+      walk branches
+        take branch
+        walk-expression(w, branch/cond, stand(row, false, <cond>, d))
+        walk-expression(w, branch/value, stand(row, false, <value>, d))
+      walk-maybe(w, otherwise, under(row, <otherwise>, d))
+    miss
+      save handle, handle
+  close-row(w, row)
+  back row
+
+task walk-maybe-block
+  take w, like place-walk
+  take block, like maybe, like list, like statement
+  take at, like standing
+  like void
+  mark private
+
+  sift block
+    case some
+      link body
+      walk-block(w, body, at)
+    case none
+      back
+
+task walk-maybe-statement
+  take w, like place-walk
+  take given, like maybe, like statement
+  take at, like standing
+  like void
+  mark private
+
+  sift given
+    case some
+      link inner
+      walk-statement(w, inner, at, -1, -1)
+    case none
+      back
+
+task walk-signature
+  take w, like place-walk
+  take given, like maybe, like declared-signature
+  take at, like standing
+  like void
+  mark private
+
+  sift given
+    case some
+      link signature
+      # a parameter's `type` is never entered, as no walk here enters a field named so
+      walk-maybe-type(w, signature/result, through(at, <result>))
+    case none
+      back
+
+task walk-function-params
+  take w, like place-walk
+  take params, like list, like function-param
+  take at, like standing
+  like void
+  mark private
+
+  walk params
+    take one
+    walk-maybe(w, one/fallback, through(at, <fallback>))
+
+task walk-extend
+  take w, like place-walk
+  take given, like maybe, like form-extend
+  take at, like standing
+  like void
+  mark private
+
+  sift given
+    case some
+      link extended
+      walk-type(w, extended/base, through(at, <base>))
+      walk extended/links
+        take one
+        walk-maybe(w, one/fallback, through(at, <fallback>))
+      walk-field-values(w, extended/pins, through(at, <pins>))
+    case none
+      back
+
+task walk-statement
+  take w, like place-walk
+  take node, like statement
+  take at, like standing
+  take block, like number
+  take position, like number
+  like number
+
+  save handle
+    make node-handle/statement-handle
+      bind node, node
+  save row, add-row(w, handle, at, block, position)
+  save d, at/declared
+  sift node
+    case let
+      walk-expression(w, init, under(row, <init>, d))
+    case assign
+      walk-expression(w, target, under(row, <target>, d))
+      walk-expression(w, read(value), under(row, <value>, d))
+    case expression
+      walk-expression(w, expr, under(row, <expr>, d))
+    case if
+      walk branches
+        take branch
+        walk-expression(w, branch/cond, stand(row, false, <cond>, d))
+        walk-block(w, branch/body, stand(row, false, <body>, d))
+      walk-maybe-block(w, otherwise, under(row, <otherwise>, d))
+    case while
+      walk-expression(w, cond, under(row, <cond>, d))
+      walk-block(w, body, under(row, <body>, d))
+      walk read(must)
+        take one
+        walk-expression(w, one, under(row, <must>, d))
+      walk-maybe(w, down, under(row, <down>, d))
+    case match
+      walk-expression(w, subject, under(row, <subject>, d))
+      walk cases
+        take arm
+        walk-block(w, arm/body, stand(row, false, <body>, d))
+      walk-maybe-block(w, otherwise, under(row, <otherwise>, d))
+    case for-each
+      walk-expression(w, iterable, under(row, <iterable>, d))
+      walk-block(w, body, under(row, <body>, d))
+      walk read(must)
+        take one
+        walk-expression(w, one, under(row, <must>, d))
+    case return
+      walk-maybe(w, read(value), under(row, <value>, d))
+    case guard
+      walk-block(w, body, under(row, <body>, d))
+      sift catch
+        case some
+          link clause
+          walk-block(w, clause/body, stand(row, false, <body>, d))
+        case none
+          save row, row
+    case throw
+      walk-expression(w, read(value), under(row, <value>, d))
+    case hold
+      walk-expression(w, expr, under(row, <expr>, d))
+    case function
+      walk-function-params(w, params, under(row, <params>, d))
+      walk-block(w, body, under(row, <body>, d))
+      walk-maybe-type(w, result, under(row, <result>, d))
+      walk-maybe-statement(w, stub-shape, under(row, <stubShape>, d))
+      # `need false` lists are copied where they are read: one handed to a call is written `[]` into the program
+      save stub-statements, make list
+      walk stub-body
+        take one
+        push(stub-statements, one)
+      walk-block(w, stub-statements, under(row, <stubBody>, d))
+      walk universals
+        take one
+        walk-expression(w, one/expr, stand(row, false, <expr>, d))
+      walk read(have)
+        take one
+        walk-expression(w, one, under(row, <have>, d))
+      walk read(must)
+        take one
+        walk-expression(w, one, under(row, <must>, d))
+      walk-maybe(w, down, under(row, <down>, d))
+      walk-signature(w, declared, stand(row, true, <declared>, true))
+    case record-type
+      walk fields
+        take field
+        walk-maybe(w, field/fallback, stand(row, false, <fallback>, d))
+      walk variants
+        take variant
+        walk variant/index-values
+          take one
+          walk-expression(w, one, stand(row, false, <indexValues>, d))
+      walk-maybe-type(w, alias, under(row, <alias>, d))
+      walk-extend(w, extend, under(row, <extend>, d))
+      walk pins
+        take pin
+        walk-expression(w, pin/value, stand(row, false, <value>, d))
+    case mask
+      walk tasks
+        take one
+        walk-signature(w, make(some, one/signature), stand(row, false, <signature>, d))
+    case bind
+      walk-maybe-type(w, result, under(row, <result>, d))
+    case view
+      walk-views(w, body, stand(row, false, <body>, d))
+    case dock
+      walk-route(w, route, stand(row, false, <route>, d))
+    miss
+      save handle, handle
+  close-row(w, row)
+  back row
+
+task walk-views
+  take w, like place-walk
+  take nodes, like list, like view-node
+  take at, like standing
+  like void
+  mark private
+
+  walk nodes
+    take one
+    walk-view(w, one, at)
+
+task walk-view
+  take w, like place-walk
+  take one, like view-node
+  take at, like standing
+  like void
+  mark private
+
+  sift one
+    case element
+      walk attributes
+        take attribute
+        walk-expression(w, attribute/value, through(at, <value>))
+      walk-field-values(w, props, at)
+      walk-views(w, children, at)
+    case read
+      walk-expression(w, read(value), through(at, <value>))
+    case fork
+      walk branches
+        take branch
+        walk-expression(w, branch/cond, through(at, <cond>))
+        walk-views(w, branch/body, at)
+      walk otherwise
+        take inner
+        walk-view(w, inner, at)
+    case walk
+      walk-expression(w, iterable, through(at, <iterable>))
+      walk-views(w, body, at)
+    case save
+      walk-expression(w, read(value), through(at, <value>))
+    case call
+      walk-expression(w, read(value), through(at, <value>))
+    miss
+      back
+
+task walk-arguments
+  take w, like place-walk
+  take arguments, like list, like dock-argument
+  take at, like standing
+  like void
+  mark private
+
+  walk arguments
+    take one
+    walk-expression(w, one/value, through(at, <value>))
+
+task walk-calls
+  take w, like place-walk
+  take calls, like list, like dock-call
+  take at, like standing
+  like void
+  mark private
+
+  walk calls
+    take one-call
+    walk-arguments(w, one-call/args, at)
+
+task walk-sends
+  take w, like place-walk
+  take sends, like list, like dock-send
+  take at, like standing
+  like void
+  mark private
+
+  walk sends
+    take one
+    walk-maybe(w, one/value, through(at, <value>))
+
+task walk-route
+  take w, like place-walk
+  take route, like dock-route
+  take at, like standing
+  like void
+  mark private
+
+  walk route/methods
+    take method
+    walk-calls(w, method/calls, at)
+    walk-sends(w, method/sends, at)
+  walk-calls(w, route/calls, at)
+  sift route/component
+    case some
+      link component
+      walk-arguments(w, component/props, at)
+    case none
+      save at, at
+  walk-sends(w, route/directives, at)
+  walk-sends(w, route/sends, at)
+  walk route/hooks
+    take one-hook
+    walk-calls(w, one-hook/calls, at)
+  walk route/children
+    take child
+    walk-route(w, child, at)

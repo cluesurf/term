@@ -1,0 +1,649 @@
+# The native runtime prelude: the shim files a program's `<global:X>` docks reach, gathered for a target and joined in
+# front of its emitted code, and the paths an import's `{platform}` slot is tried at.
+#
+# Ported from compile/native.ts (self-hosting, 2026-10-06), which stays as the face and says why each rule is shaped as
+# it is. The decisions:
+#   - the files are read through a task handed in, `read-runtime`, and the stdlib's folder through another, each called
+#     at the same points and in the same order as the original called them
+#   - a runtime include that names a missing file answers `refused` with the original's message, which the face throws
+#   - the regular expressions are written out by character. `\b` is a place where a word character (`[A-Za-z0-9_]`)
+#     meets a non-word one or an end. A multiline `^` and `$` are the ends of a line, and a line ends at `\n`, `\r`,
+#     U+2028 or U+2029. `\S` is anything JavaScript's `\s` is not (compile/main-entry `whitespace-code`)
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find index-of
+  find last-index-of
+  find split
+  find to-upper-case
+  find replace-all
+
+load ./node
+  find statement
+
+load ./native-env
+  find native-env
+  find global-dock
+  find global-docks
+  find directory-of
+  find env-chain
+  find runtime-extension
+  find runtime-path
+
+load ./main-entry
+  find whitespace-code
+
+# what a prelude build answers: the prelude, or why it could not be built
+form prelude-answer
+  case built
+    link text, like text
+  case refused
+    link reason, like text
+
+task built-of
+  take whole, like text
+  like prelude-answer
+  mark private
+
+  back
+    make built
+      bind text, whole
+
+task refused-of
+  take reason, like text
+  like prelude-answer
+  mark private
+
+  back
+    make refused
+      bind reason, reason
+
+# ---- characters ----
+
+# `\w`
+task word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+# a line terminator, where a multiline `^` and `$` match
+task line-end-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+# `[ \t]`
+task blank-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(is-equal(code, 32), is-equal(code, 9))
+
+# whether the character at `at` is a word character, false outside the text
+task word-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, or(is-below(at, 0), is-minimum(at, value/length))
+    hold
+      back false
+  back word-code(char-code-at(value, at))
+
+# `\b` at `at`: a word character on one side and not on the other
+task boundary-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  back is-unequal(word-at(value, subtract(at, 1)), word-at(value, at))
+
+# ---- which docks are used ----
+
+# `-([a-z0-9])` replaced by its character upper-cased, left to right
+task camel-of
+  take alias, like text
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, alias/length)
+    hook hold
+      save one, char-at(alias, at)
+      save taken, false
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), alias/length))
+        hold
+          save code, char-code-at(alias, add(at, 1))
+          fork test, or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 48), is-maximum(code, 57)))
+            hold
+              save out, <{out}{to-upper-case(char-at(alias, add(at, 1)))}>
+              save at, add(at, 2)
+              save taken, true
+      fork test, is-equal(taken, false)
+        hold
+          save out, <{out}{one}>
+          save at, add(at, 1)
+  back out
+
+# `\b<spelling>\b` somewhere in `source`, the spelling taken literally
+task has-word
+  take source, like text
+  take spelling, like text
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, is-maximum(from, source/length)
+    hook hold
+      save at, index-of(source, spelling, from)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      fork test, and(boundary-at(source, at), boundary-at(source, add(at, spelling/length)))
+        hold
+          back true
+      save from, add(at, 1)
+  back false
+
+# does the emitted source mention this dock's namespace, as written, camelCase, or snake_case
+task mentions
+  take source, like text
+  take alias, like text
+  like boolean
+  mark private
+
+  fork test, has-word(source, alias)
+    hold
+      back true
+  fork test, has-word(source, camel-of(alias))
+    hold
+      back true
+  back has-word(source, replace-all(alias, <->, <_>))
+
+# ---- runtime includes ----
+
+# the path a `// runtime-include: <path>` line names, or none when the line is not one:
+# `^[ \t]*\/\/[ \t]*runtime-include:[ \t]*(\S+)[ \t]*$`
+task include-of
+  take line, like text
+  like maybe, like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, and(is-below(at, line/length), blank-code(char-code-at(line, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(starts-with(substring(line, at, line/length), <//>), false)
+    hold
+      back make none
+  save at, add(at, 2)
+  walk test
+    hook test, and(is-below(at, line/length), blank-code(char-code-at(line, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(starts-with(substring(line, at, line/length), <runtime-include:>), false)
+    hold
+      back make none
+  save at, add(at, 16)
+  walk test
+    hook test, and(is-below(at, line/length), blank-code(char-code-at(line, at)))
+    hook hold
+      save at, add(at, 1)
+  save start, at
+  walk test
+    hook test, and(is-below(at, line/length), is-equal(whitespace-code(char-code-at(line, at)), false))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, start)
+    hold
+      back make none
+  save path, substring(line, start, at)
+  walk test
+    hook test, and(is-below(at, line/length), blank-code(char-code-at(line, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-below(at, line/length)
+    hold
+      back make none
+  back make(some, path)
+
+# `<directory of file>/<relative>`, its `..` taking off the segment before and its `.` dropped
+task include-path
+  take file, like text
+  take relative, like text
+  like text
+  mark private
+
+  save resolved, make list
+  walk split(<{directory-of(file)}/{relative}>, </>)
+    take segment
+    fork test, is-equal(segment, <..>)
+      hold
+        fork test, is-above(resolved/length, 0)
+          hold
+            resolved/pop()
+      miss
+        fork test, is-unequal(segment, <.>)
+          hold
+            push(resolved, segment)
+  back join(resolved, </>)
+
+# A runtime shim with each `// runtime-include: <path>` line replaced by that file, the path relative to the shim's own
+# directory and itself expanded the same way. A part named twice is included once, and one that cannot be read refuses
+task with-includes
+  take file, like text
+  take source, like text
+  take read-runtime
+    like task
+      take path, like text
+      like maybe, like text
+  take seen, like hash, like text, like boolean
+  like prelude-answer
+  mark private
+
+  save pieces, make list
+  save start, 0
+  save at, 0
+  walk test
+    hook test, is-maximum(at, source/length)
+    hook hold
+      fork test, or(is-equal(at, source/length), line-end-code(char-code-at(source, at)))
+        hold
+          save line, substring(source, start, at)
+          sift include-of(line)
+            case some
+              link relative
+              save path, include-path(file, relative)
+              fork test, seen/has(path)
+                hold
+                  push(pieces, <>)
+                miss
+                  seen/set(path, true)
+                  sift read-runtime(path)
+                    case some
+                      link part
+                      sift with-includes(path, part, read-runtime, seen)
+                        case built
+                          link expanded
+                          push(pieces, expanded)
+                        case refused
+                          link reason
+                          back refused-of(reason)
+                    case none
+                      save reason, <runtime {file} includes {relative}, which does not exist ({path})>
+                      back refused-of(reason)
+            case none
+              push(pieces, line)
+          fork test, is-below(at, source/length)
+            hold
+              push(pieces, char-at(source, at))
+          save start, add(at, 1)
+      save at, add(at, 1)
+  save whole, join(pieces, <>)
+  back built-of(whole)
+
+# ---- the prelude ----
+
+# how far up from a docking module to look for its runtime shim
+task runtime-search-depth
+  like number
+  mark private
+
+  back 4
+
+# a docking file, when it names one: an empty name is none, as `if (file)` read it
+task file-of
+  take dock, like global-dock
+  like maybe, like text
+  mark private
+
+  sift dock/file
+    case some
+      link named
+      fork test, is-equal(named, <>)
+        hold
+          back make none
+      back make(some, named)
+    case none
+      back make none
+
+# every path a dock's shim is looked for at, in the order they are tried
+task shim-candidates
+  take dock, like global-dock
+  take env, like native-env
+  take stdlib-base
+    like task
+      like maybe, like text
+  like list, like text
+  mark private
+
+  save candidates, make list
+  save extension, runtime-extension(env)
+  save name, dock/name
+  sift file-of(dock)
+    case some
+      link file
+      save dir, directory-of(file)
+      save up, 0
+      walk test
+        hook test, is-below(up, runtime-search-depth())
+        hook hold
+          push(candidates, <{dir}/runtime/{to-text(env)}/{name}.{extension}>)
+          push(candidates, <{dir}/runtime/{name}.{extension}>)
+          save above, directory-of(dir)
+          fork test, or(is-equal(above, dir), is-equal(above, <.>))
+            hold
+              halt
+          save dir, above
+          save up, add(up, 1)
+      save at, last-index-of(file, </code/>)
+      fork test, is-minimum(at, 0)
+        hold
+          save head, substring(file, 0, at)
+          walk env-chain(env)
+            take rung
+            push(candidates, <{head}/code/native/{to-text(rung)}/runtime/{name}.{extension}>)
+    case none
+      save candidates, candidates
+
+  sift stdlib-base()
+    case some
+      link stdlib
+      fork test, is-unequal(stdlib, <>)
+        hold
+          walk env-chain(env)
+            take rung
+            push(candidates, <{stdlib}/code/native/{to-text(rung)}/runtime/{name}.{extension}>)
+    case none
+      save candidates, candidates
+
+  push(candidates, runtime-path(env, name))
+  back candidates
+
+# whether a target is JavaScript, whose files take the empty statement `;`
+task is-script
+  take env, like native-env
+  like boolean
+  mark private
+
+  fork test, or(is-equal(to-text(env), <node>), is-equal(to-text(env), <browser>))
+    hold
+      back true
+  back false
+
+# The native prelude for a target: every runtime shim the program's global docks reference and that exists, each looked
+# up next to the module that docks it, joined so that none can continue the statement before it. `used-in` is the
+# emitted code the prelude will sit in front of, and none includes every dock
+task native-prelude
+  take program, like list, like statement
+  take env, like native-env
+  take read-runtime
+    like task
+      take path, like text
+      like maybe, like text
+  take used-in, like maybe, like text
+  take stdlib-base
+    like task
+      like maybe, like text
+  like prelude-answer
+
+  save parts, make list
+  save added, make hash
+  save docks, global-docks(program)
+  save taken, make hash
+  save reach, used-in
+  save grew, true
+
+  walk test
+    hook test, grew
+    hook hold
+      save grew, false
+      walk docks
+        take dock
+        take index
+        fork test, taken/has(index)
+          hold
+            turn next
+        save used, true
+        sift reach
+          case some
+            link known
+            save used, mentions(known, dock/alias)
+          case none
+            save used, true
+        fork test, is-equal(used, false)
+          hold
+            turn next
+        taken/set(index, true)
+        save grew, true
+
+        walk shim-candidates(dock, env, stdlib-base)
+          take candidate
+          fork test, added/has(candidate)
+            hold
+              halt
+          sift read-runtime(candidate)
+            case some
+              link source
+              added/set(candidate, true)
+              sift with-includes(candidate, source, read-runtime, make-seen(candidate))
+                case built
+                  link included
+                  push(parts, included)
+                  sift reach
+                    case some
+                      link known
+                      save grown, <{known}\n{included}>
+                      save reach, make(some, grown)
+                    case none
+                      save reach, reach
+                case refused
+                  link reason
+                  back refused-of(reason)
+              halt
+            case none
+              turn next
+
+  fork test, is-equal(parts/length, 0)
+    hold
+      back built-of(<>)
+  save glue, <\n>
+  fork test, is-script(env)
+    hold
+      save glue, <;\n>
+      save whole, <{glue}{join(parts, <\n{glue}>)}>
+      back built-of(whole)
+  save whole, join(parts, <\n{glue}>)
+  back built-of(whole)
+
+# the includes a shim has already taken: itself
+task make-seen
+  take file, like text
+  like hash, like text, like boolean
+  mark private
+
+  save seen, make hash
+  seen/set(file, true)
+  back seen
+
+# ---- a TypeScript module with its prelude in front ----
+
+# the places a multiline `^` matches: the start, and after every line terminator
+task line-starts
+  take value, like text
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, 0)
+  save at, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      fork test, line-end-code(char-code-at(value, at))
+        hold
+          push(out, add(at, 1))
+      save at, add(at, 1)
+  back out
+
+# `[A-Za-z_$][\w$]*` at `at`, its end, or -1 when no name starts there
+task name-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  fork test, is-minimum(at, value/length)
+    hold
+      back -1
+  save first, char-code-at(value, at)
+  save starts, or(or(and(is-minimum(first, 65), is-maximum(first, 90)), and(is-minimum(first, 97), is-maximum(first, 122))), or(is-equal(first, 95), is-equal(first, 36)))
+  fork test, is-equal(starts, false)
+    hold
+      back -1
+  save end, add(at, 1)
+  walk test
+    hook test, and(is-below(end, value/length), or(word-code(char-code-at(value, end)), is-equal(char-code-at(value, end), 36)))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# `^(?:export )?(?:const|let|var|function|class) ([A-Za-z_$][\w$]*)`, the name a prelude line defines, or none
+task defined-at
+  take value, like text
+  take at, like number
+  like maybe, like text
+  mark private
+
+  save rest, substring(value, at, value/length)
+  save skip, 0
+  fork test, starts-with(rest, <export >)
+    hold
+      save skip, 7
+  save tail, substring(rest, skip, rest/length)
+  save keywords, make list
+  push(keywords, <const >)
+  push(keywords, <let >)
+  push(keywords, <var >)
+  push(keywords, <function >)
+  push(keywords, <class >)
+  walk keywords
+    take keyword
+    fork test, starts-with(tail, keyword)
+      hold
+        save start, add(at, add(skip, keyword/length))
+        save end, name-end(value, start)
+        fork test, is-minimum(end, 0)
+          hold
+            save name, substring(value, start, end)
+            back make(some, name)
+  # the regular expression would try again without the optional `export `, but a line that starts with `export` starts
+  # with no keyword, so that try never matches
+  back make none
+
+# `^declare const ([A-Za-z_$][\w$]*): any\n` at `at`: the name and the match's end, or none
+form declared
+  link name, like text
+  link end, like number
+
+task declared-at
+  take value, like text
+  take at, like number
+  like maybe, like declared
+  mark private
+
+  fork test, is-equal(starts-with(substring(value, at, value/length), <declare const >), false)
+    hold
+      back make none
+  save start, add(at, 14)
+  save end, name-end(value, start)
+  fork test, is-below(end, 0)
+    hold
+      back make none
+  fork test, is-equal(starts-with(substring(value, end, value/length), <: any\n>), false)
+    hold
+      back make none
+  save found
+    make declared
+      bind name, substring(value, start, end)
+      bind end, add(end, 6)
+  back make(some, found)
+
+# a TypeScript module with its prelude in front, as ONE file: each `declare const <name>: any` line of the module is
+# dropped where the prelude defines that name
+task join-type-script-prelude
+  take prelude, like text
+  take typescript, like text
+  like text
+
+  save defined, make hash
+  walk line-starts(prelude)
+    take at
+    sift defined-at(prelude, at)
+      case some
+        link name
+        defined/set(name, true)
+      case none
+        turn next
+
+  save pieces, make list
+  save copied, 0
+  walk line-starts(typescript)
+    take at
+    fork test, is-below(at, copied)
+      hold
+        turn next
+    sift declared-at(typescript, at)
+      case some
+        link found
+        fork test, defined/has(found/name)
+          hold
+            push(pieces, substring(typescript, copied, at))
+            save copied, found/end
+      case none
+        turn next
+  push(pieces, substring(typescript, copied, typescript/length))
+
+  back <{prelude}\n{join(pieces, <>)}>
+
+# ---- `{platform}` ----
+
+# the paths an import is resolved at, in order: each env of the chain in a `{platform}` slot, then the abstract module
+# with the slot taken out. The last is answered whatever it gives. An import with no slot is resolved as written
+task native-candidates
+  take env, like native-env
+  take import-path, like text
+  like list, like text
+
+  save out, make list
+  fork test, is-below(index-of(import-path, <\{platform\}>), 0)
+    hold
+      push(out, import-path)
+      back out
+  walk env-chain(env)
+    take rung
+    push(out, replace-all(import-path, <\{platform\}>, to-text(rung)))
+  push(out, replace-all(import-path, </\{platform\}>, <>))
+  back out

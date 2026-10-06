@@ -6,8 +6,11 @@
 // Run: npx tsx test/compile/role-scope.ts
 
 import { transformSync } from 'esbuild'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
+import { readFeedMineGrammar, feedMineUnknownRefs } from '@term/make/code/compile/feed-mill'
+import { parse } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
@@ -147,6 +150,25 @@ ok(
   value(`${LOAD}load @term/base/set\n  find set\n\ntask f\n  like number\n  save s, note \{1, 2, 2, 3\}\n  send back, call s/length\n`, 'f') === 3,
 )
 
+const membership = JSON.stringify(
+  ['2 in {1, 2, 3}', '5 ∈ {1, 2, 3}'].map(e => value(`${LOAD}load @term/base/set\n  find set\n\ntask f\n  like boolean\n  send back, note ${e}\n`, 'f')),
+)
+
+ok('membership: `2 in {1, 2, 3}` and `5 ∈ {1, 2, 3}`', membership === '[true,false]', membership)
+
+const operated = JSON.stringify(
+  ['{1, 2} ∪ {2, 3}', '{1, 2} ∩ {2, 3}', '{1, 2} \\ {2, 3}'].map(e =>
+    value(`${LOAD}load @term/base/set\n  find set\n\ntask f\n  like number\n  save s, note ${e}\n  send back, call s/length\n`, 'f'),
+  ),
+)
+
+ok('the set operators: `{1, 2} ∪ {2, 3}` holds three, `{1, 2} ∩ {2, 3}` one, `{1, 2} \\ {2, 3}` one', operated === '[3,1,1]', operated)
+
+ok(
+  'a negative: `-x * 2` and `-3 + x`',
+  JSON.stringify([value(`${LOAD}task f\n  take x, like number\n  like number\n  send back, note -x * 2\n`, 'f', [4]), value(`${LOAD}task f\n  take x, like number\n  like number\n  send back, note -3 + x\n`, 'f', [4])]) === '[-8,1]',
+)
+
 ok(
   '`1..5` holds both ends, five numbers',
   value(`${LOAD}load @term/base/range\n  find range\n\ntask f\n  like number\n  save r, note 1..5\n  send back, call r/length\n`, 'f') === 5,
@@ -258,6 +280,78 @@ ok(
   'a file role is never a scope: `role mill` stays a role rule',
   build('role mill\n  take @/code/**/*.tree\n', []).problems.every(p => p.name !== 'unknown-grammar' && p.name !== 'scope-refused'),
 )
+
+// ---- the guide's samples, as written there (note/term/guides/language/dsls/roles.md) ----
+
+const GUIDE_ROLE = `task speed
+  take distance, like float
+  take time, like float
+  like float
+  send back, role note, distance / time
+
+task area
+  take r, like float
+  like float
+  send back
+    role note
+      3.14159 * r^2
+`
+
+const GUIDE_LOAD = `load @term/mill/text/note
+  find note
+
+task within
+  take x, like number
+  like boolean
+  send back, note 0 < x < 10 and x != 5
+
+task rate
+  like float
+  save q, note 20MB/s
+  send back, call q/in-base
+`
+
+const guideRole = build(GUIDE_ROLE, ['speed', 'area'])
+
+ok(
+  'the guide\'s `role note` sample builds and computes',
+  guideRole.tasks !== undefined && guideRole.tasks.speed!(100, 8) === 12.5 && Math.abs((guideRole.tasks.area!(2) as number) - 12.56636) < 1e-9,
+  JSON.stringify(guideRole.problems),
+)
+
+const guideLoad = build(GUIDE_LOAD, ['within', 'rate'])
+
+ok(
+  'the guide\'s imported `note` sample builds and computes',
+  guideLoad.tasks !== undefined && guideLoad.tasks.within!(3) === true && guideLoad.tasks.within!(5) === false && guideLoad.tasks.rate!() === 160000000,
+  JSON.stringify(guideLoad.problems),
+)
+
+ok(
+  'a small whole power of a decimal name is its factors: `r^3` with `r` a float',
+  value(`${LOAD}task f\n  take r, like float\n  like float\n  send back, note r^3\n`, 'f', [1.5]) === 3.375,
+)
+
+// ---- the grammar's spec ----
+
+const SPEC = join(HERE, '../../deck/mill/code/text/note/mine.tree')
+const specText = readFileSync(SPEC, 'utf8')
+const spec = parse({ file: SPEC, text: specText })
+
+ok('the note grammar\'s spec (mine.tree) parses', spec.ok)
+
+if (spec.ok) {
+  const grammar = readFeedMineGrammar(spec.tree as never)
+  const declared = specText.split('\n').filter(line => line.startsWith('mine ')).map(line => line.slice(5).trim())
+
+  ok(`it declares ${declared.length} rules, each read`, declared.every(name => (grammar.get(name) ?? []).length > 0), declared.filter(name => (grammar.get(name) ?? []).length === 0).join(', '))
+  ok('it names no rule it does not define', feedMineUnknownRefs(grammar).length === 0, feedMineUnknownRefs(grammar).join(', '))
+
+  // every precedence level the reader has is a rule of the spec, so the two cannot drift apart in their levels
+  const READER_LEVELS = ['or', 'and', 'relation', 'comparison', 'set-expression', 'range-expression', 'additive', 'product', 'unary', 'power', 'postfix', 'primary']
+
+  ok('every level the reader parses is a rule of the spec', READER_LEVELS.every(level => grammar.has(level)), READER_LEVELS.filter(level => !grammar.has(level)).join(', '))
+}
 
 console.log(`\nrole-scope: ${pass} pass, ${fail} fail`)
 

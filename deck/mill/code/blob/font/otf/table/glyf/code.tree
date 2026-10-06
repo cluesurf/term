@@ -438,7 +438,7 @@ task glyf-flatten-points
 
 task glyf-flag-byte
   take on-curve, like boolean
-  like number
+  like u8
   fork test
     hook test
       read on-curve

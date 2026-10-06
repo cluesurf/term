@@ -9,66 +9,59 @@
 // The import paths are compared SEPARATELY because a `load` never becomes a mill Statement: the loader resolves it,
 // so the Program is blind to it. That blindness once hid the formatter turning every `{platform}` import into
 // `{{platform}}`.
+//
+// The merge and the JSON are Term, format/meanings.tree (self-hosting, 2026-10-06). This face mills, and converts the
+// program into the ordered JSON value Term reads: a literal past 2^53 is milled as a bigint (check/literals.ts), which
+// JSON.stringify refuses, so it is written with an `n`, and `9007199254740993` and `9007199254740992` still compare
+// different. A walk's temporaries need no rewriting: the mill names them by the walk's order in the file
+// (compile/mint-bridge.ts, `walks`), which formatting never moves.
 
 import { printTree } from '@term/make/code/parser/tree'
 import type { RootNode } from '@term/make/code/parser/narrow'
 import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
 import { mill } from '@term/make/code/compile/mill'
+import * as meanings from '@term/make/code/format/meanings'
+import type { RollValue } from '@term/make/code/compile/rolling'
 
-// Adjacent literal pieces of a template mean the same thing however they are split: `["<", "<", x]` and
-// `["<<", x]` both render `<<` then x. The formatter re-emits a literal as one chunk where the source had two, so
-// they are merged before comparing, for the same reason spans are dropped.
-function mergeParts(value: unknown): unknown {
+// a plain value as the ordered JSON value: keys in their order, `undefined` kept as a key JSON leaves out
+function toValue(value: unknown): RollValue {
+  if (value === undefined) {
+    return { form: 'no-value' }
+  }
+
+  if (value === null) {
+    return { form: 'null-value' }
+  }
+
+  if (typeof value === 'bigint') {
+    return { form: 'text-value', value: `${value}n` }
+  }
+
+  if (typeof value === 'string') {
+    return { form: 'text-value', value }
+  }
+
+  if (typeof value === 'number') {
+    return { form: 'number-value', value }
+  }
+
+  if (typeof value === 'boolean') {
+    return { form: 'flag-value', value }
+  }
+
   if (Array.isArray(value)) {
-    return value.map(mergeParts)
+    return { form: 'item-values', values: value.map(toValue) }
   }
 
-  if (!value || typeof value !== 'object') {
-    return value
-  }
-
-  const out: Record<string, unknown> = {}
-
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    // `privateNote` is a span too, under its own name: where a `note private` line sits, for the warning
-    // (check/private.ts). Formatting moves it as it moves every span, so it is position, not meaning
-    if (key === 'span' || key === 'privateNote') {
-      continue
+  if (typeof value === 'object') {
+    return {
+      form: 'pair-values',
+      pairs: Object.entries(value as Record<string, unknown>).map(([key, inner]) => ({ key, value: toValue(inner) })),
     }
-
-    if (key === 'parts' && Array.isArray(raw)) {
-      const merged: unknown[] = []
-
-      // a literal piece is a `{ form: 'chunk', value }` record since 2026-10-05 (compile/node.ts `TemplatePart`), where it
-      // was a bare string, and this merged strings alone: every split literal then read as a change of meaning, and the
-      // formatter refused its own layout of deck/site/code/dom/native/memory/dom.tree (format-sweep)
-      const chunk = (part: unknown): string | undefined =>
-        typeof part === 'string'
-          ? part
-          : part && typeof part === 'object' && (part as { form?: unknown }).form === 'chunk'
-            ? String((part as { value: unknown }).value)
-            : undefined
-
-      for (const part of raw) {
-        const last = merged[merged.length - 1]
-        const piece = chunk(part)
-        const before = chunk(last)
-
-        if (piece !== undefined && before !== undefined) {
-          merged[merged.length - 1] = { form: 'chunk', value: before + piece }
-        } else {
-          merged.push(piece !== undefined ? { form: 'chunk', value: piece } : mergeParts(part))
-        }
-      }
-
-      out[key] = merged
-      continue
-    }
-
-    out[key] = mergeParts(raw)
   }
 
-  return out
+  // a function or a symbol, which JSON leaves out as it leaves out `undefined`
+  return { form: 'no-value' }
 }
 
 // The mill's Program for a tree, spans dropped and template pieces merged, or undefined when it does not mill.
@@ -87,12 +80,7 @@ export function programOf(tree: RootNode, file: string, lean = false): string | 
     return undefined
   }
 
-  // a literal past 2^53 is milled as a bigint (check/literals.ts), which JSON.stringify refuses: written with an `n`,
-  // so `9007199254740993` and `9007199254740992` still compare different. A walk's temporaries need no rewriting: the
-  // mill names them by the walk's order in the file (compile/mint-bridge.ts, `walks`), which formatting never moves
-  const bigint = (_key: string, value: unknown) => (typeof value === 'bigint' ? `${value}n` : value)
-
-  return JSON.stringify(mergeParts(built.program), bigint)
+  return meanings.meaningOf(toValue(built.program))
 }
 
 // the `load` / `bear` paths a text names, through the compiler's own reader so this cannot disagree with the build

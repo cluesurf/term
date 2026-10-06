@@ -1,0 +1,1217 @@
+# F1 for lists of lists (note/term/codegen/shared.md): the element types E for which every `list of list of E` in the
+# program OWNS its inner lists, so a backend may hold each inner list as the plain list (`Vec<E>` on Rust) where it was
+# a shared one. compile/backend.ts `ownedElements` stays as the face and says why each rule is there.
+#
+# Ported from compile/backend.ts (self-hosting, 2026-10-06), its last function. The decisions:
+#   - the original keeps its answers by node identity (the `let`s bound to a slot, the walks, the inner lists put in,
+#     the locals moved in) and asks whether a statement CONTAINS a node by identity. Here every walk is a pass over
+#     compile/place-walk.tree's table, a node's identity is the number the face hands in for its place (`ids`, as
+#     compile/places.tree does), and the answers are the nodes themselves, which the face makes `WeakMap`s of
+#   - `ownedLocals` is handed the moves standing so far as a test of a node, and a node there is the program's own
+#     object: the face hands in `same-node`, `===` on TypeScript
+#   - a type's key is the backend's spelling of it (`keyOf`), a task handed in
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/unicode
+  find to-runes
+
+load ./node
+  find expression
+  find statement
+  find type
+  find expression-type
+
+load ./node-children
+  find node-handle
+
+load ./place-walk
+  find place-walk
+
+load ./backend-shapes
+  find collection-call
+
+load ./backend-lending
+  find owned-locals
+  find only-reads
+
+load ../ir/facts/guards
+  find native-call
+
+# what the analysis answers
+form element-let
+  link node, like statement
+  link key, like text
+
+form element-item
+  link node, like expression
+  link key, like text
+
+form owned-elements
+  link keys, like list, like text
+  link lets, like list, like element-let
+  link walks, like list, like element-let
+  link items, like list, like element-item
+  link moves, like list, like expression
+
+# a local handed into an outer list, checked once the task's statements are known
+form hand
+  link fn-row, like number
+  link name, like text
+  link row, like number
+  link key, like text
+
+form elements-scope
+  mark shared
+  link w, like place-walk
+  link ids, like list, like number
+  link fresh, like hash, like text, like boolean
+  link lend, like hash, like text, like hash, like number, like text
+  link key-of
+    like task
+      take t, like type
+      like text
+  link keys, like list, like text
+  link key-set, like hash, like text, like boolean
+  link refused, like hash, like text, like boolean
+  link lets, like list, like element-let
+  link walks, like list, like element-let
+  link items, like list, like element-item
+  link handed, like list, like hand
+  link tasks, like hash, like text, like number
+  link records, like hash, like text, like number
+  link seen, like hash, like text, like boolean
+
+task row-expression
+  take w, like place-walk
+  take row, like number
+  like maybe, like expression
+  mark private
+
+  sift get(w/handles, row)
+    case expression-handle
+      link node
+      back make(some, node)
+    miss
+      back make none
+
+task row-statement
+  take w, like place-walk
+  take row, like number
+  like maybe, like statement
+  mark private
+
+  sift get(w/handles, row)
+    case statement-handle
+      link node
+      back make(some, node)
+    miss
+      back make none
+
+# the places directly under a place, in order: its children's subtrees follow each other
+task children-of
+  take w, like place-walk
+  take row, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  save at, add(row, 1)
+  save stop, get(w/ends, row)
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      push(out, at)
+      save at, get(w/ends, at)
+  back out
+
+task one-row
+  take row, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, row)
+  back out
+
+task first-block
+  take w, like place-walk
+  take row, like number
+  like list, like number
+  mark private
+
+  walk w/block-holders
+    take holder
+    take index
+    fork test, is-equal(holder, row)
+      hold
+        save out, make list
+        walk get(w/block-items, index)
+          take one
+          push(out, one)
+        back out
+  save none, make list
+  back none
+
+task statements-of
+  take w, like place-walk
+  take rows, like list, like number
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk rows
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        push(out, s)
+      case none
+        save row, row
+  back out
+
+task refuse
+  take es, like elements-scope
+  take key, like text
+  like void
+  mark private
+
+  fork test, is-unequal(key, <>)
+    hold
+      es/refused/set(key, true)
+
+task add-key
+  take es, like elements-scope
+  take key, like text
+  like void
+  mark private
+
+  fork test, is-equal(es/key-set/has(key), false)
+    hold
+      es/key-set/set(key, true)
+      push(es/keys, key)
+
+# the key of a list of lists, the key of the inner list one is, when the type is one, else empty
+task outer
+  take es, like elements-scope
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case array
+          link element
+          sift element
+            case array
+              link inner
+              back es/key-of(inner)
+            miss
+              back <>
+        miss
+          back <>
+    case none
+      back <>
+
+task outer-var
+  take es, like elements-scope
+  take given, like maybe, like expression
+  like text
+  mark private
+
+  sift given
+    case some
+      link e
+      sift e
+        case variable
+          back outer(es, expression-type(e))
+        miss
+          back <>
+    case none
+      back <>
+
+task outer-row
+  take es, like elements-scope
+  take row, like number
+  like text
+  mark private
+
+  back outer-var(es, row-expression(es/w, row))
+
+task is-fresh-list
+  take es, like elements-scope
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case array
+      link items
+      back is-equal(items/length, 0)
+    case record
+      link record-name
+      link fields
+      back and(is-equal(record-name, <list>), is-equal(fields/length, 0))
+    case call
+      link callee
+      sift callee
+        case variable
+          link callee-name
+          back es/fresh/has(callee-name)
+        miss
+          back false
+    miss
+      back false
+
+# ---- types crossing into native code ----
+
+task crossing
+  take es, like elements-scope
+  take given, like maybe, like type
+  like void
+  mark private
+
+  sift given
+    case none
+      back
+    case some
+      save given, given
+  refuse(es, outer(es, given))
+  sift given
+    case some
+      link t
+      sift t
+        case array
+          link element
+          crossing(es, make(some, element))
+        case map
+          link key
+          link value
+          crossing(es, make(some, key))
+          crossing(es, make(some, value))
+        case function
+          link params
+          link result
+          walk params
+            take one
+            crossing(es, make(some, one))
+          crossing(es, make(some, result))
+        case named
+          link type-name
+          link type-args
+          fork test, es/seen/has(type-name)
+            hold
+              back
+          es/seen/set(type-name, true)
+          fork test, es/records/has(type-name)
+            hold
+              sift row-statement(es/w, es/records/get(type-name))
+                case some
+                  link record
+                  sift record
+                    case record-type
+                      link fields
+                      link variants
+                      walk fields
+                        take field
+                        save field-type, field/type
+                        crossing(es, make(some, field-type))
+                      walk variants
+                        take variant
+                        walk variant/fields
+                          take field
+                          save field-type, field/type
+                          crossing(es, make(some, field-type))
+                    miss
+                      save record, record
+                case none
+                  save type-name, type-name
+          walk type-args
+            take one
+            crossing(es, make(some, one))
+        miss
+          back
+    case none
+      back
+
+task natives
+  take es, like elements-scope
+  like void
+  mark private
+
+  save w, es/w
+  save at, 0
+  walk test
+    hook test, is-below(at, w/handles/length)
+    hook hold
+      sift row-expression(w, at)
+        case some
+          link e
+          sift e
+            case call
+              link callee
+              link args
+              fork test, native-call(callee)
+                hold
+                  walk args
+                    take arg
+                    crossing(es, expression-type(arg))
+                  crossing(es, expression-type(e))
+            miss
+              save e, e
+        case none
+          sift row-statement(w, at)
+            case some
+              link s
+              sift s
+                case function
+                  link params
+                  link body
+                  link result
+                  fork test, is-equal(body/length, 0)
+                    hold
+                      walk params
+                        take param
+                        crossing(es, param/type)
+                      crossing(es, result)
+                miss
+                  save s, s
+            case none
+              save at, at
+      save at, add(at, 1)
+
+# ---- the scan of a task ----
+
+# how many times a task binds a name: its parameters, its `let`s, its walks' items and indexes, its closures'
+# parameters, its arms' fields
+task bindings
+  take es, like elements-scope
+  take fn-row, like number
+  take name, like text
+  like number
+  mark private
+
+  save w, es/w
+  save count, 0
+  sift row-statement(w, fn-row)
+    case some
+      link fn
+      sift fn
+        case function
+          link params
+          walk params
+            take param
+            fork test, is-equal(param/name, name)
+              hold
+                save count, add(count, 1)
+        miss
+          save fn, fn
+    case none
+      save fn-row, fn-row
+  save body, first-block(w, fn-row)
+  fork test, is-equal(body/length, 0)
+    hold
+      back count
+  save at, get(body, 0)
+  save stop, get(w/ends, get(body, subtract(body/length, 1)))
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      sift row-statement(w, at)
+        case some
+          link s
+          sift s
+            case let
+              link let-name
+              fork test, is-equal(let-name, name)
+                hold
+                  save count, add(count, 1)
+            case for-each
+              link item
+              link index
+              fork test, or(is-equal(item, name), is-equal(index, name))
+                hold
+                  save count, add(count, 1)
+            case match
+              link subject
+              link cases
+              walk cases
+                take arm
+                save bound, false
+                walk arm/binds
+                  take one
+                  fork test, is-equal(one, name)
+                    hold
+                      save bound, true
+                fork test, bound
+                  hold
+                    save count, add(count, 1)
+            miss
+              save s, s
+        case none
+          sift row-expression(w, at)
+            case some
+              link e
+              sift e
+                case closure
+                  link params
+                  save bound, false
+                  walk params
+                    take param
+                    fork test, is-equal(param/name, name)
+                      hold
+                        save bound, true
+                  fork test, bound
+                    hold
+                      save count, add(count, 1)
+                miss
+                  save e, e
+            case none
+              save at, at
+      save at, add(at, 1)
+  back count
+
+task is-digit-name
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk to-runes(value)
+    take rune
+    fork test, or(is-below(rune, 48), is-above(rune, 57))
+      hold
+        back false
+  back true
+
+# an inner list put into an outer one of `key`: fresh, or a local of the task handed in whole
+task put-in
+  take es, like elements-scope
+  take row, like number
+  take key, like text
+  take fn-row, like number
+  like void
+  mark private
+
+  sift row-expression(es/w, row)
+    case some
+      link value
+      fork test, is-fresh-list(es, value)
+        hold
+          save item
+            make element-item
+              bind node, value
+              bind key, key
+          push(es/items, item)
+          sift value
+            case call
+              # the call's arguments: every child but its callee
+              walk children-of(es/w, row)
+                take child
+                take index
+                fork test, is-above(index, 0)
+                  hold
+                    visit(es, child, fn-row)
+            miss
+              save value, value
+          back
+      sift value
+        case variable
+          link var-name
+          save item
+            make element-item
+              bind node, value
+              bind key, key
+          push(es/items, item)
+          save handed
+            make hand
+              bind fn-row, fn-row
+              bind name, var-name
+              bind row, row
+              bind key, key
+          push(es/handed, handed)
+          back
+        miss
+          save value, value
+      refuse(es, key)
+      visit(es, row, fn-row)
+    case none
+      back
+
+task visit-children
+  take es, like elements-scope
+  take row, like number
+  take fn-row, like number
+  like void
+  mark private
+
+  walk children-of(es/w, row)
+    take child
+    visit(es, child, fn-row)
+
+task visit-rows
+  take es, like elements-scope
+  take rows, like list, like number
+  take fn-row, like number
+  like void
+  mark private
+
+  walk rows
+    take row
+    visit(es, row, fn-row)
+
+# one place of a task's body, as the original's `visit` met it: its own rule, or every field below it
+task visit
+  take es, like elements-scope
+  take row, like number
+  take fn-row, like number
+  like void
+  mark private
+
+  save w, es/w
+  sift row-expression(w, row)
+    case some
+      link e
+      sift e
+        case variable
+          # an outer list anywhere the cases below do not take it
+          refuse(es, outer(es, expression-type(e)))
+          back
+        case array
+          link items
+          # an outer list written out with its inner lists builds each as a list of its own
+          fork test, is-above(items/length, 0)
+            hold
+              refuse(es, outer(es, expression-type(e)))
+        case member
+          link target
+          # an inner list read out of an outer one anywhere but a `let`
+          save key, outer-var(es, make(some, target))
+          fork test, is-unequal(key, <>)
+            hold
+              refuse(es, key)
+              save kids, children-of(w, row)
+              fork test, is-above(kids/length, 1)
+                hold
+                  visit(es, get(kids, 1), fn-row)
+              back
+        case call
+          link callee
+          link args
+          save kids, children-of(w, row)
+          save callee-name, <>
+          sift callee
+            case variable
+              link name
+              save callee-name, name
+            miss
+              save callee-name, <>
+          save key, <>
+          fork test, is-above(args/length, 0)
+            hold
+              save first-arg, get(args, 0)
+              save key, outer-var(es, make(some, first-arg))
+          fork test, and(is-unequal(key, <>), is-equal(callee-name, <list_size>))
+            hold
+              back
+          fork test, and(is-unequal(key, <>), is-equal(callee-name, <list_push>))
+            hold
+              add-key(es, key)
+              fork test, is-above(kids/length, 2)
+                hold
+                  put-in(es, get(kids, 2), key, fn-row)
+              back
+          sift callee
+            case member
+              sift collection-call(callee)
+                case some
+                  link op
+                  fork test, and(is-unequal(op/kind, <map>), is-equal(op/op, <push>))
+                    hold
+                      save on, outer-var(es, make(some, op/target))
+                      fork test, is-unequal(on, <>)
+                        hold
+                          add-key(es, on)
+                          fork test, is-above(kids/length, 1)
+                            hold
+                              put-in(es, get(kids, 1), on, fn-row)
+                          back
+                case none
+                  save op-none, 0
+            miss
+              save callee, callee
+          # an outer list at a position the task takes lent: its body is scanned for its own reads
+          fork test, and(is-unequal(callee-name, <>), es/lend/has(callee-name))
+            hold
+              save taken, es/lend/get(callee-name)
+              walk kids
+                take child
+                take index
+                fork test, is-equal(index, 0)
+                  hold
+                    turn next
+                save at, subtract(index, 1)
+                save arg-key, outer-row(es, child)
+                fork test, or(is-equal(arg-key, <>), is-equal(taken/has(at), false))
+                  hold
+                    visit(es, child, fn-row)
+                  miss
+                    fork test, is-unequal(param-key(es, callee-name, at), arg-key)
+                      hold
+                        refuse(es, arg-key)
+              back
+        miss
+          save e, e
+      visit-children(es, row, fn-row)
+    case none
+      sift row-statement(w, row)
+        case some
+          link s
+          sift s
+            case let
+              link let-name
+              link init
+              save key, <>
+              save has-index, false
+              sift init
+                case member
+                  link member-target
+                  link member-name
+                  link member-index
+                  save key, outer-var(es, make(some, member-target))
+                  sift member-index
+                    case some
+                      save has-index, true
+                    case none
+                      save has-index, is-digit-name(member-name)
+                miss
+                  save key, <>
+              fork test, and(is-unequal(key, <>), has-index)
+                hold
+                  save fn-body, first-block(w, fn-row)
+                  fork test, and(is-equal(bindings(es, fn-row, let-name), 1), only-reads(statements-of(w, fn-body), let-name, es/lend, true))
+                    hold
+                      save bound
+                        make element-let
+                          bind node, s
+                          bind key, key
+                      push(es/lets, bound)
+                      add-key(es, key)
+                    miss
+                      refuse(es, key)
+                  # the index: the init's second child, when it has one
+                  save init-kids, children-of(w, add(row, 1))
+                  fork test, is-above(init-kids/length, 1)
+                    hold
+                      visit(es, get(init-kids, 1), fn-row)
+                  back
+              # an alias of an outer list
+              fork test, is-unequal(outer-var(es, make(some, init)), <>)
+                hold
+                  back
+            case for-each
+              link item
+              link iterable
+              save key, outer-var(es, make(some, iterable))
+              fork test, is-unequal(key, <>)
+                hold
+                  save loop-body, first-block(w, row)
+                  fork test, only-reads(statements-of(w, loop-body), item, es/lend, false)
+                    hold
+                      save walked
+                        make element-let
+                          bind node, s
+                          bind key, key
+                      push(es/walks, walked)
+                      add-key(es, key)
+                    miss
+                      refuse(es, key)
+                  visit-rows(es, loop-body, fn-row)
+                  back
+            case return
+              fork test, is-unequal(outer-var(es, read(value)), <>)
+                hold
+                  back
+            case assign
+              link target
+              link value
+              sift target
+                case member
+                  link member-target
+                  link member-name
+                  link member-index
+                  save key, outer-var(es, make(some, member-target))
+                  sift member-index
+                    case some
+                      # an inner list written into a slot of an outer one
+                      fork test, is-unequal(key, <>)
+                        hold
+                          add-key(es, key)
+                          save target-kids, children-of(w, add(row, 1))
+                          visit(es, get(target-kids, 1), fn-row)
+                          put-in(es, get(w/ends, add(row, 1)), key, fn-row)
+                          back
+                    case none
+                      save key, key
+                case variable
+                  fork test, and(is-unequal(outer(es, expression-type(target)), <>), is-unequal(outer-var(es, make(some, value)), <>))
+                    hold
+                      back
+                miss
+                  save target, target
+            miss
+              save s, s
+          visit-children(es, row, fn-row)
+        case none
+          back
+
+# the inner lists' key a task's parameter holds, empty where it holds none
+task param-key
+  take es, like elements-scope
+  take name, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-equal(es/tasks/has(name), false)
+    hold
+      back <>
+  sift row-statement(es/w, es/tasks/get(name))
+    case some
+      link fn
+      sift fn
+        case function
+          link params
+          fork test, is-below(at, params/length)
+            hold
+              back outer(es, get(params, at)/type)
+          back <>
+        miss
+          back <>
+    case none
+      back <>
+
+# ---- the hand-offs ----
+
+task id-of
+  take es, like elements-scope
+  take row, like number
+  like number
+  mark private
+
+  back get(es/ids, row)
+
+task contains-id
+  take es, like elements-scope
+  take root, like number
+  take wanted, like number
+  like boolean
+  mark private
+
+  save at, root
+  save stop, get(es/w/ends, root)
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      fork test, is-equal(id-of(es, at), wanted)
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+# the statement lists a compound statement holds: its body, its arms, its handler
+task lists-of
+  take es, like elements-scope
+  take row, like number
+  like list, like number
+  mark private
+
+  save w, es/w
+  save held, make list
+  walk w/block-holders
+    take holder
+    take index
+    fork test, is-equal(holder, row)
+      hold
+        push(held, index)
+  # the original's order: the body, the `otherwise` (walked after the arms here), the arms, the handler. A task's stub
+  # body is no list of these
+  save otherwise-last, false
+  save first-only, false
+  sift row-statement(w, row)
+    case some
+      link s
+      sift s
+        case if
+          link otherwise
+          sift otherwise
+            case some
+              save otherwise-last, true
+            case none
+              save otherwise-last, false
+        case match
+          link otherwise
+          sift otherwise
+            case some
+              save otherwise-last, true
+            case none
+              save otherwise-last, false
+        case function
+          save first-only, true
+        miss
+          save s, s
+    case none
+      save row, row
+  fork test, and(first-only, is-above(held/length, 1))
+    hold
+      save one, make list
+      push(one, get(held, 0))
+      back one
+  fork test, and(otherwise-last, is-above(held/length, 0))
+    hold
+      save out, make list
+      push(out, get(held, subtract(held/length, 1)))
+      walk held
+        take index
+        take at
+        fork test, is-below(at, subtract(held/length, 1))
+          hold
+            push(out, index)
+      back out
+  back held
+
+# the innermost statement list whose own statement holds the node, not inside a compound one
+task block-holding
+  take es, like elements-scope
+  take block, like number
+  take wanted, like number
+  like number
+  mark private
+
+  save w, es/w
+  walk get(w/block-items, block)
+    take s-row
+    fork test, is-equal(contains-id(es, s-row, wanted), false)
+      hold
+        turn next
+    save inner, lists-of(es, s-row)
+    fork test, is-equal(inner/length, 0)
+      hold
+        back block
+    walk inner
+      take list
+      save found, block-holding(es, list, wanted)
+      fork test, is-minimum(found, 0)
+        hold
+          back found
+    # in the statement's own expression (a condition, a subject): not a place a local is handed in
+    back -1
+  back -1
+
+task mentions
+  take es, like elements-scope
+  take root, like number
+  take name, like text
+  like number
+  mark private
+
+  save count, 0
+  save at, root
+  save stop, get(es/w/ends, root)
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      sift row-expression(es/w, at)
+        case some
+          link e
+          sift e
+            case variable
+              link var-name
+              fork test, is-equal(var-name, name)
+                hold
+                  save count, add(count, 1)
+            miss
+              save e, e
+        case none
+          save at, at
+      save at, add(at, 1)
+  back count
+
+task body-block-index
+  take w, like place-walk
+  take row, like number
+  like number
+  mark private
+
+  walk w/block-holders
+    take holder
+    take index
+    fork test, is-equal(holder, row)
+      hold
+        back index
+  back -1
+
+# whether a hand-off stands: declared fresh in the block that hands it in, mentioned once in that statement and never
+# after, and owned by its task with the standing hand-offs counted as their locals leaving
+task hand-fine
+  take es, like elements-scope
+  take one, like hand
+  take now, like list, like expression
+  take same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  like boolean
+  mark private
+
+  save w, es/w
+  save body, body-block-index(w, one/fn-row)
+  fork test, is-below(body, 0)
+    hold
+      back false
+  save block, block-holding(es, body, id-of(es, one/row))
+  fork test, is-below(block, 0)
+    hold
+      back false
+  save items, get(w/block-items, block)
+  save at, -1
+  walk items
+    take s-row
+    take index
+    fork test, and(is-below(at, 0), contains-id(es, s-row, id-of(es, one/row)))
+      hold
+        save at, index
+  save declared, false
+  walk items
+    take s-row
+    take index
+    fork test, is-minimum(index, at)
+      hold
+        turn next
+    sift row-statement(w, s-row)
+      case some
+        link s
+        sift s
+          case let
+            link let-name
+            link init
+            fork test, and(is-equal(let-name, one/name), is-fresh-list(es, init))
+              hold
+                save declared, true
+          miss
+            save s, s
+      case none
+        save s-row, s-row
+  fork test, is-equal(declared, false)
+    hold
+      back false
+  fork test, is-unequal(mentions(es, get(items, at), one/name), 1)
+    hold
+      back false
+  walk items
+    take s-row
+    take index
+    fork test, and(is-above(index, at), is-unequal(mentions(es, s-row, one/name), 0))
+      hold
+        back false
+  save is-move
+    task
+      take node, like expression
+      like boolean
+      walk now
+        take moved
+        fork test, same-node(moved, node)
+          hold
+            back true
+      back false
+  save no-stores, make hash
+  sift row-statement(w, one/fn-row)
+    case some
+      link fn
+      save owned, owned-locals(fn, es/fresh, es/lend, no-stores, is-move)
+      back owned/has(one/name)
+    case none
+      back false
+
+task is-walked
+  take w, like place-walk
+  like boolean
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, w/handles/length)
+    hook hold
+      sift row-expression(w, at)
+        case some
+          link e
+          sift e
+            case call
+              link callee
+              sift callee
+                case variable
+                  link callee-name
+                  fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
+                    hold
+                      back true
+                miss
+                  save callee, callee
+            miss
+              save e, e
+        case none
+          save at, at
+      save at, add(at, 1)
+  back false
+
+# the expression a place holds
+task expression-list-of
+  take w, like place-walk
+  take rows, like list, like number
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk rows
+    take row
+    sift row-expression(w, row)
+      case some
+        link e
+        push(out, e)
+      case none
+        save row, row
+  back out
+
+task owned-elements-of
+  take w, like place-walk
+  take ids, like list, like number
+  take fresh, like hash, like text, like boolean
+  take lend, like hash, like text, like hash, like number, like text
+  take key-of
+    like task
+      take t, like type
+      like text
+  take same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  like owned-elements
+
+  save es
+    make elements-scope
+      bind w, w
+      bind ids, ids
+      bind fresh, fresh
+      bind lend, lend
+      bind key-of, key-of
+      bind keys, make list
+      bind key-set, make hash
+      bind refused, make hash
+      bind lets, make list
+      bind walks, make list
+      bind items, make list
+      bind handed, make list
+      bind tasks, make hash
+      bind records, make hash
+      bind seen, make hash
+
+  # a list of lists at module level is reachable from anywhere
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case let
+            link type
+            refuse(es, outer(es, type))
+          case function
+            link name
+            es/tasks/set(name, row)
+          case record-type
+            link name
+            es/records/set(name, row)
+          miss
+            save s, s
+      case none
+        save row, row
+
+  natives(es)
+
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case function
+            visit-rows(es, first-block(w, row), row)
+          miss
+            save s, s
+      case none
+        save row, row
+
+  # a form filled or melted is walked by a generated function that builds every inner list as the shared one
+  fork test, is-walked(w)
+    hold
+      save none, make list
+      back
+        make owned-elements
+          bind keys, none
+          bind lets, es/lets
+          bind walks, es/walks
+          bind items, es/items
+          bind moves, make list
+
+  # dropping a key can refuse a local another hand-off relied on, so settle
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save standing, make list
+      save standing-rows, make list
+      walk es/handed
+        take one
+        fork test, is-equal(es/refused/has(one/key), false)
+          hold
+            push(standing, one)
+            push(standing-rows, one/row)
+      save now, expression-list-of(w, standing-rows)
+      walk standing
+        take one
+        fork test, is-equal(hand-fine(es, one, now, same-node), false)
+          hold
+            refuse(es, one/key)
+            save changed, true
+
+  save keys, make list
+  walk es/keys
+    take key
+    fork test, is-equal(es/refused/has(key), false)
+      hold
+        push(keys, key)
+  save moved-rows, make list
+  walk es/handed
+    take one
+    fork test, is-equal(es/refused/has(one/key), false)
+      hold
+        push(moved-rows, one/row)
+  back
+    make owned-elements
+      bind keys, keys
+      bind lets, es/lets
+      bind walks, es/walks
+      bind items, es/items
+      bind moves, expression-list-of(w, moved-rows)

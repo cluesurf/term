@@ -1375,18 +1375,23 @@ task certified
   like boolean
   mark private
 
-  save target, number-table()
+  # summed as JavaScript sums them, a double that may pass 2^53 (the checker then refuses it), and handed on as numbers
+  save sums, float-table()
   walk poly/keys()
     take key
     save coefficient, poly/get(key)
     fork test, is-unequal(coefficient, 0.0)
       hold
         save at, gram-key(monomial-vars(key))
-        save had, 0
-        fork test, target/has(at)
+        save had, 0.0
+        fork test, sums/has(at)
           hold
-            save had, target/get(at)
-        save target/{at}, add(had, as-number(multiply(2.0, coefficient)))
+            save had, sums/get(at)
+        save sums/{at}, add(had, multiply(2.0, coefficient))
+  save target, number-table()
+  walk sums/keys()
+    take at
+    save target/{at}, as-number(sums/get(at))
   save basis, make list
   walk search/basis
     take key

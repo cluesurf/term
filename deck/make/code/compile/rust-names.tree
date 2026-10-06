@@ -1,0 +1,2809 @@
+# The Rust emitter's helpers that read no emitter state: a Term name as Rust spells it (snake_case with the reserved
+# words escaped, PascalCase, a loop label), a Rust text or char literal, an index made a `usize`, whether a tail
+# expression holds a borrow, a checked type's Rust spelling, the forms a second pass may box, whether a program's
+# text-keyed maps may hold `TermKey`s, and the analyses of one body (the names a closure writes, the names it reads,
+# the names read once, the bounds an array op needs), with the walkers a `fill` and a `melt` write.
+#
+# Ported from compile/rust.ts (self-hosting, 2026-10-06), which stays as the face and the driver. The module state a
+# type's spelling reads (a function's generic letters, the opaque handle types, the `mark shared` forms, whether text
+# keys are `TermKey`s, the inner lists a list of lists owns, each generic form's arity) crosses as one shared
+# `rust-type-context`, whose hashes the face keeps current.
+#
+# A text counts code points here, where JavaScript counts UTF-16 units. Every scan below compares only ASCII characters,
+# so the two agree, except `borrows-at-tail`, whose char-literal test looks two places ahead: it reads the text as its
+# UTF-16 units, as the original did, so a char literal of a character past U+FFFF is read alike.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find index-of
+  find split
+  find to-upper-case
+  find replace-all
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+  find dock-route
+  find declared-param
+  find closure-param
+  find function-param
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./main-entry
+  find whitespace-code
+
+load ./backend-shapes
+  find is-text
+  find collection-call
+  find collection-op
+  find form-spec
+  find spec-field
+  find form-kind
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task split-words
+  take words, like text
+  like list, like text
+  mark private
+
+  back split(words, < >)
+
+# a number in lower-case hexadecimal, no padding
+task hex-of
+  take value, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  fork test, is-equal(value, 0)
+    hold
+      back <0>
+  save out, <>
+  save rest, value
+  walk test
+    hook test, is-above(rest, 0)
+    hook hold
+      save digit, modulo(rest, 16)
+      save out, <{char-at(digits, digit)}{out}>
+      save rest, divide(subtract(rest, digit), 16)
+  back out
+
+# ---- names ----
+
+# Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers, and `main`, which a binary's start
+# takes: a Term name colliding with one is suffixed with `_`
+task rust-reserved
+  like list, like text
+  mark private
+
+  back split-words(<as break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return static struct super trait true type unsafe use where while async await abstract become box do final macro override priv typeof unsized virtual yield try gen main>)
+
+# a Term name in snake_case, a Rust keyword escaped with a trailing underscore
+task snake
+  take name, like text
+  like text
+
+  save snake-name, replace-all(name, <->, <_>)
+  fork test, has-text(rust-reserved(), snake-name)
+    hold
+      back <{snake-name}_>
+  back snake-name
+
+# a variable's name: `self` is `slf`, a free identifier only in a method
+task vname
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <self>)
+    hold
+      back <slf>
+  back snake(name)
+
+# the cursor of a text read by position in a loop (backend `text-cursors`)
+task cursor-name
+  take name, like text
+  like text
+
+  back <__cursor_{vname(name)}>
+
+# a named walk's label as Rust writes it: `'outer`, and `'static_` for a loop called `static`
+task loop-name
+  take label, like text
+  like text
+
+  save name, snake(label)
+  fork test, is-equal(name, <static>)
+    hold
+      back <'static_>
+  back <'{name}>
+
+# the label written before a named walk's loop keyword (`'outer: while`), nothing for an unnamed one
+task loop-label
+  take label, like maybe, like text
+  like text
+
+  sift label
+    case some
+      link named
+      fork test, is-equal(named, <>)
+        hold
+          back <>
+      back <{loop-name(named)}: >
+    case none
+      back <>
+
+task lower-or-digit
+  take one, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(one, 0)
+  back or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 48), is-maximum(code, 57)))
+
+# `(^|-)([a-z0-9])` upper-cased, every hyphen before one dropped (`sha-256` is `Sha256`)
+task pascal
+  take name, like text
+  like text
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      save one, char-at(name, at)
+      fork test, and(is-equal(at, 0), lower-or-digit(one))
+        hold
+          save out, <{out}{to-upper-case(one)}>
+          save at, add(at, 1)
+          turn next
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), name/length))
+        hold
+          save next, char-at(name, add(at, 1))
+          fork test, lower-or-digit(next)
+            hold
+              save out, <{out}{to-upper-case(next)}>
+              save at, add(at, 2)
+              turn next
+      save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# ---- emitted text ----
+
+# outer parentheses around an assigned or returned value are the binary case's grouping: a BALANCED outer pair is
+# stripped
+task bare
+  take rendered, like text
+  like text
+
+  fork test, or(not(starts-with(rendered, <(>)), not(ends-with(rendered, <)>)))
+    hold
+      back rendered
+  save depth, 0
+  save at, 0
+  save size, rendered/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(rendered, at)
+      fork test, is-equal(one, <(>)
+        hold
+          save depth, add(depth, 1)
+        miss
+          fork test, is-equal(one, <)>)
+            hold
+              save depth, subtract(depth, 1)
+              fork test, and(is-equal(depth, 0), is-below(at, subtract(size, 1)))
+                hold
+                  back rendered
+      save at, add(at, 1)
+  back substring(rendered, 1, subtract(size, 1))
+
+# every `format!(...)` in a text replaced by `__formatted`, its parentheses matched outside quoted text
+task without-formats
+  take text, like text
+  like text
+
+  save out, <>
+  save at, 0
+  save size, text/length
+  walk test
+    hook test, true
+    hook hold
+      save start, index-of(text, <format!(>, at)
+      fork test, is-below(start, 0)
+        hold
+          fork test, is-below(at, size)
+            hold
+              back <{out}{substring(text, at, size)}>
+          back out
+      save depth, 0
+      save quoted, false
+      save end, add(start, 7)
+      walk test
+        hook test, is-below(end, size)
+        hook hold
+          save c, char-at(text, end)
+          fork test, quoted
+            hold
+              fork test, is-equal(c, <\\>)
+                hold
+                  save end, add(end, 1)
+                miss
+                  fork test, is-equal(c, <">)
+                    hold
+                      save quoted, false
+              save end, add(end, 1)
+              turn next
+          fork test, is-equal(c, <">)
+            hold
+              save quoted, true
+            miss
+              fork test, is-equal(c, <(>)
+                hold
+                  save depth, add(depth, 1)
+                miss
+                  fork test, is-equal(c, <)>)
+                    hold
+                      save depth, subtract(depth, 1)
+                      fork test, is-equal(depth, 0)
+                        hold
+                          halt
+          save end, add(end, 1)
+      save out, <{out}{substring(text, at, start)}__formatted>
+      save at, add(end, 1)
+  back out
+
+# a text as its UTF-16 code units: a code point past U+FFFF is two
+task units-of
+  take value, like text
+  like list, like number
+  mark private
+
+  save units, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-above(rune, 65535)
+      hold
+        save rest, subtract(rune, 65536)
+        save low, modulo(rest, 1024)
+        push(units, add(55296, divide(subtract(rest, low), 1024)))
+        push(units, add(56320, low))
+      miss
+        push(units, rune)
+  back units
+
+# the units from `start` up to `stop` as text, a high and a low surrogate in a row joined into their code point
+task units-text
+  take units, like list, like number
+  take start, like number
+  take stop, like number
+  like text
+  mark private
+
+  save runes, make list
+  save at, start
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      save unit, get(units, at)
+      save paired, false
+      fork test, and(and(is-minimum(unit, 55296), is-maximum(unit, 56319)), is-below(add(at, 1), stop))
+        hold
+          save next, get(units, add(at, 1))
+          fork test, and(is-minimum(next, 56320), is-maximum(next, 57343))
+            hold
+              push(runes, add(65536, add(multiply(subtract(unit, 55296), 1024), subtract(next, 56320))))
+              save paired, true
+              save at, add(at, 2)
+      fork test, is-equal(paired, false)
+        hold
+          push(runes, unit)
+          save at, add(at, 1)
+  back from-runes(runes)
+
+# the unit at `at`, or -1 past either end (JavaScript's `value[i]` is undefined there, which equals no character)
+task unit-at
+  take units, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, units/length))
+    hold
+      back get(units, at)
+  back -1
+
+form block-open
+  link open, like number
+  link semi, like number
+
+form cut-range
+  link start, like number
+  link end, like number
+
+# does a value, made a function's tail expression, hold a borrow guard (`Ref`, `MutexGuard`, a `with` closure's) in a
+# temporary? Every block `{ a; b; c }` inside the value is asked of its own tail only: the statements before its last
+# `;` are cut out, and so is every `format!(...)`, which binds its own result
+task borrows-at-tail
+  take whole, like text
+  like boolean
+
+  save value, units-of(without-formats(whole))
+  save size, value/length
+  save cuts, make list
+  save blocks, make list
+  save quoted, false
+  save i, 0
+  walk test
+    hook test, is-below(i, size)
+    hook hold
+      save c, get(value, i)
+      fork test, quoted
+        hold
+          fork test, is-equal(c, 92)
+            hold
+              save i, add(i, 1)
+            miss
+              fork test, is-equal(c, 34)
+                hold
+                  save quoted, false
+        miss
+          fork test, is-equal(c, 34)
+            hold
+              save quoted, true
+            miss
+              fork test, and(is-equal(c, 39), is-equal(unit-at(value, add(i, 2)), 39))
+                hold
+                  save i, add(i, 2)
+                miss
+                  fork test, and(is-equal(c, 39), and(is-equal(unit-at(value, add(i, 1)), 92), is-equal(unit-at(value, add(i, 3)), 39)))
+                    hold
+                      save i, add(i, 3)
+                    miss
+                      fork test, is-equal(c, 123)
+                        hold
+                          save opened
+                            make block-open
+                              bind open, i
+                              bind semi, -1
+                          push(blocks, opened)
+                        miss
+                          fork test, is-equal(c, 125)
+                            hold
+                              fork test, is-above(blocks/length, 0)
+                                hold
+                                  save last, blocks/pop()
+                                  fork test, is-above(last/semi, last/open)
+                                    hold
+                                      save range
+                                        make cut-range
+                                          bind start, add(last/open, 1)
+                                          bind end, add(last/semi, 1)
+                                      push(cuts, range)
+                            miss
+                              fork test, and(is-equal(c, 59), is-above(blocks/length, 0))
+                                hold
+                                  save top, get(blocks, subtract(blocks/length, 1))
+                                  save top/semi, i
+      save i, add(i, 1)
+
+  # the cuts in order of their start (a block closes before the one around it, so they come out of order), each taken
+  # only when it starts past the last one taken
+  save sorted, make list
+  walk cuts
+    take range
+    save placed, make list
+    save done, false
+    walk sorted
+      take other
+      fork test, and(is-equal(done, false), is-below(range/start, other/start))
+        hold
+          push(placed, range)
+          save done, true
+      push(placed, other)
+    fork test, is-equal(done, false)
+      hold
+        push(placed, range)
+    save sorted, placed
+  save kept, <>
+  save from, 0
+  walk sorted
+    take range
+    fork test, is-minimum(range/start, from)
+      hold
+        save kept, <{kept}{units-text(value, from, range/start)}>
+        save from, range/end
+  save rest, <{kept}{units-text(value, from, size)}>
+  back or(or(contains-text(rest, <.borrow()>), contains-text(rest, <.borrow_mut()>)), or(contains-text(rest, <.lock()>), contains-text(rest, <.with(>)))
+
+task contains-text
+  take value, like text
+  take part, like text
+  like boolean
+  mark private
+
+  back is-minimum(index-of(value, part, 0), 0)
+
+# a text's characters escaped for a Rust literal: JSON's `\u0000` is not Rust's `\u{0}`
+task rust-escape
+  take text, like text
+  take quote, like text
+  like text
+
+  save out, <>
+  walk to-runes(text)
+    take code
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    save one, from-runes(single(code))
+    fork test, is-equal(one, quote)
+      hold
+        save out, <{out}\\{quote}>
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-maximum(code, 31), is-equal(code, 127))
+      hold
+        save out, <{out}\\u\{{hex-of(code)}\}>
+        turn next
+    save out, <{out}{one}>
+  back out
+
+task single
+  take code, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, code)
+  back out
+
+# a Rust string literal, and a char literal for a one-character text
+task rust-string
+  take text, like text
+  like text
+
+  back <"{rust-escape(text, <">)}">
+
+task rust-char
+  take text, like text
+  like text
+
+  back <'{rust-escape(text, <'>)}'>
+
+task is-digits
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(text/length, 0)
+    hold
+      back false
+  walk to-runes(text)
+    take code
+    fork test, or(is-below(code, 48), is-above(code, 57))
+      hold
+        back false
+  back true
+
+# `[\s+\-*/%<>=!&|?^]`, a character that makes an index an operation
+task operator-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, whitespace-code(code)
+    hold
+      back true
+  save operators, to-runes(<+-*/%\<\>=!&|?^>)
+  walk operators
+    take one
+    fork test, is-equal(one, code)
+      hold
+        back true
+  back false
+
+# an index expression cast to `usize`, parenthesized only when it needs it. A negative integer literal is typed `i64`
+# first, since rustc otherwise infers it as the cast's target and refuses to negate a `usize`
+task as-usize
+  take text, like text
+  like text
+
+  fork test, and(starts-with(text, <->), is-digits(substring(text, 1, text/length)))
+    hold
+      back <({text}i64) as usize>
+  fork test, is-digits(text)
+    hold
+      back text
+  save depth, 0
+  save quote, false
+  save plain, true
+  save codes, to-runes(text)
+  save i, 0
+  walk test
+    hook test, is-below(i, codes/length)
+    hook hold
+      save c, get(codes, i)
+      fork test, quote
+        hold
+          fork test, is-equal(c, 92)
+            hold
+              save i, add(i, 1)
+            miss
+              fork test, is-equal(c, 34)
+                hold
+                  save quote, false
+          save i, add(i, 1)
+          turn next
+      fork test, is-equal(c, 34)
+        hold
+          save quote, true
+        miss
+          fork test, or(or(is-equal(c, 40), is-equal(c, 91)), is-equal(c, 123))
+            hold
+              save depth, add(depth, 1)
+            miss
+              fork test, or(or(is-equal(c, 41), is-equal(c, 93)), is-equal(c, 125))
+                hold
+                  save depth, subtract(depth, 1)
+                miss
+                  fork test, and(is-equal(depth, 0), operator-code(c))
+                    hold
+                      save plain, false
+                      halt
+      save i, add(i, 1)
+  fork test, and(plain, is-above(text/length, 0))
+    hold
+      back <{text} as usize>
+  back <({text}) as usize>
+
+# ---- types ----
+
+# what a type's Rust spelling reads of the module being emitted, kept current by the face: each generic variable's
+# letter in the function being emitted, the `dock type` handles, the `mark shared` forms, whether a text key is a
+# `TermKey`, the element types whose lists of lists own their inner lists, and each generic form's arity
+form rust-type-context
+  mark shared
+  link var-names, like hash, like number, like text
+  link opaque-types, like hash, like text, like text
+  link shared-forms, like hash, like text, like boolean
+  link text-keys, like boolean
+  link owned-inner, like hash, like text, like boolean
+  link generic-arity, like hash, like text, like number
+
+# a value of a `mark shared` form is a handle
+task is-shared-type
+  take given, like maybe, like type
+  take context, like rust-type-context
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link type-name
+          back context/shared-forms/has(type-name)
+        miss
+          back false
+    case none
+      back false
+
+# how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`
+task rust-element
+  take element, like type
+  take context, like rust-type-context
+  like text
+
+  sift element
+    case array
+      link inner
+      save inner-type, rust-type-of(inner, context)
+      fork test, context/owned-inner/has(inner-type)
+        hold
+          back <Vec\<{inner-type}\>>
+    miss
+      save nothing, 0
+  back rust-type-of(element, context)
+
+# a checked type's Rust spelling, `()` for none
+task rust-type
+  take given, like maybe, like type
+  take context, like rust-type-context
+  like text
+
+  sift given
+    case some
+      link known
+      back rust-type-of(known, context)
+    case none
+      back <()>
+
+task rust-type-of
+  take known, like type
+  take context, like rust-type-context
+  like text
+
+  sift known
+    case boolean
+      back <bool>
+    case string
+      back <String>
+    case unit
+      back <()>
+    case array
+      link element
+      back <std::rc::Rc\<std::cell::RefCell\<Vec\<{rust-element(element, context)}\>\>\>>
+    case map
+      link map-key
+      link map-value
+      back <std::rc::Rc\<std::cell::RefCell\<TermMap\<{map-key-type(map-key, context)}, {rust-type-of(map-value, context)}\>\>\>>
+    case named
+      link type-name
+      link type-args
+      fork test, context/opaque-types/has(type-name)
+        hold
+          save opaque, context/opaque-types/get(type-name)
+          fork test, is-unequal(opaque, <>)
+            hold
+              back opaque
+      save arity, 0
+      fork test, context/generic-arity/has(type-name)
+        hold
+          save arity, context/generic-arity/get(type-name)
+      save spelled, make list
+      walk type-args
+        take arg
+        push(spelled, rust-type-of(arg, context))
+      save plain, pascal(type-name)
+      fork test, is-above(spelled/length, 0)
+        hold
+          save plain, <{plain}\<{join-texts(spelled, <, >)}\>>
+        miss
+          fork test, is-above(arity, 0)
+            hold
+              save defaults, make list
+              save k, 0
+              walk test
+                hook test, is-below(k, arity)
+                hook hold
+                  push(defaults, <i64>)
+                  save k, add(k, 1)
+              save plain, <{plain}\<{join-texts(defaults, <, >)}\>>
+      fork test, context/shared-forms/has(type-name)
+        hold
+          back <TermShared\<{plain}\>>
+      back plain
+    case function
+      link fn-params
+      link fn-result
+      link fn-effects
+      save spelled, make list
+      walk fn-params
+        take param
+        push(spelled, rust-type-of(param, context))
+      save params, join-texts(spelled, <, >)
+      save result, rust-type-of(fn-result, context)
+      save is-async, false
+      walk fn-effects
+        take effect
+        fork test, is-equal(effect, <async>)
+          hold
+            save is-async, true
+      fork test, is-async
+        hold
+          back <std::rc::Rc\<dyn Fn({params}) -\> std::pin::Pin\<Box\<dyn std::future::Future\<Output = {result}\>\>\>\>>
+      back <std::rc::Rc\<dyn Fn({params}) -\> {result}\>>
+    case number
+      back <i64>
+    case float
+      back <f64>
+    case dynamic
+      back <serde_json::Value>
+    case bytes
+      back <Vec\<u8\>>
+    case variable
+      link variable-id
+      fork test, context/var-names/has(variable-id)
+        hold
+          back context/var-names/get(variable-id)
+      back <std::rc::Rc\<dyn std::any::Any\>>
+    case unknown
+      back <std::rc::Rc\<dyn std::any::Any\>>
+
+# a map's key: one nothing constrained is `String`, a text one is a `TermKey` where the program's text keys are
+task map-key-type
+  take key, like type
+  take context, like rust-type-context
+  like text
+  mark private
+
+  sift key
+    case variable
+      link variable-id
+      fork test, not(context/var-names/has(variable-id))
+        hold
+          back <String>
+    case unknown
+      back <String>
+    case dynamic
+      back <String>
+    miss
+      save nothing, 0
+  fork test, and(context/text-keys, is-text(make(some, key)))
+    hold
+      back <TermKey>
+  back rust-type-of(key, context)
+
+# the inference-variable ids in a type, in the order they are met, each an implicit generic parameter of its function
+task collect-vars
+  take given, like maybe, like type
+  like list, like number
+
+  save out, make list
+  sift given
+    case some
+      link known
+      vars-into(known, out)
+    case none
+      save nothing, 0
+  back out
+
+task vars-into
+  take known, like type
+  take out, like list, like number
+  mark private
+
+  sift known
+    case variable
+      link variable-id
+      push(out, variable-id)
+    case array
+      link element
+      vars-into(element, out)
+    case map
+      link map-key
+      link map-value
+      vars-into(map-key, out)
+      vars-into(map-value, out)
+    case function
+      link fn-params
+      link fn-result
+      walk fn-params
+        take param
+        vars-into(param, out)
+      vars-into(fn-result, out)
+    case named
+      link type-name
+      link type-args
+      walk type-args
+        take arg
+        vars-into(arg, out)
+    miss
+      save nothing, 0
+
+# ---- the forms a second pass boxes ----
+
+task form-names-into
+  take known, like type
+  take into, like list, like text
+  mark private
+
+  sift known
+    case named
+      link type-name
+      link type-args
+      push(into, type-name)
+      walk type-args
+        take arg
+        form-names-into(arg, into)
+    case array
+      link element
+      form-names-into(element, into)
+    case map
+      link map-key
+      link map-value
+      form-names-into(map-key, into)
+      form-names-into(map-value, into)
+    case function
+      link fn-params
+      link fn-result
+      walk fn-params
+        take param
+        form-names-into(param, into)
+      form-names-into(fn-result, into)
+    miss
+      save nothing, 0
+
+# the recursive forms (a case field whose type is the form itself) that nothing cloned, directly or through a form
+# holding one: a cloned form is closed over the forms its fields hold, at any depth
+task boxable-forms
+  take program, like list, like statement
+  take cloned, like list, like text
+  like list, like text
+
+  # by name, the LAST of a name kept at the place of the FIRST, as a map built from entries keeps it
+  save records, make hash
+  save order, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        link record-name
+        fork test, not(records/has(record-name))
+          hold
+            push(order, record-name)
+        records/set(record-name, one)
+      miss
+        save nothing, 0
+  save held, make hash
+  save work, make list
+  walk cloned
+    take name
+    held/set(name, true)
+    push(work, name)
+  walk test
+    hook test, is-above(work/length, 0)
+    hook hold
+      save next, work/pop()
+      fork test, records/has(next)
+        hold
+          save record, records/get(next)
+          save inner, make list
+          sift record
+            case record-type
+              link record-name
+              link record-params
+              link record-indices
+              link record-fields
+              link record-variants
+              walk record-fields
+                take field
+                form-names-into(field/type, inner)
+              walk record-variants
+                take variant
+                walk variant/fields
+                  take field
+                  form-names-into(field/type, inner)
+            miss
+              save nothing, 0
+          walk inner
+            take name
+            fork test, not(held/has(name))
+              hold
+                held/set(name, true)
+                push(work, name)
+  save out, make list
+  walk order
+    take name
+    save record, records/get(name)
+    sift record
+      case record-type
+        link record-name
+        link record-params
+        link record-indices
+        link record-fields
+        link record-variants
+        fork test, and(and(not(read(shared)), is-equal(record-params/length, 0)), not(held/has(record-name)))
+          hold
+            save recursive, false
+            walk record-variants
+              take variant
+              walk variant/fields
+                take field
+                save field-type, field/type
+                sift field-type
+                  case named
+                    link type-name
+                    fork test, is-equal(type-name, record-name)
+                      hold
+                        save recursive, true
+                  miss
+                    save nothing, 0
+            fork test, recursive
+              hold
+                push(out, record-name)
+      miss
+        save nothing, 0
+  back out
+
+# ---- text keys that do not allocate ----
+
+# what the walk for `text-key-reason` keeps: whether a text-keyed map was seen, the first reason one cannot hold
+# `TermKey`s, and the program's tables
+form key-scan
+  mark shared
+  link any, like boolean
+  link leak, like maybe, like text
+  link tasks, like hash, like text, like statement
+  link fields, like hash, like text, like hash, like text, like type
+  link variant-owner, like hash, like text, like text
+
+task text-map
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case map
+          link map-key
+          back is-text(make(some, map-key))
+        miss
+          back false
+    case none
+      back false
+
+task note-map
+  take st, like key-scan
+  take given, like maybe, like type
+  mark private
+
+  fork test, text-map(given)
+    hold
+      save st/any, true
+
+task note-declared-params
+  take st, like key-scan
+  take params, like list, like declared-param
+  mark private
+
+  walk params
+    take one
+    note-map(st, one/type)
+
+task note-closure-params
+  take st, like key-scan
+  take params, like list, like closure-param
+  mark private
+
+  walk params
+    take one
+    note-map(st, one/type)
+
+task note-route
+  take st, like key-scan
+  take route, like dock-route
+  mark private
+
+  walk route/takes
+    take one
+    note-map(st, one/type)
+  walk route/methods
+    take method
+    walk method/takes
+      take one
+      note-map(st, one/type)
+  walk route/children
+    take child
+    note-route(st, child)
+
+# a type is the generic named or numbered as the key
+task same-generic
+  take given, like type
+  take key, like type
+  like boolean
+  mark private
+
+  sift key
+    case named
+      link key-name
+      sift given
+        case named
+          link type-name
+          back is-equal(type-name, key-name)
+        miss
+          back false
+    case variable
+      link key-id
+      sift given
+        case variable
+          link variable-id
+          back is-equal(variable-id, key-id)
+        miss
+          back false
+    miss
+      back false
+
+# whether a type mentions the key's generic, other than as a map's key
+task mentions-key
+  take given, like maybe, like type
+  take key, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      back mentions-key-in(known, key)
+    case none
+      back false
+
+task mentions-key-in
+  take known, like type
+  take key, like type
+  like boolean
+  mark private
+
+  fork test, same-generic(known, key)
+    hold
+      back true
+  sift known
+    case array
+      link element
+      back mentions-key-in(element, key)
+    case map
+      link map-key
+      link map-value
+      fork test, and(not(same-generic(map-key, key)), mentions-key-in(map-key, key))
+        hold
+          back true
+      back mentions-key-in(map-value, key)
+    case function
+      link fn-params
+      link fn-result
+      walk fn-params
+        take param
+        fork test, mentions-key-in(param, key)
+          hold
+            back true
+      back mentions-key-in(fn-result, key)
+    case named
+      link type-name
+      link type-args
+      walk type-args
+        take arg
+        fork test, mentions-key-in(arg, key)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# `\b<word>\b` somewhere in a text
+task has-word
+  take source, like text
+  take word, like text
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, is-maximum(from, source/length)
+    hook hold
+      save at, index-of(source, word, from)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      fork test, and(boundary-at(source, at), boundary-at(source, add(at, word/length)))
+        hold
+          back true
+      save from, add(at, 1)
+  back false
+
+task word-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, or(is-below(at, 0), is-minimum(at, value/length))
+    hold
+      back false
+  save code, char-code-at(value, at)
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+task boundary-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  back is-unequal(word-at(value, subtract(at, 1)), word-at(value, at))
+
+# `\b(http2?|server|shape|env-variable)\b`: the runtime shims that build `TermMap<String, ...>` themselves
+task key-shim
+  take module, like text
+  like boolean
+  mark private
+
+  walk split-words(<http2 http server shape env-variable>)
+    take word
+    fork test, has-word(module, word)
+      hold
+        back true
+  back false
+
+task note-leak
+  take st, like key-scan
+  take reason, like text
+  mark private
+
+  save st/leak, make(some, reason)
+
+# a reason set only where none is yet, as `??=` set it
+task note-first-leak
+  take st, like key-scan
+  take reason, like text
+  mark private
+
+  sift st/leak
+    case some
+      save nothing, 0
+    case none
+      save st/leak, make(some, reason)
+
+task key-call
+  take st, like key-scan
+  take callee, like expression
+  take args, like list, like expression
+  mark private
+
+  save name, <>
+  save is-variable, false
+  sift callee
+    case variable
+      link callee-name
+      save name, callee-name
+      save is-variable, true
+    case member
+      link member-target
+      link member-name
+      save name, member-name
+    miss
+      save nothing, 0
+  fork test, has-text(split-words(<fill melt fill-form melt-form>), name)
+    hold
+      note-leak(st, <a call to {name}>)
+  save shown, name
+  fork test, is-equal(shown, <>)
+    hold
+      save shown, <a value>
+  save found, and(is-variable, st/tasks/has(name))
+  save def-result, make none
+  save def-params, make list
+  fork test, found
+    hold
+      save task, st/tasks/get(name)
+      sift task
+        case function
+          link params
+          link result
+          save def-result, result
+          save def-params, params
+        miss
+          save nothing, 0
+  walk args
+    take arg
+    take i
+    fork test, not(text-map(expression-type(arg)))
+      hold
+        turn next
+    save param-type, make none
+    fork test, and(found, is-below(i, def-params/length))
+      hold
+        save param-type, get(def-params, i)/type
+    save map-key, make none
+    sift param-type
+      case some
+        link known
+        sift known
+          case map
+            link known-key
+            save map-key, make(some, known-key)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+    save handed, false
+    sift map-key
+      case some
+        save handed, found
+      case none
+        save nothing, 0
+    fork test, not(handed)
+      hold
+        note-first-leak(st, <a map handed to {shown}, argument {add(i, 1)}>)
+        turn next
+    sift map-key
+      case some
+        link key
+        save generic, false
+        sift key
+          case named
+            save generic, true
+          case variable
+            save generic, true
+          miss
+            save nothing, 0
+        fork test, generic
+          hold
+            save calls-back, mentions-key(def-result, key)
+            walk def-params
+              take param
+              save given, param/type
+              sift given
+                case some
+                  link known
+                  sift known
+                    case function
+                      fork test, mentions-key-in(known, key)
+                        hold
+                          save calls-back, true
+                    miss
+                      save nothing, 0
+                case none
+                  save nothing, 0
+            fork test, calls-back
+              hold
+                note-first-leak(st, <{name} answers or calls back with a key>)
+      case none
+        save nothing, 0
+
+task key-record
+  take st, like key-scan
+  take name, like text
+  take fields, like list, like field-value
+  mark private
+
+  save owner, name
+  fork test, st/variant-owner/has(name)
+    hold
+      save owner, st/variant-owner/get(name)
+  walk fields
+    take field
+    fork test, text-map(expression-type(field/value))
+      hold
+        fork test, st/fields/has(owner)
+          hold
+            save declared-fields, st/fields/get(owner)
+            fork test, declared-fields/has(field/name)
+              hold
+                save declared, declared-fields/get(field/name)
+                sift declared
+                  case unknown
+                    note-leak(st, <a map in the field {field/name} of unknown type>)
+                  case dynamic
+                    note-leak(st, <a map in the field {field/name} of unknown type>)
+                  miss
+                    save nothing, 0
+
+task key-visit
+  take handle, like node-handle
+  take st, like key-scan
+  mark private
+
+  sift st/leak
+    case some
+      back
+    case none
+      save nothing, 0
+  sift handle
+    case expression-handle
+      link node
+      note-map(st, expression-type(node))
+      sift node
+        case closure
+          link params
+          note-closure-params(st, params)
+        case call
+          link callee
+          link args
+          key-call(st, callee, args)
+        case record
+          link name
+          link fields
+          key-record(st, name, fields)
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          link let-init
+          link let-mutable
+          link let-span
+          link let-type
+          note-map(st, let-type)
+        case native
+          link native-alias
+          link native-module
+          fork test, key-shim(native-module)
+            hold
+              note-leak(st, <the runtime shim {native-module}>)
+        case for-each
+          link for-item
+          link for-index
+          link for-iterable
+          fork test, text-map(expression-type(for-iterable))
+            hold
+              note-leak(st, <a walk over a map>)
+        case function
+          link params
+          link declared
+          link universals
+          walk params
+            take param
+            note-map(st, param/type)
+          sift declared
+            case some
+              link signature
+              note-declared-params(st, signature/params)
+            case none
+              save nothing, 0
+          # a `need false` list, copied where it is read: handed to a call it would be written into the node
+          walk universals
+            take one
+            save binder-types, make list
+            walk one/types
+              take param
+              push(binder-types, param)
+            note-declared-params(st, binder-types)
+        case bind
+          link params
+          walk params
+            take param
+            note-map(st, param/type)
+        case view
+          link params
+          note-closure-params(st, params)
+        case record-type
+          link indices
+          link fields
+          link variants
+          link extend
+          walk indices
+            take one
+            note-map(st, make(some, one/type))
+          walk fields
+            take field
+            note-map(st, make(some, field/type))
+          walk variants
+            take variant
+            walk variant/fields
+              take field
+              note-map(st, make(some, field/type))
+          sift extend
+            case some
+              link extended
+              walk extended/heads
+                take head
+                note-map(st, head/type)
+                walk head/links
+                  take one
+                  note-map(st, make(some, one/type))
+              walk extended/links
+                take one
+                note-map(st, make(some, one/type))
+            case none
+              save nothing, 0
+        case mask
+          link tasks
+          walk tasks
+            take one
+            note-declared-params(st, one/signature/params)
+        case dock
+          link route
+          note-route(st, route)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    key-visit(child, st)
+
+# why a program's text-keyed maps keep `String` keys, or none when they take `TermKey`s: a map of them walked, answered
+# or called back with by a task, handed where no map is declared, held in a field of unknown type, or built by a runtime
+# shim that builds its own `TermMap<String, ...>`
+task text-key-reason
+  take program, like list, like statement
+  like maybe, like text
+
+  save tasks, make hash
+  save fields, make hash
+  save variant-owner, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link task-name
+        tasks/set(task-name, one)
+      case record-type
+        link record-name
+        link record-params
+        link record-indices
+        link record-fields
+        link record-variants
+        save by-name, make hash
+        walk record-fields
+          take field
+          by-name/set(field/name, field/type)
+        walk record-variants
+          take variant
+          variant-owner/set(variant/name, record-name)
+          walk variant/fields
+            take field
+            by-name/set(field/name, field/type)
+        fields/set(record-name, by-name)
+      miss
+        save nothing, 0
+  save st
+    make key-scan
+      bind any, false
+      bind leak, make none
+      bind tasks, tasks
+      bind fields, fields
+      bind variant-owner, variant-owner
+  walk block-handles(program)
+    take handle
+    key-visit(handle, st)
+  sift st/leak
+    case some
+      link reason
+      back make(some, reason)
+    case none
+      fork test, st/any
+        hold
+          back make none
+      back make(some, <no map keyed by text>)
+task text-keys-of
+  take program, like list, like statement
+  like boolean
+
+  sift text-key-reason(program)
+    case some
+      back false
+    case none
+      back true
+
+# ---- the analyses of one body ----
+
+# the names a function must box in `Rc<RefCell>` because a nested closure assigns to them: an assignment target in a
+# closure body (a variable, or the root of a member target), not one the closure declares or takes, nor a function
+form capture-scan
+  mark shared
+  link out, like list, like text
+
+task capture-add
+  take st, like capture-scan
+  take name, like text
+  mark private
+
+  fork test, not(has-text(st/out, name))
+    hold
+      push(st/out, name)
+
+task no-locals
+  like list, like text
+  mark private
+
+  save out, make list
+  back out
+
+task copy-locals
+  take locals, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk locals
+    take one
+    push(out, one)
+  back out
+
+task inside-closure
+  take st, like capture-scan
+  take statements, like list, like statement
+  take locals, like list, like text
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        fork test, not(has-text(locals, let-name))
+          hold
+            push(locals, let-name)
+        capture-expression(st, let-init, locals, true)
+      case assign
+        link assign-target
+        link assign-op
+        link assign-value
+        save target, assign-target
+        walk test
+          hook test, is-member(target)
+          hook hold
+            save target, member-target-of(target)
+        sift target
+          case variable
+            link variable-name
+            link variable-span
+            link variable-type
+            save is-function, false
+            sift variable-type
+              case some
+                link known
+                sift known
+                  case function
+                    save is-function, true
+                  miss
+                    save nothing, 0
+              case none
+                save nothing, 0
+            fork test, and(not(has-text(locals, variable-name)), not(is-function))
+              hold
+                capture-add(st, variable-name)
+          miss
+            save nothing, 0
+        capture-expression(st, assign-value, locals, true)
+      case expression
+        link expression-expr
+        capture-expression(st, expression-expr, locals, true)
+      case return
+        link return-value
+        sift return-value
+          case some
+            link known
+            capture-expression(st, known, locals, true)
+          case none
+            save nothing, 0
+      case throw
+        link throw-value
+        capture-expression(st, throw-value, locals, true)
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          capture-expression(st, branch/cond, locals, true)
+          inside-closure(st, branch/body, locals)
+        sift if-otherwise
+          case some
+            link known
+            inside-closure(st, known, locals)
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        capture-expression(st, match-subject, locals, true)
+        walk match-cases
+          take arm
+          inside-closure(st, arm/body, locals)
+        sift match-otherwise
+          case some
+            link known
+            inside-closure(st, known, locals)
+          case none
+            save nothing, 0
+      case guard
+        link guard-body
+        link guard-catch
+        inside-closure(st, guard-body, locals)
+        sift guard-catch
+          case some
+            link clause
+            inside-closure(st, clause/body, locals)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        capture-expression(st, while-cond, locals, true)
+        inside-closure(st, while-body, locals)
+      case for-each
+        link for-item
+        link for-index
+        link for-iterable
+        link for-body
+        capture-expression(st, for-iterable, locals, true)
+        inside-closure(st, for-body, locals)
+      miss
+        save nothing, 0
+
+task is-member
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case member
+      back true
+    miss
+      back false
+
+task member-target-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case member
+      link member-target
+      back member-target
+    miss
+      back node
+
+task capture-expression
+  take st, like capture-scan
+  take node, like expression
+  take locals, like list, like text
+  take in-closure, like boolean
+  mark private
+
+  sift node
+    case closure
+      link closure-params
+      link closure-body
+      save inner, make list
+      fork test, in-closure
+        hold
+          save inner, copy-locals(locals)
+      walk closure-params
+        take param
+        fork test, not(has-text(inner, param/name))
+          hold
+            push(inner, param/name)
+      inside-closure(st, closure-body, inner)
+    case call
+      link call-callee
+      link call-args
+      capture-expression(st, call-callee, locals, in-closure)
+      walk call-args
+        take arg
+        capture-expression(st, arg, locals, in-closure)
+    case binary
+      link binary-op
+      link binary-left
+      link binary-right
+      capture-expression(st, binary-left, locals, in-closure)
+      capture-expression(st, binary-right, locals, in-closure)
+    case unary
+      link unary-op
+      link unary-operand
+      capture-expression(st, unary-operand, locals, in-closure)
+    case array
+      link array-items
+      walk array-items
+        take item
+        capture-expression(st, item, locals, in-closure)
+    case map
+      link map-entries
+      walk map-entries
+        take entry
+        capture-expression(st, entry/key, locals, in-closure)
+        capture-expression(st, entry/value, locals, in-closure)
+    case record
+      link record-name
+      link record-fields
+      walk record-fields
+        take field
+        capture-expression(st, field/value, locals, in-closure)
+    case member
+      link member-target
+      capture-expression(st, member-target, locals, in-closure)
+    case await
+      link await-expr
+      capture-expression(st, await-expr, locals, in-closure)
+    case conditional
+      link conditional-branches
+      link conditional-otherwise
+      walk conditional-branches
+        take branch
+        capture-expression(st, branch/cond, locals, in-closure)
+        capture-expression(st, branch/value, locals, in-closure)
+      sift conditional-otherwise
+        case some
+          link known
+          capture-expression(st, known, locals, in-closure)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task capture-top
+  take st, like capture-scan
+  take statements, like list, like statement
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        capture-expression(st, let-init, no-locals(), false)
+      case assign
+        link assign-target
+        link assign-op
+        link assign-value
+        capture-expression(st, assign-target, no-locals(), false)
+        capture-expression(st, assign-value, no-locals(), false)
+      case expression
+        link expression-expr
+        capture-expression(st, expression-expr, no-locals(), false)
+      case return
+        link return-value
+        sift return-value
+          case some
+            link known
+            capture-expression(st, known, no-locals(), false)
+          case none
+            save nothing, 0
+      case throw
+        link throw-value
+        capture-expression(st, throw-value, no-locals(), false)
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          capture-expression(st, branch/cond, no-locals(), false)
+          capture-top(st, branch/body)
+        sift if-otherwise
+          case some
+            link known
+            capture-top(st, known)
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        capture-expression(st, match-subject, no-locals(), false)
+        walk match-cases
+          take arm
+          capture-top(st, arm/body)
+        sift match-otherwise
+          case some
+            link known
+            capture-top(st, known)
+          case none
+            save nothing, 0
+      case guard
+        link guard-body
+        link guard-catch
+        capture-top(st, guard-body)
+        sift guard-catch
+          case some
+            link clause
+            capture-top(st, clause/body)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        capture-expression(st, while-cond, no-locals(), false)
+        capture-top(st, while-body)
+      case for-each
+        link for-item
+        link for-index
+        link for-iterable
+        link for-body
+        capture-expression(st, for-iterable, no-locals(), false)
+        capture-top(st, for-body)
+      miss
+        save nothing, 0
+
+task mutated-captures
+  take body, like list, like statement
+  like list, like text
+
+  save st
+    make capture-scan
+      bind out, make list
+  capture-top(st, body)
+  back st/out
+
+# every variable name read or written anywhere in a body, closures and guards included, in the order met
+task used-names
+  take body, like list, like statement
+  like list, like text
+
+  save out, make list
+  used-in-body(body, out)
+  back out
+
+task used-in-expression
+  take node, like expression
+  take out, like list, like text
+  mark private
+
+  sift node
+    case variable
+      link variable-name
+      push(out, variable-name)
+    case hole
+      link hole-name
+      push(out, hole-name)
+    case call
+      link call-callee
+      link call-args
+      used-in-expression(call-callee, out)
+      walk call-args
+        take arg
+        used-in-expression(arg, out)
+    case binary
+      link binary-op
+      link binary-left
+      link binary-right
+      used-in-expression(binary-left, out)
+      used-in-expression(binary-right, out)
+    case unary
+      link unary-op
+      link unary-operand
+      used-in-expression(unary-operand, out)
+    case array
+      link array-items
+      walk array-items
+        take item
+        used-in-expression(item, out)
+    case map
+      link map-entries
+      walk map-entries
+        take entry
+        used-in-expression(entry/key, out)
+        used-in-expression(entry/value, out)
+    case record
+      link record-name
+      link record-fields
+      walk record-fields
+        take field
+        used-in-expression(field/value, out)
+    case member
+      link member-target
+      used-in-expression(member-target, out)
+    case await
+      link await-expr
+      used-in-expression(await-expr, out)
+    case closure
+      link closure-params
+      link closure-body
+      used-in-body(closure-body, out)
+    case conditional
+      link conditional-branches
+      link conditional-otherwise
+      walk conditional-branches
+        take branch
+        used-in-expression(branch/cond, out)
+        used-in-expression(branch/value, out)
+      sift conditional-otherwise
+        case some
+          link known
+          used-in-expression(known, out)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task used-in-body
+  take body, like list, like statement
+  take out, like list, like text
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        used-in-expression(let-init, out)
+      case assign
+        link assign-target
+        link assign-op
+        link assign-value
+        used-in-expression(assign-target, out)
+        used-in-expression(assign-value, out)
+      case expression
+        link expression-expr
+        used-in-expression(expression-expr, out)
+      case return
+        link return-value
+        sift return-value
+          case some
+            link known
+            used-in-expression(known, out)
+          case none
+            save nothing, 0
+      case throw
+        link throw-value
+        used-in-expression(throw-value, out)
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          used-in-expression(branch/cond, out)
+          used-in-body(branch/body, out)
+        sift if-otherwise
+          case some
+            link known
+            used-in-body(known, out)
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        used-in-expression(match-subject, out)
+        walk match-cases
+          take arm
+          used-in-body(arm/body, out)
+        sift match-otherwise
+          case some
+            link known
+            used-in-body(known, out)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        used-in-expression(while-cond, out)
+        used-in-body(while-body, out)
+      case for-each
+        link for-item
+        link for-index
+        link for-iterable
+        link for-body
+        used-in-expression(for-iterable, out)
+        used-in-body(for-body, out)
+      case guard
+        link guard-body
+        link guard-catch
+        used-in-body(guard-body, out)
+        sift guard-catch
+          case some
+            link clause
+            used-in-body(clause/body, out)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# a loop condition that bounds it by a small literal: `i < K` or `i <= K` (either way round), or a conjunction one of
+# whose sides does, with K at most `most`
+task constant-bounded
+  take cond, like expression
+  take most, like number
+  like boolean
+
+  sift cond
+    case binary
+      link binary-op
+      link binary-left
+      link binary-right
+      save op, to-text(binary-op)
+      fork test, is-equal(op, <&&>)
+        hold
+          back or(constant-bounded(binary-left, most), constant-bounded(binary-right, most))
+      fork test, and(or(is-equal(op, <\<>), is-equal(op, <\<=>)), small-literal(binary-right, most))
+        hold
+          back true
+      back and(or(is-equal(op, <\>>), is-equal(op, <\>=>)), small-literal(binary-left, most))
+    miss
+      back false
+
+task small-literal
+  take node, like expression
+  take most, like number
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      link integer-value
+      back is-maximum(integer-value, most)
+    miss
+      back false
+
+# MOVE ON LAST USE: the names read exactly once in a body, that one read in no loop and no closure. A branch's arms
+# count as the most any one arm reads, since only one runs
+form move-scan
+  mark shared
+  link reads, like hash, like text, like number
+  link restricted, like hash, like text, like number
+
+task move-bump
+  take st, like move-scan
+  take name, like text
+  take restrict, like boolean
+  mark private
+
+  save count, 0
+  fork test, st/reads/has(name)
+    hold
+      save known, st/reads/get(name)
+      save count, known
+  st/reads/set(name, add(count, 1))
+  fork test, restrict
+    hold
+      save held, 0
+      fork test, st/restricted/has(name)
+        hold
+          save known, st/restricted/get(name)
+          save held, known
+      st/restricted/set(name, add(held, 1))
+
+task move-expression
+  take st, like move-scan
+  take node, like expression
+  take restrict, like boolean
+  mark private
+
+  sift node
+    case variable
+      link variable-name
+      move-bump(st, variable-name, restrict)
+    case call
+      link call-callee
+      link call-args
+      move-expression(st, call-callee, restrict)
+      walk call-args
+        take arg
+        move-expression(st, arg, restrict)
+    case member
+      link member-target
+      move-expression(st, member-target, restrict)
+    case binary
+      link binary-op
+      link binary-left
+      link binary-right
+      move-expression(st, binary-left, restrict)
+      move-expression(st, binary-right, restrict)
+    case unary
+      link unary-op
+      link unary-operand
+      move-expression(st, unary-operand, restrict)
+    case await
+      link await-expr
+      move-expression(st, await-expr, restrict)
+    case array
+      link array-items
+      walk array-items
+        take item
+        move-expression(st, item, restrict)
+    case record
+      link record-name
+      link record-fields
+      walk record-fields
+        take field
+        move-expression(st, field/value, restrict)
+    case map
+      link map-entries
+      walk map-entries
+        take entry
+        move-expression(st, entry/key, restrict)
+        move-expression(st, entry/value, restrict)
+    case conditional
+      link conditional-branches
+      link conditional-otherwise
+      walk conditional-branches
+        take branch
+        move-expression(st, branch/cond, restrict)
+        move-expression(st, branch/value, restrict)
+      sift conditional-otherwise
+        case some
+          link known
+          move-expression(st, known, restrict)
+        case none
+          save nothing, 0
+    case closure
+      link closure-params
+      link closure-body
+      move-body(st, closure-body, true)
+    case template
+      link template-parts
+      walk template-parts
+        take part
+        sift part
+          case value
+            link part-value
+            move-expression(st, part-value, restrict)
+          case chunk
+            save nothing, 0
+    miss
+      save nothing, 0
+
+task copy-counts
+  take counts, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk counts/keys()
+    take name
+    fork test, counts/has(name)
+      hold
+        save known, counts/get(name)
+        out/set(name, known)
+  back out
+
+task most-into
+  take most, like hash, like text, like number
+  take counts, like hash, like text, like number
+  mark private
+
+  walk counts/keys()
+    take name
+    fork test, counts/has(name)
+      hold
+        save n, counts/get(name)
+        save best, 0
+        fork test, most/has(name)
+          hold
+            save known, most/get(name)
+            save best, known
+        fork test, is-above(n, best)
+          hold
+            save best, n
+        most/set(name, best)
+
+task add-into
+  take into, like hash, like text, like number
+  take counts, like hash, like text, like number
+  mark private
+
+  walk counts/keys()
+    take name
+    fork test, counts/has(name)
+      hold
+        save n, counts/get(name)
+        save base, 0
+        fork test, into/has(name)
+          hold
+            save known, into/get(name)
+            save base, known
+        into/set(name, add(base, n))
+
+task move-arms
+  take st, like move-scan
+  take bodies, like list, like list, like statement
+  take restrict, like boolean
+  mark private
+
+  save before-reads, copy-counts(st/reads)
+  save before-restricted, copy-counts(st/restricted)
+  save most-reads, make hash
+  save most-restricted, make hash
+  walk bodies
+    take arm
+    save st/reads, make hash
+    save st/restricted, make hash
+    move-body(st, arm, restrict)
+    most-into(most-reads, st/reads)
+    most-into(most-restricted, st/restricted)
+  save st/reads, before-reads
+  save st/restricted, before-restricted
+  add-into(st/reads, most-reads)
+  add-into(st/restricted, most-restricted)
+
+task move-body
+  take st, like move-scan
+  take statements, like list, like statement
+  take restrict, like boolean
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        move-expression(st, let-init, restrict)
+      case assign
+        link assign-target
+        link assign-op
+        link assign-value
+        move-expression(st, assign-value, restrict)
+        move-expression(st, assign-target, restrict)
+      case expression
+        link expression-expr
+        move-expression(st, expression-expr, restrict)
+      case return
+        link return-value
+        sift return-value
+          case some
+            link known
+            move-expression(st, known, restrict)
+          case none
+            save nothing, 0
+      case throw
+        link throw-value
+        move-expression(st, throw-value, restrict)
+      case if
+        link if-branches
+        link if-otherwise
+        save bodies, make list
+        walk if-branches
+          take branch
+          move-expression(st, branch/cond, restrict)
+          push(bodies, branch/body)
+        sift if-otherwise
+          case some
+            link known
+            push(bodies, known)
+          case none
+            save nothing, 0
+        move-arms(st, bodies, restrict)
+      case guard
+        link guard-body
+        link guard-catch
+        move-body(st, guard-body, true)
+        sift guard-catch
+          case some
+            link clause
+            move-body(st, clause/body, true)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        move-expression(st, while-cond, true)
+        move-body(st, while-body, true)
+      case for-each
+        link for-item
+        link for-index
+        link for-iterable
+        link for-body
+        move-expression(st, for-iterable, restrict)
+        move-body(st, for-body, true)
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        move-expression(st, match-subject, restrict)
+        save bodies, make list
+        walk match-cases
+          take arm
+          push(bodies, arm/body)
+        sift match-otherwise
+          case some
+            link known
+            push(bodies, known)
+          case none
+            save nothing, 0
+        move-arms(st, bodies, restrict)
+      miss
+        save nothing, 0
+
+task move-on-last-use
+  take body, like list, like statement
+  like list, like text
+
+  save st
+    make move-scan
+      bind reads, make hash
+      bind restricted, make hash
+  move-body(st, body, false)
+  save out, make list
+  walk st/reads/keys()
+    take name
+    fork test, st/reads/has(name)
+      hold
+        save count, st/reads/get(name)
+        save held, 0
+        fork test, st/restricted/has(name)
+          hold
+            save known, st/restricted/get(name)
+            save held, known
+        fork test, and(is-equal(count, 1), is-equal(held, 0))
+          hold
+            push(out, name)
+  back out
+
+# the extra element-type bounds a function body needs from its array ops: equality (`includes`, `indexOf`,
+# `lastIndexOf`) or display (`join`), by the generic variable's id or the named type, upper-cased, at the element
+# position of the array; and the arrays a `push` or `pop` mutates in place
+form array-bounds
+  mark shared
+  link eq-ids, like list, like number
+  link display-ids, like list, like number
+  link eq-names, like list, like text
+  link display-names, like list, like text
+  link mutated, like list, like text
+
+task add-number
+  take into, like list, like number
+  take value, like number
+  mark private
+
+  walk into
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back
+  push(into, value)
+
+task add-text
+  take into, like list, like text
+  take value, like text
+  mark private
+
+  fork test, not(has-text(into, value))
+    hold
+      push(into, value)
+
+task bound-record
+  take st, like array-bounds
+  take callee, like expression
+  mark private
+
+  sift collection-call(callee)
+    case some
+      link op
+      fork test, is-unequal(op/kind, <array>)
+        hold
+          back
+      save op-target, op/target
+      fork test, or(is-equal(op/op, <push>), is-equal(op/op, <pop>))
+        hold
+          sift op-target
+            case variable
+              link variable-name
+              add-text(st/mutated, variable-name)
+            miss
+              save nothing, 0
+      save need, <>
+      fork test, or(or(is-equal(op/op, <includes>), is-equal(op/op, <indexOf>)), is-equal(op/op, <lastIndexOf>))
+        hold
+          save need, <eq>
+      fork test, is-equal(op/op, <join>)
+        hold
+          save need, <display>
+      fork test, is-equal(need, <>)
+        hold
+          back
+      save target-type, expression-type(op-target)
+      sift target-type
+        case some
+          link known
+          sift known
+            case array
+              link element
+              sift element
+                case variable
+                  link variable-id
+                  fork test, is-equal(need, <eq>)
+                    hold
+                      add-number(st/eq-ids, variable-id)
+                    miss
+                      add-number(st/display-ids, variable-id)
+                case named
+                  link type-name
+                  fork test, is-equal(need, <eq>)
+                    hold
+                      add-text(st/eq-names, to-upper-case(type-name))
+                    miss
+                      add-text(st/display-names, to-upper-case(type-name))
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+
+task bound-expression
+  take st, like array-bounds
+  take node, like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      bound-record(st, call-callee)
+      bound-expression(st, call-callee)
+      walk call-args
+        take arg
+        bound-expression(st, arg)
+    case binary
+      link binary-op
+      link binary-left
+      link binary-right
+      bound-expression(st, binary-left)
+      bound-expression(st, binary-right)
+    case unary
+      link unary-op
+      link unary-operand
+      bound-expression(st, unary-operand)
+    case member
+      link member-target
+      bound-expression(st, member-target)
+    case array
+      link array-items
+      walk array-items
+        take item
+        bound-expression(st, item)
+    case map
+      link map-entries
+      walk map-entries
+        take entry
+        bound-expression(st, entry/key)
+        bound-expression(st, entry/value)
+    case record
+      link record-name
+      link record-fields
+      walk record-fields
+        take field
+        bound-expression(st, field/value)
+    case await
+      link await-expr
+      bound-expression(st, await-expr)
+    case closure
+      link closure-params
+      link closure-body
+      bound-body(st, closure-body)
+    miss
+      save nothing, 0
+
+task bound-maybe
+  take st, like array-bounds
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link known
+      bound-expression(st, known)
+    case none
+      save nothing, 0
+
+task bound-body
+  take st, like array-bounds
+  take statements, like list, like statement
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case let
+        link let-name
+        link let-init
+        bound-expression(st, let-init)
+      case assign
+        link assign-target
+        link assign-op
+        link assign-value
+        bound-expression(st, assign-target)
+        bound-expression(st, assign-value)
+      case expression
+        link expression-expr
+        bound-expression(st, expression-expr)
+      case return
+        link return-value
+        bound-maybe(st, return-value)
+      case throw
+        link throw-value
+        bound-expression(st, throw-value)
+      case hold
+        link hold-expr
+        bound-expression(st, hold-expr)
+      case guard
+        link guard-body
+        link guard-catch
+        bound-body(st, guard-body)
+        sift guard-catch
+          case some
+            link clause
+            bound-body(st, clause/body)
+          case none
+            save nothing, 0
+      case while
+        link while-cond
+        link while-body
+        bound-expression(st, while-cond)
+        bound-body(st, while-body)
+      case for-each
+        link for-item
+        link for-index
+        link for-iterable
+        link for-body
+        bound-expression(st, for-iterable)
+        bound-body(st, for-body)
+      case if
+        link if-branches
+        link if-otherwise
+        walk if-branches
+          take branch
+          bound-expression(st, branch/cond)
+          bound-body(st, branch/body)
+        sift if-otherwise
+          case some
+            link known
+            bound-body(st, known)
+          case none
+            save nothing, 0
+      case match
+        link match-subject
+        link match-cases
+        link match-otherwise
+        bound-expression(st, match-subject)
+        walk match-cases
+          take arm
+          bound-body(st, arm/body)
+        sift match-otherwise
+          case some
+            link known
+            bound-body(st, known)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+task collect-array-bounds
+  take body, like list, like statement
+  like array-bounds
+
+  save st
+    make array-bounds
+      bind eq-ids, make list
+      bind display-ids, make list
+      bind eq-names, make list
+      bind display-names, make list
+      bind mutated, make list
+  bound-body(st, body)
+  back st
+
+# ---- filling a form from data on Rust ----
+
+# a text as JSON writes it: quoted, with `"`, `\` and the control characters escaped, and a lone surrogate as `\uXXXX`
+task json-text
+  take value, like text
+  like text
+
+  save out, <>
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 34)
+      hold
+        save out, <{out}\\">
+        turn next
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    fork test, is-equal(code, 8)
+      hold
+        save out, <{out}\\b>
+        turn next
+    fork test, is-equal(code, 12)
+      hold
+        save out, <{out}\\f>
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-below(code, 32), and(is-minimum(code, 55296), is-maximum(code, 57343)))
+      hold
+        save hex, hex-of(code)
+        walk test
+          hook test, is-below(hex/length, 4)
+          hook hold
+            save hex, <0{hex}>
+        save out, <{out}\\u{hex}>
+        turn next
+    save out, <{out}{from-runes(single(code))}>
+  back <"{out}">
+
+# an item of a list, or a field's value, read as its kind, its mismatch passed on with `?`
+task fill-of
+  take kind, like form-kind
+  take value, like text
+  take path, like text
+  take optional, like boolean
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <__term_text({value}, {path}, {optional})?>
+    case number
+      back <__term_number({value}, {path}, {optional})?>
+    case decimal
+      back <__term_decimal({value}, {path}, {optional})?>
+    case flag
+      back <__term_flag({value}, {path}, {optional})?>
+    case data
+      back <__term_data({value}, {path}, {optional})?>
+    case list
+      link item
+      back <__term_list({value}, {path}, {optional}, &|d: Data, p: String| Ok({fill-of(item, <Some(d)>, <p>, false)}))?>
+    case form
+      link spec
+      back <__fill_{snake(spec/form)}(__term_data({value}, {path}.clone(), {optional})?, {path})?>
+    miss
+      back <0>
+
+# a field's value, spelled as data
+task melt-of
+  take kind, like form-kind
+  take value, like text
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <Data::Text \{ value: {value} \}>
+    case number
+      back <Data::Number \{ value: {value} \}>
+    case decimal
+      back <Data::Decimal \{ value: {value} \}>
+    case flag
+      back <Data::Flag \{ value: {value} \}>
+    case data
+      back value
+    case list
+      link item
+      back <Data::Array \{ list: std::rc::Rc::new(std::cell::RefCell::new(({value}).borrow().iter().map(|x| {melt-of(item, <x.clone()>)}).collect::\<Vec\<Data\>\>())) \}>
+    case form
+      link spec
+      back <__melt_{snake(spec/form)}({value})>
+    miss
+      back <Data::Blank>
+
+# an optional field left empty is left out: the test for empty, none where every value is kept
+task empty-test
+  take kind, like form-kind
+  take value, like text
+  like maybe, like text
+  mark private
+
+  sift kind
+    case text
+      save test, <({value}).is_empty()>
+      back make(some, test)
+    case list
+      save test, <({value}).borrow().is_empty()>
+      back make(some, test)
+    case data
+      save test, <matches!({value}, Data::Blank)>
+      back make(some, test)
+    miss
+      back make none
+
+# the walkers a module's `fill` / `melt` with a form need: the shared helpers, then a function per form
+task rust-form-walk
+  take fills, like list, like form-spec
+  take melts, like list, like form-spec
+  like list, like text
+
+  save out, make list
+  fork test, and(is-equal(fills/length, 0), is-equal(melts/length, 0))
+    hold
+      back out
+  push(out, rust-form-helpers())
+
+  walk fills
+    take spec
+    save known, make list
+    save fields, make list
+    walk spec/fields
+      take field
+      save quoted, json-text(field/name)
+      push(known, quoted)
+      push(fields, <{snake(field/name)}: {fill-of(field/kind, <find({quoted})>, <__term_path(&path, {quoted})>, field/optional)}>)
+    save form-name, snake(spec/form)
+    save form-type, pascal(spec/form)
+    push(out, <fn __fill_{form-name}(value: Data, path: String) -\> Result\<{form-type}, TermException\> \{\n    let entries = __term_entries(value, path.clone())?;\n    let known: &[&str] = &[{join-texts(known, <, >)}];\n    for e in entries.borrow().iter() \{ if !known.contains(&e.name.as_str()) \{ return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); \} \}\n    let find = |name: &str| -\> Option\<Data\> \{ entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) \};\n    Ok({form-type} \{ {join-texts(fields, <, >)} \})\n\}>)
+
+  walk melts
+    take spec
+    save lines, make list
+    walk spec/fields
+      take field
+      save value, <value.{snake(field/name)}.clone()>
+      save entry, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(field/kind, value)} \});>
+      save kept, make none
+      fork test, field/optional
+        hold
+          save kept, empty-test(field/kind, value)
+      sift kept
+        case some
+          link empty
+          push(lines, <    if !{empty} \{ {entry} \}>)
+        case none
+          push(lines, <    {entry}>)
+    push(out, <fn __melt_{snake(spec/form)}(value: {pascal(spec/form)}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-texts(lines, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
+
+  back out
+
+# A value that does not fit RAISES `data-mismatch`, the package's own exception, with the fields TypeScript gives it, so
+# a guard or a `sift` catches it as it does there. Every helper answers a `Result` and the walkers pass it on with `?`
+task rust-form-helpers
+  like text
+  mark private
+
+  back <#[cold]\n#[inline(never)]\nfn __term_mismatch(path: String, reason: String) -\> TermException \{\n    let path = if path.is_empty() \{ ".".to_string() \} else \{ path \};\n    let link: std::collections::HashMap\<String, String\> = [("thing".to_string(), "data".to_string()), ("path".to_string(), path), ("reason".to_string(), reason)].into_iter().collect();\n    TermException(Box::new(TermRaised \{ host: "@term/host".to_string(), form: "data-mismatch".to_string(), note: "Data does not fit the shape".to_string(), code: String::new(), time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0), link: std::rc::Rc::new(link), base: std::rc::Rc::new(()) \}))\n\}\nfn __term_path(path: &str, key: &str) -\> String \{ if path.is_empty() \{ key.to_string() \} else \{ format!("\{\}/\{\}", path, key) \} \}\nfn __term_kind(value: &Data) -\> &'static str \{\n    match value \{ Data::Hash \{ .. \} =\> "a map", Data::Array \{ .. \} =\> "a list", Data::Blank =\> "void", Data::Text \{ .. \} =\> "text", Data::Number \{ .. \} =\> "number", Data::Decimal \{ .. \} =\> "decimal", Data::Flag \{ .. \} =\> "flag", Data::Graft \{ .. \} =\> "a fuse" \}\n\}\nfn __term_entries(value: Data, path: String) -\> Result\<std::rc::Rc\<std::cell::RefCell\<Vec\<DataEntry\>\>\>, TermException\> \{\n    match value \{ Data::Hash \{ list \} =\> Ok(list), other =\> Err(__term_mismatch(path, format!("is \{\} where a map belongs", __term_kind(&other)))) \}\n\}\nfn __term_text(value: Option\<Data\>, path: String, optional: bool) -\> Result\<String, TermException\> \{\n    match value \{ Some(Data::Text \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(String::new()) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where text belongs", __term_kind(&other)))) \}\n\}\nfn __term_number(value: Option\<Data\>, path: String, optional: bool) -\> Result\<i64, TermException\> \{\n    match value \{ Some(Data::Number \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(0) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where number belongs", __term_kind(&other)))) \}\n\}\nfn __term_decimal(value: Option\<Data\>, path: String, optional: bool) -\> Result\<f64, TermException\> \{\n    match value \{ Some(Data::Decimal \{ value \}) =\> Ok(value), Some(Data::Number \{ value \}) =\> Ok(value as f64), None | Some(Data::Blank) =\> if optional \{ Ok(0.0) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where decimal belongs", __term_kind(&other)))) \}\n\}\nfn __term_flag(value: Option\<Data\>, path: String, optional: bool) -\> Result\<bool, TermException\> \{\n    match value \{ Some(Data::Flag \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(false) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where flag belongs", __term_kind(&other)))) \}\n\}\nfn __term_data(value: Option\<Data\>, path: String, optional: bool) -\> Result\<Data, TermException\> \{\n    match value \{ Some(d) =\> Ok(d), None =\> if optional \{ Ok(Data::Blank) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \} \}\n\}\nfn __term_list\<T\>(value: Option\<Data\>, path: String, optional: bool, item: &dyn Fn(Data, String) -\> Result\<T, TermException\>) -\> Result\<std::rc::Rc\<std::cell::RefCell\<Vec\<T\>\>\>, TermException\> \{\n    match value \{\n        Some(Data::Array \{ list \}) =\> Ok(std::rc::Rc::new(std::cell::RefCell::new(list.borrow().iter().enumerate().map(|(i, d)| item(d.clone(), __term_path(&path, &i.to_string()))).collect::\<Result\<Vec\<T\>, TermException\>\>()?))),\n        None | Some(Data::Blank) =\> if optional \{ Ok(std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \},\n        Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where a list belongs", __term_kind(&other)))),\n    \}\n\}>

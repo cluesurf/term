@@ -1,0 +1,1401 @@
+# Elaboration, part eight: induction. Closing one case (`close-case`: the cited lemmas as directed rewrites, an operator
+# proven commutative and associative normalized modulo AC, the normal forms, the truth table, the ring), structural
+# induction over one variable of an inductive form (`structural-induction`, splitting a case's other inductive fields
+# when it does not reduce, refining an indexed family's index per case, generalizing the hypothesis over the other
+# variables), and simultaneous induction over several (`multi-induction`, the diagonal hypothesis, a deep split over
+# finite fields).
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures `closeCase`, `structuralInduction`,
+# `isFiniteType` and `multiInduction` these were. The decisions:
+#   - a rewrite rule that had no `holes` set has an empty hash. Only a generalized hypothesis has holes, and only one
+#     with at least one is kept, so "no holes" and "an empty hash" are the same rules
+#   - an environment written at an index is `save env/{i}, value`, a copy first where the original spread one
+#   - the original's `try { ... } catch { return false }` around each induction is `attempt-boolean`
+#   - `isFiniteType` memoizes in the `finite-types` hash of `induction-state`, one per elaboration as the original's map
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find expression
+  find binary-op
+  find span
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find infer
+  find bind-context
+  find neutral-var
+  find normal-term
+  find convertible-modulo
+  find show-term
+
+load ./elaborating-data
+  find field-info
+  find constant
+  find variable
+  find apply-term
+  find type-zero
+  find ctor-key
+
+load ./elaborating-rewrite
+  find rewrite-rule
+  find equation
+  find rewrite-with-lemmas
+  find commutativity-operator
+  find associativity-operator
+  find flatten-ac
+  find ac-rewrite-fix
+  find free-var-indices
+
+load ./elaborating-cases
+  find case-state
+  find attempt-boolean
+  find truth-table
+  find ring-case
+  find order-case
+  find equation-absurd
+
+load ./elaborating-terms
+  find term-state
+  find expr
+
+load ./elaborating-commands
+  find expression-pair
+
+load ./elaborating-proof
+  find lemma-state
+
+load ./elaborating-theorems
+  find elaborate-goal-sides
+
+# what an induction reads besides the terms' state: the lemmas, the fold's case and counterexample, the truncating
+# tasks and the face's span for the ring, the hold checker's `orderFollows`, and the finite forms found so far
+form induction-state
+  mark shared
+  link ts, like term-state
+  link ls, like lemma-state
+  link cs, like case-state
+  link truncating, like list, like text
+  link no-span, like span
+  link finite-types, like hash, like text, like boolean
+  link order-follows
+    like task
+      take goal, like expression
+      take facts, like list, like expression
+      like boolean
+
+task new-induction-state
+  take ts, like term-state
+  take ls, like lemma-state
+  take cs, like case-state
+  take truncating, like list, like text
+  take no-span, like span
+  take order-follows
+    like task
+      take goal, like expression
+      take facts, like list, like expression
+      like boolean
+  like induction-state
+
+  back
+    make induction-state
+      bind ts, ts
+      bind ls, ls
+      bind cs, cs
+      bind truncating, truncating
+      bind no-span, no-span
+      bind finite-types, make hash
+      bind order-follows, order-follows
+
+# ---- small readings ----
+
+task no-value
+  like maybe, like kernel-value
+  mark private
+
+  back make none
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+task variant-fields
+  take is, like induction-state
+  take key, like text
+  like list, like field-info
+  mark private
+
+  save data, is/ts/data
+  fork test, data/variant-field-info/has(key)
+    hold
+      back data/variant-field-info/get(key)
+  save none, make list
+  back none
+
+task former-arity
+  take is, like induction-state
+  take name, like text
+  like number
+  mark private
+
+  save data, is/ts/data
+  fork test, data/type-former-arity/has(name)
+    hold
+      back data/type-former-arity/get(name)
+  back 0
+
+# a field type that did not read, used: the original's crash reading `.tag` off `null`
+task field-type
+  take given, like maybe, like kernel-term
+  like kernel-term
+  mark private
+
+  sift given
+    case some
+      link found
+      back found
+    case none
+      halt <Cannot read properties of null (reading 'tag')>
+
+# the head constant of an applied type, none for any other
+task head-name
+  take term, like kernel-term
+  like maybe, like text
+  mark private
+
+  save head, term
+  walk test
+    hook test, is-app(head)
+    hook hold
+      save head, app-fun(head)
+  sift head
+    case const
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+task is-app
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case app
+      back true
+    miss
+      back false
+
+task app-fun
+  take term, like kernel-term
+  like kernel-term
+  mark private
+
+  sift term
+    case app
+      link fun
+      back fun
+    miss
+      back term
+
+task spine-args
+  take term, like kernel-term
+  like list, like kernel-term
+  mark private
+
+  save args, make list
+  save head, term
+  walk test
+    hook test, is-app(head)
+    hook hold
+      sift head
+        case app
+          link fun
+          link arg
+          save fresh, make list
+          push(fresh, arg)
+          walk args
+            take one
+            push(fresh, one)
+          save args, fresh
+          save head, fun
+        miss
+          halt
+  back args
+
+task const-name
+  take term, like kernel-term
+  like maybe, like text
+  mark private
+
+  sift term
+    case const
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+task copied-values
+  take values, like list, like kernel-value
+  like list, like kernel-value
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task cited-rules
+  take is, like induction-state
+  take cited, like list, like text
+  like list, like rewrite-rule
+  mark private
+
+  save out, make list
+  walk cited
+    take name
+    fork test, is/ls/rules/has(name)
+      hold
+        push(out, rule-of(is/ls/rules/get(name)/binder-count, is/ls/rules/get(name)/lhs, is/ls/rules/get(name)/rhs))
+  back out
+
+task rule-of
+  take binder-count, like number
+  take lhs, like kernel-term
+  take rhs, like kernel-term
+  like rewrite-rule
+  mark private
+
+  back
+    make rewrite-rule
+      bind binder-count, binder-count
+      bind lhs, lhs
+      bind rhs, rhs
+      bind holes, make hash
+
+task flat-pairs
+  take pairs, like list, like list, like kernel-value
+  like list, like kernel-value
+  mark private
+
+  save out, make list
+  walk pairs
+    take pair
+    push(out, get(pair, 0))
+    push(out, get(pair, 1))
+  back out
+
+task pair-of
+  take left, like kernel-value
+  take right, like kernel-value
+  like list, like kernel-value
+  mark private
+
+  save out, make list
+  push(out, left)
+  push(out, right)
+  back out
+
+task never-opaque
+  take name, like text
+  like boolean
+  mark private
+
+  back false
+
+# infer a side quoted at a level, any raise caught (the original's `try` held both)
+task try-infer
+  take st, like judge-state
+  take ctx, like context
+  take level, like number
+  take side, like kernel-value
+  mark private
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    infer(st, ctx, quote(st, level, side))
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+
+# ---- closing a case ----
+
+# close one induction case: the hypotheses and cited lemmas as directed rewrites, AC normalization for an operator
+# proven both commutative and associative, convertibility modulo the hypotheses, the truth table, the normal forms
+# when a generalized hypothesis needs a call computed first, and the ring
+task close-case
+  take is, like induction-state
+  take level, like number
+  take env, like list, like kernel-value
+  take case-left, like kernel-value
+  take case-right, like kernel-value
+  take hypotheses, like list, like list, like kernel-value
+  take cited, like list, like text
+  take general, like list, like rewrite-rule
+  take ctx, like maybe, like context
+  like boolean
+
+  save st, is/ts/st
+  save commutative, make hash
+  save associative, make hash
+  walk cited
+    take name
+    fork test, is/ls/rules/has(name)
+      hold
+        save stored, is/ls/rules/get(name)
+        save rule, rule-of(stored/binder-count, stored/lhs, stored/rhs)
+        sift commutativity-operator(rule)
+          case some
+            link c
+            commutative/set(c, true)
+          case none
+            save rule, rule
+        sift associativity-operator(rule)
+          case some
+            link a
+            associative/set(a, true)
+          case none
+            save rule, rule
+  save ac, make hash
+  walk commutative/keys()
+    take op
+    fork test, associative/has(op)
+      hold
+        ac/set(op, true)
+  save rules, make list
+  walk hypotheses
+    take pair
+    push(rules, rule-of(0, quote(st, level, get(pair, 0)), quote(st, level, get(pair, 1))))
+  walk general
+    take g
+    push(rules, g)
+  walk cited
+    take name
+    fork test, is/ls/rules/has(name)
+      hold
+        save stored, is/ls/rules/get(name)
+        save rule, rule-of(stored/binder-count, stored/lhs, stored/rhs)
+        save skip, false
+        sift commutativity-operator(rule)
+          case some
+            link c
+            fork test, ac/has(c)
+              hold
+                save skip, true
+          case none
+            save skip, skip
+        sift associativity-operator(rule)
+          case some
+            link a
+            fork test, ac/has(a)
+              hold
+                save skip, true
+          case none
+            save skip, skip
+        fork test, is-equal(skip, false)
+          hold
+            push(rules, rule)
+  save left-rewritten, rewrite-with-lemmas(quote(st, level, case-left), rules, 200)
+  save right-rewritten, rewrite-with-lemmas(quote(st, level, case-right), rules, 200)
+  fork test, is-above(ac/keys()/length, 0)
+    hold
+      save ac-rules, make list
+      walk rules
+        take rule
+        fork test, and(is-equal(rule/binder-count, 0), is-equal(rule/holes/keys()/length, 0))
+          hold
+            sift flatten-ac(rule/lhs, ac)
+              case some
+                save eq
+                  make equation
+                    bind lhs, rule/lhs
+                    bind rhs, rule/rhs
+                push(ac-rules, eq)
+              case none
+                save rule, rule
+      save lacf, ac-rewrite-fix(left-rewritten, ac, ac-rules, rules, 64)
+      save racf, ac-rewrite-fix(right-rewritten, ac, ac-rules, rules, 64)
+      fork test, is-equal(show-term(lacf), show-term(racf))
+        hold
+          back true
+  fork test, convertible-modulo(st, level, evaluate(st, env, left-rewritten), evaluate(st, env, right-rewritten), hypotheses)
+    hold
+      back true
+  save flat, flat-pairs(hypotheses)
+  sift ctx
+    case some
+      link context
+      fork test, truth-table(st, is/ts/data, is/cs, context, case-left, case-right, flat, hypotheses/length)
+        hold
+          back true
+    case none
+      save flat, flat
+  fork test, is-above(general/length, 0)
+    hold
+      fork test, normal-forms(is, level, env, case-left, case-right, hypotheses, rules, general, ctx)
+        hold
+          back true
+  back ring-case(st, is/truncating, is/no-span, level, case-left, case-right, flat, cited-rules(is, cited))
+
+# AND ON THE NORMAL FORMS: every call that can run is run, the case and the hypotheses alike, so a generalized
+# hypothesis fires once its call has computed. Inferring each side first solves a generic call's metavariables
+task normal-forms
+  take is, like induction-state
+  take level, like number
+  take env, like list, like kernel-value
+  take case-left, like kernel-value
+  take case-right, like kernel-value
+  take hypotheses, like list, like list, like kernel-value
+  take rules, like list, like rewrite-rule
+  take general, like list, like rewrite-rule
+  take ctx, like maybe, like context
+  like boolean
+  mark private
+
+  save st, is/ts/st
+  save sides, make list
+  push(sides, case-left)
+  push(sides, case-right)
+  walk general
+    take g
+    push(sides, evaluate(st, env, g/lhs))
+    push(sides, evaluate(st, env, g/rhs))
+  walk sides
+    take side
+    sift ctx
+      case some
+        link context
+        try-infer(st, context, level, side)
+      case none
+        save side, side
+  save normal-rules, make list
+  walk rules
+    take rule
+    fork test, is-equal(rule/binder-count, 0)
+      hold
+        save normal
+          make rewrite-rule
+            bind binder-count, rule/binder-count
+            bind lhs, normal-term(st, level, evaluate(st, env, rule/lhs), never-opaque, 0)
+            bind rhs, normal-term(st, level, evaluate(st, env, rule/rhs), never-opaque, 0)
+            bind holes, rule/holes
+        push(normal-rules, normal)
+      miss
+        push(normal-rules, rule)
+  save left, evaluate(st, env, rewrite-with-lemmas(normal-term(st, level, case-left, never-opaque, 0), normal-rules, 200))
+  save right, evaluate(st, env, rewrite-with-lemmas(normal-term(st, level, case-right, never-opaque, 0), normal-rules, 200))
+  fork test, convertible-modulo(st, level, left, right, hypotheses)
+    hold
+      back true
+  sift ctx
+    case some
+      link context
+      back truth-table(st, is/ts/data, is/cs, context, left, right, flat-pairs(hypotheses), hypotheses/length)
+    case none
+      back false
+
+# ---- structural induction ----
+
+# a constructor recipe for a split variable: the variant and the levels of its field variables
+form recipe
+  link variant, like text
+  link enum-name, like text
+  link field-levels, like list, like number
+
+form split-target
+  link level, like number
+  link enum-name, like text
+
+form index-refine
+  link level, like number
+  link term, like kernel-term
+
+# what one structural induction fixes for every case
+form induction-goal
+  link goal-left, like expression
+  link goal-right, like expression
+  link op, like binary-op
+  link scope, like hash, like text, like number
+  link cited, like list, like text
+  link type-value, like kernel-value
+  link type-head, like text
+
+# the subject's own type arguments, read back at a level: a constructor rebuilt in a case takes them as its witnesses
+task witnesses-at
+  take is, like induction-state
+  take ig, like induction-goal
+  take level, like number
+  like list, like kernel-term
+  mark private
+
+  save arity, former-arity(is, ig/type-head)
+  save out, make list
+  walk spine-args(quote(is/ts/st, level, ig/type-value))
+    take arg
+    take i
+    fork test, is-below(i, arity)
+      hold
+        push(out, arg)
+  back out
+
+# the environment with each split variable rebuilt from its recipe, the deepest first, and the family's index refined
+task split-env
+  take is, like induction-state
+  take ig, like induction-goal
+  take ctx, like context
+  take subst, like hash, like number, like recipe
+  take refine, like maybe, like index-refine
+  like list, like kernel-value
+  mark private
+
+  save st, is/ts/st
+  save env, copied-values(ctx/env)
+  save levels, make list
+  walk subst/keys()
+    take lvl
+    push(levels, lvl)
+  # deepest (highest level) first, as a sort descending did
+  save ordered, make list
+  walk levels
+    take lvl
+    save at, ordered/length
+    save i, 0
+    walk test
+      hook test, is-below(i, ordered/length)
+      hook hold
+        fork test, is-above(lvl, get(ordered, i))
+          hold
+            save at, i
+            halt
+        save i, add(i, 1)
+    save fresh, make list
+    walk ordered
+      take one
+      take j
+      fork test, is-equal(j, at)
+        hold
+          push(fresh, lvl)
+      push(fresh, one)
+    fork test, is-equal(at, ordered/length)
+      hold
+        push(fresh, lvl)
+    save ordered, fresh
+  walk ordered
+    take lvl
+    save r, subst/get(lvl)
+    save term, constant(ctor-key(r/enum-name, r/variant))
+    fork test, is-equal(r/enum-name, ig/type-head)
+      hold
+        walk witnesses-at(is, ig, ctx/level)
+          take w
+          save term, apply-term(term, w)
+      miss
+        save p, 0
+        save arity, former-arity(is, r/enum-name)
+        walk test
+          hook test, is-below(p, arity)
+          hook hold
+            save term, apply-term(term, type-zero())
+            save p, add(p, 1)
+    walk r/field-levels
+      take fl
+      save term, apply-term(term, variable(subtract(subtract(ctx/level, fl), 1)))
+    save env/{subtract(subtract(ctx/level, lvl), 1)}, evaluate(st, env, term)
+  sift refine
+    case some
+      link ir
+      save env/{subtract(subtract(ctx/level, ir/level), 1)}, evaluate(st, env, ir/term)
+    case none
+      save env, env
+  back env
+
+task without-at
+  take items, like list, like split-target
+  take at, like number
+  like list, like split-target
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take i
+    fork test, is-unequal(i, at)
+      hold
+        push(out, one)
+  back out
+
+# close a case, splitting on a constructor's FIELDS when it does not reduce, bounded by `depth`
+task close-with-splits
+  take is, like induction-state
+  take ig, like induction-goal
+  take ctx, like context
+  take subst, like hash, like number, like recipe
+  take splittable, like list, like split-target
+  take hyps, like list, like list, like kernel-value
+  take depth, like number
+  take general, like list, like rewrite-rule
+  take ih-level, like number
+  take refine, like maybe, like index-refine
+  take ordered, like number
+  like boolean
+  mark private
+
+  save st, is/ts/st
+  save data, is/ts/data
+  save sides, elaborate-goal-sides(is/ts, ig/goal-left, ig/goal-right, ig/scope, ctx)
+  save lt, type-zero()
+  save rt, type-zero()
+  sift sides/left
+    case some
+      link found
+      save lt, found
+    case none
+      back false
+  sift sides/right
+    case some
+      link found
+      save rt, found
+    case none
+      back false
+  save env, split-env(is, ig, ctx, subst, refine)
+  save gih, general
+  fork test, is-unequal(ctx/level, ih-level)
+    hold
+      save gih, make list
+  save closed, false
+  sift ig/op
+    case equal
+      save closed, close-case(is, ctx/level, ctx/env, evaluate(st, env, lt), evaluate(st, env, rt), hyps, ig/cited, gih, make(some, ctx))
+    miss
+      save ordered-hyps, make list
+      save equal-hyps, make list
+      walk hyps
+        take pair
+        take i
+        fork test, is-below(i, ordered)
+          hold
+            push(ordered-hyps, get(pair, 0))
+            push(ordered-hyps, get(pair, 1))
+          miss
+            push(equal-hyps, get(pair, 0))
+            push(equal-hyps, get(pair, 1))
+      save closed, order-case(st, is/truncating, is/no-span, ctx/level, ig/op, evaluate(st, env, lt), evaluate(st, env, rt), ordered-hyps, equal-hyps, cited-rules(is, ig/cited), is/order-follows)
+  fork test, closed
+    hold
+      back true
+  fork test, is-maximum(depth, 0)
+    hold
+      back false
+  walk splittable
+    take target
+    take si
+    save rest, without-at(splittable, si)
+    fork test, is-equal(data/variant-names/has(target/enum-name), false)
+      hold
+        turn next
+    save all-closed, true
+    walk data/variant-names/get(target/enum-name)
+      take target-variant
+      save sub-fields, variant-fields(is, ctor-key(target/enum-name, target-variant))
+      save inner, ctx
+      save sub-levels, make list
+      walk sub-fields
+        take f
+        push(sub-levels, inner/level)
+        save inner, bind-context(inner, <many>, evaluate(st, inner/env, field-type(f/type)), f/name)
+      save subst2, make hash
+      walk subst/keys()
+        take key
+        subst2/set(key, subst/get(key))
+      save made
+        make recipe
+          bind variant, target-variant
+          bind enum-name, target/enum-name
+          bind field-levels, sub-levels
+      subst2/set(target/level, made)
+      save new-split, make list
+      walk rest
+        take one
+        push(new-split, one)
+      walk sub-fields
+        take f
+        take j
+        sift head-name(field-type(f/type))
+          case some
+            link former
+            fork test, data/variant-names/has(former)
+              hold
+                save split
+                  make split-target
+                    bind level, get(sub-levels, j)
+                    bind enum-name, former
+                push(new-split, split)
+          case none
+            save f, f
+      save no-general, make list
+      fork test, is-equal(close-with-splits(is, ig, inner, subst2, new-split, hyps, subtract(depth, 1), no-general, -1, refine, ordered), false)
+        hold
+          save all-closed, false
+          halt
+    fork test, all-closed
+      hold
+        back true
+  back false
+
+# STRUCTURAL INDUCTION over an inductive self-type: `fold <var>`, one case per constructor, the hypothesis at each
+# recursive field. False (never a raise) outside its fragment
+task structural-induction
+  take is, like induction-state
+  take goal-left, like expression
+  take goal-right, like expression
+  take op, like binary-op
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take induct-var, like text
+  take cited, like list, like text
+  take assumptions, like list, like expression-pair
+  like boolean
+
+  sift op
+    case equal
+      save op, op
+    case below
+      save op, op
+    case at-most
+      save op, op
+    case above
+      save op, op
+    case at-least
+      save op, op
+    miss
+      back false
+  fork test, is-equal(scope/has(induct-var), false)
+    hold
+      back false
+  save var-level, scope/get(induct-var)
+  fork test, is-below(var-level, 0)
+    hold
+      back false
+  save st, is/ts/st
+  save step
+    task
+      like boolean
+      back structural-cases(is, goal-left, goal-right, op, scope, ctx, var-level, cited, assumptions)
+  back attempt-boolean(st, step)
+
+task structural-cases
+  take is, like induction-state
+  take goal-left, like expression
+  take goal-right, like expression
+  take op, like binary-op
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take var-level, like number
+  take cited, like list, like text
+  take assumptions, like list, like expression-pair
+  like boolean
+  mark private
+
+  save st, is/ts/st
+  save data, is/ts/data
+  save index, subtract(subtract(ctx/level, var-level), 1)
+  fork test, or(is-below(index, 0), is-minimum(index, ctx/types/length))
+    hold
+      back false
+  save type-value, get(ctx/types, index)
+  save type-term, quote(st, ctx/level, type-value)
+  save type-head, <>
+  sift head-name(type-term)
+    case some
+      link found
+      save type-head, found
+    case none
+      back false
+  fork test, is-equal(data/variant-names/has(type-head), false)
+    hold
+      back false
+  save variants, data/variant-names/get(type-head)
+  fork test, is-equal(variants/length, 0)
+    hold
+      back false
+  save ig
+    make induction-goal
+      bind goal-left, goal-left
+      bind goal-right, goal-right
+      bind op, op
+      bind scope, scope
+      bind cited, cited
+      bind type-value, type-value
+      bind type-head, type-head
+  # an indexed family with ONE value index that is a plain variable has that variable refined per case
+  save index-refine-level, -1
+  save index-count, 0
+  fork test, data/type-former-indices/has(type-head)
+    hold
+      save index-count, data/type-former-indices/get(type-head)/length
+  fork test, is-equal(index-count, 1)
+    hold
+      save spine, spine-args(type-term)
+      save param-count, former-arity(is, type-head)
+      fork test, is-below(param-count, spine/length)
+        hold
+          sift get(spine, param-count)
+            case var
+              link idx
+              save index-refine-level, subtract(subtract(ctx/level, idx), 1)
+            miss
+              save spine, spine
+  walk variants
+    take variant
+    save is/cs/fold-case, make(some, variant)
+    save fields, variant-fields(is, ctor-key(type-head, variant))
+    save k, fields/length
+    save inner, ctx
+    save field-type-values, make list
+    save witness-values, make list
+    walk witnesses-at(is, ig, ctx/level)
+      take w
+      save fresh, make list
+      push(fresh, evaluate(st, ctx/env, w))
+      walk witness-values
+        take one
+        push(fresh, one)
+      save witness-values, fresh
+    save field-values, make list
+    walk fields
+      take field
+      save frame, make list
+      walk field-values
+        take one
+        push(frame, one)
+      walk witness-values
+        take one
+        push(frame, one)
+      walk ctx/env
+        take one
+        push(frame, one)
+      save field-type-value, evaluate(st, frame, field-type(field/type))
+      push(field-type-values, field-type-value)
+      save inner, bind-context(inner, <many>, field-type-value, field/name)
+      save fresh, make list
+      push(fresh, neutral-var(subtract(inner/level, 1)))
+      walk field-values
+        take one
+        push(fresh, one)
+      save field-values, fresh
+    save cons-term, constant(ctor-key(type-head, variant))
+    walk witnesses-at(is, ig, inner/level)
+      take w
+      save cons-term, apply-term(cons-term, w)
+    walk fields
+      take field
+      take j
+      save cons-term, apply-term(cons-term, variable(subtract(subtract(k, 1), j)))
+    save cons-value, evaluate(st, inner/env, cons-term)
+    save sides, elaborate-goal-sides(is/ts, goal-left, goal-right, scope, inner)
+    save left-term, type-zero()
+    save right-term, type-zero()
+    sift sides/left
+      case some
+        link found
+        save left-term, found
+      case none
+        back false
+    sift sides/right
+      case some
+        link found
+        save right-term, found
+      case none
+        back false
+    save subject, add(index, k)
+    # this variant's output index, against its fresh fields, to refine the index variable in the case
+    save refine, make none
+    fork test, is-minimum(index-refine-level, 0)
+      hold
+        save key, ctor-key(type-head, variant)
+        fork test, data/variant-index-expr/has(key)
+          hold
+            save field-scope, make hash
+            walk scope/keys()
+              take name
+              field-scope/set(name, scope/get(name))
+            walk fields
+              take field
+              take j
+              field-scope/set(field/name, add(ctx/level, j))
+            sift expr(is/ts, data/variant-index-expr/get(key), field-scope, inner, no-value())
+              case some
+                link idx-term
+                save found
+                  make index-refine
+                    bind level, index-refine-level
+                    bind term, idx-term
+                save refine, make(some, found)
+              case none
+                save refine, refine
+    save case-env, copied-values(inner/env)
+    save case-env/{subject}, cons-value
+    sift refine
+      case some
+        link ir
+        save case-env/{subtract(subtract(inner/level, ir/level), 1)}, evaluate(st, case-env, ir/term)
+      case none
+        save refine, refine
+    save case-left, evaluate(st, case-env, left-term)
+    save case-right, evaluate(st, case-env, right-term)
+    # the induction hypotheses, at each RECURSIVE field
+    save hypotheses, make list
+    walk fields
+      take field
+      take j
+      sift head-name(field-type(field/type))
+        case some
+          link former
+          fork test, is-equal(former, type-head)
+            hold
+              save ih-env, copied-values(inner/env)
+              save ih-env/{subject}, get(inner/env, subtract(subtract(k, 1), j))
+              fork test, is-minimum(index-refine-level, 0)
+                hold
+                  save field-spine, spine-args(quote(st, inner/level, get(field-type-values, j)))
+                  fork test, is-above(field-spine/length, 0)
+                    hold
+                      save field-idx, get(field-spine, subtract(field-spine/length, 1))
+                      save ih-env/{subtract(subtract(inner/level, index-refine-level), 1)}, evaluate(st, ih-env, field-idx)
+              push(hypotheses, pair-of(evaluate(st, ih-env, left-term), evaluate(st, ih-env, right-term)))
+        case none
+          save field, field
+    # the path's assumptions specialized to the case; one equating distinct constructors makes the case vacuous
+    save assumption-pairs, make list
+    save vacuous, false
+    walk assumptions
+      take a
+      sift expr(is/ts, a/left, scope, inner, no-value())
+        case some
+          link lt
+          sift expr(is/ts, a/right, scope, inner, no-value())
+            case some
+              link rt
+              save lv, evaluate(st, case-env, lt)
+              save rv, evaluate(st, case-env, rt)
+              fork test, equation-absurd(st, data, inner, lt, lv, rv)
+                hold
+                  save vacuous, true
+              push(assumption-pairs, pair-of(lv, rv))
+            case none
+              save vacuous, vacuous
+        case none
+          save vacuous, vacuous
+    fork test, vacuous
+      hold
+        turn next
+    save ordered, hypotheses/length
+    walk assumption-pairs
+      take pair
+      push(hypotheses, pair)
+    # the fields that may be split further: inductive fields of ANOTHER form than the subject's
+    save splittable, make list
+    walk fields
+      take field
+      take j
+      sift field-type(field/type)
+        case const
+          link field-type-name
+          fork test, and(data/variant-names/has(field-type-name), is-unequal(field-type-name, type-head))
+            hold
+              save target
+                make split-target
+                  bind level, add(ctx/level, j)
+                  bind enum-name, field-type-name
+              push(splittable, target)
+        miss
+          save field, field
+    # GENERALIZED hypotheses: with no path assumptions, each is universal over the variables past the fields
+    save general, make list
+    fork test, is-equal(assumptions/length, 0)
+      hold
+        walk hypotheses
+          take pair
+          save lhs, quote(st, inner/level, get(pair, 0))
+          save rhs, quote(st, inner/level, get(pair, 1))
+          save free, make hash
+          free-var-indices(lhs, 0, free)
+          free-var-indices(rhs, 0, free)
+          save holes, make hash
+          walk free/keys()
+            take idx
+            fork test, is-minimum(idx, k)
+              hold
+                holes/set(idx, true)
+          fork test, is-above(holes/keys()/length, 0)
+            hold
+              save g
+                make rewrite-rule
+                  bind binder-count, 0
+                  bind lhs, lhs
+                  bind rhs, rhs
+                  bind holes, holes
+              push(general, g)
+    save field-levels, make list
+    walk fields
+      take field
+      take j
+      push(field-levels, add(ctx/level, j))
+    save first
+      make recipe
+        bind variant, variant
+        bind enum-name, type-head
+        bind field-levels, field-levels
+    save subst, make hash
+    subst/set(var-level, first)
+    fork test, is-equal(close-with-splits(is, ig, inner, subst, splittable, hypotheses, 2, general, inner/level, refine, ordered), false)
+      hold
+        back false
+  back true
+
+# ---- simultaneous induction ----
+
+# is an inductive form FINITE: no case reaches the form again through its fields, every field's form finite
+task is-finite-type
+  take is, like induction-state
+  take name, like text
+  take visiting, like hash, like text, like boolean
+  like boolean
+
+  fork test, is/finite-types/has(name)
+    hold
+      back is/finite-types/get(name)
+  save data, is/ts/data
+  fork test, or(is-equal(data/variant-names/has(name), false), visiting/has(name))
+    hold
+      back false
+  save variants, data/variant-names/get(name)
+  fork test, is-equal(variants/length, 0)
+    hold
+      back false
+  visiting/set(name, true)
+  save finite, true
+  walk variants
+    take variant
+    walk variant-fields(is, ctor-key(name, variant))
+      take field
+      sift field-type(field/type)
+        case const
+          link field-type-name
+          fork test, is-equal(is-finite-type(is, field-type-name, visiting), false)
+            hold
+              save finite, false
+        miss
+          save finite, false
+  visiting/delete(name)
+  is/finite-types/set(name, finite)
+  back finite
+
+form chosen
+  link level, like number
+  link enum-name, like text
+  link variant, like text
+  link fields, like list, like field-info
+  link field-levels, like list, like number
+
+form pending
+  link level, like number
+  link enum-name, like text
+  link variants, like list, like text
+
+form multi
+  mark shared
+  link is, like induction-state
+  link goal-left, like expression
+  link goal-right, like expression
+  link scope, like hash, like text, like number
+  link cited, like list, like text
+  link assumptions, like list, like expression-pair
+  link deep, like boolean
+  link chosen, like list, like chosen
+  link pending, like list, like pending
+
+task is-recursive-choice
+  take c, like chosen
+  like maybe, like number
+  mark private
+
+  walk c/fields
+    take f
+    take i
+    sift field-type(f/type)
+      case const
+        link name
+        fork test, is-equal(name, c/enum-name)
+          hold
+            back make(some, i)
+      miss
+        save f, f
+  back make none
+
+# discharge one combination: every variable at its chosen constructor, the diagonal hypothesis, the assumptions
+task discharge-leaf
+  take mu, like multi
+  take ctx, like context
+  like boolean
+  mark private
+
+  save is, mu/is
+  save st, is/ts/st
+  save case-env, copied-values(ctx/env)
+  save choices, make list
+  fork test, mu/deep
+    hold
+      save i, subtract(mu/chosen/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          push(choices, get(mu/chosen, i))
+          save i, subtract(i, 1)
+    miss
+      walk mu/chosen
+        take c
+        push(choices, c)
+  walk choices
+    take c
+    save cons, constant(ctor-key(c/enum-name, c/variant))
+    walk c/fields
+      take f
+      take j
+      save cons, apply-term(cons, variable(subtract(subtract(ctx/level, get(c/field-levels, j)), 1)))
+    save frame, ctx/env
+    fork test, mu/deep
+      hold
+        save frame, case-env
+    save case-env/{subtract(subtract(ctx/level, c/level), 1)}, evaluate(st, frame, cons)
+  save sides, elaborate-goal-sides(is/ts, mu/goal-left, mu/goal-right, mu/scope, ctx)
+  save left-term, type-zero()
+  save right-term, type-zero()
+  sift sides/left
+    case some
+      link found
+      save left-term, found
+    case none
+      back false
+  sift sides/right
+    case some
+      link found
+      save right-term, found
+    case none
+      back false
+  save case-left, evaluate(st, case-env, left-term)
+  save case-right, evaluate(st, case-env, right-term)
+  save hypotheses, make list
+  save ih-env, copied-values(case-env)
+  save any-recursive, false
+  walk mu/chosen
+    take c
+    sift is-recursive-choice(c)
+      case some
+        link field-index
+        save any-recursive, true
+        save ih-env/{subtract(subtract(ctx/level, c/level), 1)}, get(ctx/env, subtract(subtract(ctx/level, get(c/field-levels, field-index)), 1))
+      case none
+        save c, c
+  fork test, any-recursive
+    hold
+      push(hypotheses, pair-of(evaluate(st, ih-env, left-term), evaluate(st, ih-env, right-term)))
+  walk mu/assumptions
+    take a
+    sift expr(is/ts, a/left, mu/scope, ctx, no-value())
+      case some
+        link lt
+        sift expr(is/ts, a/right, mu/scope, ctx, no-value())
+          case some
+            link rt
+            save lv, evaluate(st, case-env, lt)
+            save rv, evaluate(st, case-env, rt)
+            fork test, equation-absurd(st, is/ts/data, ctx, lt, lv, rv)
+              hold
+                back true
+            push(hypotheses, pair-of(lv, rv))
+          case none
+            save a, a
+      case none
+        save a, a
+  save no-general, make list
+  back close-case(is, ctx/level, ctx/env, case-left, case-right, hypotheses, mu/cited, no-general, make(some, ctx))
+
+# pick a constructor for variable `i`, its fields bound, and go on to the next
+task pick
+  take mu, like multi
+  take i, like number
+  take ctx, like context
+  like boolean
+  mark private
+
+  fork test, is-equal(i, mu/pending/length)
+    hold
+      back discharge-leaf(mu, ctx)
+  save is, mu/is
+  save st, is/ts/st
+  save info, get(mu/pending, i)
+  walk info/variants
+    take variant
+    save fields, variant-fields(is, ctor-key(info/enum-name, variant))
+    save inner, ctx
+    save field-levels, make list
+    walk fields
+      take field
+      push(field-levels, inner/level)
+      save inner, bind-context(inner, <many>, evaluate(st, inner/env, field-type(field/type)), field/name)
+    save c
+      make chosen
+        bind level, info/level
+        bind enum-name, info/enum-name
+        bind variant, variant
+        bind fields, fields
+        bind field-levels, field-levels
+    push(mu/chosen, c)
+    save added, 0
+    fork test, mu/deep
+      hold
+        walk fields
+          take field
+          take j
+          sift field-type(field/type)
+            case const
+              link field-type-name
+              save visiting, make hash
+              fork test, is-finite-type(is, field-type-name, visiting)
+                hold
+                  save more
+                    make pending
+                      bind level, get(field-levels, j)
+                      bind enum-name, field-type-name
+                      bind variants, is/ts/data/variant-names/get(field-type-name)
+                  push(mu/pending, more)
+                  save added, add(added, 1)
+            miss
+              save field, field
+    save ok, pick(mu, add(i, 1), inner)
+    save mu/pending, kept-first(mu/pending, subtract(mu/pending/length, added))
+    save mu/chosen, kept-chosen(mu/chosen, subtract(mu/chosen/length, 1))
+    fork test, is-equal(ok, false)
+      hold
+        back false
+  back true
+
+task kept-first
+  take items, like list, like pending
+  take count, like number
+  like list, like pending
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take i
+    fork test, is-below(i, count)
+      hold
+        push(out, one)
+  back out
+
+task kept-chosen
+  take items, like list, like chosen
+  take count, like number
+  like list, like chosen
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take i
+    fork test, is-below(i, count)
+      hold
+        push(out, one)
+  back out
+
+# SIMULTANEOUS structural induction on several variables: the product of their constructors, the diagonal hypothesis.
+# `deep` also splits every finite field down to closed values. False (never a raise) outside it
+task multi-induction
+  take is, like induction-state
+  take goal-left, like expression
+  take goal-right, like expression
+  take op, like binary-op
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take induct-vars, like list, like text
+  take cited, like list, like text
+  take assumptions, like list, like expression-pair
+  take deep, like boolean
+  like boolean
+
+  sift op
+    case equal
+      save op, op
+    miss
+      back false
+  save st, is/ts/st
+  save step
+    task
+      like boolean
+      save pending, make list
+      save missing, false
+      walk induct-vars
+        take name
+        save found, false
+        fork test, scope/has(name)
+          hold
+            save level, scope/get(name)
+            fork test, is-minimum(level, 0)
+              hold
+                save at, subtract(subtract(ctx/level, level), 1)
+                fork test, and(is-minimum(at, 0), is-below(at, ctx/types/length))
+                  hold
+                    sift quote(st, ctx/level, get(ctx/types, at))
+                      case const
+                        link type-name
+                        fork test, is/ts/data/variant-names/has(type-name)
+                          hold
+                            save variants, is/ts/data/variant-names/get(type-name)
+                            fork test, is-above(variants/length, 0)
+                              hold
+                                save info
+                                  make pending
+                                    bind level, level
+                                    bind enum-name, type-name
+                                    bind variants, variants
+                                push(pending, info)
+                                save found, true
+                      miss
+                        save found, false
+        fork test, is-equal(found, false)
+          hold
+            save missing, true
+      fork test, missing
+        hold
+          back false
+      save no-chosen, make list
+      save mu
+        make multi
+          bind is, is
+          bind goal-left, goal-left
+          bind goal-right, goal-right
+          bind scope, scope
+          bind cited, cited
+          bind assumptions, assumptions
+          bind deep, deep
+          bind chosen, no-chosen
+          bind pending, pending
+      back pick(mu, 0, ctx)
+  back attempt-boolean(st, step)

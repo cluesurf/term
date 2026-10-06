@@ -1,0 +1,687 @@
+# FIXES AS DATA: the edits that resolve a diagnostic, for `term scan` (JSON, and `--fix` to apply them) and the
+# language server (quick fixes). ONE place derives them, so the editor and an agent are offered the same change.
+#
+# Ported from fix.ts (self-hosting, 2026-10-06), which stays as the face and keeps its signatures. The decisions:
+#   - every offset and slice counts UTF-16 units as the original's did, since a span's column does (parser/token.tree).
+#     Term's text counts code points, so a text is read as its units (`units-of`) and a slice joins a surrogate pair
+#     back into its code point (`units-text`). A slice is JavaScript's (`js-slice`): a negative bound counts from the
+#     end, a bound past the end is the end, and a stop before the start gives nothing
+#   - `\s` and `trim` are JavaScript's, compile/main-entry's `whitespace-code` and `js-trim`
+#   - the import lookup is a task handed in, answering the import paths of the modules that export a name. Whether
+#     there is one is a boolean beside it, which is what `options?.findExport` tested
+#   - the taken edits are ordered by an insertion sort, which keeps two edits at one place in the order they were taken,
+#     as `Array.prototype.sort` (stable) did
+#   - an offset the original asserted present (`!`) can still be absent when two edits of ONE fix overlap, since a fix
+#     is checked only against the edits other fixes took. JavaScript's `slice(undefined)` is then the whole text, and
+#     `cut-at` gives the same
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find substring
+  find starts-with
+  find split
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./parser/diagnostic
+  find position
+  find span
+  find edit
+  find fix
+  find diagnostic
+
+load ./compile/main-entry
+  find whitespace-code
+  find js-trim
+
+# whether a fix for a diagnostic is the one reading (`term scan --fix` writes it) or a guess (only offered)
+form fix-certainty
+  mark text
+  case sure
+  case guess
+
+# a fix `apply-fixes` would not write, and why
+form refusal
+  link fix, like fix
+  link reason, like text
+
+# what `apply-fixes` answers: the text with the fixes written, the fixes written, and the fixes refused
+form fixed-text
+  link text, like text
+  link applied, like list, like fix
+  link refused, like list, like refusal
+
+# the compiler diagnostics a fix can be offered for, and whether those fixes are sure or guesses. `term show kink` says
+# so beside each, so this table and the tasks below change together
+task fixable
+  like hash, like text, like fix-certainty
+
+  back
+    make hash
+      save <note-private>, make sure
+      save <note-metadata>, make sure
+      save <unknown-name>, make guess
+      save <typed-hole>, make guess
+
+# how many homes of one name are offered as imports. A name with more is a common word, and the first few are the ones
+# the lookup ranks as its public homes
+task import-limit
+  like number
+  mark private
+
+  back 4
+
+# ---- text ----
+
+# JavaScript's `slice` bound: a negative one counts from the end, and either is held inside the text
+task slice-bound
+  take bound, like number
+  take size, like number
+  like number
+  mark private
+
+  fork test, is-below(bound, 0)
+    hold
+      fork test, is-below(add(size, bound), 0)
+        hold
+          back 0
+      back add(size, bound)
+  fork test, is-above(bound, size)
+    hold
+      back size
+  back bound
+
+# a text as its UTF-16 code units, the units a column counts in: a code point past U+FFFF is two
+task units-of
+  take value, like text
+  like list, like number
+
+  save units, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-above(rune, 65535)
+      hold
+        save rest, subtract(rune, 65536)
+        save low, modulo(rest, 1024)
+        push(units, add(55296, divide(subtract(rest, low), 1024)))
+        push(units, add(56320, low))
+      miss
+        push(units, rune)
+  back units
+
+# the units from `start` up to `stop` as text, a high and a low surrogate in a row joined into their code point. A
+# surrogate standing alone stays alone, as a JavaScript slice through the middle of a pair leaves it
+task units-text
+  take units, like list, like number
+  take start, like number
+  take stop, like number
+  like text
+
+  save runes, make list
+  save at, start
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      save unit, get(units, at)
+      save paired, false
+      fork test, and(and(is-minimum(unit, 55296), is-maximum(unit, 56319)), is-below(add(at, 1), stop))
+        hold
+          save next, get(units, add(at, 1))
+          fork test, and(is-minimum(next, 56320), is-maximum(next, 57343))
+            hold
+              push(runes, add(65536, add(multiply(subtract(unit, 55296), 1024), subtract(next, 56320))))
+              save paired, true
+              save at, add(at, 2)
+      fork test, is-equal(paired, false)
+        hold
+          push(runes, unit)
+          save at, add(at, 1)
+  back from-runes(runes)
+
+# JavaScript's `value.slice(start, stop)` over the text's units
+task js-slice
+  take units, like list, like number
+  take start, like number
+  take stop, like number
+  like text
+
+  save size, units/length
+  save from, slice-bound(start, size)
+  save to, slice-bound(stop, size)
+  fork test, is-maximum(to, from)
+    hold
+      back <>
+  back units-text(units, from, to)
+
+# JavaScript's `value.slice(start)`, and the whole text when the start is absent (`slice(undefined)`)
+task cut-from
+  take units, like list, like number
+  take start, like maybe, like number
+  like text
+  mark private
+
+  sift start
+    case some
+      link at
+      back js-slice(units, at, units/length)
+    case none
+      back units-text(units, 0, units/length)
+
+# JavaScript's `value.slice(0, stop)`, and the whole text when the stop is absent (`slice(0, undefined)`)
+task cut-to
+  take units, like list, like number
+  take stop, like maybe, like number
+  like text
+  mark private
+
+  sift stop
+    case some
+      link at
+      back js-slice(units, 0, at)
+    case none
+      back units-text(units, 0, units/length)
+
+# the first line break at or after `from`, or -1
+task break-after
+  take units, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  walk test
+    hook test, is-below(at, units/length)
+    hook hold
+      fork test, is-equal(get(units, at), 10)
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# a line and column (zero-based, in the parser's units, which are UTF-16 code units) as an offset into the text's
+# units, or none past its end. A column past a line's end is refused rather than read into the next line
+task offset-of
+  take units, like list, like number
+  take line, like number
+  take column, like number
+  like maybe, like number
+  mark private
+
+  save at, 0
+  save current, 0
+  walk test
+    hook test, is-below(current, line)
+    hook hold
+      save next, break-after(units, at)
+      fork test, is-below(next, 0)
+        hold
+          back make none
+      save at, add(next, 1)
+      save current, add(current, 1)
+
+  save end, break-after(units, at)
+  save length, subtract(units/length, at)
+  fork test, is-minimum(end, 0)
+    hold
+      save length, subtract(end, at)
+  fork test, is-maximum(column, length)
+    hold
+      save offset, add(at, column)
+      back make(some, offset)
+  back make none
+
+# the text under a span, or none when the span reaches past the text
+task text-at
+  take value, like text
+  take where, like span
+  like maybe, like text
+
+  back units-at(units-of(value), where)
+
+task units-at
+  take units, like list, like number
+  take where, like span
+  like maybe, like text
+  mark private
+
+  save start, offset-of(units, where/start/line, where/start/column)
+  save end, offset-of(units, where/end/line, where/end/column)
+  sift start
+    case some
+      link from
+      sift end
+        case some
+          link to
+          fork test, is-below(to, from)
+            hold
+              back make none
+          save under, js-slice(units, from, to)
+          back make(some, under)
+        case none
+          back make none
+    case none
+      back make none
+
+# a text under a span, tested against an expected text: none never equals one
+task text-at-is
+  take units, like list, like number
+  take where, like span
+  take expected, like text
+  like boolean
+  mark private
+
+  sift units-at(units, where)
+    case some
+      link found
+      back is-equal(found, expected)
+    case none
+      back false
+
+# `^(?:call|read|make)\s+` removed from the front, when it is there
+task without-head
+  take value, like text
+  like text
+  mark private
+
+  save heads, make list
+  push(heads, <call>)
+  push(heads, <read>)
+  push(heads, <make>)
+  walk heads
+    take head
+    fork test, and(starts-with(value, head), is-above(value/length, 4))
+      hold
+        fork test, whitespace-code(char-code-at(value, 4))
+          hold
+            save at, 5
+            walk test
+              hook test, and(is-below(at, value/length), whitespace-code(char-code-at(value, at)))
+              hook hold
+                save at, add(at, 1)
+            back substring(value, at, value/length)
+  back value
+
+# `^[a-z][A-Za-z0-9-]*`, its match, or none
+task leading-name
+  take value, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(value/length, 0)
+    hold
+      back make none
+  save first, char-code-at(value, 0)
+  fork test, or(is-below(first, 97), is-above(first, 122))
+    hold
+      back make none
+  save at, 1
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      save code, char-code-at(value, at)
+      save lower, and(is-minimum(code, 97), is-maximum(code, 122))
+      save upper, and(is-minimum(code, 65), is-maximum(code, 90))
+      save digit, and(is-minimum(code, 48), is-maximum(code, 57))
+      fork test, or(or(lower, upper), or(digit, is-equal(code, 45)))
+        hold
+          save at, add(at, 1)
+        miss
+          save matched, substring(value, 0, at)
+          back make(some, matched)
+  back make(some, value)
+
+# the identifier a diagnostic's span names, read off the span's first line: the name itself (`foo`, `foo(x)`), or the
+# word after a longhand head (`read foo`, `call foo`, `make foo`). A call's span runs over its argument lines, and the
+# name is the first thing on the first of them
+task name-in
+  take value, like text
+  take where, like span
+  like maybe, like text
+
+  save lines, split(value, <\n>)
+  save number, where/start/line
+  fork test, or(is-below(number, 0), is-minimum(number, lines/length))
+    hold
+      back make none
+  save line, get(lines, number)
+  save end, units-of(line)/length
+  fork test, is-equal(where/end/line, number)
+    hold
+      save end, where/end/column
+  save first, without-head(js-trim(js-slice(units-of(line), where/start/column, end)))
+  back leading-name(first)
+
+# the edit that imports `name` from `import-path`: a `find` as the first line under an existing `load` of that module,
+# else a new load block at the top of the file
+task import-edit
+  take value, like text
+  take import-path, like text
+  take name, like text
+  like edit
+
+  save lines, split(value, <\n>)
+  save found, -1
+  walk lines
+    take one
+    take index
+    fork test, or(is-equal(one, <load {import-path}>), starts-with(one, <load {import-path} >))
+      hold
+        save found, index
+        halt
+  save line, 0
+  save inserted, <load {import-path}\n  find {name}\n\n>
+  fork test, is-minimum(found, 0)
+    hold
+      save line, add(found, 1)
+      save inserted, <  find {name}\n>
+
+  back
+    make edit
+      bind span
+        make span
+          bind start
+            make position
+              bind line, line
+              bind column, 0
+          bind end
+            make position
+              bind line, line
+              bind column, 0
+      bind text, inserted
+      bind was, <>
+
+# every fix for one diagnostic: the compiler's own, then those read off the text. `find-export` is asked only for an
+# unknown name, and only when `can-find` says the caller gave one, because it searches the file system, and an editor
+# computing fixes for a save must not pay for it
+task fixes-of
+  take found, like diagnostic
+  take value, like text
+  take can-find, like boolean
+  take find-export
+    like task
+      take name, like text
+      like list, like text
+  like list, like fix
+
+  save fixes, make list
+  sift found/fixes
+    case some
+      link given
+      walk given
+        take one
+        push(fixes, one)
+    case none
+      save fixes, make list
+  walk text-fixes(found/name, found/span, value)
+    take one
+    push(fixes, one)
+  fork test, and(is-equal(found/name, <unknown-name>), can-find)
+    hold
+      walk import-fixes(value, found/span, find-export)
+        take one
+        push(fixes, one)
+  back fixes
+
+# the fixes read off the text alone, by the diagnostic's name and span: what an editor can still offer for a
+# diagnostic a client sends back with its name and nothing else
+task text-fixes
+  take name, like text
+  take where, like span
+  take value, like text
+  like list, like fix
+
+  save fixes, make list
+
+  # the old spelling of privacy, which has exactly one current spelling. The checker's span is the `note private` line
+  # (check/private.tree), and the edit expects whatever it holds, so a span that moved is refused when applied
+  fork test, is-equal(name, <note-private>)
+    hold
+      sift text-at(value, where)
+        case some
+          link was
+          save edits, make list
+          save one
+            make edit
+              bind span, where
+              bind text, <mark private>
+              bind was, was
+          push(edits, one)
+          save written
+            make fix
+              bind title, <Write `mark private` (the current spelling)>
+              bind sure, true
+              bind edits, edits
+          push(fixes, written)
+        case none
+          save fixes, fixes
+
+  # the old spelling of metadata, `note <word>`: the span starts at the `note`, and the word after it stays as written
+  fork test, is-equal(name, <note-metadata>)
+    hold
+      # the span with its end moved, `file` kept when it is there and left out when it is not, as a spread did
+      save word-end
+        make position
+          bind line, where/start/line
+          bind column, add(where/start/column, 4)
+      save word
+        make span
+          bind start, where/start
+          bind end, word-end
+      sift where/file
+        case some
+          link kept
+          save word
+            make span
+              bind start, where/start
+              bind end, word-end
+              bind file, where/file
+        case none
+          save word, word
+      fork test, text-at-is(units-of(value), word, <note>)
+        hold
+          save edits, make list
+          save one
+            make edit
+              bind span, word
+              bind text, <mark>
+              bind was, <note>
+          push(edits, one)
+          save written
+            make fix
+              bind title, <Write `mark` (metadata is `mark`, `note` is the old spelling)>
+              bind sure, true
+              bind edits, edits
+          push(fixes, written)
+
+  back fixes
+
+# the name under an unknown-name span, imported: one fix per module that exports it, none sure, since two modules may
+# define it (`join` is a path's and a text utility's) and the author may have meant a local of a near spelling instead
+task import-fixes
+  take value, like text
+  take where, like span
+  take find-export
+    like task
+      take name, like text
+      like list, like text
+  like list, like fix
+
+  save fixes, make list
+  sift name-in(value, where)
+    case some
+      link name
+      save homes, make list
+      save seen, make hash
+      walk find-export(name)
+        take home
+        fork test, is-equal(seen/has(home), false)
+          hold
+            seen/set(home, true)
+            push(homes, home)
+      walk homes
+        take home
+        take index
+        fork test, is-minimum(index, import-limit())
+          hold
+            halt
+        save edits, make list
+        push(edits, import-edit(value, home, name))
+        save offered
+          make fix
+            bind title, <Import {name} from {home}>
+            bind sure, false
+            bind edits, edits
+        push(fixes, offered)
+    case none
+      back fixes
+  back fixes
+
+# ---- applying ----
+
+# whether position `a` is before position `b`
+task is-before
+  take a, like position
+  take b, like position
+  like boolean
+  mark private
+
+  fork test, is-below(a/line, b/line)
+    hold
+      back true
+  back and(is-equal(a/line, b/line), is-below(a/column, b/column))
+
+# two spans overlap when either starts before the other ends. Two insertions at one place overlap too: their order
+# would be a guess
+task overlaps
+  take a, like span
+  take b, like span
+  like boolean
+  mark private
+
+  fork test, and(is-equal(a/start/line, b/start/line), is-equal(a/start/column, b/start/column))
+    hold
+      back true
+  back and(is-before(a/start, b/end), is-before(b/start, a/end))
+
+# the first edit of a fix whose span no longer holds its `was`, or none
+task stale-edit
+  take units, like list, like number
+  take one, like fix
+  like maybe, like edit
+  mark private
+
+  walk one/edits
+    take change
+    fork test, is-equal(text-at-is(units, change/span, change/was), false)
+      hold
+        back make(some, change)
+  back make none
+
+# the first edit of a fix that overlaps an edit already taken, or none
+task clashing-edit
+  take one, like fix
+  take taken, like list, like edit
+  like maybe, like edit
+  mark private
+
+  walk one/edits
+    take change
+    walk taken
+      take other
+      fork test, overlaps(change/span, other/span)
+        hold
+          back make(some, change)
+  back make none
+
+# where a span starts, one-based, as `line:column`
+task place-of
+  take where, like span
+  like text
+  mark private
+
+  back <{add(where/start/line, 1)}:{add(where/start/column, 1)}>
+
+# the taken edits from the end of the text back, two at one place in the order they were taken
+task from-the-end
+  take taken, like list, like edit
+  like list, like edit
+  mark private
+
+  save ordered, make list
+  walk taken
+    take change
+    save placed, make list
+    save done, false
+    walk ordered
+      take other
+      fork test, and(is-equal(done, false), is-before(other/span/start, change/span/start))
+        hold
+          push(placed, change)
+          save done, true
+      push(placed, other)
+    fork test, is-equal(done, false)
+      hold
+        push(placed, change)
+    save ordered, placed
+  back ordered
+
+# Apply fixes to a text. Every edit of a fix lands or none does: a fix whose edit no longer finds its `was`, or that
+# overlaps an edit already taken, is refused whole and named. Edits are written from the end of the text back, so an
+# earlier one's offsets stay true
+task apply-fixes
+  take value, like text
+  take fixes, like list, like fix
+  like fixed-text
+
+  save applied, make list
+  save refused, make list
+  save taken, make list
+  save units, units-of(value)
+
+  walk fixes
+    take one
+    sift stale-edit(units, one)
+      case some
+        link stale
+        save refusal-of
+          make refusal
+            bind fix, one
+            bind reason, <the text at {place-of(stale/span)} is no longer "{stale/was}">
+        push(refused, refusal-of)
+      case none
+        sift clashing-edit(one, taken)
+          case some
+            link clash
+            save refusal-of
+              make refusal
+                bind fix, one
+                bind reason, <it changes text another fix already changes, at {place-of(clash/span)}>
+            push(refused, refusal-of)
+          case none
+            push(applied, one)
+            walk one/edits
+              take change
+              push(taken, change)
+
+  save out, value
+  walk from-the-end(taken)
+    take change
+    save out-units, units-of(out)
+    save start, offset-of(out-units, change/span/start/line, change/span/start/column)
+    save end, offset-of(out-units, change/span/end/line, change/span/end/column)
+    save out, <{cut-to(out-units, start)}{change/text}{cut-from(out-units, end)}>
+
+  back
+    make fixed-text
+      bind text, out
+      bind applied, applied
+      bind refused, refused

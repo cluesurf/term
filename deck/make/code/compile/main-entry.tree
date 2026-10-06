@@ -1,0 +1,601 @@
+# THE MAIN THAT CALLS A PROGRAM, written once for every backend: a Term task's name as each backend spells it, the
+# entry an emitted program defines, the `main` appended to run it, and the crates a Rust source names.
+#
+# Ported from compile/native-main.ts (self-hosting, 2026-10-06), which stays as the face and says why each main is
+# shaped as it is. Its regular expressions over the emitted text are written out by character here:
+#   - `\b` before a name is a start of text or a character that is not `[A-Za-z0-9_]`
+#   - `\s` is JavaScript's whitespace, every code point `whitespace-code` lists, and `trim` removes the same
+#   - `( -> ([^{]+))?\s*\{` takes the arrow's type up to the first `{` when one follows; otherwise only whitespace may
+#     stand between the parentheses and the `{`
+#   - a pattern finds its LEFTMOST match: the occurrences are tried in order, and an `async ` in front of the first that
+#     fits is its start
+# The entry is placed in each pattern as written, where the original placed it unescaped: an entry holding a regular
+# expression's own characters would differ, and every entry is a backend identifier.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-code-at
+  find substring
+  find starts-with
+  find index-of
+  find split
+  find to-upper-case
+
+# the stack an entry runs on, 1 GiB of address space
+task entry-stack-bytes
+  like number
+
+  back 1073741824
+
+# the entries a program is run by, in the order one is chosen when none is named
+task entry-names
+  like list, like text
+
+  save out, make list
+  push(out, <run>)
+  push(out, <boot>)
+  push(out, <main>)
+  back out
+
+# ---- characters ----
+
+# JavaScript's `\s`: whitespace and line terminators
+task whitespace-code
+  take code, like number
+  like boolean
+
+  fork test, or(and(is-minimum(code, 9), is-maximum(code, 13)), is-equal(code, 32))
+    hold
+      back true
+  fork test, or(or(is-equal(code, 160), is-equal(code, 5760)), and(is-minimum(code, 8192), is-maximum(code, 8202)))
+    hold
+      back true
+  fork test, or(or(is-equal(code, 8232), is-equal(code, 8233)), or(is-equal(code, 8239), is-equal(code, 8287)))
+    hold
+      back true
+  back or(is-equal(code, 12288), is-equal(code, 65279))
+
+task word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+# JavaScript's `trim`
+task js-trim
+  take text, like text
+  like text
+
+  save size, text/length
+  save start, 0
+  walk test
+    hook test, and(is-below(start, size), whitespace-code(char-code-at(text, start)))
+    hook hold
+      save start, add(start, 1)
+  save end, size
+  walk test
+    hook test, and(is-above(end, start), whitespace-code(char-code-at(text, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back substring(text, start, end)
+
+# every position `needle` starts at in `text`, in order
+task positions-of
+  take text, like text
+  take needle, like text
+  like list, like number
+  mark private
+
+  save out, make list
+  save from, 0
+  save size, text/length
+  walk test
+    hook test, is-maximum(from, size)
+    hook hold
+      save at, index-of(text, needle, from)
+      fork test, is-below(at, 0)
+        hold
+          back out
+      push(out, at)
+      save from, add(at, 1)
+  back out
+
+# ---- names ----
+
+# a Term task name as each backend spells it: `run-all` is `run_all` on Rust and `runAll` elsewhere, a hyphen before
+# anything but a lowercase letter or a digit kept. `main` is `main_` on Rust and Kotlin
+task entry-spelling
+  take backend, like text
+  take name, like text
+  like text
+
+  save spelled, <>
+  save size, name/length
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      fork test, is-equal(one, <->)
+        hold
+          fork test, is-equal(backend, <rust>)
+            hold
+              save spelled, <{spelled}_>
+            miss
+              save next-code, -1
+              fork test, is-below(add(at, 1), size)
+                hold
+                  save next-code, char-code-at(name, add(at, 1))
+              fork test, or(and(is-minimum(next-code, 97), is-maximum(next-code, 122)), and(is-minimum(next-code, 48), is-maximum(next-code, 57)))
+                hold
+                  save spelled, <{spelled}{to-upper-case(char-at(name, add(at, 1)))}>
+                  save at, add(at, 1)
+                miss
+                  save spelled, <{spelled}->
+        miss
+          save spelled, <{spelled}{one}>
+      save at, add(at, 1)
+  fork test, and(is-equal(spelled, <main>), or(is-equal(backend, <rust>), is-equal(backend, <kotlin>)))
+    hold
+      back <main_>
+  back spelled
+
+# `\b<keyword> <name>\(\)`: the declaration of a task that takes nothing
+task declares-entry
+  take emitted, like text
+  take keyword, like text
+  take spelled, like text
+  like boolean
+  mark private
+
+  walk positions-of(emitted, <{keyword} {spelled}()>)
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        back true
+    fork test, not(word-code(char-code-at(emitted, subtract(at, 1))))
+      hold
+        back true
+  back false
+
+# the entry `emitted` defines: `named`, or the first of the entry names it has, as the backend spells it
+task entry-of
+  take backend, like text
+  take emitted, like text
+  take named, like maybe, like text
+  like maybe, like text
+
+  save keyword, <function>
+  fork test, is-equal(backend, <rust>)
+    hold
+      save keyword, <fn>
+  fork test, is-equal(backend, <swift>)
+    hold
+      save keyword, <func>
+  fork test, is-equal(backend, <kotlin>)
+    hold
+      save keyword, <fun>
+  save names, make list
+  sift named
+    case some
+      link one
+      push(names, one)
+    case none
+      save names, entry-names()
+  walk names
+    take name
+    save spelled, entry-spelling(backend, name)
+    fork test, declares-entry(emitted, keyword, spelled)
+      hold
+        back make(some, spelled)
+  back make none
+
+# ---- the signature of the entry ----
+
+form signature
+  # an `async` (or, on Swift, a following ` async`) on the declaration
+  link async, like boolean
+  # Swift's ` throws`
+  link throws, like boolean
+  # the type after ` -> `, none when there is no arrow
+  link answers
+    like maybe, like text
+    need false
+
+# from `at`, ` -> <type>` up to the first `{`, or only whitespace up to it: the type, `''` with no arrow, or none
+# when neither fits
+form arrow-tail
+  case typed
+    link answers, like text
+  case bare
+  case refused
+
+task arrow-tail-at
+  take text, like text
+  take at, like number
+  like arrow-tail
+  mark private
+
+  save size, text/length
+  # ` -> ` and one or more characters that are not `{`, the run ending at a `{`
+  fork test, starts-with(substring(text, at), < -\> >)
+    hold
+      save from, add(at, 4)
+      save brace, index-of(text, <\{>, from)
+      fork test, is-above(brace, from)
+        hold
+          save answers, substring(text, from, brace)
+          back
+            make arrow-tail/typed
+              bind answers, answers
+  # whitespace, then `{`
+  save k, at
+  walk test
+    hook test, and(is-below(k, size), whitespace-code(char-code-at(text, k)))
+    hook hold
+      save k, add(k, 1)
+  fork test, and(is-below(k, size), is-equal(char-at(text, k), <\{>))
+    hold
+      back make arrow-tail/bare
+  back make arrow-tail/refused
+
+# `(async )?fn <entry>\(\)( -> ([^{]+))?\s*\{`, its leftmost match
+task rust-signature
+  take emitted, like text
+  take entry, like text
+  like maybe, like signature
+  mark private
+
+  save head, <fn {entry}()>
+  walk positions-of(emitted, head)
+    take at
+    sift arrow-tail-at(emitted, add(at, head/length))
+      case typed
+        link answers
+        save found
+          make signature
+            bind async, preceded-by(emitted, at, <async >)
+            bind throws, false
+            bind answers, make(some, answers)
+        back make(some, found)
+      case bare
+        save found
+          make signature
+            bind async, preceded-by(emitted, at, <async >)
+            bind throws, false
+        back make(some, found)
+      case refused
+        save nothing, 0
+  back make none
+
+task preceded-by
+  take text, like text
+  take at, like number
+  take before, like text
+  like boolean
+  mark private
+
+  save size, before/length
+  fork test, is-below(at, size)
+    hold
+      back false
+  back is-equal(substring(text, subtract(at, size), at), before)
+
+# `func <entry>\(\)( async)?( throws)?( -> ([^{]+))?\s*\{`, its leftmost match
+task swift-signature
+  take emitted, like text
+  take entry, like text
+  like maybe, like signature
+  mark private
+
+  save head, <func {entry}()>
+  walk positions-of(emitted, head)
+    take at
+    save k, add(at, head/length)
+    # each optional word is taken when it is there; `( async)?( throws)?` backtracks only to fit the tail, and the
+    # tail cannot start with either word, so taking them is the only way it fits
+    save is-async, starts-with(substring(emitted, k), < async>)
+    fork test, is-async
+      hold
+        save k, add(k, 6)
+    save throws, starts-with(substring(emitted, k), < throws>)
+    fork test, throws
+      hold
+        save k, add(k, 7)
+    sift arrow-tail-at(emitted, k)
+      case typed
+        link answers
+        save found
+          make signature
+            bind async, is-async
+            bind throws, throws
+            bind answers, make(some, answers)
+        back make(some, found)
+      case bare
+        save found
+          make signature
+            bind async, is-async
+            bind throws, throws
+        back make(some, found)
+      case refused
+        save nothing, 0
+  back make none
+
+# `fun <entry>\(\)\s*:\s*([^={]+)`, its leftmost match's type, as `trim` leaves it
+task kotlin-answers
+  take emitted, like text
+  take entry, like text
+  like maybe, like text
+  mark private
+
+  save head, <fun {entry}()>
+  save size, emitted/length
+  walk positions-of(emitted, head)
+    take at
+    save k, add(at, head/length)
+    walk test
+      hook test, and(is-below(k, size), whitespace-code(char-code-at(emitted, k)))
+      hook hold
+        save k, add(k, 1)
+    fork test, and(is-below(k, size), is-equal(char-at(emitted, k), <:>))
+      hold
+        save k, add(k, 1)
+        save spaces, k
+        walk test
+          hook test, and(is-below(k, size), whitespace-code(char-code-at(emitted, k)))
+          hook hold
+            save k, add(k, 1)
+        # one or more characters that are neither `=` nor `{`; the whitespace before gives one back when none follow
+        save end, k
+        walk test
+          hook test, and(is-below(end, size), and(is-unequal(char-at(emitted, end), <=>), is-unequal(char-at(emitted, end), <\{>)))
+          hook hold
+            save end, add(end, 1)
+        fork test, is-above(end, k)
+          hold
+            save found, js-trim(substring(emitted, k, end))
+            back make(some, found)
+        fork test, is-above(k, spaces)
+          hold
+            back make(some, <>)
+  back make none
+
+# whether a Rust answer is `std::result::Result<(), ...>`
+task answers-unit-result
+  take answers, like text
+  like boolean
+  mark private
+
+  back starts-with(answers, <std::result::Result\<(),>)
+
+# ---- the main ----
+
+# the main for `entry` (already spelled for the backend) in `emitted`, to be appended to it. `threads` false is a Rust
+# main with no thread of its own, for WebAssembly under WASI
+task native-main
+  take backend, like text
+  take emitted, like text
+  take entry, like text
+  take threads, like boolean
+  like text
+
+  fork test, is-equal(backend, <rust>)
+    hold
+      save signature, rust-signature(emitted, entry)
+      save is-async, false
+      save answers, make none
+      sift signature
+        case some
+          link known
+          save is-async, known/async
+          sift known/answers
+            case some
+              link written
+              save trimmed, js-trim(written)
+              save answers, make(some, trimmed)
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      save raises, false
+      save silent, true
+      sift answers
+        case some
+          link text
+          save raises, starts-with(text, <std::result::Result>)
+          save silent, or(is-equal(text, <()>), answers-unit-result(text))
+        case none
+          save nothing, 0
+      save called, <{entry}()>
+      fork test, is-async
+        hold
+          save called, <__term_block_on({entry}())>
+      save finished, called
+      fork test, raises
+        hold
+          save finished, <{called}.unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \})>
+      fork test, not(threads)
+        hold
+          fork test, silent
+            hold
+              back <fn main() \{ {finished}; \}>
+          back <fn main() \{ print!("\{\}", {finished}); \}>
+      save body, <format!("\{\}", {finished})>
+      fork test, silent
+        hold
+          save body, <\{ {finished}; String::new() \}>
+      save lines, make list
+      push(lines, <fn main() \{>)
+      push(lines, <    let answer = std::thread::Builder::new().stack_size({entry-stack-bytes()}).spawn(|| {body}).unwrap().join();>)
+      push(lines, <    match answer \{ Ok(text) =\> print!("\{\}", text), Err(_) =\> std::process::exit(101) \}>)
+      push(lines, <\}>)
+      back join-lines(lines)
+  fork test, is-equal(backend, <swift>)
+    hold
+      save signature, swift-signature(emitted, entry)
+      save is-async, false
+      save raises, false
+      save silent, true
+      sift signature
+        case some
+          link known
+          save is-async, known/async
+          save raises, known/throws
+          sift known/answers
+            case some
+              link written
+              save silent, is-equal(js-trim(written), <Void>)
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      save attempt, <>
+      fork test, raises
+        hold
+          save attempt, <try >
+      # an asynchronous entry runs on Swift's own executor, awaited at the top level
+      fork test, is-async
+        hold
+          fork test, silent
+            hold
+              back <{attempt}await {entry}()>
+          back <print({attempt}await {entry}(), terminator: "")>
+      save value, <__termAnswer = "\\({attempt}{entry}())">
+      fork test, silent
+        hold
+          save value, <{attempt}{entry}()>
+      save call, value
+      fork test, raises
+        hold
+          save call, <do \{ {value} \} catch \{ FileHandle.standardError.write("\\(error)\\n".data(using: .utf8)!); exit(1) \}>
+      save lines, make list
+      push(lines, <var __termAnswer = "">)
+      push(lines, <let __termDone = DispatchSemaphore(value: 0)>)
+      push(lines, <let __termThread = Thread \{ {call}; __termDone.signal() \}>)
+      push(lines, <__termThread.stackSize = {entry-stack-bytes()}>)
+      push(lines, <__termThread.start()>)
+      push(lines, <__termDone.wait()>)
+      push(lines, <print(__termAnswer, terminator: "")>)
+      back join-lines(lines)
+  save suspending, false
+  walk positions-of(emitted, <suspend fun {entry}()>)
+    take at
+    save suspending, true
+  save silent, true
+  sift kotlin-answers(emitted, entry)
+    case some
+      link answers
+      save silent, is-equal(answers, <Unit>)
+    case none
+      save nothing, 0
+  save called, <{entry}()>
+  fork test, suspending
+    hold
+      save called, <termLoop.block \{ {entry}() \}>
+  save run, <answer = "" + {called}>
+  fork test, silent
+    hold
+      save run, called
+  save lines, make list
+  push(lines, <fun main() \{>)
+  push(lines, <    var answer = "">)
+  push(lines, <    var failure: Throwable? = null>)
+  push(lines, <    val thread = Thread(null, \{ try \{ {run} \} catch (e: Throwable) \{ failure = e \} \}, "term", {entry-stack-bytes()}L)>)
+  push(lines, <    thread.start()>)
+  push(lines, <    thread.join()>)
+  push(lines, <    failure?.let \{ throw it \}>)
+  push(lines, <    print(answer)>)
+  push(lines, <\}>)
+  back join-lines(lines)
+
+task join-lines
+  take lines, like list, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk lines
+    take line
+    fork test, first
+      hold
+        save out, line
+        save first, false
+      miss
+        save out, <{out}\n{line}>
+  back out
+
+# ---- crates ----
+
+# `^([A-Za-z0-9_-]+)\s*=`: the crate a manifest line names, `''` for none
+task crate-of
+  take line, like text
+  like text
+  mark private
+
+  save size, line/length
+  save k, 0
+  walk test
+    hook test, and(is-below(k, size), or(word-code(char-code-at(line, k)), is-equal(char-at(line, k), <->)))
+    hook hold
+      save k, add(k, 1)
+  fork test, is-equal(k, 0)
+    hold
+      back <>
+  save name-end, k
+  walk test
+    hook test, and(is-below(k, size), whitespace-code(char-code-at(line, k)))
+    hook hold
+      save k, add(k, 1)
+  fork test, and(is-below(k, size), is-equal(char-at(line, k), <=>))
+    hold
+      back substring(line, 0, name-end)
+  back <>
+
+# the stdlib's crates (`cargo-toml`, its Cargo.toml) a Rust source names, each as its manifest line
+task crates-named
+  take source, like text
+  take cargo-toml, like text
+  like list, like text
+
+  save parts, split(cargo-toml, <[dependencies]>)
+  save table, <>
+  fork test, is-above(parts/length, 1)
+    hold
+      save table, get(parts, 1)
+  # up to the first line that opens another section
+  save table, get(split(table, <\n[>), 0)
+  save out, make list
+  walk split(table, <\n>)
+    take line
+    save crate, crate-of(line)
+    fork test, is-unequal(crate, <>)
+      hold
+        save named, <{replace-hyphens(crate)}::>
+        fork test, is-minimum(index-of(source, named, 0), 0)
+          hold
+            push(out, line)
+  back out
+
+task replace-hyphens
+  take value, like text
+  like text
+  mark private
+
+  save out, <>
+  walk split(value, <>)
+    take one
+    fork test, is-equal(one, <->)
+      hold
+        save out, <{out}_>
+      miss
+        save out, <{out}{one}>
+  back out

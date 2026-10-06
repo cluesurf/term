@@ -33,6 +33,7 @@ load @term/base/text
   find split
 
 load ./node
+  find match-case
   find type
   find expression
   find statement
@@ -1041,7 +1042,7 @@ task read-at
   fork test, and(is-above(st/unchecked-lists/length, 0), has-text(st/unchecked-lists, key-of-list(list)))
     hold
       back <{xs}[{index-text}]!>
-  save low, <{index-text} >= 0 && >
+  save low, <{index-text} \>= 0 && >
   fork test, low-known
     hold
       save low, <>
@@ -1085,7 +1086,7 @@ task read-at-with
   fork test, and(is-above(st/unchecked-lists/length, 0), has-text(st/unchecked-lists, key-of-list(list)))
     hold
       back <{xs}[{index-text}]!>
-  save low, <{index-text} >= 0 && >
+  save low, <{index-text} \>= 0 && >
   fork test, low-known
     hold
       save low, <>
@@ -1436,6 +1437,7 @@ task emit-call
     case call
       link callee
       link args
+      link into
       save callee-name, variable-callee(callee)
       # a call at a reuse site: the task's copy that builds its result in the object it is given
       fork test, and(facts/is-reuse-site(node), is-unequal(callee-name, <>))
@@ -1547,7 +1549,7 @@ task emit-call
                   back <({target}[{at}] ?? "")>
               fork test, and(is-plain-text(at), is-plain-text(target))
                 hold
-                  back <({at} >= 0 && {at} \< {target}.length ? {target}.charCodeAt({at}) : -1)>
+                  back <({at} \>= 0 && {at} \< {target}.length ? {target}.charCodeAt({at}) : -1)>
           # a read through the text's cursor steps from the last read
           save cursor, <>
           sift st/current-fn
@@ -1602,7 +1604,7 @@ task emit-call
       # `call fill / <data> / like <form>`: walk the data against the form's fields
       fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
         hold
-          sift read(into)
+          sift into
             case some
               link filled-type
               save st/form-walk-used, true
@@ -1624,7 +1626,8 @@ task emit-call
                   take name, like text
                   like boolean
                   back facts/record-fields/has(name)
-              back <{helper}({data}, {fill-spec-json(fill-spec-of(filled-type, make list, fields-of, is-record))})>
+              save seen, make list
+              back <{helper}({data}, {fill-spec-json(fill-spec-of(filled-type, seen, fields-of, is-record))})>
             case none
               save nothing, 0
       # a declarative native binding renders its environment's template in place of a real call
@@ -2104,4 +2107,1927 @@ task emit-binary
     miss
       back <>
 
-# ---- more below ----
+# ---- blocks ----
+
+task emit-block
+  take body, like list, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back <\{\}>
+  back <\{\n{join-texts(statement-lines(body, depth, st, facts), <\n>)}\n{pad(depth)}\}>
+
+# each statement of a body on its own line, one level in
+task statement-lines
+  take body, like list, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like list, like text
+  mark private
+
+  save lines, make list
+  walk body
+    take one
+    push(lines, <{pad(add(depth, 1))}{guard-start(emit-statement(one, add(depth, 1), st, facts))}>)
+  back lines
+
+# A CHECKED VALUE WRITTEN TO A NAME IS TESTED WHERE IT STANDS: a value that IS one `__termInt(...)` from its first
+# character to its last becomes a temporary, the test, then the write
+form tested
+  link lines, like text
+  link name, like text
+
+task tested-in-place
+  take text, like text
+  take st, like emit-state
+  like maybe, like tested
+  mark private
+
+  save head, <__termInt(>
+  save size, char-count(text)
+  fork test, or(not(starts-with(text, head)), not(ends-with(text, <)>)))
+    hold
+      back make none
+  save depth, 0
+  save quote, <>
+  save i, subtract(char-count(head), 1)
+  walk test
+    hook test, is-below(i, size)
+    hook hold
+      save c, char-at(text, i)
+      fork test, is-unequal(quote, <>)
+        hold
+          fork test, is-equal(c, <\\>)
+            hold
+              save i, add(i, 1)
+            miss
+              fork test, is-equal(c, quote)
+                hold
+                  save quote, <>
+        miss
+          fork test, or(or(is-equal(c, <">), is-equal(c, <'>)), is-equal(c, <`>))
+            hold
+              save quote, c
+            miss
+              fork test, is-equal(c, <(>)
+                hold
+                  save depth, add(depth, 1)
+                miss
+                  fork test, is-equal(c, <)>)
+                    hold
+                      save depth, subtract(depth, 1)
+                      fork test, and(is-equal(depth, 0), is-unequal(i, subtract(size, 1)))
+                        hold
+                          back make none
+      save i, add(i, 1)
+  save name, <__n{st/tested-count}>
+  save st/tested-count, add(st/tested-count, 1)
+  save inner, substring(text, char-count(head), subtract(size, 1))
+  save found
+    make tested
+      bind lines, <const {name} = {inner}; if (!({name} \<= 9007199254740991 && {name} \>= -9007199254740991)) __termIntStop({name})>
+      bind name, name
+  back make(some, found)
+
+# ---- statements ----
+
+task ts-field-of
+  take name, like text
+  take field-type, like type
+  take optional, like boolean
+  like ts-field
+  mark private
+
+  back
+    make ts-field
+      bind name, name
+      bind type, field-type
+      bind optional, optional
+
+# a field's declared TypeScript type: the inner type of a `need false` maybe (D10), else its own
+task field-type-text
+  take field, like ts-field
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift optional-maybe(field)
+    case some
+      link inner
+      back ts-type-of(make(some, inner), facts)
+    case none
+      back ts-type-of(make(some, field/type), facts)
+
+task emit-statement
+  take node, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+
+  sift node
+    case let
+      back emit-let(node, st, facts)
+    case assign
+      back emit-assign(node, st, facts)
+    case expression
+      link expr
+      # a map entry updated from its own value: the read and the write the hand version writes
+      sift map-update-of(node)
+        case some
+          link update
+          save value-kind, <>
+          sift expression-type(update/map)
+            case some
+              link known
+              sift known
+                case map
+                  link map-key-of
+                  link map-value-of
+                  save value-kind, kind-of(make(some, map-value-of))
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, or(is-equal(value-kind, <number>), is-equal(value-kind, <float>))
+            hold
+              save map, emit-expression(update/map, 100, st, facts)
+              save key, emit-expression(update/key, 0, st, facts)
+              save fallback, emit-expression(update/fallback, 0, st, facts)
+              save sum, <({map}.get({key}) ?? {fallback}) + {emit-expression(update/step, 0, st, facts)}>
+              save checked, and(is-equal(value-kind, <number>), not(st/unchecked-ints))
+              fork test, checked
+                hold
+                  save st/int-used, true
+                  back <{map}.set({key}, __termInt({sum}))>
+              back <{map}.set({key}, {sum})>
+        case none
+          save nothing, 0
+      # a statement that would begin with `{` or `function` is written in parentheses
+      save text, emit-expression(expr, 0, st, facts)
+      fork test, opens-block(text)
+        hold
+          back <({text})>
+      back text
+    case return
+      back emit-return(node, depth, st, facts)
+    case throw
+      link thrown
+      sift thrown
+        case record
+          link record-name
+          fork test, facts/exceptions/has(record-name)
+            hold
+              back <throw new TermException({emit-expression(thrown, 0, st, facts)})>
+        case string
+          back <throw ((note: string) =\> Object.assign(new Error(note), \{ name: "TermException", host: "", form: "failure", note, code: "", time: Date.now(), link: \{\} \}))({emit-expression(thrown, 0, st, facts)})>
+        case template
+          back <throw ((note: string) =\> Object.assign(new Error(note), \{ name: "TermException", host: "", form: "failure", note, code: "", time: Date.now(), link: \{\} \}))({emit-expression(thrown, 0, st, facts)})>
+        miss
+          save nothing, 0
+      back <throw {emit-expression(thrown, 0, st, facts)}>
+    case while
+      back emit-while(node, depth, st, facts)
+    case guard
+      link guard-body
+      link guard-catch
+      # the handler is written first, as the original computed it before the body
+      save handler, < catch \{\}>
+      sift guard-catch
+        case some
+          link clause
+          save handler, < catch ({to-camel(clause/name)}: any) {emit-block(clause/body, depth, st, facts)}>
+        case none
+          save nothing, 0
+      back <try {emit-block(guard-body, depth, st, facts)}{handler}>
+    case for-each
+      link each-item
+      link each-index
+      link each-iterable
+      link each-body
+      save named, <>
+      fork test, is-unequal(read(label), <>)
+        hold
+          save named, <{to-camel(read(label))}: >
+      # the list walked, a field read only to be walked
+      sift each-iterable
+        case member
+          save st/walked-list, true
+        miss
+          save st/walked-list, false
+      save iterable, emit-expression(each-iterable, 0, st, facts)
+      save st/walked-list, false
+      fork test, and(is-unequal(each-index, <>), is-equal(kind-of(expression-type(each-iterable)), <array>))
+        hold
+          save walked, <__walked{depth}>
+          save body, emit-block(each-body, depth, st, facts)
+          save index, to-camel(each-index)
+          back <;\{ const {walked} = {iterable}; {named}for (let {index} = 0; {index} \< {walked}.length; {index}++) \{\n{pad(add(depth, 1))}const {to-camel(each-item)} = {walked}[{index}]!{substring(body, 1)} \}>
+      fork test, is-unequal(each-index, <>)
+        hold
+          back <{named}for (const [{to-camel(each-index)}, {to-camel(each-item)}] of {iterable}.entries()) {emit-block(each-body, depth, st, facts)}>
+      back <{named}for (const {to-camel(each-item)} of {iterable}) {emit-block(each-body, depth, st, facts)}>
+    case match
+      back emit-match(node, depth, st, facts)
+    case break
+      fork test, is-unequal(read(label), <>)
+        hold
+          back <break {to-camel(read(label))}>
+      back <break>
+    case continue
+      fork test, is-unequal(read(label), <>)
+        hold
+          back <continue {to-camel(read(label))}>
+      back <continue>
+    case exit
+      fork test, is-equal(facts/env, <browser>)
+        hold
+          back <return>
+      back <process.exit(0)>
+    case debug
+      back <debugger>
+    case record-type
+      back emit-form(node, depth, facts)
+    case if
+      link if-branches
+      link if-otherwise
+      save out, <>
+      save at, 0
+      walk if-branches
+        take branch
+        save cond, emit-expression(branch/cond, 0, st, facts)
+        save opener, <>
+        fork test, is-above(at, 0)
+          hold
+            save opener, < else >
+        save out, <{out}{opener}if ({cond}) {emit-block(branch/body, depth, st, facts)}>
+        save at, add(at, 1)
+      sift if-otherwise
+        case some
+          link other
+          save out, <{out} else {emit-block(other, depth, st, facts)}>
+        case none
+          save nothing, 0
+      back out
+    case function
+      back emit-function(node, depth, st, facts)
+    case hold
+      back <// hold: verified at compile time>
+    case mask
+      link mask-name
+      link mask-methods
+      save methods, make list
+      walk mask-methods
+        take method
+        push(methods, <  {to-camel(method)}(...args: Array\<unknown\>): unknown>)
+      back <interface {to-pascal(mask-name)} \{\n{join-texts(methods, <\n>)}\n\}>
+    case instance
+      link instance-mask
+      link instance-target
+      link instance-methods
+      save methods, make list
+      walk instance-methods
+        take method
+        push(methods, to-camel(method))
+      back <// {to-pascal(instance-target)} implements {to-pascal(instance-mask)} \{ {join-texts(methods, <, >)} \}>
+    case view
+      back emit-zone(node, st, facts)
+    miss
+      back <>
+
+task emit-let
+  take node, like statement
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      # a host global: alias the name to the foreign global, or nothing when the name already spells it
+      save foreign, read(foreign)
+      fork test, is-unequal(foreign, <>)
+        hold
+          save alias, to-camel(let-name)
+          fork test, is-equal(alias, foreign)
+            hold
+              back <>
+          back <const {alias} = {foreign}>
+      # a second declaration of a name the same statement list declared already is an assignment to it
+      sift st/current-fn
+        case some
+          link fn
+          fork test, facts/is-redeclared(fn, node)
+            hold
+              back <{to-camel(let-name)} = {emit-expression(let-init, 0, st, facts)}>
+        case none
+          save nothing, 0
+      # a carrier at a reuse site holds its kept field alone
+      sift facts/reuse-kept-of(node)
+        case some
+          link kept
+          save st/carrier-locals/{let-name}, kept
+          back <const {to-camel(let-name)} = {emit-expression(let-init, 0, st, facts)}>
+        case none
+          save nothing, 0
+      save keyword, <const>
+      fork test, has-text(st/assigned-names, let-name)
+        hold
+          save keyword, <let>
+      # a declared type is spelled on the binding
+      # an anonymous record (a nested `host` table, typed `named ''`) has no name to spell, so it is left to inference
+      save declared, <>
+      sift let-type
+        case some
+          save spelled, ts-type-of(let-type, facts)
+          fork test, is-unequal(spelled, <>)
+            hold
+              save declared, <: {spelled}>
+        case none
+          save nothing, 0
+      # a host value given a type here is checked here (`__termHost`)
+      save value, let-init
+      sift let-init
+        case await
+          link awaited
+          save value, awaited
+        miss
+          save nothing, 0
+      save kind, kind-of(let-type)
+      save primitive, <>
+      fork test, is-equal(kind, <string>)
+        hold
+          save primitive, <string>
+      fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+        hold
+          save primitive, <number>
+      fork test, is-equal(kind, <boolean>)
+        hold
+          save primitive, <boolean>
+      save host-kind, <>
+      fork test, is-unequal(primitive, <>)
+        hold
+          sift value
+            case call
+              link call-callee
+              save root, call-callee
+              walk test
+                hook test, is-member(root)
+                hook hold
+                  save root, member-target-of(root)
+              save docked, false
+              sift root
+                case variable
+                  link root-name
+                  save docked, facts/dock-names/has(root-name)
+                miss
+                  save nothing, 0
+              fork test, or(is-equal(kind-of(expression-type(value)), <dynamic>), docked)
+                hold
+                  save host-kind, primitive
+            miss
+              save nothing, 0
+      fork test, is-unequal(host-kind, <>)
+        hold
+          save st/host-used, true
+      save alias, facts/copy-of-let(node)
+      save written, emit-expression(let-init, 0, st, facts)
+      save is-alias, false
+      sift alias
+        case some
+          save is-alias, true
+          save written, <\{ ...{written} \}>
+        case none
+          save nothing, 0
+      save init, written
+      fork test, is-unequal(host-kind, <>)
+        hold
+          save init, <__termHost({written}, "{host-kind}", {json-quote(let-name)})>
+      fork test, not(is-alias)
+        hold
+          sift tested-in-place(init, st)
+            case some
+              link checked
+              back <{checked/lines}; {keyword} {to-camel(let-name)}{declared} = {checked/name}>
+            case none
+              save nothing, 0
+      back <{keyword} {to-camel(let-name)}{declared} = {init}>
+    miss
+      back <>
+
+task is-member
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case member
+      back true
+    miss
+      back false
+
+task member-target-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case member
+      back target
+    miss
+      back node
+
+task emit-assign
+  take node, like statement
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case assign
+      link assign-target
+      link assign-op
+      link assign-value
+      # the write-back of a reuse site
+      fork test, facts/is-write-back(node)
+        hold
+          back <// the slot holds the record its task built in place>
+      # a record written back to the slot it was read from, its changed fields assigned on the object already there
+      sift facts/place-of(node)
+        case some
+          link place
+          save local, to-camel(place/local)
+          fork test, not(place/temps)
+            hold
+              save sets, make list
+              walk place/fields
+                take field
+                push(sets, <{local}.{to-camel(field/name)} = {emit-expression(field/value, 0, st, facts)}>)
+              back join-texts(sets, <; >)
+          save parts, make list
+          save at, 0
+          walk place/fields
+            take field
+            push(parts, <const __place{at} = {emit-expression(field/value, 0, st, facts)}>)
+            save at, add(at, 1)
+          save at, 0
+          walk place/fields
+            take field
+            push(parts, <{local}.{to-camel(field/name)} = __place{at}>)
+            save at, add(at, 1)
+          back <;\{ {join-texts(parts, <; >)} \}>
+        case none
+          save nothing, 0
+      save op, to-text(assign-op)
+      sift assign-target
+        case member
+          link slot-target
+          link slot-name
+          link slot-index
+          save holder-kind, kind-of(expression-type(slot-target))
+          # a write to a map's slot is the Map's `set`
+          sift slot-index
+            case some
+              link index-node
+              fork test, and(is-equal(op, <=>), is-equal(holder-kind, <map>))
+                hold
+                  save map, emit-expression(slot-target, 0, st, facts)
+                  save key, emit-expression(index-node, 0, st, facts)
+                  back <{map}.set({key}, {emit-expression(assign-value, 0, st, facts)})>
+            case none
+              save nothing, 0
+          # a write to a list slot keeps the read's check
+          save has-index, false
+          sift slot-index
+            case some
+              save has-index, true
+            case none
+              save nothing, 0
+          fork test, and(is-equal(holder-kind, <array>), or(has-index, is-digits(slot-name)))
+            hold
+              save st/list-used, true
+              save list, emit-expression(slot-target, 0, st, facts)
+              save at, slot-name
+              save index-plain, true
+              sift slot-index
+                case some
+                  link index-node
+                  save at, emit-expression(index-node, 0, st, facts)
+                  save index-plain, plain-operand(index-node)
+                case none
+                  save nothing, 0
+              fork test, is-equal(op, <=>)
+                hold
+                  # inside the guarded copy of a counted loop the slot is proven in bounds
+                  fork test, and(is-above(st/unchecked-lists/length, 0), has-text(st/unchecked-lists, key-of-list(slot-target)))
+                    hold
+                      back <{list}[{at}] = {emit-expression(assign-value, 0, st, facts)}>
+                  fork test, and(and(plain-operand(slot-target), index-plain), effect-free(assign-value))
+                    hold
+                      back <{at} \>= 0 && {at} \< {list}.length ? ({list}[{at}] = {emit-expression(assign-value, 0, st, facts)}) : __termWritePast({list}, {at})>
+                  back <__termPut({list}, {at}, {emit-expression(assign-value, 0, st, facts)})>
+              back <__termAt({list}, {at}); {list}[{at}] {op} {emit-expression(assign-value, 0, st, facts)}>
+          # a write two or more fields deep rebuilds its path from its first field (D1)
+          fork test, is-equal(op, <=>)
+            hold
+              save segments, make list
+              save base, assign-target
+              save rebuild, true
+              walk test
+                hook test, is-member(base)
+                hook hold
+                  sift base
+                    case member
+                      link base-target
+                      link base-name
+                      link base-index
+                      sift base-index
+                        case some
+                          save rebuild, false
+                        case none
+                          save nothing, 0
+                      save holder, named-of(expression-type(base-target))
+                      fork test, or(or(is-digits(base-name), is-equal(holder, <>)), not(facts/plain-records/has(holder)))
+                        hold
+                          save rebuild, false
+                      save segments, prepend(segments, base-name)
+                      save base, base-target
+                    miss
+                      save nothing, 0
+              fork test, and(rebuild, is-above(segments/length, 1))
+                hold
+                  save value, written-value(assign-target, assign-value, st, facts)
+                  save k, subtract(segments/length, 1)
+                  walk test
+                    hook test, is-minimum(k, 1)
+                    hook hold
+                      save value, <\{ ...{path-at(base, segments, k, st, facts)}, {to-camel(get(segments, k))}: {value} \}>
+                      save k, subtract(k, 1)
+                  back <{path-at(base, segments, 1, st, facts)} = {value}>
+        miss
+          save nothing, 0
+      save st/writing-target, true
+      save target, emit-expression(assign-target, 0, st, facts)
+      save st/writing-target, false
+      fork test, is-equal(op, <=>)
+        hold
+          save value, written-value(assign-target, assign-value, st, facts)
+          sift assign-target
+            case variable
+              sift tested-in-place(value, st)
+                case some
+                  link checked
+                  back <{checked/lines}; {target} = {checked/name}>
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          back <{target} = {value}>
+      back <{target} {op} {emit-expression(assign-value, 0, st, facts)}>
+    miss
+      back <>
+
+task prepend
+  take values, like list, like text
+  take first, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, first)
+  walk values
+    take one
+    push(out, one)
+  back out
+
+# the record at the first `k` segments of a path
+task path-at
+  take base, like expression
+  take segments, like list, like text
+  take k, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save names, make list
+  save at, 0
+  walk segments
+    take one
+    fork test, is-below(at, k)
+      hold
+        push(names, to-camel(one))
+    save at, add(at, 1)
+  back <{emit-expression(base, 0, st, facts)}.{join-texts(names, <.>)}>
+
+# the build of a reusing task inside a returned value: the value itself, or a field of the carrier it is
+task find-build
+  take value, like expression
+  take task-name, like text
+  take facts, like emit-facts
+  like maybe, like expression
+  mark private
+
+  sift value
+    case record
+      link record-name
+      link record-fields
+      fork test, facts/is-build(task-name, value)
+        hold
+          back make(some, value)
+      walk record-fields
+        take field
+        fork test, facts/is-build(task-name, field/value)
+          hold
+            save found, field/value
+            back make(some, found)
+      back make none
+    miss
+      back make none
+
+task emit-return
+  take node, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case return
+      link return-value
+      # a tail call of a task that is a loop: the arguments computed first, then the parameters rebound
+      sift st/tailing
+        case some
+          link tail
+          fork test, facts/is-tail-return(tail/task, node)
+            hold
+              sift return-value
+                case some
+                  link returned
+                  sift returned
+                    case call
+                      link call-callee
+                      link call-args
+                      save k, st/reuse-count
+                      save st/reuse-count, add(k, 1)
+                      save parts, make list
+                      save at, 0
+                      walk call-args
+                        take arg
+                        push(parts, <const __tail{k}_{at}: {get(tail/types, at)} = {emit-expression(arg, 0, st, facts)}>)
+                        save at, add(at, 1)
+                      save at, 0
+                      walk tail/params
+                        take param
+                        fork test, tail/held
+                          hold
+                            push(parts, <__next{to-pascal(param)} = __tail{k}_{at}>)
+                          miss
+                            push(parts, <{to-camel(param)} = __tail{k}_{at}>)
+                        save at, add(at, 1)
+                      push(parts, <continue>)
+                      back join-texts(parts, <\n{pad(depth)}>)
+                    miss
+                      save nothing, 0
+                case none
+                  save nothing, 0
+        case none
+          save nothing, 0
+      # in a reusing copy, the build in the returned value is made in the object the task was given
+      sift st/reusing
+        case some
+          link reusing
+          sift return-value
+            case some
+              link returned
+              sift find-build(returned, reusing/task, facts)
+                case some
+                  link build
+                  sift build
+                    case record
+                      link build-name
+                      link build-fields
+                      save k, st/reuse-count
+                      save st/reuse-count, add(k, 1)
+                      save parts, make list
+                      save at, 0
+                      walk build-fields
+                        take field
+                        push(parts, <const __reuse{k}_{at} = {emit-expression(field/value, 0, st, facts)}>)
+                        save at, add(at, 1)
+                      save at, 0
+                      walk build-fields
+                        take field
+                        push(parts, <{to-camel(reusing/param)}.{to-member(field/name)} = __reuse{k}_{at}>)
+                        save at, add(at, 1)
+                      save st/reused, make(some, build)
+                      # the kept field of a carrier alone, the record already being in the caller's slot
+                      save shown, returned
+                      fork test, and(is-unequal(reusing/keep, <>), facts/is-carrier(reusing/task, returned))
+                        hold
+                          sift returned
+                            case record
+                              link carrier-name
+                              link carrier-fields
+                              walk carrier-fields
+                                take field
+                                fork test, is-equal(field/name, reusing/keep)
+                                  hold
+                                    save shown, field/value
+                                    halt
+                            miss
+                              save nothing, 0
+                      push(parts, <return {emit-expression(shown, 0, st, facts)}>)
+                      save st/reused, make none
+                      back join-texts(parts, <\n{pad(depth)}>)
+                    miss
+                      save nothing, 0
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      sift return-value
+        case some
+          link returned
+          save value, emit-expression(returned, 0, st, facts)
+          sift tested-in-place(value, st)
+            case some
+              link checked
+              back <{checked/lines}; return {checked/name}>
+            case none
+              back <return {value}>
+        case none
+          back <return>
+    miss
+      back <>
+
+# ---- loops ----
+
+task abs-of
+  take value, like number
+  like number
+  mark private
+
+  fork test, is-below(value, 0)
+    hold
+      back subtract(0, value)
+  back value
+
+task with-texts
+  take values, like list, like text
+  take more, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    add-text(out, one)
+  walk more
+    take one
+    add-text(out, one)
+  back out
+
+task emit-while
+  take node, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case while
+      link while-cond
+      link while-body
+      save named, <>
+      fork test, is-unequal(read(label), <>)
+        hold
+          save named, <{to-camel(read(label))}: >
+      sift facts/loop-guard-of(node)
+        case none
+          back <{named}while ({emit-expression(while-cond, 0, st, facts)}) {emit-block(while-body, depth, st, facts)}>
+        case some
+          link guard
+          save lists, make list
+          walk guard/checks
+            take check
+            push(lists, check/list)
+          save terms, make list
+          walk guard/checks
+            take check
+            save value, <{check/offset}>
+            fork test, is-unequal(check/base, <>)
+              hold
+                fork test, is-equal(check/offset, 0)
+                  hold
+                    save value, to-camel(check/base)
+                  miss
+                    save sign, <+>
+                    fork test, is-below(check/offset, 0)
+                      hold
+                        save sign, <->
+                    save value, <{to-camel(check/base)} {sign} {abs-of(check/offset)}>
+            save term, <>
+            save done, false
+            # a list reached through a path reads its length through it, its own slots unchecked
+            fork test, is-equal(check/side, <high>)
+              hold
+                sift check/path
+                  case some
+                    link path
+                    save before, st/unchecked-lists
+                    save st/unchecked-lists, with-texts(before, lists)
+                    save length, <{emit-expression(path, 20, st, facts)}.length>
+                    save st/unchecked-lists, before
+                    save term, <{value} \< {length}>
+                    save done, true
+                  case none
+                    save nothing, 0
+            fork test, not(done)
+              hold
+                fork test, is-equal(check/side, <low>)
+                  hold
+                    save term, <{value} \>= 0>
+                  miss
+                    save term, <{value} \< {to-camel(check/list)}.length>
+            add-text(terms, term)
+          walk guard/limits
+            take limit
+            fork test, limit/low
+              hold
+                add-text(terms, <{to-camel(limit/name)} \>= 0>)
+              miss
+                add-text(terms, <{to-camel(limit/name)} \<= {limit/high}>)
+          save test, join-texts(terms, < && >)
+          save outer, st/unchecked-lists
+          save outer-loops, st/fast-loops
+          save outer-hoisted, st/hoisted
+          save st/unchecked-lists, with-texts(outer, lists)
+          save loops, make list
+          walk outer-loops
+            take one
+            push(loops, one)
+          push(loops, node)
+          save st/fast-loops, loops
+          # each list reached through a path is read ONCE before the copy
+          save reads, make list
+          save path-keys, make list
+          save paths, make list
+          walk guard/checks
+            take check
+            sift check/path
+              case some
+                link path
+                fork test, not(has-text(path-keys, check/list))
+                  hold
+                    push(path-keys, check/list)
+                    push(paths, path)
+              case none
+                save nothing, 0
+          save at, 0
+          walk paths
+            take path
+            save local, <__path{st/path-count}>
+            save st/path-count, add(st/path-count, 1)
+            push(reads, <const {local} = {emit-expression(path, 0, st, facts)}>)
+            save widened, text-texts()
+            walk st/hoisted/keys()
+              take key
+              save widened/{key}, st/hoisted/get(key)
+            save key, get(path-keys, at)
+            save widened/{key}, local
+            save st/hoisted, widened
+            save at, add(at, 1)
+          push(reads, <{named}while ({emit-expression(while-cond, 0, st, facts)}) {emit-block(while-body, add(depth, 1), st, facts)}>)
+          save fast, join-texts(reads, <\n{pad(add(depth, 1))}>)
+          save st/unchecked-lists, outer
+          save st/fast-loops, outer-loops
+          save st/hoisted, outer-hoisted
+          save slow, <{named}while ({emit-expression(while-cond, 0, st, facts)}) {emit-block(while-body, add(depth, 1), st, facts)}>
+          back <if ({test}) \{\n{pad(add(depth, 1))}{fast}\n{pad(depth)}\} else \{\n{pad(add(depth, 1))}{slow}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# ---- matches ----
+
+# the fields of a case of the subject's form, else of any form's case of that name
+task case-fields
+  take label, like text
+  take subject, like expression
+  take facts, like emit-facts
+  like list, like ts-field
+  mark private
+
+  save owner, named-of(expression-type(subject))
+  fork test, and(is-unequal(owner, <>), facts/variant-fields-by-owner/has(owner))
+    hold
+      save cases, facts/variant-fields-by-owner/get(owner)
+      fork test, cases/has(label)
+        hold
+          back cases/get(label)
+  fork test, facts/variant-fields/has(label)
+    hold
+      back facts/variant-fields/get(label)
+  back make list
+
+task field-names
+  take fields, like list, like ts-field
+  like list, like text
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    push(out, field/name)
+  back out
+
+# an arm's `link` names, read off the arm: the list handed to a call would be written into the node where it was left out
+task arm-binds
+  take arm, like match-case
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  back out
+
+task emit-match
+  take node, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      save raw, emit-expression(match-subject, 0, st, facts)
+      save inner-pad, pad(add(depth, 1))
+      # an `unknown` narrowed by type: `typeof`, and a `number` is a whole one
+      fork test, read(type-arms)
+        hold
+          save named, is-identifier(raw)
+          save held, raw
+          fork test, not(named)
+            hold
+              save held, <__at{depth}>
+          save chain, <>
+          save at, 0
+          walk match-cases
+            take arm
+            save lines, make list
+            save binds, arm-binds(arm)
+            fork test, is-above(binds/length, 0)
+              hold
+                push(lines, <{inner-pad}const {to-camel(get(binds, 0))} = {held}>)
+            walk statement-lines(arm/body, depth, st, facts)
+              take line
+              push(lines, line)
+            save test, <false>
+            fork test, is-equal(arm/label, <number>)
+              hold
+                save test, <typeof {held} === "number" && Number.isInteger({held})>
+            fork test, is-equal(arm/label, <float>)
+              hold
+                save test, <typeof {held} === "number">
+            fork test, is-equal(arm/label, <text>)
+              hold
+                save test, <typeof {held} === "string">
+            fork test, is-equal(arm/label, <boolean>)
+              hold
+                save test, <typeof {held} === "boolean">
+            save opener, <>
+            fork test, is-above(at, 0)
+              hold
+                save opener, < else >
+            save chain, <{chain}{opener}if ({test}) \{\n{join-texts(lines, <\n>)}\n{pad(depth)}\}>
+            save at, add(at, 1)
+          sift match-otherwise
+            case some
+              link other
+              save chain, <{chain} else {emit-block(other, depth, st, facts)}>
+            case none
+              save nothing, 0
+          fork test, named
+            hold
+              back chain
+          back <;\{\n{inner-pad}const {held} = {raw}\n{inner-pad}{chain}\n{pad(depth)}\}>
+      # a match over a caught exception: `form` is the discriminant
+      save caught-arms, make list
+      walk read(exception-arms)
+        take one
+        push(caught-arms, one)
+      fork test, is-above(caught-arms/length, 0)
+        hold
+          save subject, raw
+          fork test, not(is-identifier(raw))
+            hold
+              save subject, <({raw})>
+          save out, <>
+          save at, 0
+          walk match-cases
+            take arm
+            save exception-arm, get(caught-arms, 0)
+            walk caught-arms
+              take one
+              fork test, is-equal(one/label, arm/label)
+                hold
+                  save exception-arm, one
+                  halt
+            save read-names, names-in(block-handles(arm/body))
+            save all-fields, make list
+            walk exception-arm/shared
+              take field
+              push(all-fields, field)
+            walk exception-arm/link
+              take field
+              push(all-fields, field)
+            save lines, make list
+            walk arm-locals(all-fields, arm-binds(arm))
+              take pair
+              fork test, has-text(read-names, pair/local)
+                hold
+                  save reached, to-member(pair/field)
+                  fork test, has-text(exception-arm/link, pair/field)
+                    hold
+                      save reached, <link.{to-member(pair/field)}>
+                  push(lines, <{inner-pad}const {to-camel(pair/local)} = {subject}.{reached}>)
+            walk statement-lines(arm/body, depth, st, facts)
+              take line
+              push(lines, line)
+            save opener, <>
+            fork test, is-above(at, 0)
+              hold
+                save opener, < else >
+            save out, <{out}{opener}if ({subject}.form === {json-quote(arm/label)}) \{\n{join-texts(lines, <\n>)}\n{pad(depth)}\}>
+            save at, add(at, 1)
+          sift match-otherwise
+            case some
+              link other
+              save out, <{out} else {emit-block(other, depth, st, facts)}>
+            case none
+              save out, <{out} else \{\n{inner-pad}throw {subject}\n{pad(depth)}\}>
+          back out
+      # THE SUBJECT IS EVALUATED ONCE, and a subject that is not already a NAME is bound to one first
+      save is-name, is-dotted-name(raw)
+      save root, root-text(raw)
+      save shadowed, false
+      walk match-cases
+        take arm
+        walk arm-locals(field-names(case-fields(arm/label, match-subject, facts)), arm-binds(arm))
+          take pair
+          fork test, is-equal(to-camel(pair/local), root)
+            hold
+              save shadowed, true
+      save held, <>
+      fork test, or(not(is-name), shadowed)
+        hold
+          save held, <__at{depth}>
+      save subject, raw
+      fork test, is-unequal(held, <>)
+        hold
+          save subject, held
+      save labels, make list
+      walk match-cases
+        take arm
+        push(labels, arm/label)
+      save booleans, is-above(labels/length, 0)
+      walk labels
+        take label
+        fork test, and(is-unequal(label, <true>), is-unequal(label, <false>))
+          hold
+            save booleans, false
+      fork test, booleans
+        hold
+          save closed, false
+          sift match-otherwise
+            case none
+              fork test, and(is-equal(match-cases/length, 2), is-unequal(get(labels, 0), get(labels, 1)))
+                hold
+                  save closed, true
+            case some
+              save nothing, 0
+          save out, <>
+          save at, 0
+          walk match-cases
+            take arm
+            save cond, <!{subject}>
+            fork test, is-equal(arm/label, <true>)
+              hold
+                save cond, subject
+            fork test, and(closed, is-equal(at, 1))
+              hold
+                save out, <{out} else {emit-block(arm/body, depth, st, facts)}>
+              miss
+                save opener, <>
+                fork test, is-above(at, 0)
+                  hold
+                    save opener, < else >
+                save out, <{out}{opener}if ({cond}) {emit-block(arm/body, depth, st, facts)}>
+            save at, add(at, 1)
+          sift match-otherwise
+            case some
+              link other
+              save out, <{out} else {emit-block(other, depth, st, facts)}>
+            case none
+              save nothing, 0
+          back wrap-held(out, held, raw, depth)
+      save values, is-above(labels/length, 0)
+      walk labels
+        take label
+        fork test, facts/variants/has(label)
+          hold
+            save values, false
+      fork test, values
+        hold
+          save out, <>
+          save at, 0
+          walk match-cases
+            take arm
+            save opener, <>
+            fork test, is-above(at, 0)
+              hold
+                save opener, < else >
+            save out, <{out}{opener}if ({subject} === {json-quote(arm/label)}) {emit-block(arm/body, depth, st, facts)}>
+            save at, add(at, 1)
+          sift match-otherwise
+            case some
+              link other
+              save out, <{out} else {emit-block(other, depth, st, facts)}>
+            case none
+              save nothing, 0
+          back wrap-held(out, held, raw, depth)
+      save subject-type, expression-type(match-subject)
+      save owner, named-of(subject-type)
+      save out, <>
+      save at, 0
+      walk match-cases
+        take arm
+        save declared-case, case-fields(arm/label, match-subject, facts)
+        save read-names, names-in(block-handles(arm/body))
+        save declares, make list
+        walk arm/body
+          take one
+          sift one
+            case let
+              link declared-name
+              push(declares, declared-name)
+            miss
+              save nothing, 0
+        save locals, make list
+        walk arm-locals(field-names(declared-case), arm-binds(arm))
+          take pair
+          fork test, and(has-text(read-names, pair/local), not(has-text(declares, pair/local)))
+            hold
+              save declared-one, make none
+              walk declared-case
+                take field
+                fork test, is-equal(field/name, pair/field)
+                  hold
+                    save declared-one, make(some, field)
+                    halt
+              save local, to-camel(pair/local)
+              save member, <{subject}.{to-member(pair/field)}>
+              fork test, maybe-field(declared-one)
+                hold
+                  save st/maybe-field-used, true
+                  push(locals, <{inner-pad}const {local} = __termMaybe({member})>)
+                miss
+                  save done, false
+                  sift declared-one
+                    case some
+                      link known
+                      save empty, ts-empty-of(make(some, known/type))
+                      fork test, and(known/optional, not(starts-with(empty, <undefined>)))
+                        hold
+                          save operator, <??>
+                          fork test, and(empty-stored(known/type), not(arm-only-reads(arm/body, pair/local)))
+                            hold
+                              save operator, <??=>
+                          push(locals, <{inner-pad}const {local} = ({member} {operator} {empty})>)
+                          save done, true
+                    case none
+                      save nothing, 0
+                  fork test, not(done)
+                    hold
+                      push(locals, <{inner-pad}const {local} = {member}>)
+        # the subject read through a path in this arm is narrowed to the case, restored after
+        save narrowed-name, <>
+        fork test, is-equal(held, <>)
+          hold
+            sift match-subject
+              case variable
+                link subject-name
+                save narrowed-name, subject-name
+              miss
+                save nothing, 0
+        save outer-case, <>
+        save had-outer, false
+        fork test, is-unequal(narrowed-name, <>)
+          hold
+            fork test, st/arm-cases/has(narrowed-name)
+              hold
+                save had-outer, true
+                save outer-case, st/arm-cases/get(narrowed-name)
+            save st/arm-cases/{narrowed-name}, arm/label
+        save body, <>
+        fork test, is-equal(locals/length, 0)
+          hold
+            save body, emit-block(arm/body, depth, st, facts)
+          miss
+            save body, <\{\n{join-texts(locals, <\n>)}\n{join-texts(statement-lines(arm/body, depth, st, facts), <\n>)}\n{pad(depth)}\}>
+        fork test, is-unequal(narrowed-name, <>)
+          hold
+            fork test, had-outer
+              hold
+                save st/arm-cases/{narrowed-name}, outer-case
+              miss
+                st/arm-cases/delete(narrowed-name)
+        # THE LAST ARM OF AN EXHAUSTIVE MATCH IS A PLAIN `else`
+        save last, false
+        sift match-otherwise
+          case none
+            save last, and(read(closed), is-equal(at, subtract(match-cases/length, 1)))
+          case some
+            save nothing, 0
+        # a field-less case only ever its constant is tested by identity, through its guard
+        save test, <>
+        sift text-for(arm/label, subject-type, facts)
+          case some
+            link text
+            save test, <{subject} === {json-quote(text)}>
+          case none
+            fork test, facts/identity/has(<{owner}/{arm/label}>)
+              hold
+                save test, <{guard-for(arm/label, st)}({subject})>
+              miss
+                save test, <{subject}.{tag-for(arm/label, subject-type, facts)} === {json-quote(arm/label)}>
+        fork test, and(last, is-equal(at, 0))
+          hold
+            fork test, starts-with(body, <\{>)
+              hold
+                save out, <{out};{body}>
+              miss
+                save out, <{out}{body}>
+          miss
+            fork test, last
+              hold
+                save out, <{out} else {body}>
+              miss
+                save opener, <>
+                fork test, is-above(at, 0)
+                  hold
+                    save opener, < else >
+                save out, <{out}{opener}if ({test}) {body}>
+        save at, add(at, 1)
+      sift match-otherwise
+        case some
+          link other
+          save out, <{out} else {emit-block(other, depth, st, facts)}>
+        case none
+          save nothing, 0
+      back wrap-held(out, held, raw, depth)
+    miss
+      back <>
+
+# the chain, wrapped in a block that holds the subject where one was bound
+task wrap-held
+  take chain, like text
+  take held, like text
+  take raw, like text
+  take depth, like number
+  like text
+  mark private
+
+  fork test, is-equal(held, <>)
+    hold
+      back chain
+  back <;\{\n{pad(add(depth, 1))}const {held} = {raw}\n{pad(add(depth, 1))}{chain}\n{pad(depth)}\}>
+
+# ---- forms ----
+
+task emit-form
+  take node, like statement
+  take depth, like number
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      link form-alias
+      # THE FORM'S HEADS BECOME TYPE PARAMETERS, each `= any`
+      save generics, <>
+      fork test, is-above(form-params/length, 0)
+        hold
+          save heads, make list
+          walk form-params
+            take param
+            push(heads, <{to-pascal(param)} = any>)
+          save generics, <\<{join-texts(heads, <, >)}\>>
+      # an ALIAS form is its base
+      sift form-alias
+        case some
+          fork test, and(is-equal(form-fields/length, 0), is-equal(form-variants/length, 0))
+            hold
+              back <type {to-pascal(form-name)}{generics} = {ts-type-of(form-alias, facts)}>
+        case none
+          save nothing, 0
+      # a closed set of texts is the union of its texts
+      fork test, and(read(text), is-above(form-variants/length, 0))
+        hold
+          save members, make list
+          walk form-variants
+            take variant
+            save spelled, variant/name
+            sift variant/text
+              case some
+                link written
+                save spelled, written
+              case none
+                save nothing, 0
+            push(members, <{pad(add(depth, 1))}| {json-quote(spelled)}>)
+          back <type {to-pascal(form-name)} =\n{join-texts(members, <\n>)}>
+      # an enum becomes a discriminated union; a struct becomes an interface
+      fork test, is-above(form-variants/length, 0)
+        hold
+          save tag, read(tag)
+          fork test, is-equal(tag, <>)
+            hold
+              save tag, <form>
+          save members, make list
+          walk form-variants
+            take variant
+            save parts, make list
+            push(parts, <{to-member(tag)}: {json-quote(variant/name)}>)
+            walk variant/fields
+              take field
+              save question, <>
+              fork test, field/optional
+                hold
+                  save question, <?>
+              push(parts, <{to-member(field/name)}{question}: {field-type-text(ts-field-of(field/name, field/type, field/optional), facts)}>)
+            push(members, <{pad(add(depth, 1))}| \{ {join-texts(parts, <; >)} \}>)
+          back <type {to-pascal(form-name)}{generics} =\n{join-texts(members, <\n>)}>
+      save fields, make list
+      walk form-fields
+        take field
+        save question, <>
+        fork test, field/optional
+          hold
+            save question, <?>
+        push(fields, <{pad(add(depth, 1))}{to-member(field/name)}{question}: {field-type-text(ts-field-of(field/name, field/type, field/optional), facts)}>)
+      back <interface {to-pascal(form-name)}{generics} \{\n{join-texts(fields, <\n>)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# ---- tasks ----
+
+# every field of every case of the label, which over-asks and is safe
+task all-arm-fields
+  take facts, like emit-facts
+  like task
+    take label, like text
+    like list, like text
+  mark private
+
+  back
+    task
+      take label, like text
+      like list, like text
+      save out, make list
+      walk facts/variant-fields-by-owner/keys()
+        take owner
+        save cases, facts/variant-fields-by-owner/get(owner)
+        fork test, cases/has(label)
+          hold
+            walk cases/get(label)
+              take field
+              push(out, field/name)
+      fork test, facts/variant-fields/has(label)
+        hold
+          walk facts/variant-fields/get(label)
+            take field
+            push(out, field/name)
+      back out
+
+task emit-function
+  take node, like statement
+  take depth, like number
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      save previous, st/assigned-names
+      save st/assigned-names, collect-assigned(fn-body)
+      save previous-fn, st/current-fn
+      save st/current-fn, make(some, node)
+      save previous-carriers, st/carrier-locals
+      save st/carrier-locals, text-texts()
+      # a `need false` parameter with no `fall` is optional, unless a required one follows it
+      save last-required, -1
+      save at, 0
+      walk fn-params
+        take param
+        save has-fallback, false
+        sift param/fallback
+          case some
+            save has-fallback, true
+          case none
+            save nothing, 0
+        fork test, not(and(param/optional, not(has-fallback)))
+          hold
+            save last-required, at
+        save at, add(at, 1)
+      save params, make list
+      save at, 0
+      walk fn-params
+        take param
+        save question, <>
+        save fallback, <>
+        sift param/fallback
+          case some
+            link given
+            save fallback, < = {emit-expression(given, 0, st, facts)}>
+          case none
+            fork test, and(param/optional, is-above(at, last-required))
+              hold
+                save question, <?>
+        push(params, <{to-camel(param/name)}{question}: {ts-type-of(param/type, facts)}{fallback}>)
+        save at, add(at, 1)
+      save generic-text, <>
+      fork test, is-above(read(generics)/length, 0)
+        hold
+          save heads, make list
+          walk read(generics)
+            take generic
+            push(heads, to-pascal(generic/name))
+          save generic-text, <\<{join-texts(heads, <, >)}\>>
+      save return-type, ts-type-of(fn-result, facts)
+      save keyword, <function>
+      fork test, read(async)
+        hold
+          save return-type, <Promise\<{return-type}\>>
+          save keyword, <async function>
+      # a task whose every self call is a tail call is a loop, its tail calls rebinding the parameters
+      save previous-tails, st/tailing
+      save tails, facts/has-tails(fn-name)
+      save held, false
+      fork test, tails
+        hold
+          save held, tail-shadowed(node, all-arm-fields(facts))
+          save names, make list
+          save types, make list
+          walk fn-params
+            take param
+            push(names, param/name)
+            push(types, ts-type-of(param/type, facts))
+          save tail
+            make tailing
+              bind task, fn-name
+              bind params, names
+              bind types, types
+              bind held, held
+          save st/tailing, make(some, tail)
+        miss
+          save st/tailing, make none
+      save declared, <>
+      walk facts/cursor-names(node)
+        take name
+        save declared, <{declared}{pad(add(depth, 1))}const __cursor{to-pascal(name)}: number[] = [0, 0]\n>
+      # a tail loop whose parameters a local may shadow keeps each in a holder outside the loop
+      save holders, <>
+      save rebind, <>
+      fork test, held
+        hold
+          walk fn-params
+            take param
+            save holders, <{holders}{pad(add(depth, 1))}let __next{to-pascal(param/name)} = {to-camel(param/name)}\n>
+            save rebind, <{rebind}{pad(add(depth, 2))}{to-camel(param/name)} = __next{to-pascal(param/name)}\n>
+      save stub, false
+      fork test, is-equal(fn-body/length, 0)
+        hold
+          sift fn-result
+            case some
+              link known
+              sift known
+                case unit
+                  save nothing, 0
+                miss
+                  save stub, true
+            case none
+              save nothing, 0
+      save body, <>
+      fork test, stub
+        hold
+          save body, <\{\n{pad(add(depth, 1))}throw new Error({json-quote(<stub: {fn-name}>)})\n{pad(depth)}\}>
+        miss
+          fork test, tails
+            hold
+              save body, <\{\n{declared}{holders}{pad(add(depth, 1))}while (true) {after-open(emit-block(fn-body, add(depth, 1), st, facts), rebind)}\n{pad(depth)}\}>
+            miss
+              save body, after-open(emit-block(fn-body, depth, st, facts), declared)
+      save st/tailing, previous-tails
+      save out, <{keyword} {to-camel(fn-name)}{generic-text}({join-texts(params, <, >)}): {return-type} {body}>
+      save st/assigned-names, previous
+      save st/current-fn, previous-fn
+      save st/carrier-locals, previous-carriers
+      back out
+    miss
+      back <>
+
+# ---- view components ----
+
+form zone-state
+  mark shared
+  link counter, like number
+
+form zone-names
+  link element, like text
+  link text, like text
+  link dynamic, like text
+  link attribute, like text
+  link event, like text
+  link show, like text
+  link each, like text
+
+task zone-next
+  take zone, like zone-state
+  like text
+  mark private
+
+  save name, <view{zone/counter}>
+  save zone/counter, add(zone/counter, 1)
+  back name
+
+task zone-build
+  take view, like view-node
+  take out, like list, like text
+  take zone, like zone-state
+  take names, like zone-names
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  # a named element is emitted under that name, so handlers elsewhere in the component can read it
+  save node-ref, <>
+  sift view
+    case element
+      fork test, is-unequal(read(ref), <>)
+        hold
+          save node-ref, to-camel(read(ref))
+    miss
+      save nothing, 0
+  fork test, is-equal(node-ref, <>)
+    hold
+      save node-ref, zone-next(zone)
+  sift view
+    case text
+      link text-value
+      push(out, <const {node-ref} = {names/text}({json-quote(text-value)})>)
+    case read
+      link read-value
+      push(out, <const {node-ref} = {names/dynamic}(() =\> {emit-expression(read-value, 0, st, facts)})>)
+    case element
+      link element-name
+      link element-attributes
+      link element-props
+      link element-children
+      push(out, <const {node-ref} = {names/element}({json-quote(element-name)})>)
+      walk element-attributes
+        take attribute
+        # an event handler is a function: a single expression is wrapped in one, a closure passed through
+        save handler, <>
+        sift attribute/value
+          case closure
+            save handler, emit-expression(attribute/value, 0, st, facts)
+          miss
+            save handler, <() =\> {emit-expression(attribute/value, 0, st, facts)}>
+        fork test, attribute/event
+          hold
+            push(out, <{names/event}({node-ref}, {json-quote(attribute/name)}, {handler})>)
+          miss
+            push(out, <{names/attribute}({node-ref}, {json-quote(attribute/name)}, {emit-expression(attribute/value, 0, st, facts)})>)
+      save unused, make list
+      walk element-children
+        take child
+        zone-attach(child, node-ref, out, false, unused, zone, names, st, facts)
+    miss
+      push(out, <const {node-ref} = {names/text}("")>)
+  back node-ref
+
+task zone-show
+  take host, like text
+  take view, like view-node
+  take zone, like zone-state
+  take names, like zone-names
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift view
+    case fork
+      link fork-branches
+      link fork-otherwise
+      save cond, <false>
+      save then, make list
+      fork test, is-above(fork-branches/length, 0)
+        hold
+          save branch, get(fork-branches, 0)
+          save cond, emit-expression(branch/cond, 0, st, facts)
+          save then, branch/body
+      save no-params, make list
+      save first, zone-fragment(no-params, then, zone, names, st, facts)
+      save other, make list
+      walk fork-otherwise
+        take one
+        push(other, one)
+      back <{names/show}({host}, () =\> {cond}, {first}, {zone-fragment(no-params, other, zone, names, st, facts)})>
+    miss
+      back <>
+
+task zone-each
+  take host, like text
+  take view, like view-node
+  take zone, like zone-state
+  take names, like zone-names
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift view
+    case walk
+      link walk-iterable
+      link walk-item
+      link walk-body
+      save iterable, emit-expression(walk-iterable, 0, st, facts)
+      save params, make list
+      push(params, to-camel(walk-item))
+      back <{names/each}({host}, () =\> {iterable}, {zone-fragment(params, walk-body, zone, names, st, facts)})>
+    miss
+      back <>
+
+# attach a child under `parent`: nodes are built and appended, a fork or walk lowered to `show` or `each`. With
+# `collecting`, each child's one removable node is recorded in `collect`
+task zone-attach
+  take view, like view-node
+  take parent, like text
+  take out, like list, like text
+  take collecting, like boolean
+  take collect, like list, like text
+  take zone, like zone-state
+  take names, like zone-names
+  take st, like emit-state
+  take facts, like emit-facts
+  mark private
+
+  sift view
+    case fork
+      fork test, collecting
+        hold
+          save part, zone-next(zone)
+          push(out, <const {part} = {names/element}("seed-part")>)
+          push(out, zone-show(part, view, zone, names, st, facts))
+          push(out, <append({parent}, {part})>)
+          push(collect, part)
+        miss
+          push(out, zone-show(parent, view, zone, names, st, facts))
+    case walk
+      fork test, collecting
+        hold
+          save part, zone-next(zone)
+          push(out, <const {part} = {names/element}("seed-part")>)
+          push(out, zone-each(part, view, zone, names, st, facts))
+          push(out, <append({parent}, {part})>)
+          push(collect, part)
+        miss
+          push(out, zone-each(parent, view, zone, names, st, facts))
+    case slot
+      save nothing, 0
+    miss
+      save ref, zone-build(view, out, zone, names, st, facts)
+      push(out, <append({parent}, {ref})>)
+      fork test, collecting
+        hold
+          push(collect, ref)
+
+# a body list as a thunk `(params) => view` returning one node
+task zone-fragment
+  take params, like list, like text
+  take body, like list, like view-node
+  take zone, like zone-state
+  take names, like zone-names
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save out, make list
+  save single, false
+  fork test, is-equal(body/length, 1)
+    hold
+      save only, get(body, 0)
+      sift only
+        case element
+          save single, true
+        case text
+          save single, true
+        case read
+          save single, true
+        miss
+          save nothing, 0
+  fork test, single
+    hold
+      save ref, zone-build(get(body, 0), out, zone, names, st, facts)
+      push(out, <return {ref}>)
+    miss
+      push(out, <const frag = {names/element}("seed-fragment")>)
+      save unused, make list
+      walk body
+        take child
+        zone-attach(child, <frag>, out, false, unused, zone, names, st, facts)
+      push(out, <return frag>)
+  back <({join-texts(params, <, >)}) =\> \{ {join-texts(out, <; >)} \}>
+
+# a top-level `save` whose value creates a signal
+task signal-save
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case call
+      link call-callee
+      back is-equal(variable-callee(call-callee), <make-signal>)
+    miss
+      back false
+
+task emit-zone
+  take node, like statement
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift node
+    case view
+      link view-name
+      link view-params
+      link view-body
+      save render, render-names()
+      save names
+        make zone-names
+          bind element, to-camel(render/element)
+          bind text, to-camel(render/text)
+          bind dynamic, to-camel(render/dynamic)
+          bind attribute, to-camel(render/attribute)
+          bind event, to-camel(render/event)
+          bind show, to-camel(render/show)
+          bind each, to-camel(render/each)
+      save zone
+        make zone-state
+          bind counter, 0
+      save params, make list
+      walk view-params
+        take param
+        push(params, <{to-camel(param/name)}: {ts-type-of(param/type, facts)}>)
+      save host, <host>
+      fork test, is-above(view-params/length, 0)
+        hold
+          save first, get(view-params, 0)
+          save host, to-camel(first/name)
+      save name, json-quote(to-camel(view-name))
+      save lines, make list
+      save signals, make list
+      fork test, facts/hmr
+        hold
+          push(lines, <const __seed = (hot && hot.data.signals && hot.data.signals[{name}]) || \{\}>)
+          push(lines, <const __scope = openScope()>)
+      walk view-body
+        take child
+        sift child
+          case save
+            link save-name
+            link save-value
+            fork test, and(facts/hmr, signal-save(save-value))
+              hold
+                push(signals, save-name)
+                save key, json-quote(save-name)
+                save init, <undefined>
+                sift save-value
+                  case call
+                    link call-callee
+                    link call-args
+                    fork test, is-above(call-args/length, 0)
+                      hold
+                        save init, emit-expression(get(call-args, 0), 0, st, facts)
+                  miss
+                    save nothing, 0
+                push(lines, <const {to-camel(save-name)} = makeSignal({key} in __seed ? __seed[{key}] : {init})>)
+              miss
+                push(lines, <const {to-camel(save-name)} = {emit-expression(save-value, 0, st, facts)}>)
+          miss
+            save nothing, 0
+      save roots, make list
+      walk view-body
+        take child
+        sift child
+          case save
+            save nothing, 0
+          # a setup statement runs where it is written
+          case call
+            link call-value
+            push(lines, emit-expression(call-value, 0, st, facts))
+          miss
+            zone-attach(child, host, lines, facts/hmr, roots, zone, names, st, facts)
+      fork test, facts/hmr
+        hold
+          push(lines, <closeScope()>)
+          save entries, make list
+          walk signals
+            take signal
+            push(entries, <{json-quote(signal)}: {to-camel(signal)}>)
+          push(lines, <if (hot) (hot.data.instances || (hot.data.instances = [])).push(\{ zone: {name}, host: {host}, signals: \{ {join-texts(entries, <, >)} \}, scope: __scope, nodes: [{join-texts(roots, <, >)}] \})>)
+      back <export function {to-camel(view-name)}({join-texts(params, <, >)}) \{\n  {join-texts(lines, <\n  >)}\n\}>
+    miss
+      back <>
+
+# ---- the entries the face calls ----
+
+# a task's body emitted with no overflow checks, for its unchecked copy
+task emit-unchecked
+  take fn, like statement
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+
+  save st/unchecked-ints, true
+  save text, emit-statement(fn, 0, st, facts)
+  save st/unchecked-ints, false
+  back text
+
+# a task's copy that builds its result in the record it is given, for a reuse site. `copy` is the task renamed (and
+# answering the kept field, with one), `task-name` the task's own name, by which the face knows its builds
+task emit-reusing
+  take copy, like statement
+  take task-name, like text
+  take st, like emit-state
+  take facts, like emit-facts
+  like text
+
+  sift facts/reuse-task-of(task-name)
+    case some
+      link task
+      sift copy
+        case function
+          link fn-name
+          link fn-params
+          save param, get(fn-params, task/param)
+          save reusing
+            make reusing
+              bind param, param/name
+              bind task, task-name
+              bind keep, task/keep
+          save st/reusing, make(some, reusing)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  save text, emit-statement(copy, 0, st, facts)
+  save st/reusing, make none
+  back text

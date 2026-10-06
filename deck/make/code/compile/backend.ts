@@ -4,13 +4,14 @@ import type {
   Type,
   Statement,
 } from '@term/make/code/compile/node'
-import { nativeCall } from '@term/make/code/ir/facts/bounds'
 import * as shapes from '@term/make/code/compile/backend-shapes'
 import * as names from '@term/make/code/compile/backend-names'
 import * as lending from '@term/make/code/compile/backend-lending'
 import * as copying from '@term/make/code/compile/backend-copies'
 import * as loops from '@term/make/code/compile/backend-loops'
 import * as reads from '@term/make/code/compile/backend-reads'
+import * as elements from '@term/make/code/compile/backend-elements'
+import { numberedWalk } from '@term/make/code/compile/place'
 
 // The shapes every backend detects alike (a map's keys or values, a native collection or string call or read, a
 // text-valued expression, the names a body reassigns, a `fill` spec, a valued return, the function parameters a task may
@@ -19,7 +20,9 @@ import * as reads from '@term/make/code/compile/backend-reads'
 // shapes are compile/backend-names.tree, the lending family (`lendableParams` through `listFacts`) is
 // compile/backend-lending.tree, the copies (`recordCopies`, `borrowedTexts`, `borrowedRecords`, `textCursors`) are
 // compile/backend-copies.tree, `redeclaredLets`, `listGenerator(s)` and `fixedLists` are compile/backend-loops.tree,
-// and `tailTasks`, `slotTakes` and `lastReads` are compile/backend-reads.tree.
+// `tailTasks`, `slotTakes` and `lastReads` are compile/backend-reads.tree, and `ownedElements` is
+// compile/backend-elements.tree over compile/place-walk.tree's table of places, its nodes numbered as compile/place.ts
+// numbers them.
 
 type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 const unbox = <T>(value: Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
@@ -353,473 +356,25 @@ export function ownedElements(
   lend: Map<string, Map<number, Lend>>,
   keyOf: (type: Type) => string,
 ): OwnedElements {
-  type Loose = Record<string, unknown> & { form?: string; name?: string; type?: Type }
-  type Fn = Extract<Statement, { form: 'function' }>
-  const keys = new Set<string>()
-  const refused = new Set<string>()
+  const { w, ids } = numberedWalk(program)
+  const answer = elements.ownedElementsOf(w as never, ids, flags(fresh), lend as never, (type: Type) => keyOf(type), (left: object, right: object) => left === right)
   const lets = new WeakMap<object, string>()
   const walks = new WeakMap<object, string>()
   const items = new WeakMap<object, string>()
-  const moves = new WeakSet<object>()
-  // the key of a list of lists, the key of the inner list one is, when the type is one
-  const outer = (type: Type | undefined): string | undefined =>
-    type?.kind === 'array' && type.element.kind === 'array' ? keyOf(type.element.element) : undefined
-  const refuse = (key: string | undefined): void => {
-    if (key !== undefined) {
-      refused.add(key)
-    }
-  }
-  const outerVar = (node: Loose | undefined): string | undefined => (node?.form === 'variable' ? outer(node.type) : undefined)
-  const isFreshList = (value: Loose): boolean =>
-    (value.form === 'array' && (value.items as unknown[]).length === 0) ||
-    (value.form === 'record' && value.name === 'list' && (value.fields as unknown[]).length === 0) ||
-    (value.form === 'call' && (value.callee as Loose).form === 'variable' && fresh.has((value.callee as Loose).name as string))
-  // the locals handed in, checked once each task's statements are known
-  const handed: { fn: Fn; name: string; node: object; key: string }[] = []
-  // how many times a task binds a name: its parameters, its `let`s, its walks' items and indexes, its closures'
-  // parameters, its arms' fields
-  const bindings = (fn: Fn, name: string): number => {
-    let count = fn.params.filter(p => p.name === name).length
 
-    const visit = (value: unknown): void => {
-      if (typeof value !== 'object' || value === null) {
-        return
-      }
-
-      if (Array.isArray(value)) {
-        value.forEach(visit)
-
-        return
-      }
-
-      const node = value as Loose & { item?: string; index?: unknown; params?: { name: string }[]; binds?: string[] }
-
-      if (node.form === 'let' && node.name === name) count++
-      if (node.form === 'for-each' && (node.item === name || node.index === name)) count++
-      if (node.form === 'closure' && node.params?.some(p => p.name === name)) count++
-      if (Array.isArray(node.binds) && node.binds.includes(name)) count++
-
-      for (const [k, child] of Object.entries(node)) {
-        if (k !== 'type' && k !== 'span') {
-          visit(child)
-        }
-      }
-    }
-
-    visit(fn.body)
-
-    return count
+  for (const one of answer.lets) {
+    lets.set(one.node as object, one.key)
   }
 
-  for (const node of program) {
-    const key = outer((node as Loose).type)
-
-    // a list of lists at module level is reachable from anywhere
-    if (node.form === 'let' && key !== undefined) {
-      refuse(key)
-    }
+  for (const one of answer.walks) {
+    walks.set(one.node as object, one.key)
   }
 
-  // every task by name, for the parameter a lent outer list is handed to
-  const tasks = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
-
-  // a list of lists that reaches native code (`nativeForms`), anywhere inside a type a native call or a bodiless task
-  // takes or answers, keeps its shared inner lists: a shim builds them in the host's own terms
-  const records = new Map(program.flatMap(n => (n.form === 'record-type' ? [[n.name, n] as const] : [])))
-  const seen = new Set<string>()
-  const crossing = (type: Type | undefined): void => {
-    if (!type) {
-      return
-    }
-
-    refuse(outer(type))
-
-    if (type.kind === 'array') {
-      crossing(type.element)
-    } else if (type.kind === 'map') {
-      crossing(type.key)
-      crossing(type.value)
-    } else if (type.kind === 'function') {
-      type.params.forEach(crossing)
-      crossing(type.result)
-    } else if (type.kind === 'named' && !seen.has(type.name)) {
-      seen.add(type.name)
-      const record = records.get(type.name)
-      record?.fields.forEach(f => crossing(f.type))
-      record?.variants.forEach(v => v.fields.forEach(f => crossing(f.type)))
-      type.args?.forEach(crossing)
-    }
-  }
-  const natives = (value: unknown): void => {
-    if (typeof value !== 'object' || value === null) {
-      return
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(natives)
-
-      return
-    }
-
-    const node = value as Loose
-
-    // a view's `call` node (`{ form: 'call', value }`) has no callee: the per-module emit meets views before they are
-    // lowered, and every `term make` of a module holding one crashed here (face's layout-slot)
-    if (node.form === 'call' && node.callee !== undefined && nativeCall(node.callee as Expression)) {
-      ;(node.args as Loose[]).forEach(a => crossing(a.type))
-      crossing(node.type)
-    }
-
-    if (node.form === 'function' && (node.body as unknown[]).length === 0) {
-      ;(node.params as { type?: Type }[]).forEach(p => crossing(p.type))
-      crossing((node as { result?: Type }).result)
-    }
-
-    for (const [k, child] of Object.entries(node)) {
-      if (k !== 'type' && k !== 'span') {
-        natives(child)
-      }
-    }
+  for (const one of answer.items) {
+    items.set(one.node as object, one.key)
   }
 
-  natives(program)
-
-  // an inner list put into an outer one of `key`: fresh, or a local of the task handed in whole
-  const putIn = (value: Loose, key: string, fn: Fn, visit: (v: unknown) => void): void => {
-    if (isFreshList(value)) {
-      items.set(value, key)
-
-      if (value.form === 'call') {
-        visit(value.args)
-      }
-
-      return
-    }
-
-    if (value.form === 'variable') {
-      items.set(value, key)
-      handed.push({ fn, name: value.name as string, node: value, key })
-
-      return
-    }
-
-    refuse(key)
-    visit(value)
-  }
-
-  const scan = (fn: Fn): void => {
-    const visit = (value: unknown): void => {
-      if (typeof value !== 'object' || value === null) {
-        return
-      }
-
-      if (Array.isArray(value)) {
-        value.forEach(visit)
-
-        return
-      }
-
-      const node = value as Loose
-
-      switch (node.form) {
-        case 'variable':
-          // an outer list anywhere the cases below do not take it
-          refuse(outer(node.type))
-
-          return
-        // an outer list WRITTEN OUT with its inner lists (`make list, make(list, 3, 8), ...`) builds each inner list as
-        // a list of its own, and the walk over it was told they were plain: Rust walked `row.iter()` on a shared
-        // `Rc<RefCell<Vec>>` and Swift `row.enumerated()` on a `SeedList`, neither of which builds (the loops guide's
-        // grid search, 2026-10-05). An empty one puts nothing in, so it is left to the rules above
-        case 'array':
-          if ((node.items as unknown[]).length > 0) {
-            refuse(outer(node.type))
-          }
-
-          break
-        case 'member': {
-          // an inner list read out of an outer one anywhere but a `let` (below)
-          const key = outerVar(node.target as Loose)
-
-          if (key !== undefined) {
-            refuse(key)
-            visit(node.index)
-
-            return
-          }
-
-          break
-        }
-        case 'let': {
-          const init = node.init as Loose
-          const key = init.form === 'member' ? outerVar(init.target as Loose) : undefined
-
-          if (key !== undefined && (init.index !== undefined || /^\d+$/.test(init.name as string))) {
-            if (bindings(fn, node.name as string) === 1 && onlyReads(fn.body, node.name as string, lend, true)) {
-              lets.set(node, key)
-              keys.add(key)
-            } else {
-              refuse(key)
-            }
-
-            visit(init.index)
-
-            return
-          }
-
-          // an alias of an outer list
-          if (outerVar(init) !== undefined) {
-            return
-          }
-
-          break
-        }
-        case 'for-each': {
-          const key = outerVar(node.iterable as Loose)
-
-          if (key !== undefined) {
-            if (onlyReads(node.body as Statement[], node.item as string, lend)) {
-              walks.set(node, key)
-              keys.add(key)
-            } else {
-              refuse(key)
-            }
-
-            visit(node.body)
-
-            return
-          }
-
-          break
-        }
-        case 'return':
-          if (outerVar(node.value as Loose) !== undefined) {
-            return
-          }
-
-          break
-        case 'assign': {
-          const target = node.target as Loose
-          const key = target.form === 'member' ? outerVar(target.target as Loose) : undefined
-
-          // an inner list written into a slot of an outer one
-          if (key !== undefined && target.index !== undefined) {
-            keys.add(key)
-            visit(target.index)
-            putIn(node.value as Loose, key, fn, visit)
-
-            return
-          }
-
-          if (target.form === 'variable' && outer(target.type) !== undefined && outerVar(node.value as Loose) !== undefined) {
-            return
-          }
-
-          break
-        }
-        case 'call': {
-          const callee = node.callee as Loose
-          const args = node.args as Loose[]
-          const name = callee.form === 'variable' ? (callee.name as string) : undefined
-          const key = outerVar(args[0])
-
-          if (key !== undefined && name === 'list_size') {
-            return
-          }
-
-          if (key !== undefined && name === 'list_push') {
-            keys.add(key)
-            putIn(args[1]!, key, fn, visit)
-
-            return
-          }
-
-          if (callee.form === 'member') {
-            const op = collectionCall(callee as Expression)
-            const on = op && op.kind !== 'map' ? outerVar(op.target as Loose) : undefined
-
-            if (on !== undefined && op!.op === 'push') {
-              keys.add(on)
-              putIn(args[0]!, on, fn, visit)
-
-              return
-            }
-          }
-
-          // an outer list at a position the task takes lent: its body is scanned for its own reads
-          const taken = name !== undefined ? lend.get(name) : undefined
-
-          if (taken) {
-            const params = name !== undefined ? tasks.get(name)?.params : undefined
-
-            args.forEach((a, i) => {
-              const key = outerVar(a)
-
-              if (!(key !== undefined && taken.has(i))) {
-                visit(a)
-              } else if (outer(params?.[i]?.type) !== key) {
-                // the task's parameter holds its inner lists under another key, a type parameter's (`flatten`'s
-                // `list (list t)`), so it keeps them shared, and a plain `[[Int]]` cannot be handed to it
-                refuse(key)
-              }
-            })
-
-            return
-          }
-
-          break
-        }
-      }
-
-      for (const [k, child] of Object.entries(node)) {
-        if (k !== 'type' && k !== 'span') {
-          visit(child)
-        }
-      }
-    }
-
-    // a parameter that is an outer list is one of the program's, read by the same rules
-    visit(fn.body)
-  }
-
-  for (const node of program) {
-    if (node.form === 'function') {
-      scan(node)
-    }
-  }
-
-  // a form filled or melted is walked by a generated function that builds every inner list as the shared one
-  const walked = (value: unknown): boolean => {
-    if (typeof value !== 'object' || value === null) {
-      return false
-    }
-
-    if (Array.isArray(value)) {
-      return value.some(walked)
-    }
-
-    const node = value as Loose
-
-    if (node.form === 'call' && (node.callee as Loose).form === 'variable' && ['fill-form', 'melt-form'].includes((node.callee as Loose).name as string)) {
-      return true
-    }
-
-    return Object.entries(node).some(([k, child]) => k !== 'type' && k !== 'span' && walked(child))
-  }
-
-  if (walked(program)) {
-    return { keys: new Set(), lets, walks, items, moves }
-  }
-
-  const mentions = (value: unknown, name: string): number => {
-    if (typeof value !== 'object' || value === null) {
-      return 0
-    }
-
-    if (Array.isArray(value)) {
-      return value.reduce((n: number, v) => n + mentions(v, name), 0)
-    }
-
-    const node = value as Loose
-    const here = node.form === 'variable' && node.name === name ? 1 : 0
-
-    return here + Object.entries(node).reduce((n, [k, child]) => (k === 'type' || k === 'span' ? n : n + mentions(child, name)), 0)
-  }
-  const contains = (value: unknown, target: object): boolean => {
-    if (value === target) {
-      return true
-    }
-
-    if (typeof value !== 'object' || value === null) {
-      return false
-    }
-
-    return Object.entries(value).some(([k, child]) => k !== 'type' && k !== 'span' && contains(child, target))
-  }
-
-  // a local handed in must be declared in the block that hands it in, fresh, mentioned once in the statement that
-  // hands it in and never after, and owned by its task with that hand-off counted as its leaving
-  // the statement lists a compound statement holds: its body, its arms, its handler
-  const lists = (s: Statement): Statement[][] => {
-    const node = s as unknown as Loose & {
-      body?: Statement[]
-      otherwise?: Statement[]
-      branches?: { body: Statement[] }[]
-      cases?: { body: Statement[] }[]
-      catch?: { body: Statement[] }
-    }
-
-    return [
-      ...(Array.isArray(node.body) ? [node.body] : []),
-      ...(Array.isArray(node.otherwise) ? [node.otherwise] : []),
-      ...(node.branches ?? []).map(b => b.body),
-      ...(node.cases ?? []).map(c => c.body),
-      ...(node.catch ? [node.catch.body] : []),
-    ]
-  }
-  // the innermost statement list whose own statement holds `target`, not inside a compound one
-  const block = (stmts: Statement[], target: object): Statement[] | undefined => {
-    for (const s of stmts) {
-      if (!contains(s, target)) {
-        continue
-      }
-
-      const inner = lists(s)
-
-      if (!inner.length) {
-        return stmts
-      }
-
-      for (const list of inner) {
-        const found = block(list, target)
-
-        if (found) {
-          return found
-        }
-      }
-
-      // in the statement's own expression (a condition, a subject): not a place a local is handed in
-      return undefined
-    }
-
-    return undefined
-  }
-
-  // dropping a key can refuse a local another hand-off relied on, so settle
-  for (let changed = true; changed; ) {
-    changed = false
-    const standing = handed.filter(hand => !refused.has(hand.key))
-    const now = new WeakSet<object>(standing.map(hand => hand.node))
-
-    for (const hand of standing) {
-      const stmts = block(hand.fn.body, hand.node)
-      const at = stmts ? stmts.findIndex(s => contains(s, hand.node)) : -1
-      const declared = stmts?.slice(0, at).some(s => s.form === 'let' && s.name === hand.name && isFreshList(s.init as Loose))
-      const fine =
-        stmts !== undefined &&
-        declared &&
-        mentions(stmts[at], hand.name) === 1 &&
-        stmts.slice(at + 1).every(s => mentions(s, hand.name) === 0) &&
-        ownedLocals(hand.fn, fresh, lend, new Set(), now).has(hand.name)
-
-      if (!fine) {
-        refuse(hand.key)
-        changed = true
-      }
-    }
-  }
-
-  for (const key of refused) {
-    keys.delete(key)
-  }
-
-  for (const hand of handed) {
-    if (keys.has(hand.key)) {
-      moves.add(hand.node)
-    }
-  }
-
-  return { keys, lets, walks, items, moves }
+  return { keys: new Set(answer.keys), lets, walks, items, moves: new WeakSet(answer.moves as object[]) }
 }
 
 // whether anything here assigns the variable itself (`save x, ...`), closures and nested blocks included. A write to a

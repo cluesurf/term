@@ -111,7 +111,7 @@ bind error-is-terminal, like boolean
 bind write-error-text, take value, like text
   like boolean
   case node
-    text <((__termBytes, __termFs) =\> \{ let __termAt = 0; while (__termAt \< __termBytes.length) \{ try \{ __termAt += __termFs.writeSync(2, __termBytes, __termAt) \} catch (__termError) \{ if (__termError.code !== 'EAGAIN') throw __termError \} \} return true \})(Buffer.from($value), process.getBuiltinModule('node:fs'))>
+    text <((__termBytes, __termFs) =\> \{ let __termAt = 0; while (__termAt \< __termBytes.length) \{ try \{ __termAt += __termFs.writeSync(2, __termBytes, __termAt) \} catch (__termError: any) \{ if (__termError.code !== 'EAGAIN') throw __termError \} \} return true \})(Buffer.from($value), process.getBuiltinModule('node:fs'))>
   case browser
     text <(console.error($value), true)>
   case rust
@@ -125,7 +125,7 @@ bind write-error-text, take value, like text
 bind write-data-text, take value, like text
   like boolean
   case node
-    text <((__termBytes, __termFs) =\> \{ let __termAt = 0; while (__termAt \< __termBytes.length) \{ try \{ __termAt += __termFs.writeSync(1, __termBytes, __termAt) \} catch (__termError) \{ if (__termError.code !== 'EAGAIN') throw __termError \} \} return true \})(Buffer.from($value), process.getBuiltinModule('node:fs'))>
+    text <((__termBytes, __termFs) =\> \{ let __termAt = 0; while (__termAt \< __termBytes.length) \{ try \{ __termAt += __termFs.writeSync(1, __termBytes, __termAt) \} catch (__termError: any) \{ if (__termError.code !== 'EAGAIN') throw __termError \} \} return true \})(Buffer.from($value), process.getBuiltinModule('node:fs'))>
   case browser
     text <(console.log($value), true)>
   case rust

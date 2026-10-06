@@ -799,6 +799,19 @@ task lower-binary
         hold
           refuse-at(pass, place, source, at, <a quantity is not raised to a power>, <multiply it by itself: `3m * 3m`>)
           back refused-lowering()
+      # a small whole power of a name or a number is that many factors, `r^2` is `multiply(read(r), read(r))`: it
+      # works on whatever kind of number `r` is, which a name's spelling cannot say
+      save times, small-whole(b)
+      fork test, and(is-above(times, 1), or(is-equal(a/kind, <whole>), or(is-equal(a/kind, <decimal>), is-some(a/path))))
+        hold
+          save product, a/text
+          save k, 1
+          walk test
+            hook test, is-below(k, times)
+            hook hold
+              save product, <multiply({product}, {a/text})>
+              save k, add(k, 1)
+          back lowered-of(product, a/kind)
       fork test, is-equal(kind, <decimal>)
         hold
           require-load-as(pass, <@term/base/float>, <power>, <decimal-power>)
@@ -839,6 +852,36 @@ task lower-binary
 
   refuse-at(pass, place, source, at, <`{operator}` is read by the note grammar, and Term gives it no meaning yet>, <write what it should mean as a call: `implies(a, b)`>)
   back refused-lowering()
+
+# a whole number from 2 to 8 written as one, else 0: the powers written as factors
+task small-whole
+  take value, like lowered
+  like number
+  mark private
+
+  fork test, not(is-equal(value/kind, <whole>))
+    hold
+      back 0
+  save k, 2
+  walk test
+    hook test, is-maximum(k, 8)
+    hook hold
+      fork test, is-equal(value/text, <{k}>)
+        hold
+          back k
+      save k, add(k, 1)
+  back 0
+
+task is-some
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
 
 task arithmetic-task
   take operator, like text

@@ -1,0 +1,820 @@
+# Elaboration, part two: rewriting kernel terms. A first-order match of a lemma's side against a term, its other side
+# instantiated, one rewrite leftmost-outermost, rewriting to a fixed point under fuel, the shapes of a commutativity and
+# an associativity law, and normalizing and rewriting modulo associativity and commutativity. Every task reads terms
+# only, never the kernel's state.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), which stays as the face and says where each is used. The
+# decisions:
+#   - a rule's `holes` was a set or absent. It is a hash of its members to `true`, empty where the original had none,
+#     which reads the same: an absent set and an empty one hold no hole
+#   - a lambda rebuilt keeps the source's name for its binder, there or absent, as the original's spread kept it
+#   - the operands of an AC chain are sorted by their printed form, stably, as JavaScript's `sort` did. The texts are
+#     compared by code point (`ordering/from-texts`), where its comparator's `<` compared UTF-16 units: the two differ
+#     only between a character past the Basic Multilingual Plane and one in its top range, in a constant's name
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load ./judging
+  find kernel-term
+  find show-term
+
+# a lemma directed left to right: `binder-count` leading universal binders, whose variables are its holes, and any
+# more holes by their base index (a generalized induction hypothesis)
+form rewrite-rule
+  link binder-count, like number
+  link lhs, like kernel-term
+  link rhs, like kernel-term
+  link holes, like hash, like number, like boolean
+
+# an equation an AC rewrite fires, its sides at the goal's own depth
+form equation
+  link lhs, like kernel-term
+  link rhs, like kernel-term
+
+# a chain of one AC operator, flattened to its operands
+form ac-chain
+  link op, like text
+  link operands, like list, like kernel-term
+
+# structural equality of two kernel terms, by their printed forms
+task terms-equal
+  take left, like kernel-term
+  take right, like kernel-term
+  like boolean
+
+  back is-equal(show-term(left), show-term(right))
+
+# the lambda `like` was, around a new body: the source's name for its binder kept, there or absent
+task lam-like
+  take like-term, like kernel-term
+  take body, like kernel-term
+  like kernel-term
+  mark private
+
+  sift like-term
+    case lam
+      link name
+      sift name
+        case some
+          back
+            make lam
+              bind body, body
+              bind name, name
+        case none
+          back
+            make lam
+              bind body, body
+    miss
+      back
+        make lam
+          bind body, body
+
+task app-term
+  take fun, like kernel-term
+  take arg, like kernel-term
+  like kernel-term
+  mark private
+
+  back
+    make app
+      bind fun, fun
+      bind arg, arg
+
+# free de Bruijn variables replaced per `map` (keys and values indices in the depth-0 frame), respecting binders
+task substitute-vars
+  take term, like kernel-term
+  take map, like hash, like number, like number
+  take depth, like number
+  like kernel-term
+
+  sift term
+    case var
+      link index
+      save base, subtract(index, depth)
+      fork test, and(is-minimum(base, 0), map/has(base))
+        hold
+          back
+            make var
+              bind index, add(map/get(base), depth)
+      back term
+    case app
+      link fun
+      link arg
+      back app-term(substitute-vars(fun, map, depth), substitute-vars(arg, map, depth))
+    case lam
+      link body
+      back lam-like(term, substitute-vars(body, map, add(depth, 1)))
+    case pi
+      link mult
+      link domain
+      link codomain
+      back
+        make pi
+          bind mult, mult
+          bind domain, substitute-vars(domain, map, depth)
+          bind codomain, substitute-vars(codomain, map, add(depth, 1))
+    miss
+      back term
+
+# the free de Bruijn variable indices of a term, added to `found` in the order they are met
+task free-var-indices
+  take term, like kernel-term
+  take depth, like number
+  take found, like hash, like number, like boolean
+
+  sift term
+    case var
+      link index
+      fork test, is-minimum(subtract(index, depth), 0)
+        hold
+          found/set(subtract(index, depth), true)
+    case app
+      link fun
+      link arg
+      free-var-indices(fun, depth, found)
+      free-var-indices(arg, depth, found)
+    case lam
+      link body
+      free-var-indices(body, add(depth, 1), found)
+    miss
+      back
+
+# is the variable `index` at `depth` one of the pattern's holes: a leading binder, or a hole of the set at depth 0
+task is-hole
+  take index, like number
+  take binders, like number
+  take depth, like number
+  take holes, like hash, like number, like boolean
+  like boolean
+  mark private
+
+  save base, subtract(index, depth)
+  fork test, and(is-minimum(base, 0), is-below(base, binders))
+    hold
+      back true
+  back and(is-equal(depth, 0), holes/has(base))
+
+# a first-order match: bind the pattern's holes to subterms of the subject so the instantiated pattern is the subject,
+# false on any clash
+task match-pattern
+  take pattern, like kernel-term
+  take subject, like kernel-term
+  take binders, like number
+  take depth, like number
+  take subst, like hash, like number, like kernel-term
+  take holes, like hash, like number, like boolean
+  like boolean
+
+  sift pattern
+    case var
+      link index
+      fork test, is-hole(index, binders, depth, holes)
+        hold
+          save base, subtract(index, depth)
+          fork test, subst/has(base)
+            hold
+              back terms-equal(subst/get(base), subject)
+          subst/set(base, subject)
+          back true
+      sift subject
+        case var
+          link subject-index
+          back is-equal(index, subject-index)
+        miss
+          back false
+    case const
+      link name
+      sift subject
+        case const
+          link subject-name
+          back is-equal(name, subject-name)
+        miss
+          back false
+    case app
+      link fun
+      link arg
+      sift subject
+        case app
+          link subject-fun
+          link subject-arg
+          back and(match-pattern(fun, subject-fun, binders, depth, subst, holes), match-pattern(arg, subject-arg, binders, depth, subst, holes))
+        miss
+          back false
+    case lam
+      link body
+      sift subject
+        case lam
+          link subject-body
+          back match-pattern(body, subject-body, binders, add(depth, 1), subst, holes)
+        miss
+          back false
+    miss
+      fork test, is-unequal(pattern/tag, subject/tag)
+        hold
+          back false
+      back terms-equal(pattern, subject)
+
+# a lemma's holes substituted into its other side, none where a hole is unbound
+task instantiate
+  take rhs, like kernel-term
+  take binders, like number
+  take depth, like number
+  take subst, like hash, like number, like kernel-term
+  take holes, like hash, like number, like boolean
+  like maybe, like kernel-term
+
+  sift rhs
+    case var
+      link index
+      fork test, is-hole(index, binders, depth, holes)
+        hold
+          save base, subtract(index, depth)
+          fork test, subst/has(base)
+            hold
+              save value, subst/get(base)
+              back make(some, value)
+          back make none
+      back make(some, rhs)
+    case app
+      link fun
+      link arg
+      save fun-made, instantiate(fun, binders, depth, subst, holes)
+      save arg-made, instantiate(arg, binders, depth, subst, holes)
+      sift fun-made
+        case some
+          link fun-term
+          sift arg-made
+            case some
+              link arg-term
+              save made, app-term(fun-term, arg-term)
+              back make(some, made)
+            case none
+              back make none
+        case none
+          back make none
+    case lam
+      link body
+      sift instantiate(body, binders, add(depth, 1), subst, holes)
+        case some
+          link body-term
+          save made, lam-like(rhs, body-term)
+          back make(some, made)
+        case none
+          back make none
+    miss
+      back make(some, rhs)
+
+# a term rewritten ONCE by a lemma, left to right, at the leftmost-outermost subterm its left side matches. None when
+# it fires nowhere
+task rewrite-once
+  take target, like kernel-term
+  take rule, like rewrite-rule
+  like maybe, like kernel-term
+
+  save subst, make hash
+  fork test, match-pattern(rule/lhs, target, rule/binder-count, 0, subst, rule/holes)
+    hold
+      save made, instantiate(rule/rhs, rule/binder-count, 0, subst, rule/holes)
+      sift made
+        case some
+          back made
+        case none
+          save made, made
+  sift target
+    case app
+      link fun
+      link arg
+      sift rewrite-once(fun, rule)
+        case some
+          link fun-term
+          save rebuilt, app-term(fun-term, arg)
+          back make(some, rebuilt)
+        case none
+          save fun, fun
+      sift rewrite-once(arg, rule)
+        case some
+          link arg-term
+          save rebuilt, app-term(fun, arg-term)
+          back make(some, rebuilt)
+        case none
+          back make none
+    case lam
+      link body
+      sift rewrite-once(body, rule)
+        case some
+          link body-term
+          save rebuilt, lam-like(target, body-term)
+          back make(some, rebuilt)
+        case none
+          back make none
+    miss
+      back make none
+
+# a term rewritten to a fixed point by the rules, the first that fires each round, at most `fuel` rewrites
+task rewrite-with-lemmas
+  take target, like kernel-term
+  take rules, like list, like rewrite-rule
+  take fuel, like number
+  like kernel-term
+
+  save current, target
+  save budget, fuel
+  walk test
+    hook test, is-above(budget, 0)
+    hook hold
+      save progressed, false
+      walk rules
+        take rule
+        sift rewrite-once(current, rule)
+          case some
+            link next
+            save current, next
+            save progressed, true
+            save budget, subtract(budget, 1)
+            halt
+          case none
+            save progressed, progressed
+      fork test, is-equal(progressed, false)
+        hold
+          halt
+  back current
+
+# the head constant of `f a b`, none for any other shape
+task binary-head
+  take term, like kernel-term
+  like maybe, like text
+  mark private
+
+  sift term
+    case app
+      link fun
+      sift fun
+        case app
+          link inner
+          sift inner
+            case const
+              link name
+              back make(some, name)
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# the left operand of `f a b`, none for any other shape
+task binary-left
+  take term, like kernel-term
+  like maybe, like kernel-term
+  mark private
+
+  sift term
+    case app
+      link fun
+      sift fun
+        case app
+          link inner
+          link left
+          back make(some, left)
+        miss
+          back make none
+    miss
+      back make none
+
+task var-index
+  take term, like kernel-term
+  like number
+  mark private
+
+  sift term
+    case var
+      link index
+      back index
+    miss
+      back -1
+
+task is-var
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case var
+      back true
+    miss
+      back false
+
+# is the rule a commutativity law `f a b == f b a`? Its operator, or none
+task commutativity-operator
+  take rule, like rewrite-rule
+  like maybe, like text
+
+  save lhs, rule/lhs
+  save rhs, rule/rhs
+  sift binary-head(lhs)
+    case some
+      link op
+      sift binary-head(rhs)
+        case some
+          link other
+          fork test, is-unequal(op, other)
+            hold
+              back make none
+          sift binary-left(lhs)
+            case some
+              link la
+              sift binary-left(rhs)
+                case some
+                  link ra
+                  sift lhs
+                    case app
+                      link lhs-fun
+                      link lb
+                      sift rhs
+                        case app
+                          link rhs-fun
+                          link rb
+                          fork test, and(and(is-var(la), is-var(lb)), and(is-var(ra), is-var(rb)))
+                            hold
+                              fork test, and(is-unequal(var-index(la), var-index(lb)), and(is-equal(var-index(ra), var-index(lb)), is-equal(var-index(rb), var-index(la))))
+                                hold
+                                  back make(some, op)
+                          back make none
+                        miss
+                          back make none
+                    miss
+                      back make none
+                case none
+                  back make none
+            case none
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+# is the rule an associativity law `f (f a b) c == f a (f b c)`? Its operator, or none
+task associativity-operator
+  take rule, like rewrite-rule
+  like maybe, like text
+
+  save lhs, rule/lhs
+  save rhs, rule/rhs
+  sift binary-head(lhs)
+    case some
+      link op
+      sift binary-head(rhs)
+        case some
+          link other
+          fork test, is-unequal(op, other)
+            hold
+              back make none
+          sift binary-left(lhs)
+            case some
+              link ll
+              sift binary-head(ll)
+                case some
+                  link inner-left
+                  fork test, is-unequal(inner-left, op)
+                    hold
+                      back make none
+                case none
+                  back make none
+            case none
+              back make none
+          sift rhs
+            case app
+              link rhs-fun
+              link rr
+              sift binary-head(rr)
+                case some
+                  link inner-right
+                  fork test, is-equal(inner-right, op)
+                    hold
+                      back make(some, op)
+                  back make none
+                case none
+                  back make none
+            miss
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+# a nested chain of one AC operator flattened to its operands, none when the term is not headed by one of them
+task flatten-ac
+  take term, like kernel-term
+  take operators, like hash, like text, like boolean
+  like maybe, like ac-chain
+
+  sift binary-head(term)
+    case some
+      link op
+      fork test, is-equal(operators/has(op), false)
+        hold
+          back make none
+      save operands, make list
+      save sides, make list
+      sift binary-left(term)
+        case some
+          link left
+          push(sides, left)
+        case none
+          back make none
+      sift term
+        case app
+          link fun
+          link right
+          push(sides, right)
+        miss
+          back make none
+      walk sides
+        take side
+        sift flatten-ac(side, operators)
+          case some
+            link inner
+            fork test, is-equal(inner/op, op)
+              hold
+                walk inner/operands
+                  take operand
+                  push(operands, operand)
+              miss
+                push(operands, side)
+          case none
+            push(operands, side)
+      save chain
+        make ac-chain
+          bind op, op
+          bind operands, operands
+      back make(some, chain)
+    case none
+      back make none
+
+# `op` applied to its operands, nested to the right: `op a (op b c)`
+task right-nested
+  take op, like text
+  take parts, like list, like kernel-term
+  like kernel-term
+  mark private
+
+  save out, get(parts, subtract(parts/length, 1))
+  save i, subtract(parts/length, 2)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save head
+        make const
+          bind name, op
+      save out, app-term(app-term(head, get(parts, i)), out)
+      save i, subtract(i, 1)
+  back out
+
+# the terms in the order of their printed forms, stably
+task sorted-by-text
+  take parts, like list, like kernel-term
+  like list, like kernel-term
+  mark private
+
+  save keys, no-texts()
+  save out, no-terms()
+  walk parts
+    take part
+    save key, show-term(part)
+    # the first place whose key is above this one: everything at or below it stays before, as a stable sort keeps it
+    save at, out/length
+    save i, 0
+    walk test
+      hook test, is-below(i, out/length)
+      hook hold
+        save placed, get(keys, i)
+        sift from-texts(placed, key)
+          case greater
+            save at, i
+            halt
+          miss
+            save at, at
+        save i, add(i, 1)
+    save keys, inserted-text(keys, at, key)
+    save out, inserted-term(out, at, part)
+  back out
+
+task no-texts
+  like list, like text
+  mark private
+
+  back make list
+
+task no-terms
+  like list, like kernel-term
+  mark private
+
+  back make list
+
+task inserted-text
+  take items, like list, like text
+  take at, like number
+  take item, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take i
+    fork test, is-equal(i, at)
+      hold
+        push(out, item)
+    push(out, one)
+  fork test, is-equal(at, items/length)
+    hold
+      push(out, item)
+  back out
+
+task inserted-term
+  take items, like list, like kernel-term
+  take at, like number
+  take item, like kernel-term
+  like list, like kernel-term
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take i
+    fork test, is-equal(i, at)
+      hold
+        push(out, item)
+    push(out, one)
+  fork test, is-equal(at, items/length)
+    hold
+      push(out, item)
+  back out
+
+# a term normalized modulo associativity and commutativity of the operators: each chain flattened, its operands
+# normalized and sorted by their printed form, and rebuilt nested to the right
+task ac-normalize
+  take term, like kernel-term
+  take operators, like hash, like text, like boolean
+  like kernel-term
+
+  sift flatten-ac(term, operators)
+    case some
+      link flat
+      save parts, make list
+      walk flat/operands
+        take part
+        push(parts, ac-normalize(part, operators))
+      back right-nested(flat/op, sorted-by-text(parts))
+    case none
+      sift term
+        case app
+          link fun
+          link arg
+          back app-term(ac-normalize(fun, operators), ac-normalize(arg, operators))
+        case lam
+          link body
+          back lam-like(term, ac-normalize(body, operators))
+        miss
+          back term
+
+# a term rewritten once modulo AC: a rule whose left side is a chain of one operator fires where its operands are a
+# sub-multiset of a chain of that operator, the matched operands replaced by its right side. None where none fires
+task ac-rewrite-at
+  take term, like kernel-term
+  take operators, like hash, like text, like boolean
+  take rules, like list, like equation
+  like maybe, like kernel-term
+
+  sift flatten-ac(term, operators)
+    case some
+      link flat
+      save keys, make list
+      walk flat/operands
+        take operand
+        push(keys, show-term(operand))
+      walk rules
+        take rule
+        sift flatten-ac(rule/lhs, operators)
+          case some
+            link lhs-flat
+            fork test, is-unequal(lhs-flat/op, flat/op)
+              hold
+                turn next
+            # the operands of the chain already matched, by position
+            save used, make hash
+            save matched, true
+            walk lhs-flat/operands
+              take wanted
+              save want, show-term(wanted)
+              save at, -1
+              save k, 0
+              walk test
+                hook test, is-below(k, keys/length)
+                hook hold
+                  fork test, and(is-equal(used/has(k), false), is-equal(get(keys, k), want))
+                    hold
+                      save at, k
+                      halt
+                  save k, add(k, 1)
+              fork test, is-below(at, 0)
+                hold
+                  save matched, false
+                  halt
+              used/set(at, true)
+            fork test, is-equal(matched, false)
+              hold
+                turn next
+            save next, make list
+            walk flat/operands
+              take operand
+              take i
+              fork test, is-equal(used/has(i), false)
+                hold
+                  push(next, operand)
+            save rhs-added, false
+            sift flatten-ac(rule/rhs, operators)
+              case some
+                link rhs-flat
+                fork test, is-equal(rhs-flat/op, flat/op)
+                  hold
+                    walk rhs-flat/operands
+                      take operand
+                      push(next, operand)
+                    save rhs-added, true
+              case none
+                save rhs-added, false
+            fork test, is-equal(rhs-added, false)
+              hold
+                push(next, rule/rhs)
+            fork test, is-equal(next/length, 0)
+              hold
+                save whole, rule/rhs
+                back make(some, whole)
+            save rebuilt, right-nested(flat/op, next)
+            back make(some, rebuilt)
+          case none
+            turn next
+    case none
+      save term, term
+  sift term
+    case app
+      link fun
+      link arg
+      sift ac-rewrite-at(fun, operators, rules)
+        case some
+          link fun-term
+          save rebuilt, app-term(fun-term, arg)
+          back make(some, rebuilt)
+        case none
+          save fun, fun
+      sift ac-rewrite-at(arg, operators, rules)
+        case some
+          link arg-term
+          save rebuilt, app-term(fun, arg-term)
+          back make(some, rebuilt)
+        case none
+          back make none
+    case lam
+      link body
+      sift ac-rewrite-at(body, operators, rules)
+        case some
+          link body-term
+          save rebuilt, lam-like(term, body-term)
+          back make(some, rebuilt)
+        case none
+          back make none
+    miss
+      back make none
+
+# AC rewriting to a fixed point, the directed rewrites interleaved and the term renormalized between steps
+task ac-rewrite-fix
+  take term, like kernel-term
+  take operators, like hash, like text, like boolean
+  take ac-rules, like list, like equation
+  take syntactic-rules, like list, like rewrite-rule
+  take fuel, like number
+  like kernel-term
+
+  save current, ac-normalize(rewrite-with-lemmas(term, syntactic-rules, 200), operators)
+  save i, 0
+  walk test
+    hook test, is-below(i, fuel)
+    hook hold
+      sift ac-rewrite-at(current, operators, ac-rules)
+        case some
+          link next
+          save current, ac-normalize(rewrite-with-lemmas(next, syntactic-rules, 200), operators)
+        case none
+          halt
+      save i, add(i, 1)
+  back current

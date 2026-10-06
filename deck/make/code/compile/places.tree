@@ -1,0 +1,4014 @@
+# F4 (note/term/codegen/readme.md): a record in a list, updated IN PLACE, and record reuse, Perceus's in-place update
+# for the backends whose records are objects. compile/place.ts stays as the face and says why each rule is shaped as it
+# is: which forms are SLOT-PRIVATE (`private-forms`), which slot writes are made in place (`place-writes`), which slot
+# locals Swift reads through their slot, and where a task may build its result in the record it was given
+# (`record-reuse`).
+#
+# Ported from compile/place.ts (self-hosting, 2026-10-06). The decisions:
+#   - THE ORIGINAL WALKS BY REFLECTION AND READS THE PARENT AND THE KEY a value stands under (`parent.form ===
+#     'member' && key === 'target'`), and keeps facts by node identity (a `WeakSet` of allowed nodes, `Map`s keyed by a
+#     statement, `parent !== carried`). Here every walk is a pass over compile/place-walk.tree's table, which gives each
+#     place its node, the place above it, whether that place holds it directly (a record between, a branch, a field's
+#     value, is what the original saw as a parent of no form), and the field. A node's identity is the number the face
+#     hands in for its place (`ids`), the first place across the program that holds the same object, since a compiled
+#     program shares nodes (ir/facts/intervals.tree's pattern). The answers are the nodes themselves, and the face makes
+#     the `Map`s, `WeakMap`s and `WeakSet`s
+#   - the top statements of what a walk is handed stand under no parent, as the original's walks were handed a list
+#   - `explain` told each refusal with the TypeScript stack line of the rule that made it. A port has no stack, so each
+#     refusal names its rule (`nested`, `field write`, `closure`, ...) after the task, and the face hands those on
+#   - a `Map` keyed by an object keeps its first place and its last value: the writes come back in the order they were
+#     made, a statement made twice twice, and the face's `new Map` keeps the original's order and value
+#   - a view's `call` node (`{ form: 'call', value }`) has the form of a call and no callee, and the original read
+#     `parent.callee.form` off one and threw. Here it is a record between, refused as any parent of no interest is.
+#     Views are top level, so no task body holds one
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/unicode
+  find to-runes
+
+load ./node
+  find expression
+  find statement
+  find type
+  find expression-type
+  find statement-span
+  find number-type
+
+load ./node-children
+  find node-handle
+
+load ./node-reach
+  find reached
+  find reach-type
+
+load ./place-walk
+  find place-walk
+
+load ./backend-lending
+  find owned-locals
+  find list-facts-of
+  find list-facts
+
+load ./backend-names
+  find gated-tasks
+
+# ---- what every pass shares ----
+
+form place-scope
+  link w, like place-walk
+  # each place's identity: the first place that holds the same object
+  link ids, like list, like number
+  # the program's tasks by name, each name once in the order it first appears, each to the place of its LAST
+  # definition, as a `Map` built by name keeps them
+  link fn-names, like list, like text
+  link fn-rows, like hash, like text, like number
+
+task scope-of
+  take w, like place-walk
+  take ids, like list, like number
+  like place-scope
+
+  save names, make list
+  save rows, make hash
+  walk w/roots
+    take row
+    sift get(w/handles, row)
+      case statement-handle
+        link node
+        sift node
+          case function
+            link name
+            fork test, is-equal(rows/has(name), false)
+              hold
+                push(names, name)
+            rows/set(name, row)
+          miss
+            turn next
+      miss
+        turn next
+  back
+    make place-scope
+      bind w, w
+      bind ids, ids
+      bind fn-names, names
+      bind fn-rows, rows
+
+task id-of
+  take scope, like place-scope
+  take row, like number
+  like number
+  mark private
+
+  back get(scope/ids, row)
+
+task row-expression
+  take w, like place-walk
+  take row, like number
+  like maybe, like expression
+  mark private
+
+  sift get(w/handles, row)
+    case expression-handle
+      link node
+      back make(some, node)
+    miss
+      back make none
+
+task row-statement
+  take w, like place-walk
+  take row, like number
+  like maybe, like statement
+  mark private
+
+  sift get(w/handles, row)
+    case statement-handle
+      link node
+      back make(some, node)
+    miss
+      back make none
+
+task row-end
+  take w, like place-walk
+  take row, like number
+  like number
+  mark private
+
+  back get(w/ends, row)
+
+# the function a name names, its last definition
+task fn-named
+  take scope, like place-scope
+  take name, like text
+  like maybe, like statement
+  mark private
+
+  fork test, scope/fn-rows/has(name)
+    hold
+      back row-statement(scope/w, scope/fn-rows/get(name))
+  back make none
+
+# the first block a place holds: a task's body (made before its stub's)
+task body-block
+  take w, like place-walk
+  take row, like number
+  like number
+  mark private
+
+  save at, add(row, 0)
+  walk w/block-holders
+    take holder
+    take index
+    fork test, is-equal(holder, row)
+      hold
+        back index
+  back -1
+
+task block-rows
+  take w, like place-walk
+  take block, like number
+  like list, like number
+  mark private
+
+  fork test, is-below(block, 0)
+    hold
+      save none, make list
+      back none
+  save out, make list
+  walk get(w/block-items, block)
+    take one
+    push(out, one)
+  back out
+
+# the rows from `from` up to the end of a list of rows
+task rows-from
+  take rows, like list, like number
+  take from, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  walk rows
+    take one
+    take index
+    fork test, is-minimum(index, from)
+      hold
+        push(out, one)
+  back out
+
+task rows-between
+  take rows, like list, like number
+  take from, like number
+  take stop, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  walk rows
+    take one
+    take index
+    fork test, and(is-minimum(index, from), is-below(index, stop))
+      hold
+        push(out, one)
+  back out
+
+# every place under these, each root's subtree in turn
+task subtree-rows
+  take w, like place-walk
+  take roots, like list, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  walk roots
+    take root
+    save at, root
+    save stop, row-end(w, root)
+    walk test
+      hook test, is-below(at, stop)
+      hook hold
+        push(out, at)
+        save at, add(at, 1)
+  back out
+
+# what a value stands under: the top of what is walked, a record between (or a node of no interest), or a node
+form holder
+  case no-holder
+  case other-holder
+  case node-holder
+    link row, like number
+
+task holder-of
+  take w, like place-walk
+  take row, like number
+  take top, like number
+  like holder
+  mark private
+
+  save parent, get(w/parents, row)
+  fork test, or(is-equal(parent, top), is-below(parent, 0))
+    hold
+      back make no-holder
+  fork test, get(w/directs, row)
+    hold
+      back
+        make node-holder
+          bind row, parent
+  back make other-holder
+
+# whether a closure stands above a place, below `top`
+task in-closure
+  take w, like place-walk
+  take row, like number
+  take top, like number
+  like boolean
+  mark private
+
+  save at, get(w/parents, row)
+  walk test
+    hook test, and(is-minimum(at, 0), is-unequal(at, top))
+    hook hold
+      sift row-expression(w, at)
+        case some
+          link node
+          sift node
+            case closure
+              back true
+            miss
+              save at, at
+        case none
+          save at, at
+      save at, get(w/parents, at)
+  back false
+
+# ---- types ----
+
+task type-or
+  take given, like maybe, like type
+  take other, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      back given
+    case none
+      back other
+
+# a type naming one of `forms` as itself, with no arguments, else empty
+task named
+  take given, like maybe, like type
+  take forms, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case named
+          link type-name
+          link type-args
+          fork test, and(forms/has(type-name), is-equal(type-args/length, 0))
+            hold
+              back type-name
+          back <>
+        miss
+          back <>
+    case none
+      back <>
+
+# a list of one of `forms`, the form, else empty
+task element-of
+  take given, like maybe, like type
+  take forms, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case array
+          link element
+          back named(make(some, element), forms)
+        miss
+          back <>
+    case none
+      back <>
+
+task first-of
+  take a, like text
+  take b, like text
+  like text
+  mark private
+
+  fork test, is-unequal(a, <>)
+    hold
+      back a
+  back b
+
+task is-array-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case array
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-scalar-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        case string
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# every form name a type mentions, at any depth (inside a named type's value arguments too)
+task mentions
+  take given, like maybe, like type
+  like list, like text
+  mark private
+
+  save out, make list
+  sift given
+    case some
+      link t
+      save skip, make list
+      save seen, reach-type(t, skip)
+      walk seen/types
+        take one
+        sift one
+          case named
+            link type-name
+            push(out, type-name)
+          miss
+            turn next
+    case none
+      back out
+  back out
+
+# ---- slot reads ----
+
+form slot-index
+  case no-index
+  case by-name
+    link name, like text
+  case by-value
+    link value, like number
+
+form slot-place
+  link list, like text
+  link index, like slot-index
+
+# a decimal written in digits, as `Number` reads one
+task digits-value
+  take value, like text
+  like number
+  mark private
+
+  save total, 0
+  walk to-runes(value)
+    take rune
+    save total, add(multiply(total, 10), subtract(rune, 48))
+  back total
+
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk to-runes(value)
+    take rune
+    fork test, or(is-below(rune, 48), is-above(rune, 57))
+      hold
+        back false
+  back true
+
+task index-key
+  take given, like maybe, like expression
+  like slot-index
+  mark private
+
+  sift given
+    case some
+      link e
+      sift e
+        case variable
+          link var-name
+          back
+            make by-name
+              bind name, var-name
+        case integer
+          link number
+          back
+            make by-value
+              bind value, number
+        miss
+          back make no-index
+    case none
+      back make no-index
+
+task slot-of
+  take list, like text
+  take index, like slot-index
+  like maybe, like slot-place
+  mark private
+
+  save found
+    make slot-place
+      bind list, list
+      bind index, index
+  back make(some, found)
+
+# a list method of the stdlib (`list/get`, `list/at`, `list/push`) by its tag, called by name
+task list-method
+  take scope, like place-scope
+  take callee, like expression
+  take names, like list, like text
+  like boolean
+  mark private
+
+  sift callee
+    case variable
+      link callee-name
+      sift fn-named(scope, callee-name)
+        case some
+          link fn
+          sift fn
+            case function
+              link method
+              sift method
+                case some
+                  link of
+                  back and(is-equal(of/form, <list>), contains(names, of/name))
+                case none
+                  back false
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+task texts
+  take a, like text
+  take b, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, a)
+  push(out, b)
+  back out
+
+task texts-of-three
+  take a, like text
+  take b, like text
+  take c, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, a)
+  push(out, b)
+  push(out, c)
+  back out
+
+task argument-at
+  take args, like list, like expression
+  take at, like number
+  like maybe, like expression
+  mark private
+
+  fork test, is-below(at, args/length)
+    hold
+      save found, get(args, at)
+      back make(some, found)
+  back make none
+
+# a slot read of a list variable: `xs/{i}`, `xs/0`, `get(xs, i)`, `xs.at(i)`, with its list and index
+task slot-read
+  take scope, like place-scope
+  take given, like maybe, like expression
+  like maybe, like slot-place
+  mark private
+
+  sift given
+    case some
+      link node
+      sift node
+        case member
+          link target
+          link name
+          link index
+          sift target
+            case variable
+              link list-name
+              fork test, is-equal(is-array-type(expression-type(target)), false)
+                hold
+                  back make none
+              sift index
+                case some
+                  back slot-of(list-name, index-key(index))
+                case none
+                  fork test, all-digits(name)
+                    hold
+                      save at
+                        make by-value
+                          bind value, digits-value(name)
+                      back slot-of(list-name, at)
+                  back make none
+            miss
+              back make none
+        case call
+          link callee
+          link args
+          fork test, list-method(scope, callee, texts(<get>, <at>))
+            hold
+              sift argument-at(args, 0)
+                case some
+                  link first
+                  sift first
+                    case variable
+                      link list-name
+                      back slot-of(list-name, index-key(argument-at(args, 1)))
+                    miss
+                      back make none
+                case none
+                  back make none
+          sift callee
+            case member
+              link member-target
+              link member-name
+              link member-index
+              sift member-index
+                case some
+                  back make none
+                case none
+                  save member-name, member-name
+              fork test, or(is-equal(member-name, <at>), is-equal(member-name, <get>))
+                hold
+                  sift member-target
+                    case variable
+                      link list-name
+                      fork test, is-array-type(expression-type(member-target))
+                        hold
+                          back slot-of(list-name, index-key(argument-at(args, 0)))
+                    miss
+                      back make none
+              back make none
+            miss
+              back make none
+        miss
+          back make none
+    case none
+      back make none
+
+task has-index
+  take index, like slot-index
+  like boolean
+  mark private
+
+  sift index
+    case no-index
+      back false
+    miss
+      back true
+
+task same-index
+  take a, like slot-index
+  take b, like slot-index
+  like boolean
+  mark private
+
+  sift a
+    case by-name
+      link a-name
+      sift b
+        case by-name
+          link b-name
+          back is-equal(a-name, b-name)
+        miss
+          back false
+    case by-value
+      link a-value
+      sift b
+        case by-value
+          link b-value
+          back is-equal(a-value, b-value)
+        miss
+          back false
+    case no-index
+      back false
+
+# ---- the parts of a node that the rules read ----
+
+task is-variable-named
+  take given, like maybe, like expression
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link e
+      sift e
+        case variable
+          link var-name
+          back is-equal(var-name, wanted)
+        miss
+          back false
+    case none
+      back false
+
+# a record of one form, made here: `make <form>`
+task is-record-of
+  take e, like expression
+  take form, like text
+  like boolean
+  mark private
+
+  sift e
+    case record
+      link record-name
+      back is-equal(record-name, form)
+    miss
+      back false
+
+task call-callee-name
+  take e, like expression
+  like text
+  mark private
+
+  sift e
+    case call
+      link callee
+      sift callee
+        case variable
+          link callee-name
+          back callee-name
+        miss
+          back <>
+    miss
+      back <>
+
+# ---- fact 1: the forms whose values are slot-private ----
+
+form private-scope
+  mark shared
+  link scope, like place-scope
+  link candidates, like hash, like text, like boolean
+  link order, like list, like text
+  link refused, like hash, like text, like boolean
+  link task, like text
+  link told, like list, like text
+  link fresh-form, like hash, like text, like boolean
+  link allowed, like hash, like number, like boolean
+  link carriers, like hash, like text, like boolean
+
+task refuse
+  take ps, like private-scope
+  take name, like text
+  take rule, like text
+  like void
+  mark private
+
+  fork test, and(is-unequal(name, <>), ps/candidates/has(name))
+    hold
+      push(ps/told, name)
+      push(ps/told, <{ps/task} {rule}>)
+      ps/refused/set(name, true)
+
+task refuse-all
+  take ps, like private-scope
+  take names, like list, like text
+  take rule, like text
+  like void
+  mark private
+
+  walk names
+    take one
+    refuse(ps, one, rule)
+
+# a type that names a candidate anywhere but as the whole type or a list's element
+task nested
+  take ps, like private-scope
+  take given, like maybe, like type
+  like void
+  mark private
+
+  sift given
+    case none
+      back
+    case some
+      save given, given
+  fork test, or(is-unequal(named(given, ps/candidates), <>), is-unequal(element-of(given, ps/candidates), <>))
+    hold
+      back
+  # a `Set` of what it mentions: each name once, in the order first met
+  save seen, make hash
+  walk mentions(given)
+    take one
+    fork test, is-equal(seen/has(one), false)
+      hold
+        seen/set(one, true)
+        refuse(ps, one, <nested>)
+
+task refuse-mentioned
+  take ps, like private-scope
+  take given, like maybe, like type
+  take rule, like text
+  like void
+  mark private
+
+  save seen, make hash
+  walk mentions(given)
+    take one
+    fork test, is-equal(seen/has(one), false)
+      hold
+        seen/set(one, true)
+        refuse(ps, one, rule)
+
+# a value made fresh here: a `make`, or a call to a task every return of which is one
+task made
+  take ps, like private-scope
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case record
+      back true
+    case call
+      link callee
+      sift callee
+        case variable
+          link callee-name
+          back ps/fresh-form/has(callee-name)
+        miss
+          back false
+    miss
+      back false
+
+task made-row
+  take ps, like private-scope
+  take row, like number
+  like boolean
+  mark private
+
+  sift row-expression(ps/scope/w, row)
+    case some
+      link e
+      back made(ps, e)
+    case none
+      back false
+
+task is-plain-form
+  take s, like statement
+  like boolean
+  mark private
+
+  sift s
+    case record-type
+      link params
+      link variants
+      link fields
+      link shared
+      link alias
+      fork test, or(or(is-above(params/length, 0), is-above(variants/length, 0)), is-equal(fields/length, 0))
+        hold
+          back false
+      fork test, is-equal(shared, true)
+        hold
+          back false
+      sift alias
+        case some
+          back false
+        case none
+          back true
+    miss
+      back false
+
+# the `return`s of a task's body outside closures, each the place of its value or -1
+task returns-of
+  take w, like place-walk
+  take body, like list, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  walk body
+    take root
+    save at, root
+    save stop, row-end(w, root)
+    walk test
+      hook test, is-below(at, stop)
+      hook hold
+        save skip-to, -1
+        sift row-expression(w, at)
+          case some
+            link e
+            sift e
+              case closure
+                save skip-to, row-end(w, at)
+              miss
+                save skip-to, -1
+          case none
+            sift row-statement(w, at)
+              case some
+                link s
+                sift s
+                  case return
+                    sift read(value)
+                      case some
+                        push(out, add(at, 1))
+                      case none
+                        push(out, -1)
+                  miss
+                    save skip-to, -1
+              case none
+                save skip-to, -1
+        fork test, is-minimum(skip-to, 0)
+          hold
+            save at, skip-to
+          miss
+            save at, add(at, 1)
+  back out
+
+task fn-row-list
+  take scope, like place-scope
+  like list, like number
+  mark private
+
+  save out, make list
+  walk scope/fn-names
+    take name
+    push(out, scope/fn-rows/get(name))
+  back out
+
+task body-of
+  take w, like place-walk
+  take fn-row, like number
+  like list, like number
+  mark private
+
+  back block-rows(w, body-block(w, fn-row))
+
+
+# The forms whose values are slot-private (fact 1). `allowed` holds the identities of the nodes a record reuse judges
+# allowed where they stand, and `carriers` the carrier forms whose field of a candidate does not make it nested. The
+# answer is the forms, and each refusal told as the form and where (the task and the rule)
+form private-answer
+  link forms, like list, like text
+  link told, like list, like text
+
+task private-forms
+  take scope, like place-scope
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  take allowed, like hash, like number, like boolean
+  take carriers, like hash, like text, like boolean
+  like private-answer
+
+  save w, scope/w
+  save ps
+    make private-scope
+      bind scope, scope
+      bind candidates, make hash
+      bind order, make list
+      bind refused, make hash
+      bind task, <>
+      bind told, make list
+      bind fresh-form, make hash
+      bind allowed, allowed
+      bind carriers, carriers
+
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        fork test, is-plain-form(s)
+          hold
+            sift s
+              case record-type
+                link record-name
+                fork test, is-equal(ps/candidates/has(record-name), false)
+                  hold
+                    push(ps/order, record-name)
+                ps/candidates/set(record-name, true)
+              miss
+                turn next
+      case none
+        turn next
+
+  # a form's own fields, and every other form's: a field of the form makes it nested in a record
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case record-type
+            link name
+            link fields
+            link variants
+            fork test, carriers/has(name)
+              hold
+                turn next
+            walk fields
+              take field
+              refuse-mentioned(ps, some-type(field/type), <field>)
+            walk variants
+              take variant
+              walk variant/fields
+                take field
+                refuse-mentioned(ps, some-type(field/type), <field>)
+          case let
+            link init
+            link type
+            refuse-mentioned(ps, type-or(type, expression-type(init)), <module>)
+          miss
+            turn next
+      case none
+        turn next
+
+  # the tasks every return of which is a fresh record of the form
+  save rows, fn-row-list(scope)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk rows
+        take fn-row
+        sift row-statement(w, fn-row)
+          case some
+            link fn
+            sift fn
+              case function
+                link name
+                link result
+                link generics
+                fork test, or(or(ps/fresh-form/has(name), is-equal(named(result, ps/candidates), <>)), is-above(generics/length, 0))
+                  hold
+                    turn next
+                save returns, returns-of(w, body-of(w, fn-row))
+                save every, is-above(returns/length, 0)
+                walk returns
+                  take value-row
+                  fork test, or(is-below(value-row, 0), is-equal(made-row(ps, value-row), false))
+                    hold
+                      save every, false
+                fork test, every
+                  hold
+                    ps/fresh-form/set(name, true)
+                    save changed, true
+              miss
+                turn next
+          case none
+            turn next
+
+  # every expression of the form, or a list of it, judged by where it stands
+  walk rows
+    take fn-row
+    sift row-statement(w, fn-row)
+      case some
+        link fn
+        judge-task(ps, fn, fn-row, lend, fresh)
+      case none
+        turn next
+
+  save forms, make list
+  walk ps/order
+    take one
+    fork test, is-equal(ps/refused/has(one), false)
+      hold
+        push(forms, one)
+  back
+    make private-answer
+      bind forms, forms
+      bind told, ps/told
+
+# every place of one task's body, judged
+task judge-task
+  take ps, like private-scope
+  take fn, like statement
+  take fn-row, like number
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  like void
+  mark private
+
+  save w, ps/scope/w
+  sift fn
+    case function
+      link name
+      link params
+      link result
+      link async
+      save ps/task, name
+      save never
+        task
+          take node, like expression
+          like boolean
+          back false
+      save no-stores, make hash
+      save owned, make hash
+      fork test, is-equal(async, false)
+        hold
+          save owned, owned-locals(fn, fresh, lend, no-stores, never)
+      save lent-names, make hash
+      fork test, lend/has(name)
+        hold
+          save lent, lend/get(name)
+          walk params
+            take param
+            take at
+            fork test, lent/has(at)
+              hold
+                lent-names/set(param/name, true)
+      walk params
+        take param
+        nested(ps, param/type)
+      nested(ps, result)
+      walk subtree-rows(w, body-of(w, fn-row))
+        take row
+        visit-private(ps, row, fn-row, owned, lent-names, fresh)
+    miss
+      back
+
+# a scalar's kind: what a call answering a number, a text or a flag is
+task is-scalar-kind
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  back is-scalar-type(given)
+
+# one place of a task's body, as the original's `visit` met it
+task visit-private
+  take ps, like private-scope
+  take row, like number
+  take fn-row, like number
+  take owned, like hash, like text, like boolean
+  take lent-names, like hash, like text, like boolean
+  take fresh, like hash, like text, like boolean
+  like void
+  mark private
+
+  save w, ps/scope/w
+  # a field under `declared`, which the original's walk did not enter
+  fork test, get(w/declareds, row)
+    hold
+      back
+  save at, holder-of(w, row, fn-row)
+  save closed, in-closure(w, row, fn-row)
+  save t, make none
+  save is-expression, false
+  save callee-form, <>
+  save on-list, <>
+  sift at
+    case no-holder
+      save is-expression, false
+    miss
+      save is-expression, true
+
+  sift row-statement(w, row)
+    case some
+      link s
+      sift s
+        case let
+          link init
+          link type
+          save t, type-or(type, expression-type(init))
+          nested(ps, t)
+          save is-expression, false
+        case for-each
+          link iterable
+          nested(ps, expression-type(iterable))
+        case assign
+          link target
+          save is-expression, false
+          sift target
+            case member
+              link member-target
+              link member-name
+              link member-index
+              sift member-index
+                case none
+                  refuse(ps, named(expression-type(member-target), ps/candidates), <field write>)
+                case some
+                  save member-index, member-index
+            case variable
+              save target-type, expression-type(target)
+              refuse(ps, first-of(named(target-type, ps/candidates), element-of(target-type, ps/candidates)), <rebound>)
+            miss
+              save target, target
+        miss
+          save s, s
+      # a statement has no type of its own, so nothing below judges it
+      back
+    case none
+      save t, t
+
+  sift row-expression(w, row)
+    case some
+      link node
+      save t, expression-type(node)
+      sift node
+        case call
+          link callee
+          link args
+          sift callee
+            case member
+              link callee-target
+              link callee-name
+              save on-list, element-of(expression-type(callee-target), ps/candidates)
+              save callee-form, callee-name
+              save allowed-ops, make list
+              push(allowed-ops, <at>)
+              push(allowed-ops, <get>)
+              push(allowed-ops, <push>)
+              push(allowed-ops, <length>)
+              push(allowed-ops, <size>)
+              fork test, and(is-unequal(on-list, <>), is-equal(contains(allowed-ops, callee-name), false))
+                hold
+                  refuse(ps, on-list, <collection operation>)
+            case variable
+              link generic-name
+              sift fn-named(ps/scope, generic-name)
+                case some
+                  link generic
+                  sift generic
+                    case function
+                      link generics
+                      fork test, is-above(generics/length, 0)
+                        hold
+                          save lists, make list
+                          walk args
+                            take arg
+                            save arg-type, expression-type(arg)
+                            save element, first-of(element-of(arg-type, ps/candidates), named(arg-type, ps/candidates))
+                            fork test, is-unequal(element, <>)
+                              hold
+                                push(lists, element)
+                          save pushes, make list
+                          push(pushes, <get>)
+                          push(pushes, <at>)
+                          push(pushes, <push>)
+                          fork test, and(and(is-above(lists/length, 0), is-equal(is-scalar-kind(t), false)), is-equal(list-method(ps/scope, callee, pushes), false))
+                            hold
+                              refuse-all(ps, lists, <generic>)
+                    miss
+                      save generic, generic
+                case none
+                  save generic-name, generic-name
+            miss
+              save callee, callee
+        miss
+          save node, node
+
+      # a slot read answers the element, whatever type the operation was given
+      save form, named(t, ps/candidates)
+      fork test, and(is-equal(form, <>), and(is-unequal(on-list, <>), or(is-equal(callee-form, <at>), is-equal(callee-form, <get>))))
+        hold
+          save form, on-list
+      save list, element-of(t, ps/candidates)
+      fork test, and(is-expression, and(or(is-unequal(form, <>), is-unequal(list, <>)), closed))
+        hold
+          refuse(ps, first-of(form, list), <closure>)
+      fork test, and(is-expression, is-unequal(get(w/keys, row), <callee>))
+        hold
+          nested(ps, t)
+      fork test, and(is-expression, and(is-unequal(form, <>), is-equal(closed, false)))
+        hold
+          judge(ps, form, row, node, at)
+      fork test, and(is-expression, and(is-unequal(list, <>), is-equal(closed, false)))
+        hold
+          judge-list(ps, list, row, node, at, owned, lent-names, fresh)
+    case none
+      back
+
+# a value of the form, at one place
+task judge
+  take ps, like private-scope
+  take form, like text
+  take row, like number
+  take node, like expression
+  take at, like holder
+  like void
+  mark private
+
+  save w, ps/scope/w
+  save fresh, made(ps, node)
+  fork test, ps/allowed/has(id-of(ps/scope, row))
+    hold
+      back
+  save key, get(w/keys, row)
+  sift at
+    case node-holder
+      link parent-row
+      sift row-expression(w, parent-row)
+        case some
+          link parent
+          sift parent
+            case member
+              link index
+              # a field read; a subscript on a record is not one
+              save subscript, false
+              sift index
+                case some
+                  save subscript, true
+                case none
+                  save subscript, false
+              fork test, or(is-unequal(key, <target>), subscript)
+                hold
+                  refuse(ps, form, <member>)
+              back
+            case binary
+              link bin-op
+              # `is-equal` on two records compares their fields
+              fork test, and(is-unequal(to-text(bin-op), <==>), is-unequal(to-text(bin-op), <!=>))
+                hold
+                  refuse(ps, form, <binary>)
+              back
+            case call
+              link callee
+              fork test, is-equal(key, <callee>)
+                hold
+                  refuse(ps, form, <callee>)
+                  back
+              # into a list, or into a task's parameter, only fresh; never into a generic task, which could keep it twice
+              save generic, false
+              sift callee
+                case variable
+                  link callee-name
+                  sift fn-named(ps/scope, callee-name)
+                    case some
+                      link target
+                      sift target
+                        case function
+                          link generics
+                          save generic, is-above(generics/length, 0)
+                        miss
+                          save generic, false
+                    case none
+                      save generic, false
+                miss
+                  save generic, false
+              save pushes, make list
+              push(pushes, <push>)
+              fork test, or(is-equal(fresh, false), and(generic, is-equal(list-method(ps/scope, callee, pushes), false)))
+                hold
+                  refuse(ps, form, <argument>)
+              back
+            case array
+              fork test, is-equal(fresh, false)
+                hold
+                  refuse(ps, form, <list item>)
+              back
+            miss
+              refuse(ps, form, <stands>)
+              back
+        case none
+          save parent-row, parent-row
+      sift row-statement(w, parent-row)
+        case some
+          link parent
+          sift parent
+            case let
+              # a local of the form: made here, a call, or a slot read. Never a second name for one already held
+              save fits, false
+              sift node
+                case record
+                  save fits, true
+                case call
+                  save fits, true
+                miss
+                  sift slot-read(ps/scope, make(some, node))
+                    case some
+                      save fits, true
+                    case none
+                      save fits, false
+              fork test, is-equal(fits, false)
+                hold
+                  refuse(ps, form, <local>)
+            case return
+              back
+            case assign
+              # the slot written, or the value written to it, fresh
+              fork test, is-equal(key, <target>)
+                hold
+                  sift slot-read(ps/scope, make(some, node))
+                    case some
+                      back
+                    case none
+                      refuse(ps, form, <write>)
+                      back
+              fork test, is-equal(fresh, false)
+                hold
+                  refuse(ps, form, <write>)
+            miss
+              refuse(ps, form, <stands>)
+        case none
+          refuse(ps, form, <stands>)
+    miss
+      refuse(ps, form, <stands>)
+
+# a list of the form: by name, an owned local or a lent parameter; otherwise a list made here, the init of an owned local
+# or a fresh task's answer
+task judge-list
+  take ps, like private-scope
+  take form, like text
+  take row, like number
+  take node, like expression
+  take at, like holder
+  take owned, like hash, like text, like boolean
+  take lent-names, like hash, like text, like boolean
+  take fresh, like hash, like text, like boolean
+  like void
+  mark private
+
+  save w, ps/scope/w
+  sift node
+    case variable
+      link var-name
+      fork test, and(is-equal(owned/has(var-name), false), is-equal(lent-names/has(var-name), false))
+        hold
+          refuse(ps, form, <list name>)
+      back
+    miss
+      save node, node
+  save made-here, false
+  sift node
+    case array
+      save made-here, true
+    case record
+      link record-name
+      link fields
+      fork test, and(is-equal(record-name, <list>), is-equal(fields/length, 0))
+        hold
+          save made-here, true
+    case call
+      link callee
+      sift callee
+        case variable
+          link callee-name
+          save made-here, fresh/has(callee-name)
+        miss
+          save made-here, false
+    miss
+      save made-here, false
+  save fits, false
+  sift at
+    case node-holder
+      link parent-row
+      sift row-statement(w, parent-row)
+        case some
+          link parent
+          sift parent
+            case let
+              save fits, true
+            case return
+              save fits, true
+            miss
+              save fits, false
+        case none
+          save fits, false
+    miss
+      save fits, false
+  fork test, or(or(is-equal(made-here, false), is-equal(fits, false)), is-equal(get(w/keys, row), <target>))
+    hold
+      refuse(ps, form, <list>)
+
+# ---- record reuse ----
+
+task plain-forms
+  take scope, like place-scope
+  like hash, like text, like statement
+  mark private
+
+  save out, make hash
+  walk scope/w/roots
+    take row
+    sift row-statement(scope/w, row)
+      case some
+        link s
+        fork test, is-plain-form(s)
+          hold
+            sift s
+              case record-type
+                link record-name
+                out/set(record-name, s)
+              miss
+                turn next
+      case none
+        turn next
+  back out
+
+task is-form
+  take plain, like hash, like text, like statement
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link t
+      sift t
+        case named
+          link type-name
+          link type-args
+          fork test, and(plain/has(type-name), is-equal(type-args/length, 0))
+            hold
+              back type-name
+          back <>
+        miss
+          back <>
+    case none
+      back <>
+
+form eligible-task
+  link name, like text
+  link param, like number
+  link form, like text
+  link carrier-form, like text
+  link carrier-field, like text
+  # the places of the records the copy builds in place, and of the returns
+  link builds, like list, like number
+  link returns, like list, like number
+
+form reuse-site
+  link call, like number
+  link task, like text
+  link arg, like number
+  link carried, like number
+  link local, like text
+  link let-row, like number
+  link write, like number
+  link fn-row, like number
+
+task fields-of-plain
+  take plain, like hash, like text, like statement
+  take form, like text
+  like number
+  mark private
+
+  sift plain/get(form)
+    case record-type
+      link fields
+      back fields/length
+    miss
+      back 0
+
+task record-field-count
+  take w, like place-walk
+  take row, like number
+  like number
+  mark private
+
+  sift row-expression(w, row)
+    case some
+      link e
+      sift e
+        case record
+          link fields
+          back fields/length
+        miss
+          back -1
+    case none
+      back -1
+
+# the place of a record's field's value: the places under the record are its field values in order, each a subtree
+task field-value-row
+  take w, like place-walk
+  take row, like number
+  take name, like text
+  like number
+  mark private
+
+  sift row-expression(w, row)
+    case some
+      link e
+      sift e
+        case record
+          link fields
+          save at, add(row, 1)
+          walk fields
+            take field
+            fork test, is-equal(field/name, name)
+              hold
+                back at
+            save at, row-end(w, at)
+          back -1
+        miss
+          back -1
+    case none
+      back -1
+
+# what a reuse answers: each reusing task, each site's call, the forms some copy assigns in place, each carrier `let`
+# to the field it now holds alone, and each write-back
+form reuse-task
+  link name, like text
+  link param, like number
+  link form, like text
+  link builds, like list, like expression
+  link keep-field, like text
+  link keep-type
+    like maybe, like type
+    need false
+  link carriers, like list, like expression
+
+form reuse-local
+  link node, like statement
+  link field, like text
+
+form reuse-answer
+  link tasks, like list, like reuse-task
+  link sites, like list, like expression
+  link forms, like list, like text
+  link locals, like list, like reuse-local
+  link write-backs, like list, like statement
+
+task push-expression
+  take w, like place-walk
+  take row, like number
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift row-expression(w, row)
+    case some
+      link e
+      push(out, e)
+    case none
+      back
+
+task push-statement
+  take w, like place-walk
+  take row, like number
+  take out, like list, like statement
+  like void
+  mark private
+
+  sift row-statement(w, row)
+    case some
+      link s
+      push(out, s)
+    case none
+      back
+
+task some-type
+  take t, like type
+  like maybe, like type
+  mark private
+
+  back make(some, t)
+
+task record-reuse
+  take scope, like place-scope
+  like reuse-answer
+
+  save w, scope/w
+  save program-rows, scope/w/roots
+  save gate, make list
+  walk program-rows
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case mask
+            link methods
+            walk methods
+              take one
+              push(gate, one)
+          miss
+            turn next
+      case none
+        turn next
+  save program, make list
+  walk program-rows
+    take row
+    push-statement(w, row, program)
+  save facts, list-facts-of(program, gated-tasks(program, gate))
+  save lend, facts/lend
+  save fresh, make hash
+  walk facts/fresh
+    take one
+    fresh/set(one, true)
+  save plain, plain-forms(scope)
+
+  # 0. the forms a second name can hold a value of, anywhere
+  save aliased, make hash
+  save all, make list
+  walk program-rows
+    take row
+    push(all, row)
+  walk subtree-rows(w, all)
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case let
+            link init
+            link type
+            save form, is-form(plain, type-or(type, expression-type(init)))
+            fork test, and(is-unequal(form, <>), is-equal(is-record-of-any(init), false))
+              hold
+                aliased/set(form, true)
+          case for-each
+            link iterable
+            sift expression-type(iterable)
+              case some
+                link iterable-type
+                sift iterable-type
+                  case array
+                    link element
+                    save form, is-form(plain, make(some, element))
+                    fork test, is-unequal(form, <>)
+                      hold
+                        aliased/set(form, true)
+                  miss
+                    save iterable-type, iterable-type
+              case none
+                save iterable, iterable
+          miss
+            save s, s
+      case none
+        sift row-expression(w, row)
+          case some
+            link e
+            sift e
+              case closure
+                link params
+                walk params
+                  take param
+                  save form, is-form(plain, param/type)
+                  fork test, is-unequal(form, <>)
+                    hold
+                      aliased/set(form, true)
+              miss
+                save e, e
+          case none
+            save row, row
+
+  # 1. the eligible tasks
+  save eligible, make hash
+  save rows, fn-row-list(scope)
+  walk rows
+    take fn-row
+    sift row-statement(w, fn-row)
+      case none
+        turn next
+      case some
+        link fn
+        sift fn
+          case function
+            link name
+            link params
+            link async
+            link generics
+            fork test, or(is-equal(async, true), is-above(generics/length, 0))
+              hold
+                turn next
+            save records, make list
+            save scalars, true
+            walk params
+              take param
+              take at
+              fork test, is-unequal(is-form(plain, param/type), <>)
+                hold
+                  push(records, at)
+            fork test, is-unequal(records/length, 1)
+              hold
+                turn next
+            save param, get(records, 0)
+            walk params
+              take one
+              take at
+              fork test, and(is-unequal(at, param), is-equal(is-scalar-type(one/type), false))
+                hold
+                  save scalars, false
+            fork test, is-equal(scalars, false)
+              hold
+                turn next
+            save form, is-form(plain, get(params, param)/type)
+            fork test, aliased/has(form)
+              hold
+                turn next
+            save param-name, get(params, param)/name
+            save walked, reuse-walk(w, body-of(w, fn-row), fn-row, param-name)
+            fork test, or(is-equal(walked/ok, false), is-equal(walked/returns/length, 0))
+              hold
+                turn next
+            save returns, walked/returns
+            save direct, true
+            walk returns
+              take value-row
+              fork test, or(is-below(value-row, 0), is-equal(is-record-row(w, value-row, form), false))
+                hold
+                  save direct, false
+            save declared-count, fields-of-plain(plain, form)
+            fork test, direct
+              hold
+                save whole, true
+                walk returns
+                  take value-row
+                  fork test, is-unequal(record-field-count(w, value-row), declared-count)
+                    hold
+                      save whole, false
+                fork test, is-equal(whole, false)
+                  hold
+                    turn next
+                save found
+                  make eligible-task
+                    bind name, name
+                    bind param, param
+                    bind form, form
+                    bind carrier-form, <>
+                    bind carrier-field, <>
+                    bind builds, returns
+                    bind returns, returns
+                eligible/set(name, found)
+                turn next
+            # every return a `make G` of one carrier with one field a `make F`
+            save carried-forms, make list
+            save carried-fields, make list
+            save builds, make list
+            save every, true
+            walk returns
+              take value-row
+              save carried, carrier-of(w, plain, value-row, form)
+              fork test, is-below(carried/build, 0)
+                hold
+                  save every, false
+                miss
+                  fork test, is-unequal(record-field-count(w, carried/build), declared-count)
+                    hold
+                      save every, false
+                  push(carried-forms, carried/form)
+                  push(carried-fields, carried/field)
+                  push(builds, carried/build)
+            fork test, is-equal(every, false)
+              hold
+                turn next
+            save one-carrier, true
+            walk carried-forms
+              take one
+              take at
+              fork test, or(is-unequal(one, get(carried-forms, 0)), is-unequal(get(carried-fields, at), get(carried-fields, 0)))
+                hold
+                  save one-carrier, false
+            fork test, one-carrier
+              hold
+                save found
+                  make eligible-task
+                    bind name, name
+                    bind param, param
+                    bind form, form
+                    bind carrier-form, get(carried-forms, 0)
+                    bind carrier-field, get(carried-fields, 0)
+                    bind builds, builds
+                    bind returns, returns
+                eligible/set(name, found)
+          miss
+            turn next
+
+  # 2. the sites: `xs/{i}` passed at the parameter and written with the result at once
+  save candidates, make list
+  walk rows
+    take fn-row
+    save stop, row-end(w, fn-row)
+    save body-start, add(fn-row, 1)
+    walk w/block-items
+      take items
+      take block
+      save holder, get(w/block-holders, block)
+      fork test, or(is-below(holder, fn-row), is-minimum(holder, stop))
+        hold
+          turn next
+      fork test, and(is-equal(holder, fn-row), is-unequal(block, body-block(w, fn-row)))
+        hold
+          turn next
+      walk items
+        take s-row
+        take k
+        reuse-candidate(scope, eligible, items, s-row, k, fn-row, candidates)
+
+  # the carrier local read afterwards only for its other fields, and never rebound or passed
+  save sites, make list
+  walk candidates
+    take site
+    fork test, is-equal(site/local, <>)
+      hold
+        push(sites, site)
+        turn next
+    save task, eligible/get(site/task)
+    fork test, carrier-checked(scope, site, task/carrier-field)
+      hold
+        push(sites, site)
+
+  # 3. still slot-private with those places allowed
+  save allowed, make hash
+  save carriers, make hash
+  walk sites
+    take site
+    save task, eligible/get(site/task)
+    allowed/set(id-of(scope, site/arg), true)
+    fork test, is-minimum(site/carried, 0)
+      hold
+        allowed/set(id-of(scope, site/carried), true)
+    fork test, is-unequal(task/carrier-form, <>)
+      hold
+        carriers/set(task/carrier-form, true)
+    walk task/builds
+      take build
+      allowed/set(id-of(scope, build), true)
+  save kept-answer, private-forms(scope, lend, fresh, allowed, carriers)
+  save kept, make hash
+  walk kept-answer/forms
+    take one
+    kept/set(one, true)
+
+  save tasks, make list
+  save task-names, make hash
+  save site-calls, make list
+  save forms, make list
+  save form-seen, make hash
+  save locals, make list
+  save write-backs, make list
+  walk sites
+    take site
+    save task, eligible/get(site/task)
+    fork test, is-equal(kept/has(task/form), false)
+      hold
+        turn next
+    fork test, and(is-unequal(task/carrier-form, <>), is-equal(kept/has(task/carrier-form), false))
+      hold
+        turn next
+    push-expression(w, site/call, site-calls)
+    fork test, is-equal(form-seen/has(task/form), false)
+      hold
+        form-seen/set(task/form, true)
+        push(forms, task/form)
+    # a carrier of two fields: the copy answers the other one alone
+    save other-name, <>
+    save other-type, make none
+    fork test, is-unequal(task/carrier-form, <>)
+      hold
+        sift plain/get(task/carrier-form)
+          case record-type
+            link fields
+            fork test, is-equal(fields/length, 2)
+              hold
+                walk fields
+                  take field
+                  fork test, and(is-equal(other-name, <>), is-unequal(field/name, task/carrier-field))
+                    hold
+                      save other-name, field/name
+                      save other-type, some-type(field/type)
+          miss
+            save other-name, other-name
+    fork test, is-equal(task-names/has(site/task), false)
+      hold
+        task-names/set(site/task, true)
+        save built-nodes, make list
+        walk task/builds
+          take build
+          push-expression(w, build, built-nodes)
+        save carrier-nodes, make list
+        fork test, is-unequal(other-name, <>)
+          hold
+            walk task/returns
+              take value-row
+              fork test, is-minimum(value-row, 0)
+                hold
+                  push-expression(w, value-row, carrier-nodes)
+        save made-task
+          make reuse-task
+            bind name, site/task
+            bind param, task/param
+            bind form, task/form
+            bind builds, built-nodes
+            bind keep-field, other-name
+            bind keep-type, other-type
+            bind carriers, carrier-nodes
+        push(tasks, made-task)
+    fork test, and(is-unequal(other-name, <>), and(is-minimum(site/let-row, 0), is-minimum(site/write, 0)))
+      hold
+        sift row-statement(w, site/let-row)
+          case some
+            link let-node
+            save local
+              make reuse-local
+                bind node, let-node
+                bind field, other-name
+            push(locals, local)
+          case none
+            save other-name, other-name
+        push-statement(w, site/write, write-backs)
+
+  back
+    make reuse-answer
+      bind tasks, tasks
+      bind sites, site-calls
+      bind forms, forms
+      bind locals, locals
+      bind write-backs, write-backs
+
+task is-record-of-any
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case record
+      back true
+    miss
+      back false
+
+task is-record-row
+  take w, like place-walk
+  take row, like number
+  take form, like text
+  like boolean
+  mark private
+
+  sift row-expression(w, row)
+    case some
+      link e
+      back is-record-of(e, form)
+    case none
+      back false
+
+form carried
+  link form, like text
+  link field, like text
+  link build, like number
+
+task no-carrier
+  like carried
+  mark private
+
+  back
+    make carried
+      bind form, <>
+      bind field, <>
+      bind build, -1
+
+# a return that is a `make G` of a carrier form G, whose one field of type F is a `make F` and whose others are scalars
+task carrier-of
+  take w, like place-walk
+  take plain, like hash, like text, like statement
+  take value-row, like number
+  take form, like text
+  like carried
+  mark private
+
+  fork test, is-below(value-row, 0)
+    hold
+      back no-carrier()
+  sift row-expression(w, value-row)
+    case some
+      link e
+      sift e
+        case record
+          link record-name
+          fork test, or(is-equal(plain/has(record-name), false), is-equal(record-name, form))
+            hold
+              back no-carrier()
+          sift plain/get(record-name)
+            case record-type
+              link fields
+              save matching, make list
+              save scalars, true
+              walk fields
+                take field
+                fork test, is-equal(is-form(plain, some-type(field/type)), form)
+                  hold
+                    push(matching, field/name)
+                  miss
+                    fork test, is-equal(is-scalar-type(some-type(field/type)), false)
+                      hold
+                        save scalars, false
+              fork test, or(is-unequal(matching/length, 1), is-equal(scalars, false))
+                hold
+                  back no-carrier()
+              save field, get(matching, 0)
+              save value, field-value-row(w, value-row, field)
+              fork test, and(is-minimum(value, 0), is-record-row(w, value, form))
+                hold
+                  back
+                    make carried
+                      bind form, record-name
+                      bind field, field
+                      bind build, value
+              back no-carrier()
+            miss
+              back no-carrier()
+        miss
+          back no-carrier()
+    case none
+      back no-carrier()
+
+form reuse-walked
+  link ok, like boolean
+  link returns, like list, like number
+
+# the parameter read only by field and never rebound, no closure and no await: the returns' value places
+task reuse-walk
+  take w, like place-walk
+  take body, like list, like number
+  take fn-row, like number
+  take name, like text
+  like reuse-walked
+  mark private
+
+  save returns, make list
+  save ok, true
+  save rows, subtree-rows(w, body)
+  save at, 0
+  walk test
+    hook test, and(ok, is-below(at, rows/length))
+    hook hold
+      save row, get(rows, at)
+      save at, add(at, 1)
+      sift row-expression(w, row)
+        case some
+          link e
+          sift e
+            case closure
+              save ok, false
+            case await
+              save ok, false
+            case variable
+              link var-name
+              fork test, is-equal(var-name, name)
+                hold
+                  fork test, is-equal(field-read-at(w, row, fn-row), false)
+                    hold
+                      save ok, false
+            miss
+              save e, e
+        case none
+          sift row-statement(w, row)
+            case some
+              link s
+              sift s
+                case let
+                  link let-name
+                  fork test, is-equal(let-name, name)
+                    hold
+                      save ok, false
+                case assign
+                  link target
+                  fork test, is-variable-named(make(some, target), name)
+                    hold
+                      save ok, false
+                case return
+                  sift read(value)
+                    case some
+                      push(returns, add(row, 1))
+                    case none
+                      push(returns, -1)
+                miss
+                  save s, s
+            case none
+              save row, row
+  back
+    make reuse-walked
+      bind ok, ok
+      bind returns, returns
+
+# a variable standing as the target of a field read (`v/field`, not a subscript)
+task field-read-at
+  take w, like place-walk
+  take row, like number
+  take top, like number
+  like boolean
+  mark private
+
+  sift holder-of(w, row, top)
+    case node-holder
+      link parent-row
+      fork test, is-unequal(get(w/keys, row), <target>)
+        hold
+          back false
+      sift row-expression(w, parent-row)
+        case some
+          link parent
+          sift parent
+            case member
+              link index
+              sift index
+                case some
+                  back false
+                case none
+                  back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# `xs/{i}` at both: one list variable and one index
+task same-slot
+  take scope, like place-scope
+  take a, like maybe, like expression
+  take b, like maybe, like expression
+  like boolean
+  mark private
+
+  save both-members, false
+  sift a
+    case some
+      link x-node
+      sift x-node
+        case member
+          sift b
+            case some
+              link y-node
+              sift y-node
+                case member
+                  save both-members, true
+                miss
+                  save both-members, false
+            case none
+              save both-members, false
+        miss
+          save both-members, false
+    case none
+      save both-members, false
+  fork test, is-equal(both-members, false)
+    hold
+      back false
+  sift slot-read(scope, a)
+    case some
+      link x
+      sift slot-read(scope, b)
+        case some
+          link y
+          back and(and(is-equal(x/list, y/list), has-index(x/index)), same-index(x/index, y/index))
+        case none
+          back false
+    case none
+      back false
+
+task assign-is-set
+  take op, like text
+  like boolean
+  mark private
+
+  back is-equal(op, <=>)
+
+# the two candidate shapes at statement `k` of a block
+task reuse-candidate
+  take scope, like place-scope
+  take eligible, like hash, like text, like eligible-task
+  take items, like list, like number
+  take s-row, like number
+  take k, like number
+  take fn-row, like number
+  take candidates, like list, like reuse-site
+  like void
+  mark private
+
+  save w, scope/w
+  sift row-statement(w, s-row)
+    case some
+      link s
+      sift s
+        case assign
+          link target
+          link assign-op
+          link value
+          # `save xs/{i}, call t(.., xs/{i}, ..)`
+          fork test, is-equal(to-text(assign-op), <=>)
+            hold
+              save task-name, call-callee-name(value)
+              fork test, eligible/has(task-name)
+                hold
+                  save task, eligible/get(task-name)
+                  fork test, is-equal(task/carrier-form, <>)
+                    hold
+                      sift value
+                        case call
+                          link args
+                          save arg, argument-at(args, task/param)
+                          fork test, same-slot(scope, arg, make(some, target))
+                            hold
+                              # the call is the value's place, its argument the place of that subtree
+                              save value-row, row-end(w, add(s-row, 1))
+                              save arg-row, argument-row(w, value-row, task/param)
+                              save site
+                                make reuse-site
+                                  bind call, value-row
+                                  bind task, task-name
+                                  bind arg, arg-row
+                                  bind carried, -1
+                                  bind local, <>
+                                  bind let-row, -1
+                                  bind write, -1
+                                  bind fn-row, fn-row
+                              push(candidates, site)
+                        miss
+                          save value, value
+        case let
+          link let-name
+          link init
+          # `host m, call t(.., xs/{i}, ..)` and then `save xs/{i}, read m/<the carried field>`
+          fork test, is-below(add(k, 1), items/length)
+            hold
+              save next-row, get(items, add(k, 1))
+              sift row-statement(w, next-row)
+                case some
+                  link next
+                  sift next
+                    case assign
+                      link target
+                      link assign-op
+                      link value
+                      save task-name, call-callee-name(init)
+                      fork test, and(is-equal(to-text(assign-op), <=>), eligible/has(task-name))
+                        hold
+                          save task, eligible/get(task-name)
+                          fork test, is-unequal(task/carrier-form, <>)
+                            hold
+                              sift init
+                                case call
+                                  link args
+                                  save arg, argument-at(args, task/param)
+                                  fork test, and(same-slot(scope, arg, make(some, target)), carried-read(value, task/carrier-field, let-name))
+                                    hold
+                                      save init-row, add(s-row, 1)
+                                      save site
+                                        make reuse-site
+                                          bind call, init-row
+                                          bind task, task-name
+                                          bind arg, argument-row(w, init-row, task/param)
+                                          bind carried, row-end(w, add(next-row, 1))
+                                          bind local, let-name
+                                          bind let-row, s-row
+                                          bind write, next-row
+                                          bind fn-row, fn-row
+                                      push(candidates, site)
+                                miss
+                                  save init, init
+                    miss
+                      save next, next
+                case none
+                  save next-row, next-row
+        miss
+          save s, s
+    case none
+      save s-row, s-row
+
+# `read m/<field>`: a field read, not a subscript, off the local named
+task carried-read
+  take value, like expression
+  take field, like text
+  take local, like text
+  like boolean
+  mark private
+
+  sift value
+    case member
+      link target
+      link name
+      link index
+      sift index
+        case some
+          back false
+        case none
+          save name, name
+      back and(is-equal(name, field), is-variable-named(make(some, target), local))
+    miss
+      back false
+
+# the place of a call's argument at `at`: the callee's subtree first, then each argument's
+task argument-row
+  take w, like place-walk
+  take call-row, like number
+  take at, like number
+  like number
+  mark private
+
+  save row, row-end(w, add(call-row, 1))
+  save index, 0
+  walk test
+    hook test, is-below(index, at)
+    hook hold
+      save row, row-end(w, row)
+      save index, add(index, 1)
+  back row
+
+task carrier-checked
+  take scope, like place-scope
+  take site, like reuse-site
+  take field, like text
+  like boolean
+  mark private
+
+  save w, scope/w
+  save carried-id, id-of(scope, site/carried)
+  save lets, 0
+  save ok, true
+  walk subtree-rows(w, body-of(w, site/fn-row))
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case let
+            link let-name
+            fork test, is-equal(let-name, site/local)
+              hold
+                save lets, add(lets, 1)
+          case assign
+            link target
+            fork test, is-variable-named(make(some, target), site/local)
+              hold
+                save ok, false
+          miss
+            save s, s
+      case none
+        sift row-expression(w, row)
+          case some
+            link e
+            sift e
+              case variable
+                link var-name
+                fork test, is-equal(var-name, site/local)
+                  hold
+                    save read, field-read-at(w, row, site/fn-row)
+                    fork test, is-equal(read, false)
+                      hold
+                        save ok, false
+                      miss
+                        save parent-row, get(w/parents, row)
+                        sift row-expression(w, parent-row)
+                          case some
+                            link parent
+                            sift parent
+                              case member
+                                link member-target
+                                link member-name
+                                fork test, and(is-equal(member-name, field), is-unequal(id-of(scope, parent-row), carried-id))
+                                  hold
+                                    save ok, false
+                              miss
+                                save parent, parent
+                          case none
+                            save parent-row, parent-row
+              miss
+                save e, e
+          case none
+            save row, row
+  back and(ok, is-equal(lets, 1))
+
+# ---- fact 2: the slot writes made in place ----
+
+# one field a write in place assigns
+form place-field
+  link name, like text
+  link value, like expression
+
+# one write made in place: the local that holds the slot's object, the fields it assigns in the `make`'s order, and
+# whether every value is computed first
+form place-write
+  link local, like text
+  link fields, like list, like place-field
+  link temps, like boolean
+
+form written
+  link node, like statement
+  link write, like place-write
+
+# a slot local read through its slot: the list and the index it was read at
+form slot-local
+  link list, like expression
+  link index, like expression
+
+form local-read
+  link node, like statement
+  link local, like slot-local
+
+form let-info
+  link block, like number
+  link at, like number
+  link init, like number
+
+form writes-scope
+  mark shared
+  link scope, like place-scope
+  link forms, like hash, like text, like boolean
+  link fields-of, like hash, like text, like list, like text
+  # every write made, in the order it was made, and each statement's last by identity
+  link writes, like list, like written
+  link write-rows, like list, like number
+  link written-locals, like hash, like number, like text
+  link lets, like hash, like text, like list, like let-info
+  link assigns, like hash, like text, like list, like number
+  link locals, like list, like local-read
+
+task statement-row-kind
+  take w, like place-walk
+  take row, like number
+  like text
+  mark private
+
+  sift row-statement(w, row)
+    case some
+      link s
+      sift s
+        case let
+          back <let>
+        case assign
+          back <assign>
+        case for-each
+          back <for-each>
+        miss
+          back <other>
+    case none
+      back <expression>
+
+# every variable name a place's subtree mentions, and every name a `let` there declares
+task names-in
+  take w, like place-walk
+  take roots, like list, like number
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk subtree-rows(w, roots)
+    take row
+    sift row-expression(w, row)
+      case some
+        link e
+        sift e
+          case variable
+            link var-name
+            out/set(var-name, true)
+          miss
+            save e, e
+      case none
+        sift row-statement(w, row)
+          case some
+            link s
+            sift s
+              case let
+                link let-name
+                out/set(let-name, true)
+              miss
+                save s, s
+          case none
+            save row, row
+  back out
+
+task one-row
+  take row, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, row)
+  back out
+
+task ids-under
+  take ws, like writes-scope
+  take roots, like list, like number
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk subtree-rows(ws/scope/w, roots)
+    take row
+    out/set(id-of(ws/scope, row), true)
+  back out
+
+task within
+  take ws, like writes-scope
+  take roots, like list, like number
+  take row, like number
+  like boolean
+  mark private
+
+  save under, ids-under(ws, roots)
+  back under/has(id-of(ws/scope, row))
+
+# whether an assignment runs in the block before any of the reads: at a statement no later than the last of theirs
+task before
+  take ws, like writes-scope
+  take block, like list, like number
+  take assign-row, like number
+  take reads, like list, like number
+  like boolean
+  mark private
+
+  save at, first-holding(ws, block, assign-row)
+  save last, -1
+  walk reads
+    take read
+    save found, first-holding(ws, block, read)
+    fork test, is-above(found, last)
+      hold
+        save last, found
+  back and(is-minimum(at, 0), is-maximum(at, last))
+
+task first-holding
+  take ws, like writes-scope
+  take block, like list, like number
+  take row, like number
+  like number
+  mark private
+
+  save wanted, id-of(ws/scope, row)
+  walk block
+    take stmt-row
+    take index
+    save under, ids-under(ws, one-row(stmt-row))
+    fork test, under/has(wanted)
+      hold
+        back index
+  back -1
+
+task integer-at-least
+  take e, like expression
+  take least, like number
+  like boolean
+  mark private
+
+  sift e
+    case integer
+      link number
+      back is-minimum(number, least)
+    miss
+      back false
+
+# `hi` made once as `lo + c` (c at least 1) and only ever counted up, inside the statements from its `let` to its last
+# mention, where `lo` is never written: there `hi` is above `lo`. Answers the identities of that range's nodes
+task above
+  take ws, like writes-scope
+  take hi, like text
+  take lo, like text
+  like maybe, like hash, like number, like boolean
+  mark private
+
+  save w, ws/scope/w
+  fork test, is-equal(ws/lets/has(hi), false)
+    hold
+      back make none
+  save made-list, ws/lets/get(hi)
+  fork test, is-unequal(made-list/length, 1)
+    hold
+      back make none
+  save made, get(made-list, 0)
+  save plus, false
+  sift row-expression(w, made/init)
+    case some
+      link init
+      sift init
+        case binary
+          link bin-op
+          link left
+          link right
+          fork test, is-equal(to-text(bin-op), <+>)
+            hold
+              save plus, or(and(is-variable-named(make(some, left), lo), integer-at-least(right, 1)), and(is-variable-named(make(some, right), lo), integer-at-least(left, 1)))
+        miss
+          save plus, false
+    case none
+      save plus, false
+  save counted, true
+  fork test, ws/assigns/has(hi)
+    hold
+      walk ws/assigns/get(hi)
+        take assign-row
+        fork test, is-equal(counted-step(w, assign-row, hi), false)
+          hold
+            save counted, false
+  fork test, or(is-equal(plus, false), is-equal(counted, false))
+    hold
+      back make none
+  save block, block-rows(w, made/block)
+  save last, made/at
+  save k, add(made/at, 1)
+  walk test
+    hook test, is-below(k, block/length)
+    hook hold
+      save mentioned, names-in(w, one-row(get(block, k)))
+      fork test, mentioned/has(hi)
+        hold
+          save last, k
+      save k, add(k, 1)
+  save range, rows-between(block, made/at, add(last, 1))
+  fork test, ws/assigns/has(lo)
+    hold
+      walk ws/assigns/get(lo)
+        take assign-row
+        fork test, within(ws, range, assign-row)
+          hold
+            back make none
+  save nodes, ids-under(ws, range)
+  back make(some, nodes)
+
+# `hi = hi + c` or `hi = c + hi`, c a literal at least 0
+task counted-step
+  take w, like place-walk
+  take row, like number
+  take hi, like text
+  like boolean
+  mark private
+
+  sift row-statement(w, row)
+    case some
+      link s
+      sift s
+        case assign
+          link target
+          link assign-op
+          link value
+          fork test, is-unequal(to-text(assign-op), <=>)
+            hold
+              back false
+          sift value
+            case binary
+              link bin-op
+              link left
+              link right
+              fork test, is-unequal(to-text(bin-op), <+>)
+                hold
+                  back false
+              back or(and(is-variable-named(make(some, left), hi), integer-at-least(right, 0)), and(is-variable-named(make(some, right), hi), integer-at-least(left, 0)))
+            miss
+              back false
+        miss
+          back false
+    case none
+      back false
+
+# two indices that cannot be one slot where every node of `at` runs
+task distinct
+  take ws, like writes-scope
+  take a, like slot-index
+  take b, like slot-index
+  take at, like list, like number
+  like boolean
+  mark private
+
+  sift a
+    case no-index
+      back false
+    case by-value
+      link a-value
+      sift b
+        case by-value
+          link b-value
+          back is-unequal(a-value, b-value)
+        miss
+          back false
+    case by-name
+      link a-name
+      sift b
+        case by-name
+          link b-name
+          fork test, is-equal(a-name, b-name)
+            hold
+              back false
+          save range, above(ws, a-name, b-name)
+          sift range
+            case none
+              save range, above(ws, b-name, a-name)
+            case some
+              save range, range
+          sift range
+            case some
+              link nodes
+              walk at
+                take row
+                fork test, is-equal(nodes/has(id-of(ws/scope, row)), false)
+                  hold
+                    back false
+              back true
+            case none
+              back false
+        miss
+          back false
+
+# The reads of a changed field of `name` under these places, or none when `name` is used other than by a field read
+# there (passed, returned, compared whole), which could see a changed field too. The places handed in stand under
+# nothing, as the original's walk was handed them
+task changed-reads
+  take ws, like writes-scope
+  take roots, like list, like number
+  take name, like text
+  take changed, like hash, like text, like boolean
+  like maybe, like list, like number
+  mark private
+
+  save w, ws/scope/w
+  save found, make list
+  walk roots
+    take root
+    save top, get(w/parents, root)
+    walk subtree-rows(w, one-row(root))
+      take row
+      sift row-expression(w, row)
+        case some
+          link e
+          sift e
+            case variable
+              link var-name
+              fork test, is-equal(var-name, name)
+                hold
+                  save read-row, -1
+                  sift holder-of(w, row, top)
+                    case node-holder
+                      link parent-row
+                      fork test, is-equal(get(w/keys, row), <target>)
+                        hold
+                          sift row-expression(w, parent-row)
+                            case some
+                              link parent
+                              sift parent
+                                case member
+                                  link member-target
+                                  link member-name
+                                  link member-index
+                                  sift member-index
+                                    case none
+                                      save read-row, parent-row
+                                      fork test, changed/has(member-name)
+                                        hold
+                                          push(found, parent-row)
+                                    case some
+                                      save read-row, -1
+                                miss
+                                  save read-row, -1
+                            case none
+                              save read-row, -1
+                    miss
+                      save read-row, -1
+                  fork test, is-below(read-row, 0)
+                    hold
+                      back make none
+            miss
+              save e, e
+        case none
+          save row, row
+  back make(some, found)
+
+task reads-only
+  take ws, like writes-scope
+  take roots, like list, like number
+  take name, like text
+  take changed, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift changed-reads(ws, roots, name, changed)
+    case some
+      link reads
+      back is-equal(reads/length, 0)
+    case none
+      back false
+
+task reads-field
+  take ws, like writes-scope
+  take value-row, like number
+  take name, like text
+  take field, like text
+  like boolean
+  mark private
+
+  save one, make hash
+  one/set(field, true)
+  sift changed-reads(ws, one-row(value-row), name, one)
+    case some
+      link reads
+      back is-unequal(reads/length, 0)
+    case none
+      back true
+
+# a value that reads only locals, fields and literals, through operators and native calls: computing it cannot reach
+# the slot
+task simple
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      back true
+    case integer
+      back true
+    case float
+      back true
+    case string
+      back true
+    case boolean
+      back true
+    case binary
+      link left
+      link right
+      back and(simple(left), simple(right))
+    case unary
+      link operand
+      back simple(operand)
+    case member
+      link target
+      link index
+      sift index
+        case some
+          back false
+        case none
+          back simple(target)
+    case call
+      link callee
+      link args
+      sift callee
+        case member
+          link module-target
+          sift module-target
+            case variable
+              link binding
+              sift binding
+                case some
+                  link bound
+                  sift bound
+                    case deferred
+                      walk args
+                        take one
+                        fork test, is-equal(simple(one), false)
+                          hold
+                            back false
+                      back true
+                    miss
+                      back false
+                case none
+                  back false
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+task list-name-of
+  take value, like maybe, like expression
+  like text
+  mark private
+
+  sift value
+    case some
+      link e
+      sift e
+        case variable
+          link var-name
+          back var-name
+        miss
+          back <>
+    case none
+      back <>
+
+# a scan that refuses: a closure; a rebound list, index or local; a write to the list at a slot that may be this one;
+# the list handed to anything but a read
+form scan-rule
+  link list, like text
+  link names, like list, like text
+  link index, like slot-index
+  # the write in place itself, and the local it is made through (slot locals ask whether a write is theirs)
+  link write, like number
+  link local, like text
+  link also, like list, like number
+  link reads-ok, like list, like text
+
+task scan-clear
+  take ws, like writes-scope
+  take roots, like list, like number
+  take rule, like scan-rule
+  like boolean
+  mark private
+
+  save w, ws/scope/w
+  walk roots
+    take root
+    save at, root
+    save stop, row-end(w, root)
+    walk test
+      hook test, is-below(at, stop)
+      hook hold
+        sift row-expression(w, at)
+          case some
+            link e
+            sift e
+              case closure
+                back false
+              case call
+                link callee
+                link args
+                save passes, false
+                walk args
+                  take arg
+                  fork test, is-variable-named(make(some, arg), rule/list)
+                    hold
+                      save passes, true
+                save reads, list-method(ws/scope, callee, texts(<get>, <at>))
+                save on-list, false
+                save callee-name, <>
+                sift callee
+                  case member
+                    link callee-target
+                    link member-name
+                    save on-list, is-variable-named(make(some, callee-target), rule/list)
+                    save callee-name, member-name
+                  miss
+                    save on-list, false
+                fork test, or(and(passes, is-equal(reads, false)), and(on-list, is-equal(contains(rule/reads-ok, callee-name), false)))
+                  hold
+                    back false
+              miss
+                save e, e
+          case none
+            sift row-statement(w, at)
+              case some
+                link s
+                sift s
+                  case assign
+                    link target
+                    sift target
+                      case variable
+                        link var-name
+                        fork test, contains(rule/names, var-name)
+                          hold
+                            back false
+                      miss
+                        save target, target
+                    sift slot-read(ws/scope, make(some, target))
+                      case some
+                        link other
+                        fork test, is-equal(other/list, rule/list)
+                          hold
+                            save mine, false
+                            fork test, is-unequal(rule/local, <>)
+                              hold
+                                save mine, is-equal(written-local(ws, at), rule/local)
+                            fork test, is-equal(mine, false)
+                              hold
+                                save at-nodes, make list
+                                push(at-nodes, at)
+                                walk rule/also
+                                  take one
+                                  push(at-nodes, one)
+                                fork test, is-equal(distinct(ws, other/index, rule/index, at-nodes), false)
+                                  hold
+                                    back false
+                      case none
+                        save target, target
+                  miss
+                    save s, s
+              case none
+                save at, at
+        save at, add(at, 1)
+  back true
+
+# the local a statement's write in place is made through, by identity, empty for none
+task written-local
+  take ws, like writes-scope
+  take row, like number
+  like text
+  mark private
+
+  save wanted, id-of(ws/scope, row)
+  fork test, ws/written-locals/has(wanted)
+    hold
+      back ws/written-locals/get(wanted)
+  back <>
+
+task index-name
+  take index, like slot-index
+  like text
+  mark private
+
+  sift index
+    case by-name
+      link the-name
+      back the-name
+    miss
+      back <>
+
+task let-form
+  take ws, like writes-scope
+  take s, like statement
+  like text
+  mark private
+
+  sift s
+    case let
+      link init
+      link type
+      back named(type-or(type, expression-type(init)), ws/forms)
+    miss
+      back <>
+
+# the write at `q` of a block, made in place, or none
+task in-place
+  take ws, like writes-scope
+  take block, like list, like number
+  take q, like number
+  take ancestors, like list, like number
+  like maybe, like place-write
+  mark private
+
+  save w, ws/scope/w
+  save w-row, get(block, q)
+  save write-node, make none
+  sift row-statement(w, w-row)
+    case some
+      link s
+      sift s
+        case assign
+          link target
+          link assign-op
+          link value
+          fork test, is-unequal(to-text(assign-op), <=>)
+            hold
+              back make none
+          save write-target, target
+          save write-value, value
+        miss
+          back make none
+    case none
+      back make none
+  # the statement is an assignment: its target is the first place under it, its value the next subtree
+  save target-row, add(w-row, 1)
+  save value-row, row-end(w, target-row)
+  save target, expression-of-row(w, target-row)
+  save value, expression-of-row(w, value-row)
+  save slot, slot-read(ws/scope, make(some, target))
+  save list-type, make none
+  sift target
+    case member
+      link list-target
+      save list-type, expression-type(list-target)
+    miss
+      save list-type, list-type
+  save form, element-of(list-type, ws/forms)
+  sift slot
+    case none
+      back make none
+    case some
+      save slot, slot
+  save the-slot, slot-value(slot)
+  fork test, or(is-equal(has-index(the-slot/index), false), is-equal(form, <>))
+    hold
+      back make none
+  save fields, make list
+  sift value
+    case record
+      link record-name
+      link record-fields
+      link record-span
+      link record-type
+      link positional
+      fork test, is-unequal(record-name, form)
+        hold
+          back make none
+      save positional-count, 0
+      walk positional
+        take one
+        save positional-count, add(positional-count, 1)
+      fork test, is-above(positional-count, 0)
+        hold
+          back make none
+      walk record-fields
+        take field
+        push(fields, field)
+    miss
+      back make none
+  save declared, ws/fields-of/get(form)
+  fork test, is-unequal(fields/length, declared/length)
+    hold
+      back make none
+  walk declared
+    take one
+    save present, false
+    walk fields
+      take field
+      fork test, is-equal(field/name, one)
+        hold
+          save present, true
+    fork test, is-equal(present, false)
+      hold
+        back make none
+
+  # the local that holds the slot's object: the nearest earlier `let` in this block read from the same slot
+  save p, subtract(q, 1)
+  save found, false
+  walk test
+    hook test, and(is-minimum(p, 0), is-equal(found, false))
+    hook hold
+      sift row-statement(w, get(block, p))
+        case some
+          link s
+          sift s
+            case let
+              link init
+              sift slot-read(ws/scope, make(some, init))
+                case some
+                  link read
+                  fork test, and(is-equal(read/list, the-slot/list), same-index(read/index, the-slot/index))
+                    hold
+                      save found, true
+                case none
+                  save init, init
+            miss
+              save s, s
+        case none
+          save p, p
+      fork test, is-equal(found, false)
+        hold
+          save p, subtract(p, 1)
+  fork test, is-below(p, 0)
+    hold
+      back make none
+  save b, let-name-at(w, get(block, p))
+
+  # the field values: a value at its own field of `b` is unchanged, the rest are assigned
+  save changed, make list
+  save changed-rows, make list
+  save changed-names, make hash
+  save field-row, add(value-row, 1)
+  walk fields
+    take field
+    fork test, is-equal(unchanged-field(field/value, b, field/name), false)
+      hold
+        push(changed, field)
+        push(changed-rows, field-row)
+        changed-names/set(field/name, true)
+    save field-row, row-end(w, field-row)
+
+  # nothing between may rebind the list, the index or the local, pass the list to anything but a read, change its
+  # length, or write a slot that could be this one
+  save the-index-name, index-name(the-slot/index)
+  save rebinds, make list
+  push(rebinds, the-slot/list)
+  fork test, is-unequal(the-index-name, <>)
+    hold
+      push(rebinds, the-index-name)
+  push(rebinds, b)
+  save also, make list
+  push(also, w-row)
+  save rule
+    make scan-rule
+      bind list, the-slot/list
+      bind names, rebinds
+      bind index, the-slot/index
+      bind write, w-row
+      bind local, <>
+      bind also, also
+      bind reads-ok, texts-of-three(<at>, <get>, <length>)
+  fork test, is-equal(scan-clear(ws, rows-between(block, add(p, 1), q), rule), false)
+    hold
+      back make none
+
+  # after the write, `b` is read only for an unchanged field
+  save after, rows-from(block, add(q, 1))
+  fork test, is-equal(reads-only(ws, after, b, changed-names), false)
+    hold
+      back make none
+
+  # every other local that may hold an element of this list, live across the write
+  save k, 0
+  walk test
+    hook test, is-below(k, q)
+    hook hold
+      save s-row, get(block, k)
+      save k, add(k, 1)
+      fork test, or(is-equal(subtract(k, 1), p), is-unequal(statement-row-kind(w, s-row), <let>))
+        hold
+          turn next
+      sift row-statement(w, s-row)
+        case some
+          link s
+          fork test, is-equal(let-form(ws, s), <>)
+            hold
+              turn next
+          save x, let-name-at(w, s-row)
+          save init-row, add(s-row, 1)
+          save x-init, expression-of-row(w, init-row)
+          save x-read, slot-read(ws/scope, make(some, x-init))
+          # made fresh here, or read from another list: nothing it holds is in this slot
+          fork test, is-record-row-any(w, init-row)
+            hold
+              turn next
+          sift x-read
+            case some
+              link read
+              fork test, is-unequal(read/list, the-slot/list)
+                hold
+                  turn next
+            case none
+              save x-read, x-read
+          sift changed-reads(ws, after, x, changed-names)
+            case none
+              back make none
+            case some
+              link reads
+              fork test, is-equal(reads/length, 0)
+                hold
+                  turn next
+              # its index must be a different one wherever both run, and stay that one from its `let` to its last read
+              sift x-read
+                case none
+                  back make none
+                case some
+                  link read
+                  save at-nodes, make list
+                  push(at-nodes, w-row)
+                  walk reads
+                    take one
+                    push(at-nodes, one)
+                  fork test, is-equal(distinct(ws, read/index, the-slot/index, at-nodes), false)
+                    hold
+                      back make none
+                  save window, rows-from(block, k)
+                  save x-index, index-name(read/index)
+                  fork test, and(is-unequal(x-index, <>), assigned-before(ws, x-index, window, block, reads))
+                    hold
+                      back make none
+                  fork test, and(is-unequal(the-index-name, <>), assigned-before(ws, the-index-name, window, block, reads))
+                    hold
+                      back make none
+        case none
+          turn next
+
+  # a local of an enclosing block, or a walk's item, that holds an element: refused if it reads a changed field at
+  # all, since a loop around the write runs its reads again after it
+  walk ancestors
+    take outer
+    save outer-rows, block-rows(w, outer)
+    walk outer-rows
+      take s-row
+      sift row-statement(w, s-row)
+        case some
+          link s
+          sift s
+            case let
+              link let-name
+              link init
+              fork test, and(is-unequal(let-form(ws, s), <>), is-equal(is-record-of-any(init), false))
+                hold
+                  sift changed-reads(ws, outer-rows, let-name, changed-names)
+                    case none
+                      back make none
+                    case some
+                      link reads
+                      fork test, is-above(reads/length, 0)
+                        hold
+                          back make none
+            case for-each
+              link item
+              link iterable
+              fork test, and(is-unequal(element-of(expression-type(iterable), ws/forms), <>), within(ws, one-row(s-row), w-row))
+                hold
+                  sift changed-reads(ws, block-rows(w, body-block(w, s-row)), item, changed-names)
+                    case none
+                      back make none
+                    case some
+                      link reads
+                      fork test, is-above(reads/length, 0)
+                        hold
+                          back make none
+            miss
+              save s, s
+        case none
+          save s-row, s-row
+
+  # the values are computed first when one reads a field an earlier assignment of this write changes, or calls
+  # anything that could read the slot
+  save assigned, make list
+  save temps, false
+  save out-fields, make list
+  walk changed
+    take field
+    take at
+    save field-row, get(changed-rows, at)
+    fork test, is-equal(simple(field/value), false)
+      hold
+        save temps, true
+    walk assigned
+      take one
+      fork test, reads-field(ws, field-row, b, one)
+        hold
+          save temps, true
+    push(assigned, field/name)
+    save placed
+      make place-field
+        bind name, field/name
+        bind value, field/value
+    push(out-fields, placed)
+  save made-write
+    make place-write
+      bind local, b
+      bind fields, out-fields
+      bind temps, temps
+  back make(some, made-write)
+
+task slot-value
+  take slot, like maybe, like slot-place
+  like slot-place
+  mark private
+
+  sift slot
+    case some
+      link found
+      back found
+    case none
+      back
+        make slot-place
+          bind list, <>
+          bind index, make no-index
+
+task let-name-at
+  take w, like place-walk
+  take row, like number
+  like text
+  mark private
+
+  sift row-statement(w, row)
+    case some
+      link s
+      sift s
+        case let
+          link let-name
+          back let-name
+        miss
+          back <>
+    case none
+      back <>
+
+task is-record-row-any
+  take w, like place-walk
+  take row, like number
+  like boolean
+  mark private
+
+  sift row-expression(w, row)
+    case some
+      link e
+      back is-record-of-any(e)
+    case none
+      back false
+
+# an expression at a place the walk made for one
+task expression-of-row
+  take w, like place-walk
+  take row, like number
+  like expression
+  mark private
+
+  sift get(w/handles, row)
+    case expression-handle
+      link node
+      back node
+    case statement-handle
+      link node
+      sift node
+        case expression
+          link expr
+          back expr
+        miss
+          back expression-of-row(w, add(row, 1))
+    miss
+      back expression-of-row(w, add(row, 1))
+
+# `b/<same field>`: a field read, not a subscript, of the local, of the field's own name
+task unchanged-field
+  take value, like expression
+  take b, like text
+  take field, like text
+  like boolean
+  mark private
+
+  sift value
+    case member
+      link target
+      link name
+      link index
+      sift index
+        case some
+          back false
+        case none
+          back and(is-variable-named(make(some, target), b), is-equal(name, field))
+    miss
+      back false
+
+# whether an assignment of `name` in the window runs before any of the reads
+task assigned-before
+  take ws, like writes-scope
+  take name, like text
+  take window, like list, like number
+  take block, like list, like number
+  take reads, like list, like number
+  like boolean
+  mark private
+
+  fork test, ws/assigns/has(name)
+    hold
+      walk ws/assigns/get(name)
+        take assign-row
+        fork test, and(within(ws, window, assign-row), before(ws, block, assign-row, reads))
+          hold
+            back true
+  back false
+
+# the slot local a `let` at `p` makes, read through its slot (Swift), or none
+task slot-local-at
+  take ws, like writes-scope
+  take block, like list, like number
+  take p, like number
+  like maybe, like slot-local
+  mark private
+
+  save w, ws/scope/w
+  save s-row, get(block, p)
+  save form, <>
+  save read-maybe, make none
+  save init-row, add(s-row, 1)
+  sift row-statement(w, s-row)
+    case some
+      link s
+      sift s
+        case let
+          link init
+          save read-maybe, slot-read(ws/scope, make(some, init))
+          save form, let-form(ws, s)
+        miss
+          back make none
+    case none
+      back make none
+  sift read-maybe
+    case none
+      back make none
+    case some
+      save read-maybe, read-maybe
+  save read, slot-value(read-maybe)
+  fork test, or(is-equal(has-index(read/index), false), is-equal(form, <>))
+    hold
+      back make none
+  save b, let-name-at(w, s-row)
+  save let-count, 0
+  fork test, ws/lets/has(b)
+    hold
+      save let-count, ws/lets/get(b)/length
+  fork test, or(is-unequal(let-count, 1), ws/assigns/has(b))
+    hold
+      back make none
+
+  # the statements from the read to the local's last mention
+  save last, p
+  save k, add(p, 1)
+  walk test
+    hook test, is-below(k, block/length)
+    hook hold
+      save mentioned, names-in(w, one-row(get(block, k)))
+      fork test, mentioned/has(b)
+        hold
+          save last, k
+      save k, add(k, 1)
+  save window, rows-between(block, add(p, 1), add(last, 1))
+  save every, make hash
+  walk ws/fields-of/get(form)
+    take one
+    every/set(one, true)
+  sift changed-reads(ws, window, b, every)
+    case none
+      back make none
+    case some
+      link reads
+      save the-index-name, index-name(read/index)
+      save rebinds, make list
+      push(rebinds, read/list)
+      fork test, is-unequal(the-index-name, <>)
+        hold
+          push(rebinds, the-index-name)
+      save rule
+        make scan-rule
+          bind list, read/list
+          bind names, rebinds
+          bind index, read/index
+          bind write, -1
+          bind local, b
+          bind also, reads
+          bind reads-ok, texts-of-three(<at>, <get>, <length>)
+      fork test, is-equal(scan-clear(ws, window, rule), false)
+        hold
+          back make none
+      back slot-parts(ws, init-row)
+
+# the list and index expressions of a slot read: `xs/{i}`, `xs/0`, `get(xs, i)`, `xs.at(i)`
+task slot-parts
+  take ws, like writes-scope
+  take row, like number
+  like maybe, like slot-local
+  mark private
+
+  save w, ws/scope/w
+  save node, expression-of-row(w, row)
+  sift node
+    case member
+      link target
+      link name
+      link index
+      link span
+      save made-index, make none
+      sift index
+        case some
+          link given
+          save made-index, make(some, given)
+        case none
+          save literal
+            make integer
+              bind value, digits-value(name)
+              bind span, span
+              bind type, some-type(number-type())
+          save made-index, make(some, literal)
+      sift made-index
+        case some
+          link found-index
+          save local
+            make slot-local
+              bind list, target
+              bind index, found-index
+          back make(some, local)
+        case none
+          back make none
+    case call
+      link callee
+      link args
+      sift callee
+        case member
+          link callee-target
+          save local
+            make slot-local
+              bind list, callee-target
+              bind index, get(args, 0)
+          back make(some, local)
+        miss
+          save local
+            make slot-local
+              bind list, get(args, 0)
+              bind index, get(args, 1)
+          back make(some, local)
+    miss
+      back make none
+
+# the blocks of a task's body a write in place can be in: its body, and every statement list below it outside closures,
+# in the order a walk meets them, each with the blocks around it
+task write-blocks
+  take w, like place-walk
+  take fn-row, like number
+  like list, like number
+  mark private
+
+  save body, body-block(w, fn-row)
+  save out, make list
+  fork test, is-below(body, 0)
+    hold
+      back out
+  save items, block-rows(w, body)
+  save start, -1
+  save stop, -1
+  fork test, is-above(items/length, 0)
+    hold
+      save start, get(items, 0)
+      save stop, row-end(w, get(items, subtract(items/length, 1)))
+  walk w/block-holders
+    take holder
+    take block
+    fork test, is-equal(block, body)
+      hold
+        push(out, block)
+        turn next
+    fork test, or(is-below(holder, start), is-minimum(holder, stop))
+      hold
+        turn next
+    # a closure stops the walk: nothing inside one is visited
+    fork test, closed-above(w, holder, fn-row)
+      hold
+        turn next
+    push(out, block)
+  back out
+
+# a closure at the holder or above it, below the task
+task closed-above
+  take w, like place-walk
+  take row, like number
+  take top, like number
+  like boolean
+  mark private
+
+  save at, row
+  walk test
+    hook test, and(is-minimum(at, 0), is-unequal(at, top))
+    hook hold
+      sift row-expression(w, at)
+        case some
+          link e
+          sift e
+            case closure
+              back true
+            miss
+              save e, e
+        case none
+          save at, at
+      save at, get(w/parents, at)
+  back false
+
+# the blocks around a block: the block of each statement it stands under, up to the task
+task ancestors-of
+  take w, like place-walk
+  take block, like number
+  take fn-row, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  save at, get(w/block-holders, block)
+  walk test
+    hook test, and(is-minimum(at, 0), is-unequal(at, fn-row))
+    hook hold
+      save in-block, get(w/blocks, at)
+      fork test, is-minimum(in-block, 0)
+        hold
+          push(out, in-block)
+      save at, get(w/parents, at)
+  back out
+
+# every `let` of a task, its block and its place in it, and every assignment to a variable, by name
+task index-task
+  take ws, like writes-scope
+  take fn-row, like number
+  like void
+  mark private
+
+  save w, ws/scope/w
+  save task-lets, make hash
+  save task-assigns, make hash
+  walk subtree-rows(w, body-of(w, fn-row))
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case let
+            link let-name
+            fork test, is-minimum(get(w/blocks, row), 0)
+              hold
+                fork test, is-equal(task-lets/has(let-name), false)
+                  hold
+                    task-lets/set(let-name, make list)
+                save info
+                  make let-info
+                    bind block, get(w/blocks, row)
+                    bind at, get(w/ats, row)
+                    bind init, add(row, 1)
+                save listed, task-lets/get(let-name)
+                push(listed, info)
+          case assign
+            link target
+            sift target
+              case variable
+                link var-name
+                fork test, is-equal(task-assigns/has(var-name), false)
+                  hold
+                    task-assigns/set(var-name, make list)
+                save listed, task-assigns/get(var-name)
+                push(listed, row)
+              miss
+                save target, target
+          miss
+            save s, s
+      case none
+        save row, row
+  save ws/lets, task-lets
+  save ws/assigns, task-assigns
+
+# the slot writes made in place, for the forms given. With `want-locals`, also the slot locals (Swift)
+form places-answer
+  link writes, like list, like written
+  link locals, like list, like local-read
+
+task place-writes
+  take scope, like place-scope
+  take forms, like list, like text
+  take want-locals, like boolean
+  like places-answer
+
+  save w, scope/w
+  save form-flags, make hash
+  walk forms
+    take one
+    form-flags/set(one, true)
+  save ws
+    make writes-scope
+      bind scope, scope
+      bind forms, form-flags
+      bind fields-of, make hash
+      bind writes, make list
+      bind write-rows, make list
+      bind written-locals, make hash
+      bind lets, make hash
+      bind assigns, make hash
+      bind locals, make list
+  fork test, is-equal(forms/length, 0)
+    hold
+      back
+        make places-answer
+          bind writes, ws/writes
+          bind locals, ws/locals
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        sift s
+          case record-type
+            link name
+            link fields
+            fork test, form-flags/has(name)
+              hold
+                save names, make list
+                walk fields
+                  take field
+                  push(names, field/name)
+                ws/fields-of/set(name, names)
+          miss
+            turn next
+      case none
+        turn next
+
+  walk fn-row-list(scope)
+    take fn-row
+    index-task(ws, fn-row)
+    save blocks, write-blocks(w, fn-row)
+    walk blocks
+      take block
+      save items, block-rows(w, block)
+      save ancestors, ancestors-of(w, block, fn-row)
+      walk items
+        take write-row
+        take q
+        sift in-place(ws, items, q, ancestors)
+          case some
+            link placed
+            sift row-statement(w, write-row)
+              case some
+                link write-node
+                save entry
+                  make written
+                    bind node, write-node
+                    bind write, placed
+                push(ws/writes, entry)
+                push(ws/write-rows, write-row)
+                ws/written-locals/set(id-of(scope, write-row), placed/local)
+              case none
+                save placed, placed
+          case none
+            save write-row, write-row
+    fork test, want-locals
+      hold
+        walk blocks
+          take block
+          save items, block-rows(w, block)
+          walk items
+            take local-row
+            take p
+            sift slot-local-at(ws, items, p)
+              case some
+                link local
+                sift row-statement(w, local-row)
+                  case some
+                    link local-node
+                    save entry
+                      make local-read
+                        bind node, local-node
+                        bind local, local
+                    push(ws/locals, entry)
+                  case none
+                    save local, local
+              case none
+                save local-row, local-row
+  back
+    make places-answer
+      bind writes, ws/writes
+      bind locals, ws/locals
+
+# ---- what the emitters ask ----
+
+# the program's facts F1 computes, as the analyses here take them
+form lend-facts
+  link lend, like hash, like text, like hash, like number, like text
+  link fresh, like hash, like text, like boolean
+
+task lend-facts-of
+  take scope, like place-scope
+  like lend-facts
+  mark private
+
+  save w, scope/w
+  save program, make list
+  save gate, make list
+  walk w/roots
+    take row
+    sift row-statement(w, row)
+      case some
+        link s
+        push(program, s)
+        sift s
+          case mask
+            link methods
+            walk methods
+              take one
+              push(gate, one)
+          miss
+            save s, s
+      case none
+        save row, row
+  save facts, list-facts-of(program, gated-tasks(program, gate))
+  save fresh, make hash
+  walk facts/fresh
+    take one
+    fresh/set(one, true)
+  back
+    make lend-facts
+      bind lend, facts/lend
+      bind fresh, fresh
+
+# both facts for a whole program, as an emitter reads them: the writes made in place, and the forms some write updates
+form record-places-answer
+  link writes, like list, like written
+  link forms, like list, like text
+
+task record-places
+  take scope, like place-scope
+  like record-places-answer
+
+  save facts, lend-facts-of(scope)
+  save no-allowed, make hash
+  save no-carriers, make hash
+  save private, private-forms(scope, facts/lend, facts/fresh, no-allowed, no-carriers)
+  save placed, place-writes(scope, private/forms, false)
+  save forms, make list
+  save seen, make hash
+  walk placed/writes
+    take entry
+    sift entry/node
+      case assign
+        link target
+        sift target
+          case member
+            link list-target
+            sift expression-type(list-target)
+              case some
+                link list-type
+                sift list-type
+                  case array
+                    link element
+                    sift element
+                      case named
+                        link element-name
+                        fork test, is-equal(seen/has(element-name), false)
+                          hold
+                            seen/set(element-name, true)
+                            push(forms, element-name)
+                      miss
+                        save element, element
+                  miss
+                    save list-type, list-type
+              case none
+                save list-target, list-target
+          miss
+            save target, target
+      miss
+        turn next
+  back
+    make record-places-answer
+      bind writes, placed/writes
+      bind forms, forms
+
+# the same for a backend whose records are VALUES (Swift's structs): every plain record form is read for its writes and
+# its slot locals
+task value-places
+  take scope, like place-scope
+  like places-answer
+
+  save forms, make list
+  save seen, make hash
+  walk scope/w/roots
+    take row
+    sift row-statement(scope/w, row)
+      case some
+        link s
+        fork test, is-plain-form(s)
+          hold
+            sift s
+              case record-type
+                link name
+                fork test, is-equal(seen/has(name), false)
+                  hold
+                    seen/set(name, true)
+                    push(forms, name)
+              miss
+                turn next
+      case none
+        turn next
+  back place-writes(scope, forms, true)
+
+# the forms whose values are slot-private, for a caller holding F1's facts
+task private-forms-of
+  take scope, like place-scope
+  take lend, like hash, like text, like hash, like number, like text
+  take fresh, like hash, like text, like boolean
+  like private-answer
+
+  save no-allowed, make hash
+  save no-carriers, make hash
+  back private-forms(scope, lend, fresh, no-allowed, no-carriers)

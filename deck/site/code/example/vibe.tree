@@ -22,6 +22,9 @@ load @term/site/graphics/graphics
   find make-buffer
   find draw
 
+load @term/base/integer/unsigned
+  find to-u32
+
 # the 24-cell shadow geometry + shader sources, from a deterministic native runtime shim
 dock load
   load <global:lattice>, name grid
@@ -63,7 +66,9 @@ task render
     read program
     read buffer
     make lines
-    read grid/count
+    # a host value, so checked as a `u32` here, where nothing can prove it
+    call to-u32
+      read grid/count
 
 view lattice-view
   take host, like view

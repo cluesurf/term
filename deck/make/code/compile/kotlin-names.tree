@@ -1,0 +1,510 @@
+# The Kotlin emitter's helpers that read no emitter state: a Term name to its Kotlin spellings (camelCase with the hard
+# keywords backticked, PascalCase with the java.lang classes kept apart), the inference variables a type holds, whether
+# a type mentions a generic, a type with the receiver widened to its mask, a float literal, and the walkers a `fill` or
+# `melt` with a form needs.
+#
+# Ported from compile/kotlin.ts (self-hosting, 2026-10-06), which stays as the face and keeps the runtime texts
+# (`KOTLIN_TEXT`, `KOTLIN_LONGS`, `KOTLIN_HELPERS`, the form walkers' shared helpers) and `hoistKotlinImports`.
+#
+# A text counts code points here, and JavaScript counts UTF-16 units. They agree on every name the emitter meets, which
+# hold nothing past U+FFFF, except where a name STARTS with such a character: JavaScript upper-cased half a pair (a
+# no-op), and so does this, by leaving such a character as it is.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
+  find to-upper-case
+
+load ./node
+  find type
+  find expression
+
+load ./backend-shapes
+  find form-spec
+  find form-kind
+
+load ../term/quote
+  find json-quote
+
+# ---- small helpers ----
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task split-words
+  take words, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save part, <>
+  save at, 0
+  save size, char-count(words)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(words, at)
+      fork test, is-equal(one, < >)
+        hold
+          push(out, part)
+          save part, <>
+        miss
+          save part, <{part}{one}>
+      save at, add(at, 1)
+  push(out, part)
+  back out
+
+# ---- names ----
+
+# Kotlin's hard keywords: one used as an identifier is backticked, in the declaration and every reference alike
+task kotlin-keywords
+  like list, like text
+  mark private
+
+  back split-words(<as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while>)
+
+# the java.lang classes the runtime shims name bare: a Term name that would spell one takes a `Term` prefix
+task jvm-shadowed
+  like list, like text
+  mark private
+
+  back split-words(<System Math Thread Runtime Process ProcessBuilder Character StringBuilder>)
+
+# every `-` before a lowercase letter or a digit dropped and that character upper-cased (`sha-256` to `sha256`), as
+# `/-([a-z0-9])/g` did. Any other `-` stays
+task kotlin-raw-camel
+  take name, like text
+  like text
+
+  save out, <>
+  save size, char-count(name)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), size))
+        hold
+          save code, char-code-at(name, add(at, 1))
+          fork test, and(is-minimum(code, 97), is-maximum(code, 122))
+            hold
+              save out, <{out}{to-upper-case(char-at(name, add(at, 1)))}>
+              save at, add(at, 2)
+              turn next
+          fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+            hold
+              save out, <{out}{char-at(name, add(at, 1))}>
+              save at, add(at, 2)
+              turn next
+      save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# a Term name as a Kotlin identifier: `main` is `main_` (the program's start is `main`), a keyword is backticked
+task kotlin-camel
+  take name, like text
+  like text
+
+  save spelled, kotlin-raw-camel(name)
+  fork test, is-equal(spelled, <main>)
+    hold
+      back <main_>
+  fork test, has-text(kotlin-keywords(), spelled)
+    hold
+      back <`{spelled}`>
+  back spelled
+
+# a Term name as a Kotlin class name
+task kotlin-pascal
+  take name, like text
+  like text
+
+  save c, kotlin-raw-camel(name)
+  save spelled, c
+  fork test, is-above(char-count(c), 0)
+    hold
+      fork test, is-below(char-code-at(c, 0), 65536)
+        hold
+          save spelled, <{to-upper-case(char-at(c, 0))}{substring(c, 1)}>
+  fork test, has-text(jvm-shadowed(), spelled)
+    hold
+      back <Term{spelled}>
+  back spelled
+
+# the seed primitive forms by name, for a `named` reference the checker did not seed, `''` for any other
+task kotlin-primitive
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <text>)
+    hold
+      back <String>
+  fork test, is-equal(name, <boolean>)
+    hold
+      back <Boolean>
+  fork test, or(is-equal(name, <number>), is-equal(name, <integer>))
+    hold
+      back <Long>
+  fork test, is-equal(name, <float>)
+    hold
+      back <Double>
+  back <>
+
+# ---- types ----
+
+task add-number
+  take values, like list, like number
+  take value, like number
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back
+  push(values, value)
+
+# the inference-variable ids a type holds, each once, in the order met: each an implicit generic of its task
+task collect-vars
+  take given, like maybe, like type
+  take into, like list, like number
+
+  sift given
+    case some
+      link known
+      sift known
+        case variable
+          link var-id
+          add-number(into, var-id)
+        case array
+          link element
+          collect-vars(make(some, element), into)
+        case map
+          link key-type
+          link value-type
+          collect-vars(make(some, key-type), into)
+          collect-vars(make(some, value-type), into)
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            collect-vars(make(some, one), into)
+          collect-vars(make(some, fn-result), into)
+        case named
+          walk read(args)
+            take one
+            collect-vars(make(some, one), into)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# whether a type mentions the generic `name`
+task type-mentions
+  take given, like maybe, like type
+  take name, like text
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link named-name
+          fork test, is-equal(named-name, name)
+            hold
+              back true
+          walk read(args)
+            take one
+            fork test, type-mentions(make(some, one), name)
+              hold
+                back true
+          back false
+        case array
+          link element
+          back type-mentions(make(some, element), name)
+        case map
+          link key-type
+          link value-type
+          back or(type-mentions(make(some, key-type), name), type-mentions(make(some, value-type), name))
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            fork test, type-mentions(make(some, one), name)
+              hold
+                back true
+          back type-mentions(make(some, fn-result), name)
+        miss
+          back false
+    case none
+      back false
+
+task subbed-self
+  take one, like type
+  take target, like text
+  take mask, like text
+  like type
+  mark private
+
+  sift sub-self(make(some, one), target, mask)
+    case some
+      link found
+      back found
+    case none
+      back one
+
+# the receiver type widened to the mask's interface: Kotlin has no `Self`
+task sub-self
+  take given, like maybe, like type
+  take target, like text
+  take mask, like text
+  like maybe, like type
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link named-name
+          fork test, is-equal(named-name, target)
+            hold
+              save widened
+                make type/named
+                  bind name, mask
+              back make(some, widened)
+          # a type with no arguments is left as it is: its spelling is the same either way
+          save widened-args, make list
+          walk read(args)
+            take one
+            push(widened-args, subbed-self(one, target, mask))
+          fork test, is-equal(widened-args/length, 0)
+            hold
+              back given
+          save widened
+            make type/named
+              bind name, named-name
+              bind args, widened-args
+          back make(some, widened)
+        case array
+          link element
+          save widened
+            make type/array
+              bind element, subbed-self(element, target, mask)
+          back make(some, widened)
+        case map
+          link key-type
+          link value-type
+          save widened
+            make type/map
+              bind key, subbed-self(key-type, target, mask)
+              bind value, subbed-self(value-type, target, mask)
+          back make(some, widened)
+        case function
+          link fn-params
+          link fn-result
+          save widened-params, make list
+          walk fn-params
+            take one
+            push(widened-params, subbed-self(one, target, mask))
+          save kept-effects, make list
+          walk read(effects)
+            take one
+            push(kept-effects, one)
+          save widened
+            make type/function
+              bind params, widened-params
+              bind result, subbed-self(fn-result, target, mask)
+              bind effects, kept-effects
+          back make(some, widened)
+        miss
+          back given
+    case none
+      back given
+
+# a float literal: a whole number takes a `.0`, so it is a Double and not a Long (an exponent is already a float)
+task float-literal
+  take value, like float
+  like text
+
+  save text, <{value}>
+  save size, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, or(or(is-equal(code, 46), is-equal(code, 101)), or(is-equal(code, 69), or(is-equal(code, 73), is-equal(code, 78))))
+        hold
+          back text
+      save at, add(at, 1)
+  back <{text}.0>
+
+# a type a Double carries: the checker's float, or the `float` it was declared as
+task is-decimal
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case float
+          back true
+        case named
+          link named-name
+          back is-equal(named-name, <float>)
+        miss
+          back false
+    case none
+      back false
+
+# ---- filling a form from data ----
+
+task fill-of
+  take kind, like form-kind
+  take value, like text
+  take path, like text
+  take optional, like boolean
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <__termText({value}, {path}, {optional})>
+    case number
+      back <__termNumber({value}, {path}, {optional})>
+    case decimal
+      back <__termDecimal({value}, {path}, {optional})>
+    case flag
+      back <__termFlag({value}, {path}, {optional})>
+    case data
+      back <__termData({value}, {path}, {optional})>
+    case list
+      link item
+      back <__termList({value}, {path}, {optional}) \{ d, p -\> {fill-of(item, <d>, <p>, false)} \}>
+    case form
+      link spec
+      back <__fill{kotlin-pascal(spec/form)}(__termData({value}, {path}, {optional}), {path})>
+    miss
+      back <0L>
+
+task melt-of
+  take kind, like form-kind
+  take value, like text
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <DataText(value = {value})>
+    case number
+      back <DataNumber(value = {value})>
+    case decimal
+      back <DataDecimal(value = {value})>
+    case flag
+      back <DataFlag(value = {value})>
+    case data
+      back value
+    case list
+      link item
+      back <DataArray(list = ({value}).mapTo(ArrayList()) \{ x -\> {melt-of(item, <x>)} \})>
+    case form
+      link spec
+      back <__melt{kotlin-pascal(spec/form)}({value})>
+    miss
+      back <DataBlank>
+
+# the test that a value is empty, for an optional field a melt leaves out, `''` for a kind that has none
+task empty-test
+  take kind, like form-kind
+  take value, like text
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <({value}).isEmpty()>
+    case list
+      back <({value}).isEmpty()>
+    case data
+      back <({value} is DataBlank)>
+    miss
+      back <>
+
+# The walkers a module's `fill` / `melt` with a form need, a function per form, fills first: a value that does not fit
+# throws `data-mismatch`. The helpers they share are the face's text, written before them
+task kotlin-form-walkers
+  take fills, like list, like form-spec
+  take melts, like list, like form-spec
+  like list, like text
+
+  save out, make list
+  walk fills
+    take spec
+    save known, make list
+    save fields, make list
+    walk spec/fields
+      take field
+      push(known, json-quote(field/name))
+      push(fields, <{kotlin-camel(field/name)} = {fill-of(field/kind, <find({json-quote(field/name)})>, <__termPath(path, {json-quote(field/name)})>, field/optional)}>)
+    save form-name, kotlin-pascal(spec/form)
+    push(out, <fun __fill{form-name}(value: Data, path: String): {form-name} \{\n    val entries = __termEntries(value, path)\n    val known = setOf({join-texts(known, <, >)})\n    for (e in entries) \{ if (!known.contains(e.name)) __termMismatch(__termPath(path, e.name), "is not in the form") \}\n    fun find(name: String): Data? = entries.firstOrNull \{ it.name == name \}?.base\n    return {form-name}({join-texts(fields, <, >)})\n\}>)
+  walk melts
+    take spec
+    save lines, make list
+    walk spec/fields
+      take field
+      save value, <value.{kotlin-camel(field/name)}>
+      save entry, <list.add(DataEntry(name = {json-quote(field/name)}, base = {melt-of(field/kind, value)}))>
+      save empty, <>
+      fork test, field/optional
+        hold
+          save empty, empty-test(field/kind, value)
+      fork test, is-unequal(empty, <>)
+        hold
+          push(lines, <    if (!{empty}) \{ {entry} \}>)
+        miss
+          push(lines, <    {entry}>)
+    save form-name, kotlin-pascal(spec/form)
+    push(out, <fun __melt{form-name}(value: {form-name}): Data \{\n    val list = mutableListOf\<DataEntry\>()\n{join-texts(lines, <\n>)}\n    return DataHash(list = list)\n\}>)
+  back out

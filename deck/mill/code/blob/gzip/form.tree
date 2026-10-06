@@ -5,11 +5,13 @@ load @term/base/maybe
   find maybe
 
 form gzip-file
-  link method, like number
-  link flags, like number
+  # one header byte each (RFC 1952, 2.3): a field typed `u8` is owed its range where a file is made, and known to
+  # fit where it is written back out (D12)
+  link method, like u8
+  link flags, like u8
   link modified-time, like number
-  link extra-flags, like number
-  link os, like number
+  link extra-flags, like u8
+  link os, like u8
   link extra
     like maybe
       like list

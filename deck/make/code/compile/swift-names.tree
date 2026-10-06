@@ -1,0 +1,774 @@
+# THE SWIFT EMITTER'S NAMES AND SPELLINGS: the helpers that read no emitter state. A Term name as a Swift identifier
+# (camelCase, a keyword escaped in backquotes, `self` read as `slf`), a task input's label, a literal `fall` as Swift's
+# own default, a form's PascalCase name clear of Foundation's types, whether an emitted operand holds an open `try`, the
+# inference variables a type holds, the generics an `includes` or `index-of` needs `Equatable` on, whether a body raises,
+# and the `fill` / `melt` walkers a module's forms need.
+#
+# Ported from compile/swift.ts (self-hosting, 2026-10-06), which stays as the face (see compile/swift-emit.tree).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
+  find to-upper-case
+  find starts-with
+
+load ./node
+  find type
+  find expression
+  find statement
+  find expression-type
+
+load ./backend-shapes
+  find collection-call
+  find form-spec
+  find form-kind
+
+load ./type-text
+  find integer-text
+
+load ../term/quote
+  find json-quote
+
+# ---- small helpers ----
+
+task split-words
+  take words, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save part, <>
+  save at, 0
+  save size, char-count(words)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(words, at)
+      fork test, is-equal(one, < >)
+        hold
+          fork test, is-above(char-count(part), 0)
+            hold
+              push(out, part)
+          save part, <>
+        miss
+          save part, <{part}{one}>
+      save at, add(at, 1)
+  fork test, is-above(char-count(part), 0)
+    hold
+      push(out, part)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+# ---- names ----
+
+# Swift's reserved words: one used as an identifier is escaped in backquotes, in the declaration and every reference
+task swift-keywords
+  like list, like text
+  mark private
+
+  back split-words(<associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as catch false is nil super self throw throws true try async await actor any some>)
+
+# whether an emitted operand holds a `try` that no parenthesis of its own closes over, `/(^|[^(])\btry /`: so an
+# operator beside it needs the `try` in front of the whole expression
+task open-try
+  take text, like text
+  like boolean
+
+  save size, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-maximum(add(at, 4), size)
+    hook hold
+      fork test, is-equal(substring(text, at, add(at, 4)), <try >)
+        hold
+          fork test, is-equal(at, 0)
+            hold
+              back true
+          save before, char-code-at(text, subtract(at, 1))
+          fork test, and(is-unequal(before, 40), not(is-word-code(before)))
+            hold
+              back true
+      save at, add(at, 1)
+  back false
+
+task escape
+  take identifier, like text
+  like text
+
+  fork test, has-text(swift-keywords(), identifier)
+    hold
+      back <`{identifier}`>
+  back identifier
+
+# every hyphen stripped, the letter or digit after it upper-cased (`sha-256` is `sha256`), `-([a-z0-9])`
+task camelize
+  take name, like text
+  like text
+
+  save out, <>
+  save size, char-count(name)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      save taken, false
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), size))
+        hold
+          save next, char-code-at(name, add(at, 1))
+          fork test, or(and(is-minimum(next, 97), is-maximum(next, 122)), and(is-minimum(next, 48), is-maximum(next, 57)))
+            hold
+              save out, <{out}{to-upper-case(char-at(name, add(at, 1)))}>
+              save at, add(at, 2)
+              save taken, true
+      fork test, not(taken)
+        hold
+          save out, <{out}{one}>
+          save at, add(at, 1)
+  back out
+
+# `self` is reserved in Swift: it is `slf`, and every other name camelCased, then escaped
+task vname
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <self>)
+    hold
+      back <slf>
+  back escape(camelize(name))
+
+task camel
+  take name, like text
+  like text
+
+  back escape(camelize(name))
+
+# A TASK'S INPUT IS LABELED BY ITS NAME: `inout`, `var` and `let` stay unlabeled, which is none
+task input-label
+  take name, like text
+  like maybe, like text
+
+  save word, camelize(name)
+  fork test, or(or(is-equal(word, <inout>), is-equal(word, <var>)), is-equal(word, <let>))
+    hold
+      back make none
+  back make(some, word)
+
+# one input as a declaration writes it: `step: Int`, or `self slf: Counter` where its inside name differs from its label
+task labeled
+  take name, like text
+  take rest, like text
+  like text
+
+  save inner, vname(name)
+  sift input-label(name)
+    case some
+      link outer
+      fork test, is-equal(outer, inner)
+        hold
+          back <{inner}: {rest}>
+      back <{outer} {inner}: {rest}>
+    case none
+      back <_ {inner}: {rest}>
+
+# one argument as a call writes it, under its input's label
+task labeled-argument
+  take name, like maybe, like text
+  take argument, like text
+  like text
+
+  sift name
+    case some
+      link known
+      sift input-label(known)
+        case some
+          link outer
+          back <{outer}: {argument}>
+        case none
+          back argument
+    case none
+      back argument
+
+# whether a float's text is a whole number with no point or exponent, `1` against `1.5`, `1e+21`, `Infinity`, `NaN`
+task bare-digits
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  save at, 0
+  fork test, starts-with(text, <->)
+    hold
+      save at, 1
+  fork test, is-equal(at, size)
+    hold
+      back false
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# a float literal as Swift writes one: a point where its text has none, so it is a Double
+task float-text
+  take value, like float
+  like text
+
+  save text, <{value}>
+  fork test, bare-digits(text)
+    hold
+      back <{text}.0>
+  back text
+
+# whether a text is printable ASCII with no quote or backslash, written as it is between quotes
+task plain-quotable
+  take value, like text
+  like boolean
+  mark private
+
+  save size, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(value, at)
+      fork test, or(or(is-below(code, 32), is-above(code, 126)), or(is-equal(code, 34), is-equal(code, 92)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# an input's `fall` default when it is a literal, as Swift writes it (` = 1`), `''` for any other
+task default-of
+  take fallback, like maybe, like expression
+  like text
+
+  sift fallback
+    case some
+      link known
+      sift known
+        case integer
+          back < = {integer-text(known)}>
+        case float
+          link float-value
+          save text, <{float-value}>
+          fork test, or(or(is-equal(text, <Infinity>), is-equal(text, <-Infinity>)), is-equal(text, <NaN>))
+            hold
+              back <>
+          back < = {float-text(float-value)}>
+        case boolean
+          link boolean-value
+          fork test, boolean-value
+            hold
+              back < = true>
+          back < = false>
+        case string
+          link string-value
+          fork test, plain-quotable(string-value)
+            hold
+              back < = "{string-value}">
+          back <>
+        miss
+          back <>
+    case none
+      back <>
+
+# Foundation and standard-library type names a form must not shadow, spelled with a `Form` suffix
+task swift-taken
+  like list, like text
+  mark private
+
+  back split-words(<Data Date URL Error Result Optional Character Set Array Dictionary String Int Double Bool Task Thread Process Bundle Timer Locale Decimal Stream Host Pipe Scanner Operation Notification Range Unit>)
+
+task pascal
+  take name, like text
+  like text
+
+  save c, camelize(name)
+  save spelled, c
+  fork test, is-above(char-count(c), 0)
+    hold
+      save spelled, <{to-upper-case(char-at(c, 0))}{substring(c, 1)}>
+  fork test, has-text(swift-taken(), spelled)
+    hold
+      back <{spelled}Form>
+  back spelled
+
+# the Term primitive forms by name, for a `named` reference the checker did not seed; `''` for any other
+task swift-primitive
+  take name, like text
+  like text
+
+  fork test, is-equal(name, <text>)
+    hold
+      back <String>
+  fork test, is-equal(name, <boolean>)
+    hold
+      back <Bool>
+  fork test, or(is-equal(name, <number>), is-equal(name, <integer>))
+    hold
+      back <Int>
+  fork test, is-equal(name, <float>)
+    hold
+      back <Double>
+  back <>
+
+# ---- types ----
+
+task add-number
+  take values, like list, like number
+  take value, like number
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back
+  push(values, value)
+
+# the inference-variable ids a type holds, each once, in the order met: each is an implicit generic of its task
+task collect-vars
+  take given, like maybe, like type
+  take into, like list, like number
+
+  sift given
+    case some
+      link known
+      sift known
+        case variable
+          link var-id
+          add-number(into, var-id)
+        case array
+          link element
+          collect-vars(make(some, element), into)
+        case map
+          link map-key
+          link map-value
+          collect-vars(make(some, map-key), into)
+          collect-vars(make(some, map-value), into)
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            collect-vars(make(some, one), into)
+          collect-vars(make(some, fn-result), into)
+        case named
+          link named-name
+          walk args
+            take one
+            collect-vars(make(some, one), into)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# the generic variable ids and names at the element of a list an `includes`, `index-of` or `last-index-of` reads, which
+# need an `Equatable` bound
+form array-eq
+  link ids, like list, like number
+  link names, like list, like text
+
+task array-eq-record
+  take callee, like expression
+  take found, like array-eq
+  mark private
+
+  sift collection-call(callee)
+    case some
+      link op
+      fork test, is-unequal(op/kind, <array>)
+        hold
+          back
+      fork test, not(or(or(is-equal(op/op, <includes>), is-equal(op/op, <indexOf>)), is-equal(op/op, <lastIndexOf>)))
+        hold
+          back
+      save target-type, expression-type(op/target)
+      sift target-type
+        case some
+          link known
+          sift known
+            case array
+              link element
+              sift element
+                case variable
+                  link var-id
+                  add-number(found/ids, var-id)
+                case named
+                  link element-name
+                  fork test, not(has-text(found/names, to-upper-case(element-name)))
+                    hold
+                      push(found/names, to-upper-case(element-name))
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+
+task array-eq-expression
+  take node, like expression
+  take found, like array-eq
+  mark private
+
+  sift node
+    case call
+      link callee
+      link args
+      array-eq-record(callee, found)
+      array-eq-expression(callee, found)
+      walk args
+        take one
+        array-eq-expression(one, found)
+    case binary
+      link left
+      link right
+      array-eq-expression(left, found)
+      array-eq-expression(right, found)
+    case unary
+      link operand
+      array-eq-expression(operand, found)
+    case member
+      link member-target
+      array-eq-expression(member-target, found)
+    case array
+      link items
+      walk items
+        take one
+        array-eq-expression(one, found)
+    case map
+      link entries
+      walk entries
+        take entry
+        array-eq-expression(entry/key, found)
+        array-eq-expression(entry/value, found)
+    case record
+      link fields
+      walk fields
+        take field
+        array-eq-expression(field/value, found)
+    case await
+      link awaited
+      array-eq-expression(awaited, found)
+    case closure
+      link body
+      array-eq-statements(body, found)
+    miss
+      save nothing, 0
+
+task array-eq-statements
+  take body, like list, like statement
+  take found, like array-eq
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        link init
+        array-eq-expression(init, found)
+      case assign
+        link target
+        link value
+        array-eq-expression(target, found)
+        array-eq-expression(value, found)
+      case expression
+        link expr
+        array-eq-expression(expr, found)
+      case return
+        link value
+        sift value
+          case some
+            link known
+            array-eq-expression(known, found)
+          case none
+            save nothing, 0
+      case throw
+        link value
+        array-eq-expression(value, found)
+      case hold
+        link expr
+        array-eq-expression(expr, found)
+      case guard
+        link body
+        link catch
+        array-eq-statements(body, found)
+        sift catch
+          case some
+            link caught
+            array-eq-statements(caught/body, found)
+          case none
+            save nothing, 0
+      case while
+        link cond
+        link body
+        array-eq-expression(cond, found)
+        array-eq-statements(body, found)
+      case for-each
+        link iterable
+        link body
+        array-eq-expression(iterable, found)
+        array-eq-statements(body, found)
+      case if
+        link branches
+        link otherwise
+        walk branches
+          take branch
+          array-eq-expression(branch/cond, found)
+          array-eq-statements(branch/body, found)
+        sift otherwise
+          case some
+            link known
+            array-eq-statements(known, found)
+          case none
+            save nothing, 0
+      case match
+        link subject
+        link cases
+        link otherwise
+        array-eq-expression(subject, found)
+        walk cases
+          take arm
+          array-eq-statements(arm/body, found)
+        sift otherwise
+          case some
+            link known
+            array-eq-statements(known, found)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+task collect-array-eq
+  take body, like list, like statement
+  like array-eq
+
+  save found
+    make array-eq
+      bind ids, make list
+      bind names, make list
+  array-eq-statements(body, found)
+  back found
+
+# does a task's body raise, directly? Then its Swift signature carries `throws`
+task body-throws
+  take body, like list, like statement
+  like boolean
+
+  walk body
+    take one
+    sift one
+      case throw
+        back true
+      case if
+        link branches
+        link otherwise
+        walk branches
+          take branch
+          fork test, body-throws(branch/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link known
+            fork test, body-throws(known)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case match
+        link cases
+        link otherwise
+        walk cases
+          take arm
+          fork test, body-throws(arm/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link known
+            fork test, body-throws(known)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case while
+        link body
+        fork test, body-throws(body)
+          hold
+            back true
+      case for-each
+        link body
+        fork test, body-throws(body)
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false
+
+# ---- filling a form from data ----
+
+task fill-of
+  take kind, like form-kind
+  take value, like text
+  take path, like text
+  take optional, like boolean
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <try __termText({value}, {path}, {optional})>
+    case number
+      back <try __termNumber({value}, {path}, {optional})>
+    case decimal
+      back <try __termDecimal({value}, {path}, {optional})>
+    case flag
+      back <try __termFlag({value}, {path}, {optional})>
+    case data
+      back <try __termData({value}, {path}, {optional})>
+    case list
+      link item
+      back <try __termList({value}, {path}, {optional}) \{ d, p in {fill-of(item, <d>, <p>, false)} \}>
+    case form
+      link spec
+      back <try __fill{pascal(spec/form)}(try __termData({value}, {path}, {optional}), {path})>
+    miss
+      back <0>
+
+task melt-of
+  take kind, like form-kind
+  take value, like text
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <.text(value: {value})>
+    case number
+      back <.number(value: {value})>
+    case decimal
+      back <.decimal(value: {value})>
+    case flag
+      back <.flag(value: {value})>
+    case data
+      back value
+    case list
+      link item
+      back <.array(list: SeedList(({value}).data.map \{ x in {melt-of(item, <x>)} \}))>
+    case form
+      link spec
+      back <__melt{pascal(spec/form)}({value})>
+    miss
+      back <.blank>
+
+task empty-test
+  take kind, like form-kind
+  take value, like text
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <({value}).isEmpty>
+    case list
+      back <({value}).data.isEmpty>
+    case data
+      back <__termIsBlank({value})>
+    miss
+      back <>
+
+# the walkers a module's `fill` / `melt` with a form need: the helpers (`helpers`, the face's text), then a function per
+# form. None when the module fills and melts nothing
+task swift-form-walk
+  take fills, like list, like form-spec
+  take melts, like list, like form-spec
+  take helpers, like text
+  like list, like text
+
+  save out, make list
+  fork test, and(is-equal(fills/length, 0), is-equal(melts/length, 0))
+    hold
+      back out
+  push(out, helpers)
+  walk fills
+    take spec
+    save known, make list
+    save fields, make list
+    walk spec/fields
+      take field
+      push(known, json-quote(field/name))
+      push(fields, <{camel(field/name)}: {fill-of(field/kind, <find({json-quote(field/name)})>, <__termPath(path, {json-quote(field/name)})>, field/optional)}>)
+    save name, pascal(spec/form)
+    push(out, <func __fill{name}(_ value: DataForm, _ path: String) throws -\> {name} \{\n  let entries = try __termEntries(value, path)\n  let known: Set\<String\> = [{join-texts(known, <, >)}]\n  for e in entries.data \{ if !known.contains(e.name) \{ throw __termMismatch(__termPath(path, e.name), "is not in the form") \} \}\n  func find(_ name: String) -\> DataForm? \{ return entries.data.first \{ $0.name == name \}?.base \}\n  return {name}({join-texts(fields, <, >)})\n\}>)
+  walk melts
+    take spec
+    save lines, make list
+    walk spec/fields
+      take field
+      save value, <value.{camel(field/name)}>
+      save entry, <list.append(DataEntry(name: {json-quote(field/name)}, base: {melt-of(field/kind, value)}))>
+      save empty, <>
+      fork test, field/optional
+        hold
+          save empty, empty-test(field/kind, value)
+      fork test, is-unequal(empty, <>)
+        hold
+          push(lines, <  if !{empty} \{ {entry} \}>)
+        miss
+          push(lines, <  {entry}>)
+    save name, pascal(spec/form)
+    push(out, <func __melt{name}(_ value: {name}) -\> DataForm \{\n  var list: [DataEntry] = []\n{join-texts(lines, <\n>)}\n  return .hash(list: SeedList(list))\n\}>)
+  back out

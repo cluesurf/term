@@ -22,7 +22,14 @@ import type {
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
 import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
-import type { TypeAlias } from '@term/make/code/check/alias'
+import * as elaborating from '@term/make/code/check/elaborating-data'
+import * as rewriting from '@term/make/code/check/elaborating-rewrite'
+import * as cases from '@term/make/code/check/elaborating-cases'
+import * as terms from '@term/make/code/check/elaborating-terms'
+import * as proofs from '@term/make/code/check/elaborating-proof'
+import * as commands from '@term/make/code/check/elaborating-commands'
+import * as theorems from '@term/make/code/check/elaborating-theorems'
+import * as induction from '@term/make/code/check/elaborating-induction'
 import type {
   Expression,
   Program,
@@ -49,6 +56,8 @@ import {
   evaluate,
   freshMeta,
   infer,
+  judgeState,
+  kernel,
   litLevel,
   neutralVar,
   normalTerm,
@@ -132,204 +141,16 @@ function headConstantName(term: Term): string | undefined {
   return head.tag === 'const' ? head.name : undefined
 }
 
-// every constant a term names: the operators and constructors an equation is written in
-function constantsOf(term: Term, into = new Set<string>()): Set<string> {
-  if (term.tag === 'const') {
-    into.add(term.name)
-  }
-
-  for (const child of Object.values(term)) {
-    if (child !== null && typeof child === 'object' && 'tag' in child) {
-      constantsOf(child as Term, into)
-    }
-  }
-
-  return into
-}
-
-// does a term have a FREE de Bruijn variable below `depth` (an index that escapes all its binders)? Used as a safety
-// gate on the polymorphic datatype encoding: if a generated constructor / eliminator type is not closed (a mis-shifted
-// param index), skip the polymorphic encoding for that type and fall back to the opaque postulate, so a de Bruijn slip
-// degrades gracefully (the law just stays unproven) rather than crashing elaboration or unsoundly mis-typing.
-function hasFreeVar(term: Term, depth = 0): boolean {
-  // a null term reaches here when a field / constructor type could not be lowered (e.g. an unresolved value index in a
-  // non-indexed datatype). Treat it as "not closed" so the datatype degrades to an opaque postulate instead of crashing.
-  if (!term) {
-    return true
-  }
-
-  // mirrors `usesVar` in judge.ts, which is the authoritative binder structure for this
-  // term language. Every tag carrying a subterm must appear: a missing one falls to
-  // `default` and reports CLOSED, which is the unsafe direction for a gate whose whole
-  // job is to catch a term that is not.
-  switch (term.tag) {
-    case 'var':
-      return term.index >= depth
-    case 'app':
-      return hasFreeVar(term.fun, depth) || hasFreeVar(term.arg, depth)
-    case 'lam':
-    case 'self':
-      return hasFreeVar(term.body, depth + 1)
-    case 'pi':
-    case 'sigma':
-      return (
-        hasFreeVar(term.domain, depth) ||
-        hasFreeVar(term.codomain, depth + 1)
-      )
-    case 'ann':
-      return hasFreeVar(term.term, depth) || hasFreeVar(term.type, depth)
-    case 'pair':
-      return (
-        hasFreeVar(term.first, depth) || hasFreeVar(term.second, depth)
-      )
-    case 'fst':
-    case 'snd':
-      return hasFreeVar(term.pair, depth)
-    case 'id':
-      return (
-        hasFreeVar(term.type, depth) ||
-        hasFreeVar(term.left, depth) ||
-        hasFreeVar(term.right, depth)
-      )
-    case 'refl':
-      return hasFreeVar(term.type, depth) || hasFreeVar(term.value, depth)
-    case 'j':
-      return (
-        hasFreeVar(term.proof, depth) ||
-        hasFreeVar(term.motive, depth) ||
-        hasFreeVar(term.base, depth)
-      )
-    default:
-      return false
-  }
-}
-
-// Does a field type mention a universe anywhere? A form with such a field is LARGE: its constructor takes a type, or a
-// family of types, while the form itself lives in the impredicative Type0. A large form must never get the large
-// eliminator `matchType__T`, because a decoder through it makes Type0 a retract of a type in Type0, and Hurkens'
-// paradox then proves false (test/check/paradox.ts, K0). Rocq's rule is the same: no strong elimination of a large
-// inductive in an impredicative sort. Anywhere, not only at the top: `nat -> type` is large, and so, conservatively, is
-// `type -> nat`, which Rocq would allow. A null term (a field that did not lower) counts as large, the safe direction.
-function mentionsUniverse(term: Term | null): boolean {
-  if (!term) {
-    return true
-  }
-
-  switch (term.tag) {
-    case 'type':
-      return true
-    case 'app':
-      return mentionsUniverse(term.fun) || mentionsUniverse(term.arg)
-    case 'lam':
-    case 'self':
-      return mentionsUniverse(term.body)
-    case 'pi':
-    case 'sigma':
-      return mentionsUniverse(term.domain) || mentionsUniverse(term.codomain)
-    case 'ann':
-      return mentionsUniverse(term.term) || mentionsUniverse(term.type)
-    case 'pair':
-      return mentionsUniverse(term.first) || mentionsUniverse(term.second)
-    case 'fst':
-    case 'snd':
-      return mentionsUniverse(term.pair)
-    case 'id':
-      return mentionsUniverse(term.type) || mentionsUniverse(term.left) || mentionsUniverse(term.right)
-    case 'refl':
-      return mentionsUniverse(term.type) || mentionsUniverse(term.value)
-    case 'j':
-      return mentionsUniverse(term.proof) || mentionsUniverse(term.motive) || mentionsUniverse(term.base)
-    default:
-      return false
-  }
-}
-
-// the Church / self-encoding of constructor `variantIndex` of a datatype with `variantCount` variants, this one carrying
-// `fieldCount` fields: `\f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}`. Shared by enums (n variants) and structs
-// (a single variant, n = 1), so the constructor that drives `match` / projection reduction is defined in exactly one
-// place. de Bruijn (innermost = 0): branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0 are n+1..n+k.
-function constructorEncoding(
-  variantIndex: number,
-  fieldCount: number,
-  variantCount: number,
-  paramCount = 0,
-): Term {
-  let body: Term = variable(variantCount - 1 - variantIndex) // b_i
-
-  for (let j = 0; j < fieldCount; j++) {
-    body = apply(body, variable(variantCount + fieldCount - j)) // f_0 .. f_{k-1}
-  }
-
-  // `paramCount` leading lambdas absorb the constructor's ERASED type parameters (a polymorphic datatype). They wrap
-  // the body OUTERMOST and are ignored by it, so the field / branch de Bruijn indices (counted from the innermost) are
-  // unchanged. At a use site `make c @ty f..`, the erased `@ty` is applied and discarded, leaving the same reduct.
-  return lambdas(paramCount + fieldCount + 1 + variantCount, body)
+// does a term have a FREE de Bruijn variable below `depth`, an index that escapes all its binders? The safety gate on
+// a generated type: one that is not closed falls back to an opaque postulate. A null term is not closed
+function hasFreeVar(term: Term | null, depth = 0): boolean {
+  return !term ? true : elaborating.hasFreeVar(term as never, depth)
 }
 
 // ---- the base signature: base types and primitive operations as postulated kernel constants ----
-// Built once. Each surface base type is a constant in Type 0; each primitive is a constant of its kernel type.
-const BASE_TYPES = ['Number', 'Boolean', 'String', 'Unit'] as const
 const number = constant('Number')
 const boolean = constant('Boolean')
-
-// a polymorphic, runtime-erased type argument is bound with multiplicity 0: present for typing, gone at run time.
-// equal : (0 A : Type 0) -> A -> A -> Boolean    (so == works at any type, with the witness type erased)
-const polyEquality = erasedPi(
-  TYPE0,
-  arrow(variable(0), arrow(variable(1), boolean)),
-)
-
-// cond : (0 A : Type 0) -> Boolean -> A -> A -> A    (the if-as-value eliminator, result type erased)
-const conditional = erasedPi(
-  TYPE0,
-  arrow(boolean, arrow(variable(1), arrow(variable(2), variable(3)))),
-)
-
-const BASE_SIGNATURE: { name: string; type: Term }[] = [
-  ...BASE_TYPES.map(name => ({ name, type: TYPE0 })),
-  // a canonical inhabitant per base type, so a literal elaborates to a genuine term of that type
-  { name: 'numberValue', type: number },
-  { name: 'stringValue', type: constant('String') },
-  { name: 'unitValue', type: constant('Unit') },
-  { name: 'boolTrue', type: boolean },
-  { name: 'boolFalse', type: boolean },
-  // arithmetic
-  { name: 'add', type: arrow(number, arrow(number, number)) },
-  { name: 'sub', type: arrow(number, arrow(number, number)) },
-  { name: 'mul', type: arrow(number, arrow(number, number)) },
-  { name: 'div', type: arrow(number, arrow(number, number)) },
-  { name: 'mod', type: arrow(number, arrow(number, number)) },
-  { name: 'neg', type: arrow(number, number) },
-  // comparison
-  { name: 'lt', type: arrow(number, arrow(number, boolean)) },
-  { name: 'le', type: arrow(number, arrow(number, boolean)) },
-  { name: 'gt', type: arrow(number, arrow(number, boolean)) },
-  { name: 'ge', type: arrow(number, arrow(number, boolean)) },
-  // logic
-  { name: 'and', type: arrow(boolean, arrow(boolean, boolean)) },
-  { name: 'or', type: arrow(boolean, arrow(boolean, boolean)) },
-  { name: 'not', type: arrow(boolean, boolean) },
-  // polymorphic equality and the conditional eliminator
-  { name: 'equal', type: polyEquality },
-  { name: 'notequal', type: polyEquality },
-  { name: 'cond', type: conditional },
-  // arrays: a type former and its constructors (element type erased)
-  { name: 'Array', type: arrow(TYPE0, TYPE0) },
-  {
-    name: 'arrayEmpty',
-    type: erasedPi(TYPE0, apply(constant('Array'), variable(0))),
-  },
-  {
-    name: 'arrayPush',
-    type: erasedPi(
-      TYPE0,
-      arrow(
-        apply(constant('Array'), variable(0)),
-        arrow(variable(1), apply(constant('Array'), variable(2))),
-      ),
-    ),
-  },
-]
+const BASE_SIGNATURE = elaborating.baseSignature() as { name: string; type: Term }[]
 
 // surface binary operators to their primitive constant name (== / != are polymorphic, handled separately)
 const OPERATOR: Record<string, string> = {
@@ -346,355 +167,41 @@ const OPERATOR: Record<string, string> = {
   '||': 'or',
 }
 
-// translate a surface type to a kernel type term at a given context depth. A named generic resolves to the de
-// Bruijn variable of its binder (generics are bound first, as erased type parameters); a base or known named type
-// resolves to its constant. Returns null if the type has no kernel encoding yet.
-// elaborate a VALUE-INDEX expression (a variable bound by an enclosing telescope, or a constructor application like
-// `make zero` / `make succ count`) to a kernel term at binder `depth`. `valueScope` maps an in-scope value binder name
-// to its absolute binder level (de Bruijn index = depth - level - 1, as for type generics). Returns null for anything
-// outside this small index language, so the indexed encoding then falls back to an opaque postulate (never unsound).
-function indexTermAt(
-  expr: Expression,
-  depth: number,
-  valueScope: Map<string, number>,
-  known: Set<string>,
-  resolveCtor: (variant: string) => string | null = () => null,
-): Term | null {
-  switch (expr.form) {
-    case 'variable': {
-      const level = valueScope.get(expr.name)
-
-      return level !== undefined ? variable(depth - level - 1) : null
-    }
-
-    case 'integer':
-      return constant(numberLiteralConstant(integerText(expr)))
-
-    case 'record': {
-      // a constructor application `make <ctor> / bind <field> <value>` -> the constructor constant applied to its field
-      // values. An enum variant resolves to its `enum__variant` key (`nat__zero`) via `resolveCtor`; a struct falls back
-      // to `make__r`. A witness-carrying (polymorphic) index constructor is not resolved here, so the family stays an
-      // opaque postulate rather than mis-typing.
-      const resolved = resolveCtor(expr.name)
-      let term: Term = constant(resolved ?? `make__${expr.name}`)
-
-      for (const field of expr.fields) {
-        const argument = indexTermAt(
-          field.value,
-          depth,
-          valueScope,
-          known,
-          resolveCtor,
-        )
-
-        if (!argument) {
-          return null
-        }
-
-        term = apply(term, argument)
-      }
-
-      return term
-    }
-
-    // a call to a FUNCTION VALUE in scope (`take f, like task ...`, then an index `call f / read x`): the parameter
-    // applied to its arguments. This is what lets `congruence` state `equal b (f x) (f y)`. A call to a task of the
-    // program is not read here, since this has no table of them, so such a type stays unreadable rather than wrong.
-    case 'call': {
-      if (expr.callee.form !== 'variable') {
-        return null
-      }
-
-      const level = valueScope.get(expr.callee.name)
-
-      if (level === undefined) {
-        return null
-      }
-
-      let term: Term = variable(depth - level - 1)
-
-      for (const arg of expr.args) {
-        const argument = indexTermAt(arg, depth, valueScope, known, resolveCtor)
-
-        if (!argument) {
-          return null
-        }
-
-        term = apply(term, argument)
-      }
-
-      return term
-    }
-
-    default:
-      return null
-  }
-}
-
-// the program's transparent aliases (`form x, like <type>` with nothing of its own), set for each elaboration, and the
-// ones being read through right now, so an alias that names itself is read as the constant it is rather than forever
-let typeAliases = new Map<string, TypeAlias>()
-const aliasesOpen = new Set<string>()
+// translate a surface type to a kernel type term at a given context depth (check/elaborating-data.tree
+// `kernel-type-at`), null where it has no kernel encoding. `owners` maps a variant to the forms encoding it, so an
+// index constructor resolves to its `enum__variant` key. The program's transparent aliases, and the ones being read
+// through right now, are one state per elaboration
+let aliasState = elaborating.newAliasState(new Map())
 
 function kernelTypeAt(
   type: Type | undefined,
   depth: number,
   generics: Map<string, number>,
-  known: Set<string>,
+  known: ReadonlyMap<string, boolean>,
   valueScope: Map<string, number> = new Map(),
-  resolveCtor: (variant: string) => string | null = () => null,
+  owners: Map<string, string[]> = new Map(),
 ): Term | null {
-  if (!type) {
-    return null
+  // a hidden name (`hide`) is a key with no level, which the original's `get` read as absent
+  let scope = valueScope
+
+  for (const level of valueScope.values()) {
+    if (level === undefined) {
+      scope = new Map([...valueScope].filter(([, l]) => l !== undefined))
+      break
+    }
   }
 
-  switch (type.kind) {
-    case 'number':
-      return number
-    case 'boolean':
-      return boolean
-    case 'string':
-      return constant('String')
-    case 'unit':
-      return constant('Unit')
+  const read = elaborating.kernelTypeAt(
+    aliasState,
+    type === undefined ? { form: 'none' } : { form: 'some', value: type as never },
+    depth,
+    generics,
+    known as Map<string, boolean>,
+    scope,
+    owners,
+  )
 
-    case 'named': {
-      // `type` is the UNIVERSE (Type0): the type of types. A function may take or return one (`El : U -> type`, the
-      // decoder of a universe-as-data / induction-recursion), and a value of type `type` is itself a type.
-      if (type.name === 'type') {
-        return TYPE0
-      }
-
-      const position = generics.get(type.name)
-
-      if (position !== undefined) {
-        return variable(depth - position - 1)
-      } // a generic type parameter, by de Bruijn index
-
-      // A TYPE FAMILY: a VALUE parameter used as a type, applied to values (`take p / like task / take v, like a /
-      // like type`, then `like p / head / read y` is the type `p y`). The parameter is in scope as a variable whose
-      // kernel type is a function into `type`, and the kernel checks the application like any other, so a `p` that
-      // is not such a function is refused there. This is what lets `substitution` (J) be stated, and proven.
-      const valueLevel = valueScope.get(type.name)
-
-      if (valueLevel !== undefined && (type.args ?? []).length === 0) {
-        let family: Term = variable(depth - valueLevel - 1)
-
-        for (const valueArg of type.valueArgs ?? []) {
-          const argTerm = indexTermAt(
-            valueArg,
-            depth,
-            valueScope,
-            known,
-            resolveCtor,
-          )
-
-          if (!argTerm) {
-            return null
-          }
-
-          family = apply(family, argTerm)
-        }
-
-        return family
-      }
-
-      // a TRANSPARENT ALIAS is the type it names: `form assignment / like task / take n, like natural / like flag`
-      // types a mark that is then called as the task. Read as an opaque constant it was not callable in the kernel
-      // A generic one is read with its arguments: `set natural` (check/alias.ts)
-      const through = aliasesOpen.has(type.name) ? undefined : throughAlias(type, typeAliases)
-      const alias = through?.found ? through.type : undefined
-
-      if (alias) {
-        aliasesOpen.add(type.name)
-
-        try {
-          return kernelTypeAt(alias, depth, generics, known, valueScope, resolveCtor)
-        } finally {
-          aliasesOpen.delete(type.name)
-        }
-      }
-
-      if (!known.has(type.name)) {
-        return null
-      }
-
-      // a polymorphic named type applied to type arguments: `stack` of `natural` lowers to `(stack natural)`. The
-      // arguments are erased at run time but present for typing, so the type former is a function `Type -> .. -> Type`.
-      let base: Term = constant(type.name)
-
-      for (const arg of type.args ?? []) {
-        const argTerm = kernelTypeAt(
-          arg,
-          depth,
-          generics,
-          known,
-          valueScope,
-          resolveCtor,
-        )
-
-        if (!argTerm) {
-          return null
-        }
-
-        base = apply(base, argTerm)
-      }
-
-      // VALUE-INDEX arguments (`vec a count` -> apply the former to the kernel term for `count`): these make the type
-      // value-dependent, so `vec a zero` and `vec a (succ n)` are distinct and an indexed family is type-safe.
-      for (const valueArg of type.valueArgs ?? []) {
-        const argTerm = indexTermAt(
-          valueArg,
-          depth,
-          valueScope,
-          known,
-          resolveCtor,
-        )
-
-        if (!argTerm) {
-          return null
-        }
-
-        base = apply(base, argTerm)
-      }
-
-      return base
-    }
-
-    case 'array': {
-      const element = kernelTypeAt(
-        type.element,
-        depth,
-        generics,
-        known,
-        valueScope,
-        resolveCtor,
-      )
-
-      return element ? apply(constant('Array'), element) : null
-    }
-
-    case 'function': {
-      // a function type lowers to an arrow chain `p_0 -> .. -> p_{n-1} -> result`. This lets a constructor carry a
-      // FUNCTION-typed field (`sup : (B -> W) -> W`), the shape of a general / infinitely-branching W-type. Each
-      // parameter sits one binder deeper than the previous; the result is below all of them. When the function is
-      // DEPENDENT (a named parameter is mentioned by a LATER parameter or the result -- `(m) -> lt m n -> acc`), the
-      // earlier parameters are put in the value scope at their binder levels (`p` at `depth + p`), so those references
-      // resolve. The chain binds parameters outermost-first, so the de Bruijn lines up.
-      const n = type.params.length
-      const names = type.paramNames ?? []
-
-      const scopeWith = (count: number): Map<string, number> => {
-        let scope = valueScope
-
-        for (let p = 0; p < count; p++) {
-          const name = names[p]
-
-          if (name) {
-            if (scope === valueScope) {
-              scope = new Map(valueScope)
-            }
-
-            scope.set(name, depth + p)
-          }
-        }
-
-        return scope
-      }
-
-      const result = kernelTypeAt(
-        type.result,
-        depth + n,
-        generics,
-        known,
-        scopeWith(n),
-        resolveCtor,
-      )
-
-      if (!result) {
-        return null
-      }
-
-      let out: Term = result
-
-      for (let i = n - 1; i >= 0; i--) {
-        const param = kernelTypeAt(
-          type.params[i]!,
-          depth + i,
-          generics,
-          known,
-          scopeWith(i),
-          resolveCtor,
-        )
-
-        if (!param) {
-          return null
-        }
-
-        out = arrow(param, out)
-      }
-
-      return out
-    }
-
-    default:
-      return null // unknown / inference variable: not representable yet
-  }
-}
-
-// The type the kernel should read for one parameter or result: the one AS WRITTEN when the surface checker's seeding
-// lost something from it, the checked one otherwise. Seeding keeps a form's declared number of type arguments and
-// turns a name it does not know into an inference variable. Both are right for inference and for the backends, and
-// both made the kernel check a weaker statement than the one written: `equal a x y` became `equal a`, and the family
-// `p y` became a variable.
-function faithful(
-  declared: Type | undefined,
-  checked: Type | undefined,
-): Type | undefined {
-  return declared && lostIn(declared, checked) ? declared : checked
-}
-
-// did seeding lose anything from `declared` on its way to `checked`: a dropped type argument, a dropped value
-// argument, or a written name with value arguments that became something else
-function lostIn(declared: Type, checked: Type | undefined): boolean {
-  if (!checked) {
-    return true
-  }
-
-  if (declared.kind === 'named') {
-    if (checked.kind !== 'named' || checked.name !== declared.name) {
-      return (declared.valueArgs?.length ?? 0) > 0 || (declared.args?.length ?? 0) > 0
-    }
-
-    const dArgs = declared.args ?? []
-    const cArgs = checked.args ?? []
-
-    if (dArgs.length > cArgs.length) {
-      return true
-    }
-
-    // value arguments are expressions the programmer wrote, and seeding must never change them. Unification has been
-    // seen to write a DIFFERENT one back (`p x` became `p c`, a name from another task's branch), so any change at
-    // all, not only a shorter list, means the written type is the faithful one
-    if (!sameValueArgs(declared.valueArgs, checked.valueArgs)) {
-      return true
-    }
-
-    return dArgs.some((a, i) => lostIn(a, cArgs[i]))
-  }
-
-  if (declared.kind === 'function' && checked.kind === 'function') {
-    return (
-      declared.params.some((p, i) => lostIn(p, checked.params[i])) ||
-      lostIn(declared.result, checked.result)
-    )
-  }
-
-  if (declared.kind === 'array' && checked.kind === 'array') {
-    return lostIn(declared.element, checked.element)
-  }
-
-  return false
+  return read.form === 'some' ? (read.value as Term) : null
 }
 
 // two lists of value arguments, compared as written (spans, resolved types and bindings set aside)
@@ -710,11 +217,6 @@ function sameValueArgs(
   return text(a) === text(b)
 }
 
-// the closed kernel case (no generics in scope), for signatures of named types and the like
-const kernelType = (
-  type: Type | undefined,
-  known: Set<string>,
-): Term | null => kernelTypeAt(type, 0, new Map(), known)
 
 const isUnit = (term: Term): boolean =>
   term.tag === 'const' && term.name === 'Unit'
@@ -726,6 +228,18 @@ class Decline extends Error {
   constructor(readonly reason: string = 'an expression the kernel cannot represent') {
     super(reason)
   }
+}
+
+// a Term part's decline (a `failure` whose note is `decline:` and the reason, check/judging.tree `decline`) as the
+// original's `Decline`, and any other raise as it came
+function asDecline(error: unknown): unknown {
+  const raised = error as { form?: unknown; note?: unknown } | undefined
+
+  if (raised && raised.form === 'failure' && typeof raised.note === 'string' && raised.note.startsWith('decline:')) {
+    return new Decline(raised.note.slice('decline:'.length))
+  }
+
+  return error
 }
 
 function need<T>(value: T | null, reason?: string): T {
@@ -759,7 +273,8 @@ export type ElaborationReport = {
 // task call that the kernel reduces to a literal). Distinct constants close that soundness hole, while equal literals
 // still share a name, so `24 == 24` and a function returning `24` both still discharge by convertibility.
 const numberLiteralConstant = (value: string | number): string =>
-  `numberValue#${value}`
+  elaborating.numberLiteralConstant(String(value))
+
 
 // the name of a numeric-literal constant a value computes to, or undefined if it is not a closed numeric literal. Two
 // distinct such names denote two different numbers, so an equality between them is refutable (the numeric companion of
@@ -929,32 +444,11 @@ export function elaborateReport(
 
   // transparent aliases, read through wherever the kernel reads a type (`kernelTypeAt`), as the checker reads them
   // through when it unifies (check/infer.ts `unfoldAlias`)
-  typeAliases = transparentAliases(program)
+  aliasState = elaborating.newAliasState(transparentAliases(program))
 
-  // How many arguments each function DECLARES, and how many it REQUIRES.
-  //
-  // A `need false` parameter may be left out at the call. The inference pass
-  // knows that and accepts the shorter call, but the kernel only sees an
-  // application, and an application with fewer arguments than the arrow chain
-  // has binders IS a partial application. So `call greet / bind name` against
-  // a task whose second parameter is optional came back typed
-  // `(many Boolean) -> String` where a `String` was wanted, and the error was
-  // reported wherever the value was USED rather than at the call.
-  //
-  // Such a call is left for the inference pass to check, which already checks
-  // the arity as a range and the arguments by position. Skipping it here
-  // gives up a kernel proof about that one call; typing it as a partial
-  // application gives a wrong answer, which is worse.
-  const declaredArity = new Map<string, { total: number; need: number }>()
-
-  for (const statement of program) {
-    if (statement.form === 'function') {
-      declaredArity.set(statement.name, {
-        total: statement.params.length,
-        need: statement.params.filter(p => !p.optional).length,
-      })
-    }
-  }
+  // How many arguments each function DECLARES, and how many it REQUIRES, is check/elaborating-terms.tree's
+  // `declared-arity`: a call leaving out a `need false` parameter is no partial application, and is left to the
+  // inference pass, which checks the arity as a range
 
   // gate for transparent definitions. Best-effort: a failure here just means no
   // function is treated as transparent (a sound, conservative fallback), never a
@@ -1012,129 +506,100 @@ export function elaborateReport(
     return [left, right]
   }
   // the case of the `fold` being closed, and the first COUNTEREXAMPLE the truth table found in one, which the fold's
-  // refusal names: in the case `modus-ponens`, evaluate(v, a) is yes and evaluate(v, b) is no
-  let foldCase: string | undefined
-  // `sides` when there was nothing to choose: the two sides computed to two different cases outright
-  let tableCounterexample: { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined
+  // refusal names: in the case `modus-ponens`, evaluate(v, a) is yes and evaluate(v, b) is no. Both are `caseState`,
+  // which check/elaborating-cases.tree writes. `sides` when there was nothing to choose: the two sides computed to two
+  // different cases outright
+  const counterexampleOf = (): { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined => {
+    const found = caseState.counterexample
+
+    if (found.form === 'none') {
+      return undefined
+    }
+
+    const { at, text, given, sides } = found.value
+
+    return {
+      at: at.form === 'some' ? at.value : undefined,
+      text,
+      given,
+      ...(sides.length > 0 ? { sides: [sides[0]!, sides[1]!] as [string, string] } : {}),
+    }
+  }
 
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
   const proven: string[] = []
   const declined: { name: string; reason: string }[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
-  const lemmas = new Map<string, { left: string; right: string }>() // named, proven `a == b` holds, for `cite`
-  // the program's theorems: a `cite` of one this pass holds no equality lemma for is the arithmetic provers' (holds.ts
-  // `citedFacts`, which proves its hypotheses and adds its conclusion), not a dangling reference
-  const theoremNames = new Set(
-    program.flatMap(s => (s.form === 'function' && s.theorem ? [s.name] : [])),
+  // the named, proven `a == b` holds, for `cite`; the same as UNIVERSAL rewrite rules (`binderCount` leading universal
+  // binders, the sides quoted at that depth so their `var`s are the holes); and the program's theorems, whose `cite`
+  // this pass holds no lemma for is the arithmetic provers' (holds.ts `citedFacts`). One check/elaborating-proof.tree
+  // `lemma-state`, its maps the original's
+  const lemmaState = proofs.newLemmaState(
+    new Map(program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, true] as const] : []))),
   )
-  // named, proven UNIVERSAL equational lemmas, stored as rewrite rules: `binderCount` leading universal binders (the
-  // rule's `seat`s), and `lhs`/`rhs` quoted at that depth so their `var`s are the universal holes. Used by `fold ...`
-  // with `cite <lemma>` children: each cited lemma is instantiated by first-order matching against the goal and fed in
-  // as a ground hypothesis, so a proof can chain previously proven lemmas (e.g. commutativity over `n + 0 = n`).
-  const lemmaRules = new Map<
-    string,
-    { binderCount: number; lhs: Term; rhs: Term }
-  >()
+  const lemmas = lemmaState.lemmas as Map<string, { left: string; right: string }>
+  const theoremNames = lemmaState.theorems
+  const lemmaRules = lemmaState.rules as unknown as Map<string, { binderCount: number; lhs: Term; rhs: Term }>
 
-  // named types we postulate as constants (record-types / enums), so they can appear in signatures
-  const namedTypes = new Set<string>()
+  // the program's types and data as the kernel reads them (check/elaborating-data.tree): the named types, each form's
+  // encoding, the signature and each task's kernel type
+  const elaborated = elaborating.elaborationDataOf(
+    program as never,
+    aliasState,
+    [...collectNumberLiteralValues(program)],
+    (left, right) =>
+      sameValueArgs(
+        (left as { valueArgs?: Expression[] }).valueArgs,
+        (right as { valueArgs?: Expression[] }).valueArgs,
+      ),
+  )
 
-  for (const statement of program) {
-    if (statement.form === 'record-type') {
-      namedTypes.add(statement.name)
-    }
-
-    // a TYPE-RETURNING function (`el : univ -> type`, an induction-recursion decoder) is also a type FORMER: `el a` may
-    // appear in a type position (TYPE-LEVEL APPLICATION), where it applies the function to `a` and reduces to a type.
-    // Recognising it here lets a datatype constructor reference the decoder (`pi' : (a) -> (el a -> univ) -> univ`).
-    if (
-      statement.form === 'function' &&
-      statement.result?.kind === 'named' &&
-      statement.result.name === 'type'
-    ) {
-      namedTypes.add(statement.name)
-    }
+  // a PROPOSITIONAL TRUNCATION's constructors are registered for proof irrelevance and kept rigid, each with its arity
+  for (const entry of elaborated.truncations) {
+    registerTruncation(entry.name, entry.arity)
   }
 
-  // data: encode each record-type as kernel constants. A struct gets a constructor (make__r) and one projection
-  // per field (r__field); an enum gets a constructor per variant and a non-dependent eliminator (match__e). All
-  // sound postulates the kernel checks against, with their field/result types drawn from the declared types.
-  const dataSignature: { name: string; type: Term }[] = []
-  const recordFields = new Map<string, string[]>() // record name -> field names in declaration order
-  // record name -> each field's surface name and kernel type, for no-confusion at depth through a struct's fields
-  const recordFieldInfo = new Map<string, { name: string; type: Term }[]>()
-  const variantNames = new Map<string, string[]>() // enum name -> variant names in declaration order
-  // a variant's SURFACE name -> every enum that declares it. Constructors are namespaced internally as `enum__variant`,
-  // so one surface name (e.g. `minus` on both `pole` and `spin`) lives in two enums without clashing. A use site picks
-  // the owning enum from the expected type, or from the unique owner when only one enum has it. See the `record` case.
-  const variantToEnum = new Map<string, string[]>()
-  // every form the SOURCE declares each case in, whether or not the kernel encoded the form: a form it skips (one it
-  // cannot encode soundly) is still the owner the surface checker gave a construction
-  const declaredOwners = new Map<string, Set<string>>()
+  const unboxed = <T,>(found: { form: 'some'; value: T } | { form: 'none' }): T | undefined =>
+    found.form === 'some' ? found.value : undefined
+  const infos = (
+    from: Map<string, elaborating.FieldInfo[]>,
+  ): Map<string, { name: string; type: Term }[]> =>
+    new Map(
+      [...from].map(([key, fields]) => [
+        key,
+        fields.map(field => ({ name: field.name, type: (unboxed(field.type) ?? null) as Term })),
+      ]),
+    )
+  const heads = (from: Map<string, elaborating.Maybe<string>[]>): Map<string, (string | undefined)[]> =>
+    new Map([...from].map(([key, found]) => [key, found.map(unboxed)]))
 
-  for (const statement of program) {
-    if (statement.form === 'record-type') {
-      for (const variant of statement.variants) {
-        const owners = declaredOwners.get(variant.name) ?? new Set<string>()
-        owners.add(statement.name)
-        declaredOwners.set(variant.name, owners)
-      }
-    }
-  }
+  const namedTypes = elaborated.namedTypes
+  const recordFields = elaborated.recordFields
+  const recordFieldInfo = infos(elaborated.recordFieldInfo)
+  const variantNames = elaborated.variantNames
+  const variantToEnum = elaborated.variantToEnum
+  const declaredOwners = elaborated.declaredOwners
+  const variantFieldInfo = infos(elaborated.variantFieldInfo)
+  const enumEncodings = elaborated.enumEncodings.map(entry => ({ name: entry.name, encoding: entry.term as Term }))
+  const enumDefs = elaborated.enumDefs as { name: string; term: Term }[]
+  const typeFormerArity = elaborated.typeFormerArity
+  const typeFormerIndices = elaborated.typeFormerIndices as Map<string, Term[]>
+  const largeForms = elaborated.largeForms
+  const variantIndexHead = elaborated.variantIndexHead
+  const variantIndexExpr = elaborated.variantIndexExpr as Map<string, Expression>
+  const familyIndexTypes = heads(elaborated.familyIndexTypes)
+  const variantIndexHeads = heads(elaborated.variantIndexHeads)
+  const signature = elaborated.signature as { name: string; type: Term }[]
+  const functionType = elaborated.functionType as Map<string, Term>
+  const functionGenerics = elaborated.functionGenerics
+  const representable = elaborated.representable
+  const unreadable = elaborated.unreadable
 
   const ctorKey = (enumName: string, variant: string): string =>
     `${enumName}__${variant}`
 
-  // internal `enum__variant` key -> its fields (surface name + kernel type term), for binding them in a match branch
-  const variantFieldInfo = new Map<
-    string,
-    { name: string; type: Term }[]
-  >()
-
-  const enumEncodings: { name: string; encoding: Term }[] = [] // each enum's derived self-type encoding
-  const enumDefs: { name: string; term: Term }[] = [] // computing definitions for constructors + eliminators
-  // a polymorphic datatype's type-parameter count, so the type former is registered as `Type -> .. -> Type` and use
-  // sites (constructor application, match) supply that many erased type witnesses. 0 (absent) for a monomorphic type.
-  const typeFormerArity = new Map<string, number>()
-  // a LARGE form (a field carries a type) -> that field's name. It gets no `matchType__T` (mentionsUniverse, K0), and
-  // a type-returning match on it is refused with this name rather than as an unknown constant.
-  const largeForms = new Map<string, string>()
-
-  // every polymorphic record-type's former takes its type parameters, a STRUCT included. Only an enum used to record
-  // it, so a generic struct (`signal t`) was registered as a bare `Type0` and a signature naming `signal text` applied
-  // a non-function: every caller of a task returning one failed the kernel (native-dom-0012). An enum whose encoding
-  // succeeds sets the same count again below.
-  for (const statement of program) {
-    if (statement.form === 'record-type' && statement.params.length > 0) {
-      typeFormerArity.set(statement.name, statement.params.length)
-    }
-  }
-  // an indexed family's VALUE-INDEX kernel types (e.g. `[number]` for a length index), so the type former is registered
-  // as `Type0 -> .. -> nat -> .. -> Type0` and `vec a n` type-checks. Absent for a non-indexed type.
-  const typeFormerIndices = new Map<string, Term[]>()
-  // an indexed family's single value-index TYPE NAME (e.g. `nat`), when it is an enum -- used to build the discriminator
-  // motive for inversion (matching on the index to send an impossible branch's index to `Unit`). Only set for a
-  // single, enum-typed index.
-  const familyIndexType = new Map<string, string>()
-  // a variant's `enum__variant` key -> the head constructor key of its FIRST output index (`vnil -> nat__zero`,
-  // `vcons -> nat__succ`). Lets a match tell which constructors are reachable at a constructor-headed subject index.
-  const variantIndexHead = new Map<string, string>()
-  // a variant's `enum__variant` key -> the SURFACE expression of its first output index (`vcons -> make succ / read count`).
-  // Re-elaborated against a constructor's bound fields, this refines the index variable during dependent induction so
-  // `fold v` over an indexed family proves a goal that mentions the index (the general ornament / vector laws).
-  const variantIndexExpr = new Map<string, Expression>()
-  // MULTI-INDEX inversion data. `familyIndexTypes`: enum -> the enum type NAME at each index position (or undefined for
-  // a non-enum index). `variantIndexHeads`: ctor key -> the output index head ctor at each position (or undefined when
-  // that position is not constructor-headed). Generalizes the single-index maps above so an empty match on a TWO-index
-  // family like `lt m zero` (ex-falso, nothing is below zero) elaborates to a computing term by discriminating on the
-  // pinned position.
-  const familyIndexTypes = new Map<string, (string | undefined)[]>()
-  const variantIndexHeads = new Map<string, (string | undefined)[]>()
-
-  // resolve an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, so an
-  // indexed family's constructor / field types name the SAME constant the value elaboration does. Single-owner only;
-  // an overloaded index constructor declines (the family then stays an opaque postulate, never mis-typed).
+  // an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, single-owner only
   const resolveIndexCtor = (variant: string): string | null => {
     const owners = variantToEnum.get(variant)
 
@@ -1143,890 +608,10 @@ export function elaborateReport(
       : null
   }
 
-  for (const statement of program) {
-    if (statement.form !== 'record-type') {
-      continue
-    }
+  // the context levels of the CURRENT function's erased generic binders, while its body elaborates, and the same
+  // binders BY NAME: check/elaborating-terms.tree's `generic-levels` and `generics`, set below where a task's body
+  // starts and ends
 
-    const self = constant(statement.name)
-
-    if (statement.variants.length > 0) {
-      const params = statement.params
-      const m = params.length
-      const dataGenerics = new Map<string, number>(
-        params.map((p, i) => [p, i]),
-      )
-
-      // VALUE indices of an indexed family. Their kernel types (e.g. `nat`) are needed for the type former's kind; the
-      // value scope of a variant's own fields lets a field type / output index reference a sibling field (`vec a count`,
-      // output `succ count`). A field f_j is bound at level m + j.
-      const declaredIndices = statement.indices ?? []
-      const l = declaredIndices.length
-      // index t's type AT A DEPTH. It must be built where it is used: an index whose type is a type parameter
-      // (`equal`'s `x, like a`) refers to that parameter by de Bruijn index, which shifts with every binder. These were
-      // built once at depth 0 and reused at depth m + t and m + 1 + n + t, which pointed past the environment the
-      // moment an index type was not a closed constant: every generic indexed family's `fork case` crashed the kernel
-      // (proof-by-default-0031). A closed index type (`nat`) is the same at every depth, which is why `eq` over `nat`
-      // in test/check/transport.ts never showed it.
-      const indexTypeAt = (t: number, depth: number): Term | null =>
-        kernelTypeAt(declaredIndices[t]!.type, depth, dataGenerics, namedTypes)
-      // at the type former's kind: index t sits after the m type parameters and the t earlier indices
-      const indexTypes = declaredIndices.map((_, t) => indexTypeAt(t, m + t))
-      const fieldLevels = (variant: { fields: { name: string }[] }) =>
-        new Map(variant.fields.map((f, j) => [f.name, m + j]))
-
-      // an enum: a constructor per variant + a match eliminator, optionally with m leading ERASED type parameters. Field
-      // types are computed with the parameter generics (and, for an indexed family, the variant's field scope) in
-      // scope, so a `like a` field resolves to its parameter variable and a `vec a count` field resolves `count`.
-      const ok =
-        indexTypes.every(t => t !== null) &&
-        statement.variants.every(variant =>
-          variant.fields.every(f =>
-            kernelTypeAt(
-              f.type,
-              m,
-              dataGenerics,
-              namedTypes,
-              fieldLevels(variant),
-              resolveIndexCtor,
-            ),
-          ),
-        )
-
-      if (!ok) {
-        continue
-      }
-
-      if (l > 0) {
-        typeFormerIndices.set(statement.name, indexTypes as Term[])
-      }
-
-      const n = statement.variants.length
-
-      // the type former applied to its m parameter VARIABLES (and, for a constructor result, the output index value
-      // terms appended) at total binder depth `depth`. For m = 0 and no indices this is the bare type constant, so all
-      // of the below reduces to the original monomorphic encoding exactly.
-      const appliedSelf = (depth: number, indexTerms: Term[] = []): Term => {
-        let out: Term = constant(statement.name)
-
-        for (let p = 0; p < m; p++) {
-          out = apply(out, variable(depth - p - 1))
-        }
-
-        for (const indexTerm of indexTerms) {
-          out = apply(out, indexTerm)
-        }
-
-        return out
-      }
-
-      const withParams = (inner: Term): Term => {
-        let out = inner
-
-        for (let p = 0; p < m; p++) {
-          out = erasedPi(TYPE0, out)
-        }
-
-        return out
-      }
-
-      // constructor types (closed-checked). For a k-field variant:
-      //   (0 p_0..p_{m-1} : Type0) -> F_0 -> .. -> F_{k-1} -> (T p_0 .. p_{m-1})
-      // field j sits at depth m + j (under the params + j preceding field arrows); the result at depth m + k.
-      const ctorTypes: { name: string; type: Term }[] = []
-      let sound = true
-
-      for (const variant of statement.variants) {
-        const k = variant.fields.length
-
-        // an indexed family: the constructor's RESULT is `T <params> <output index values>` (`vnil : vec a zero`,
-        // `vcons : .. -> vec a (succ count)`). The index value terms are elaborated at the result depth with the
-        // variant's full field scope, so `succ count` resolves the field `count`.
-        const indexTerms: Term[] = []
-
-        if (l > 0) {
-          const values = variant.indexValues ?? []
-
-          for (let i = 0; i < l; i++) {
-            const value = values[i]
-            const term = value
-              ? indexTermAt(
-                  value,
-                  m + k,
-                  fieldLevels(variant),
-                  namedTypes,
-                  resolveIndexCtor,
-                )
-              : null
-
-            if (!term) {
-              sound = false
-              break
-            }
-
-            indexTerms.push(term)
-          }
-        }
-
-        let ctorType: Term = appliedSelf(m + k, indexTerms)
-
-        for (let j = k - 1; j >= 0; j--) {
-          // field j's type sees the PRECEDING fields (0..j-1), each bound at level m + i, so a later field can be
-          // indexed by an earlier one (`rest : vec a count`).
-          const precedingFields = new Map(
-            variant.fields.slice(0, j).map((f, i) => [f.name, m + i]),
-          )
-
-          const fieldType = kernelTypeAt(
-            variant.fields[j]!.type,
-            m + j,
-            dataGenerics,
-            namedTypes,
-            precedingFields,
-            resolveIndexCtor,
-          )
-
-          if (!fieldType) {
-            // a field type that cannot be lowered (e.g. an unresolved value index) leaves the datatype an opaque
-            // postulate rather than crashing the encoding on a null term.
-            sound = false
-            break
-          }
-
-          ctorType = arrow(fieldType, ctorType)
-        }
-
-        if (!sound) {
-          continue
-        }
-
-        ctorType = withParams(ctorType)
-
-        if (hasFreeVar(ctorType)) {
-          sound = false
-        }
-
-        ctorTypes.push({
-          name: ctorKey(statement.name, variant.name),
-          type: ctorType,
-        })
-      }
-
-      // an INDEXED FAMILY (value indices present): register the index-carrying constructor types (which already give
-      // the type-safety win -- `vec a zero` and `vec a (succ n)` are distinct, so a `vec a (succ n)` function rejects an
-      // empty vector) plus the constructors' computing definitions. The fully DEPENDENT eliminator (a motive that
-      // refines the index per branch) is the next step; until then `fork case` on an indexed family is not yet
-      // reducible, but construction and application are sound. A de Bruijn slip falls back to the opaque postulate.
-      if (l > 0) {
-        if (!sound) {
-          continue
-        }
-
-        for (const ctor of ctorTypes) {
-          dataSignature.push(ctor)
-        }
-
-        for (const variant of statement.variants) {
-          const owners = variantToEnum.get(variant.name) ?? []
-          owners.push(statement.name)
-          variantToEnum.set(variant.name, owners)
-          variantFieldInfo.set(
-            ctorKey(statement.name, variant.name),
-            variant.fields.map((f, j) => ({
-              name: f.name,
-              // a dependent field (`rest : vecnat count`) references an EARLIER field. In the match's branch binding
-              // the fields are bound in order, so field j sees fields 0..j-1 as the innermost binders -- field i at
-              // de Bruijn j - i - 1. Computing at depth m + j with the preceding fields scoped at m + i produces
-              // exactly that, so the sibling reference is a valid (field-relative) index, not a negative one.
-              type: kernelTypeAt(
-                f.type,
-                m + j,
-                dataGenerics,
-                namedTypes,
-                new Map(
-                  variant.fields.slice(0, j).map((g, i) => [g.name, m + i]),
-                ),
-                resolveIndexCtor,
-              )!,
-            })),
-          )
-        }
-
-        variantNames.set(
-          statement.name,
-          statement.variants.map(v => v.name),
-        )
-        typeFormerArity.set(statement.name, m)
-
-        // MULTI-INDEX inversion data, recorded for every index position (used for ex-falso on a multi-index family).
-        if (l > 0) {
-          familyIndexTypes.set(
-            statement.name,
-            declaredIndices.map(ix =>
-              ix.type.kind === 'named'
-                ? (ix.type as { name: string }).name
-                : undefined,
-            ),
-          )
-
-          for (const variant of statement.variants) {
-            variantIndexHeads.set(
-              ctorKey(statement.name, variant.name),
-              (variant.indexValues ?? []).map(head =>
-                head?.form === 'record'
-                  ? resolveIndexCtor(head.name) ?? undefined
-                  : undefined,
-              ),
-            )
-          }
-        }
-
-        // record the (single) index type name and each variant's output-index head, for inversion. Only when there is
-        // exactly one index and it is a named (enum) type, and each variant's first output index is a constructor.
-        if (l === 1 && declaredIndices[0]!.type.kind === 'named') {
-          familyIndexType.set(
-            statement.name,
-            (declaredIndices[0]!.type as { name: string }).name,
-          )
-
-          for (const variant of statement.variants) {
-            const head = variant.indexValues?.[0]
-
-            if (head) {
-              variantIndexExpr.set(
-                ctorKey(statement.name, variant.name),
-                head,
-              )
-            }
-
-            if (head?.form === 'record') {
-              const resolved = resolveIndexCtor(head.name)
-
-              if (resolved) {
-                variantIndexHead.set(
-                  ctorKey(statement.name, variant.name),
-                  resolved,
-                )
-              }
-            }
-          }
-        }
-
-        statement.variants.forEach((variant, i) => {
-          enumDefs.push({
-            name: ctorKey(statement.name, variant.name),
-            term: constructorEncoding(i, variant.fields.length, n, m),
-          })
-        })
-
-        // the fully DEPENDENT eliminator, so `fork case` reduces on an indexed value AND the result type may refine
-        // per index. Telescope (levels): p_0..p_{m-1} (0..m-1, erased), P the motive (m), b_0..b_{n-1} (m+1..m+n),
-        // i_0..i_{l-1} (m+1+n..m+n+l), x (m+n+l+1); result P i.. x at depth m+n+l+2.
-        //   match__T : (0 p..) -> (P : (i..) -> T p.. i.. -> Type0)
-        //            -> (b_v : (fields_v) -> P <output index_v> (T_v p.. fields_v)) [per variant]
-        //            -> (i..) -> (x : T p.. i..) -> P i.. x
-        // The COMPUTING rule is the self-encoding itself: match P b.. i.. x = x P b.. (the indices are erased in the
-        // body). A de Bruijn slip leaves it unregistered, so `fork case` declines rather than misbehaving.
-        let eliminatorSound = true
-
-        // motive P : (i_0:I_0)..(i_{l-1}:I_{l-1}) -> (T p.. i..) -> Type0, built at depth m
-        const motiveIndexVars: Term[] = []
-
-        for (let t = 0; t < l; t++) {
-          motiveIndexVars.push(variable(l - t - 1)) // i_t at depth m+l
-        }
-
-        let motiveType: Term = arrow(
-          appliedSelf(m + l, motiveIndexVars),
-          TYPE0,
-        )
-
-        // the motive is built at depth m, so its binder i_t sits at m + t
-        for (let t = l - 1; t >= 0; t--) {
-          motiveType = arrow(indexTypeAt(t, m + t)!, motiveType)
-        }
-
-        // branch types
-        const branchTypes: Term[] = []
-
-        for (let v = 0; v < n && eliminatorSound; v++) {
-          const variant = statement.variants[v]!
-          const k = variant.fields.length
-          const depthB = m + 1 + v // binders above b_v: p.., P, b_0..b_{v-1}
-          const resultDepth = depthB + k
-          const fieldScopeB = new Map(
-            variant.fields.map((f, j) => [f.name, depthB + j]),
-          )
-
-          // output index value terms (`vnil -> zero`, `vcons -> succ count`), at the branch result depth
-          const ivTerms: Term[] = []
-
-          for (let t = 0; t < l; t++) {
-            const ivExpr = variant.indexValues?.[t]
-            const ivt = ivExpr
-              ? indexTermAt(
-                  ivExpr,
-                  resultDepth,
-                  fieldScopeB,
-                  namedTypes,
-                  resolveIndexCtor,
-                )
-              : null
-
-            if (!ivt) {
-              eliminatorSound = false
-              break
-            }
-
-            ivTerms.push(ivt)
-          }
-
-          if (!eliminatorSound) {
-            break
-          }
-
-          // the constructor applied to its type-param witnesses and fields: T_v p.. f_0..f_{k-1}
-          let ctorTerm: Term = constant(
-            ctorKey(statement.name, variant.name),
-          )
-
-          for (let p = 0; p < m; p++) {
-            ctorTerm = apply(ctorTerm, variable(resultDepth - p - 1))
-          }
-
-          for (let j = 0; j < k; j++) {
-            ctorTerm = apply(
-              ctorTerm,
-              variable(resultDepth - (depthB + j) - 1),
-            )
-          }
-
-          // P <output index> (ctor ..)
-          let branch: Term = variable(resultDepth - m - 1) // P
-
-          for (const ivt of ivTerms) {
-            branch = apply(branch, ivt)
-          }
-
-          branch = apply(branch, ctorTerm)
-
-          // wrap the k field binders (a field may be indexed by an earlier one: `rest : T p.. count`)
-          for (let j = k - 1; j >= 0; j--) {
-            const preceding = new Map(
-              variant.fields.slice(0, j).map((f, i) => [f.name, depthB + i]),
-            )
-            const fieldType = kernelTypeAt(
-              variant.fields[j]!.type,
-              depthB + j,
-              dataGenerics,
-              namedTypes,
-              preceding,
-              resolveIndexCtor,
-            )
-
-            if (!fieldType) {
-              eliminatorSound = false
-              break
-            }
-
-            branch = arrow(fieldType, branch)
-          }
-
-          branchTypes.push(branch)
-        }
-
-        // assemble: result P i.. x at depth m+n+l+2
-        const resDepth = m + n + l + 2
-        let dependentElim: Term = variable(resDepth - m - 1) // P
-
-        for (let t = 0; t < l; t++) {
-          dependentElim = apply(
-            dependentElim,
-            variable(resDepth - (m + 1 + n + t) - 1), // i_t
-          )
-        }
-
-        dependentElim = apply(
-          dependentElim,
-          variable(resDepth - (m + 1 + n + l) - 1), // x
-        )
-
-        // wrap x : T p.. i.. at the subject depth
-        const subjDepth = m + 1 + n + l
-        const subjIndexVars: Term[] = []
-
-        for (let t = 0; t < l; t++) {
-          subjIndexVars.push(variable(subjDepth - (m + 1 + n + t) - 1))
-        }
-
-        dependentElim = arrow(
-          appliedSelf(subjDepth, subjIndexVars),
-          dependentElim,
-        )
-
-        // (i_t : I_t), past the type parameters, the motive and the n branches
-        for (let t = l - 1; t >= 0; t--) {
-          dependentElim = arrow(indexTypeAt(t, m + 1 + n + t)!, dependentElim)
-        }
-
-        for (let v = n - 1; v >= 0; v--) {
-          dependentElim = arrow(branchTypes[v]!, dependentElim) // b_v
-        }
-
-        dependentElim = arrow(motiveType, dependentElim) // (P : ...)
-        dependentElim = withParams(dependentElim) // (0 p.. : Type0)
-
-        if (eliminatorSound && !hasFreeVar(dependentElim)) {
-          dataSignature.push({
-            name: `match__${statement.name}`,
-            type: dependentElim,
-          })
-
-          // computing rule: match P b.. i.. x = x P b_0 .. b_{n-1}. From innermost: x=0, i_t=1..l, b_v=l+n-v, P=l+n+1.
-          let dependentBody: Term = variable(0) // x
-          dependentBody = apply(dependentBody, variable(l + n + 1)) // P
-
-          for (let v = 0; v < n; v++) {
-            dependentBody = apply(dependentBody, variable(l + n - v)) // b_v
-          }
-
-          enumDefs.push({
-            name: `match__${statement.name}`,
-            term: lambdas(m + n + l + 2, dependentBody),
-          })
-        }
-
-        continue
-      }
-
-      // match__e : (0 p_0..p_{m-1} : Type0) -> (0 A : Type0) -> (T p..) -> (F_0 -> .. -> A) -> ... -> A. The A and
-      // branch indices are unchanged from the monomorphic case (params sit OUTSIDE the A binder); only the subject
-      // becomes the applied type and a branch field type carries its param references at depth m + i + 1 + j.
-      let eliminator: Term = variable(n + 1) // result A, deepest
-
-      for (let i = n; i >= 1; i--) {
-        const fields = statement.variants[i - 1]!.fields
-        const k = fields.length
-        let branch: Term = variable(i + k) // A inside branch i
-
-        for (let j = k - 1; j >= 0; j--) {
-          // field j of branch i is at depth m + i + 1 + j, with the preceding fields (each at m + i + 1 + p) in scope,
-          // so a field type may reference an earlier sibling field. Closed field types are unaffected by the scope.
-          branch = arrow(
-            kernelTypeAt(
-              fields[j]!.type,
-              m + i + 1 + j,
-              dataGenerics,
-              namedTypes,
-              new Map(
-                fields.slice(0, j).map((g, p) => [g.name, m + i + 1 + p]),
-              ),
-              resolveIndexCtor,
-            )!,
-            branch,
-          )
-        }
-
-        eliminator = arrow(branch, eliminator)
-      }
-
-      eliminator = withParams(
-        erasedPi(TYPE0, arrow(appliedSelf(m + 1), eliminator)),
-      )
-
-      if (hasFreeVar(eliminator)) {
-        sound = false
-      }
-
-      // a de Bruijn slip in the polymorphic encoding (m > 0) falls back to the opaque postulate: no crash, no
-      // unsoundness, the law simply stays unproven. For m = 0 the types are always closed, so this never trips.
-      if (!sound) {
-        continue
-      }
-
-      for (const ctor of ctorTypes) {
-        dataSignature.push(ctor)
-      }
-
-      for (const variant of statement.variants) {
-        const owners = variantToEnum.get(variant.name) ?? []
-        owners.push(statement.name)
-        variantToEnum.set(variant.name, owners)
-        variantFieldInfo.set(
-          ctorKey(statement.name, variant.name),
-          variant.fields.map((f, j) => ({
-            name: f.name,
-            // field j is typed at depth m + j with the PRECEDING fields in scope, so a field type may reference an
-            // earlier sibling field (`step : (m) -> lt m n -> acc` references the field `n`). For a closed field type
-            // (the common case) the depth and scope are irrelevant, so existing non-indexed datatypes are unchanged.
-            type: kernelTypeAt(
-              f.type,
-              m + j,
-              dataGenerics,
-              namedTypes,
-              new Map(
-                variant.fields.slice(0, j).map((g, i) => [g.name, m + i]),
-              ),
-              resolveIndexCtor,
-            )!,
-          })),
-        )
-      }
-
-      variantNames.set(
-        statement.name,
-        statement.variants.map(v => v.name),
-      )
-
-      typeFormerArity.set(statement.name, m)
-
-      dataSignature.push({
-        name: `match__${statement.name}`,
-        type: eliminator,
-      })
-
-      // a LARGE dependent eliminator `matchType__T` whose motive lands in Type1, so this enum can be eliminated INTO
-      // the universe (a type-level recursion / discriminator). Inversion uses it on the index type to send an
-      // impossible branch's index to `Unit`. Same self-encoding computing rule as `match__T`; additive (a new
-      // constant), so existing matches are untouched.
-      //   matchType__T : (0 p..) -> (Q : T p.. -> Type1) -> (b_v : (fields) -> Q (T_v p.. fields)) -> (x : T p..) -> Q x
-      {
-        const TYPE1: Term = { tag: 'type', level: litLevel(1) }
-        let largeSound = true
-        const largeMotive = arrow(appliedSelf(m), TYPE1) // Q : T p.. -> Type1, at depth m
-        const largeBranches: Term[] = []
-
-        for (let v = 0; v < n && largeSound; v++) {
-          const fields = statement.variants[v]!.fields
-          const k = fields.length
-          const depthB = m + 1 + v // binders above b_v: p.., Q, b_0..b_{v-1}
-          const resultDepth = depthB + k
-
-          let ctorTerm: Term = constant(
-            ctorKey(statement.name, statement.variants[v]!.name),
-          )
-
-          for (let p = 0; p < m; p++) {
-            ctorTerm = apply(ctorTerm, variable(resultDepth - p - 1))
-          }
-
-          for (let j = 0; j < k; j++) {
-            ctorTerm = apply(
-              ctorTerm,
-              variable(resultDepth - (depthB + j) - 1),
-            )
-          }
-
-          let branch: Term = apply(variable(resultDepth - m - 1), ctorTerm) // Q (T_v ..)
-
-          for (let j = k - 1; j >= 0; j--) {
-            const fieldType = kernelTypeAt(
-              fields[j]!.type,
-              depthB + j,
-              dataGenerics,
-              namedTypes,
-              // preceding fields in scope, so a field type may reference an earlier sibling -- including via a
-              // type-level application of a decoder (`val : el base`, the field of an induction-recursion constructor).
-              new Map(fields.slice(0, j).map((g, i) => [g.name, depthB + i])),
-              resolveIndexCtor,
-            )
-
-            // a field that did not lower, or one that carries a type: no large eliminator (mentionsUniverse, K0)
-            if (!fieldType || mentionsUniverse(fieldType)) {
-              if (fieldType) {
-                largeForms.set(statement.name, fields[j]!.name)
-              }
-
-              largeSound = false
-              break
-            }
-
-            branch = arrow(fieldType, branch)
-          }
-
-          largeBranches.push(branch)
-        }
-
-        let largeElim: Term = apply(variable(n + 1), variable(0)) // Q x, at depth m+n+2
-        largeElim = arrow(appliedSelf(m + n + 1), largeElim) // (x : T p..)
-
-        for (let v = n - 1; v >= 0; v--) {
-          largeElim = arrow(largeBranches[v]!, largeElim) // b_v
-        }
-
-        largeElim = arrow(largeMotive, largeElim) // (Q : T p.. -> Type1)
-        largeElim = withParams(largeElim) // (0 p.. : Type0)
-
-        if (largeSound && !hasFreeVar(largeElim)) {
-          dataSignature.push({
-            name: `matchType__${statement.name}`,
-            type: largeElim,
-          })
-
-          // computing rule: matchType Q b.. x = x Q b.. From innermost: x=0, b_v=n-v, Q=n+1.
-          let largeBody: Term = apply(variable(0), variable(n + 1)) // x Q
-
-          for (let v = 0; v < n; v++) {
-            largeBody = apply(largeBody, variable(n - v)) // b_v
-          }
-
-          enumDefs.push({
-            name: `matchType__${statement.name}`,
-            term: lambdas(m + n + 2, largeBody),
-          })
-        }
-      }
-
-      // the self-type encoding (transparent type) is well-formed only for a field-LESS, param-LESS enum: a
-      // field-carrying or polymorphic constructor makes `P v_i` ill-typed, so it is skipped (the computing defs below
-      // still drive reduction). Kept exactly as before for the monomorphic, field-less case.
-      if (m === 0) {
-        const variants = statement.variants.map(v => v.name)
-
-        let body: Term = apply(variable(n), variable(n + 1)) // P x
-
-        for (let i = n - 1; i >= 0; i--) {
-          body = arrow(
-            apply(
-              variable(i),
-              constant(ctorKey(statement.name, variants[i]!)),
-            ),
-            body,
-          )
-        } // P v_i -> ..
-
-        body = arrow(arrow(self, TYPE0), body) // (P : e -> Type0) -> ..
-        enumEncodings.push({
-          name: statement.name,
-          encoding: { tag: 'self', body },
-        })
-      }
-
-      // COMPUTING definitions for the constructors and eliminator (the Church / self-encoding lambdas), so the kernel
-      // actually REDUCES `match (v_i) ... -> branch_i` rather than treating them as opaque postulates. With these,
-      // `calm` (definitional equality) discharges `flip off = on`, `plus one one = two`, and the like.
-      //   constructor v_i (k fields) = \f_0..f_{k-1}. \P. \b_0..b_{n-1}. b_i f_0 .. f_{k-1}
-      //   eliminator match__e        = \A. \x. \b_0..b_{n-1}. x (\_. A) b_0 .. b_{n-1}
-      // de Bruijn (innermost = 0): for a constructor, branches b_{n-1}..b_0 are 0..n-1, P is n, fields f_{k-1}..f_0
-      // are n+1..n+k; for the eliminator, branches are 0..n-1, x is n, A is n+1.
-      // m leading lambdas absorb the erased type parameters at both the constructor and the eliminator (ignored by the
-      // body, whose indices count from the innermost, so they are unchanged). At a use site the erased witnesses are
-      // applied and discarded, leaving the same reduct as the monomorphic case.
-      // a PROPOSITIONAL TRUNCATION (`mark prop`, an hProp): its constructors are REGISTERED for proof irrelevance and
-      // kept RIGID (no computing definition), so a value `wrap x` does not reduce to a self-encoding lambda and the
-      // `convert` irrelevance rule fires on it (`wrap x == wrap y`). Ordinary types get their computing defs as usual.
-      if (statement.truncation) {
-        for (const variant of statement.variants) {
-          // the arity is the erased type arguments and the fields: irrelevance holds for that application exactly
-          registerTruncation(ctorKey(statement.name, variant.name), m + variant.fields.length)
-        }
-      } else {
-        statement.variants.forEach((variant, i) => {
-          enumDefs.push({
-            name: ctorKey(statement.name, variant.name),
-            term: constructorEncoding(i, variant.fields.length, n, m),
-          })
-        })
-      }
-
-      const motive: Term = { tag: 'lam', body: variable(n + 2) } // \_. A
-
-      let ebody: Term = apply(variable(n), motive) // x (\_. A)
-
-      for (let j = 0; j < n; j++) {
-        ebody = apply(ebody, variable(n - 1 - j))
-      } // b_0 .. b_{n-1}
-
-      enumDefs.push({
-        name: `match__${statement.name}`,
-        term: lambdas(m + n + 2, ebody),
-      })
-    } else {
-      // a struct: a constructor and one projection per field
-      const ok = statement.fields.every(f =>
-        kernelType(f.type, namedTypes),
-      )
-
-      if (!ok) {
-        continue
-      }
-
-      const fieldTypes = statement.fields.map(
-        f => kernelType(f.type, namedTypes)!,
-      )
-
-      dataSignature.push({
-        name: `make__${statement.name}`,
-        type: fieldTypes.reduceRight<Term>(
-          (codomain, domain) => arrow(domain, codomain),
-          self,
-        ),
-      })
-
-      for (const field of statement.fields) {
-        dataSignature.push({
-          name: `${statement.name}__${field.name}`,
-          type: arrow(self, kernelType(field.type, namedTypes)!),
-        })
-      }
-
-      recordFields.set(
-        statement.name,
-        statement.fields.map(f => f.name),
-      )
-
-      recordFieldInfo.set(
-        statement.name,
-        statement.fields.map((f, fi) => ({
-          name: f.name,
-          type: fieldTypes[fi]!,
-        })),
-      )
-
-      // COMPUTING definitions so the kernel REDUCES a projection on a freshly-built record. A struct is a single-variant
-      // self-encoding: the constructor bundles its fields into a one-branch eliminator, and each projection applies that
-      // bundle to a selector returning the i-th field. Then `r__field_i (make__r a_0..a_{k-1})` reduces to `a_i`, so
-      // `calm` discharges `read p/field` on a constructed record (and constructor injectivity falls out for free). This
-      // mirrors the enum constructor / eliminator defs above, specialized to one variant with per-field selectors.
-      const k = statement.fields.length
-
-      // make__r is the single-variant constructor (one branch), reusing the shared self-encoding.
-      enumDefs.push({
-        name: `make__${statement.name}`,
-        term: constructorEncoding(0, k, 1),
-      })
-
-      // r__field_i = \x. x (\_. T_i) (\f_0..f_{k-1}. f_i)   (the motive is unused by the reduction, the selector picks i)
-      statement.fields.forEach((field, i) => {
-        const selector = lambdas(k, variable(k - 1 - i))
-        const motive: Term = { tag: 'lam', body: fieldTypes[i]! }
-
-        enumDefs.push({
-          name: `${statement.name}__${field.name}`,
-          term: lambdas(1, apply(apply(variable(0), motive), selector)),
-        })
-      })
-    }
-  }
-
-  // every function we can give a kernel type becomes a constant in the signature; its callers can then resolve it.
-  // a generic function gains a leading erased type parameter (0 g : Type 0) per generic, so it is polymorphic in
-  // the quantitative kernel and its type witnesses are erased at run time.
-  const signature: { name: string; type: Term }[] = [
-    ...BASE_SIGNATURE,
-    // one postulated constant per distinct numeric literal, so the kernel can distinguish `24` from `999`
-    ...[...collectNumberLiteralValues(program)].map(value => ({
-      name: numberLiteralConstant(value),
-      type: number,
-    })),
-    ...(namedTypes.size
-      ? [...namedTypes].map(name => {
-          // a polymorphic datatype's former is `Type0 -> .. -> Type0` (one arrow per type parameter), so it can be
-          // applied to its argument types; a monomorphic type stays a plain `Type0`. An INDEXED family additionally
-          // takes a value argument per index (`vec : Type0 -> nat -> Type0`), appended after the type parameters, so
-          // `vec a n` is well-kinded and `vec a zero` / `vec a (succ n)` are distinct types.
-          const arity = typeFormerArity.get(name) ?? 0
-          const indexKinds = typeFormerIndices.get(name) ?? []
-          let type: Term = TYPE0
-
-          for (let i = indexKinds.length - 1; i >= 0; i--) {
-            type = arrow(indexKinds[i]!, type)
-          }
-
-          for (let p = 0; p < arity; p++) {
-            type = arrow(TYPE0, type)
-          }
-
-          return { name, type }
-        })
-      : []),
-    ...dataSignature,
-  ]
-
-  const functionType = new Map<string, Term>()
-  const functionGenerics = new Map<string, number>() // function name -> number of leading type parameters
-  const representable = new Set<string>()
-  // for a task whose signature the kernel cannot read, which part it could not read
-  const unreadable = new Map<string, string>()
-  // the context levels of the CURRENT function's erased generic binders, while its body elaborates. A generic call
-  // in the body mints its type metas abstracted over these (contextual metavariables), so a meta can solve to the
-  // enclosing generic itself (a bounded generic FORWARDING to another bounded generic) without a scope escape.
-  let enclosingGenericLevels: number[] = []
-  // the same binders BY NAME, so an inline function value in the body can write the enclosing task's generic in its
-  // own annotations. The convoy (`chain`, `carry` in proof/equal/) returns `task id / take r, like equal a ...` from a
-  // match, and that `a` is the enclosing task's `head a`. Without it the closure's types were unreadable, the pure
-  // elaboration gave up, and the statement fallback declined the whole task.
-  let enclosingGenerics = new Map<string, number>()
-
-  for (const statement of program) {
-    if (statement.form !== 'function') {
-      continue
-    }
-
-    const generics = new Map<string, number>()
-    statement.generics.forEach((g, i) => generics.set(g.name, i))
-
-    const arity = statement.generics.length + statement.params.length
-    // a VALUE PARAMETER is in scope for any LATER parameter's type and for the result type, so a function can be
-    // value-dependent: `take n, like nat` then `take v, like vec / head / read n` types `v` as `vec n`, and the result
-    // can mention `n` too. Each value param sits at de Bruijn level generics.length + its index (the value binders come
-    // after the erased generic binders). Earlier params are passed as the value scope; the kernel's arrow chain is a
-    // dependent Pi, so the references resolve.
-    const valueParamScope = (upTo: number): Map<string, number> =>
-      new Map(
-        statement.params
-          .slice(0, upTo)
-          .map((q, k) => [q.name, statement.generics.length + k]),
-      )
-
-    // result is at full depth (after all generic + value binders); each param at the depth before its own binder.
-    // Each type is the one AS WRITTEN wherever the surface pass's seeding lost something the kernel needs (node.ts
-    // `declared`), and the checked one everywhere else.
-    const resultType = kernelTypeAt(
-      faithful(statement.declared?.result, statement.result),
-      arity,
-      generics,
-      namedTypes,
-      valueParamScope(statement.params.length),
-      resolveIndexCtor,
-    )
-
-    const paramTypes = statement.params.map((p, i) =>
-      kernelTypeAt(
-        faithful(statement.declared?.params[i]?.type, p.type),
-        statement.generics.length + i,
-        generics,
-        namedTypes,
-        valueParamScope(i),
-        resolveIndexCtor,
-      ),
-    )
-
-    if (!resultType || paramTypes.some(t => t === null)) {
-      // which part, so the decline can say where to look
-      const unread = paramTypes.findIndex(t => t === null)
-      unreadable.set(
-        statement.name,
-        unread >= 0 ? `parameter \`${statement.params[unread]!.name}\`` : 'the result',
-      )
-      continue
-    }
-
-    // build inside-out: result, then value params (many), then erased generic type params (0)
-    let type = (paramTypes as Term[]).reduceRight<Term>(
-      (codomain, domain) => arrow(domain, codomain),
-      resultType,
-    )
-
-    for (let i = 0; i < statement.generics.length; i++) {
-      type = erasedPi(TYPE0, type)
-    }
-
-    functionType.set(statement.name, type)
-    functionGenerics.set(statement.name, statement.generics.length)
-    representable.add(statement.name)
-    signature.push({ name: statement.name, type })
-  }
 
   const baseContext = contextWithSignature(signature)
 
@@ -2065,26 +650,24 @@ export function elaborateReport(
     scope.set(name, undefined as unknown as number)
   }
 
-  // a fresh type metavariable for one erased generic argument at a call site. Inside a generic function's body the
-  // meta is abstracted over the enclosing generic binders and applied to them (a contextual metavariable), so
-  // pattern unification can solve it TO an enclosing generic (the forwarding case) by inverting the spine.
+  // An expression or a body as one kernel term is check/elaborating-terms.tree. Its state holds what the closures
+  // shared, and a scope crosses with a hidden name's level as -1 where this face stores `undefined`
+  const termState = terms.newTermState(judgeState(), elaborated as never, aliasState, program as never, TYPE0_VALUE as never)
+  const scopeOf = (scope: Scope): Map<string, number> => {
+    const out = new Map<string, number>()
+
+    for (const [name, level] of scope) {
+      out.set(name, level === undefined ? -1 : level)
+    }
+
+    return out
+  }
+  const termOf = (found: { form: 'some'; value: unknown } | { form: 'none' }): Term | null =>
+    found.form === 'some' ? (found.value as Term) : null
+
+  // a fresh type metavariable for one erased generic argument at a call site, contextual inside a generic task
   function contextualTypeMeta(context: Context): Term {
-    if (enclosingGenericLevels.length === 0) {
-      return freshMeta(TYPE0_VALUE)
-    }
-
-    let pi: Term = TYPE0
-
-    for (let i = 0; i < enclosingGenericLevels.length; i++) {
-      pi = erasedPi(TYPE0, pi)
-    }
-
-    return apply(
-      freshMeta(evaluate([], pi)),
-      ...enclosingGenericLevels.map(l =>
-        variable(context.level - l - 1),
-      ),
-    )
+    return kernel(() => terms.contextualTypeMeta(termState, context as never)) as Term
   }
 
   // elaborate an expression to a kernel term in the given context, or null if out of the covered fragment
@@ -2092,1564 +675,111 @@ export function elaborateReport(
     node: Expression,
     scope: Scope,
     context: Context,
-    // the type this expression is checked against, when known. Used to resolve an OVERLOADED constructor (a surface
-    // name shared by two enums) to the enum the position expects. Absent for pure synthesis positions.
+    // the type this expression is checked against, when known, which resolves an OVERLOADED constructor
     expected?: Value,
   ): Term | null {
-    switch (node.form) {
-      case 'integer':
-        return constant(numberLiteralConstant(integerText(node)))
-      case 'float':
-        return constant(numberLiteralConstant(String(node.value)))
-      case 'string':
-        return constant('stringValue')
-      case 'boolean':
-        return constant(node.value ? 'boolTrue' : 'boolFalse')
-      case 'unit':
-        return constant('unitValue')
-
-      case 'variable': {
-        const level = scope.get(node.name)
-
-        if (level !== undefined) {
-          return variable(context.level - level - 1)
-        }
-
-        if (scope.has(node.name)) {
-          return null
-        } // a local the kernel cannot bind (`hide`), which must not reach a global of the same name
-
-        if (functionType.has(node.name)) {
-          return constant(node.name)
-        } // a nullary function used as a value
-
-        if (namedTypes.has(node.name)) {
-          return constant(node.name)
-        } // a TYPE used as a first-class value (its self-encoding constant) -- a function may RETURN a type (`El : U ->
-        // Type`, the decoder of induction-recursion) or carry one (a container's positions `P : S -> Type`).
-
-        return null
-      }
-
-      case 'closure': {
-        // an inline function value (`task f / take .. like .. / like .. / <body>`) elaborated to a kernel LAMBDA from
-        // its OWN type annotations. Each parameter's declared type is lowered at the current depth with the preceding
-        // parameters AND the enclosing value scope available, so a DEPENDENT parameter type (`pf, like lt / head m /
-        // head n` -- where `m` is an earlier parameter and `n` is captured from the enclosing scope) resolves. This is
-        // what lets a higher-order constructor field -- the `step` of an accessibility proof -- or any callback be given
-        // a literal value, so the generic well-founded recursor is expressible. The body reuses `body(..)`.
-        let closureContext = context
-        let closureScope: Scope = scope
-        let closureValueScope: Map<string, number> = new Map(scope)
-        const outerGenerics = enclosingGenerics
-        let ok = true
-
-        for (const param of node.params) {
-          const paramTypeTerm = param.type
-            ? kernelTypeAt(
-                param.type,
-                closureContext.level,
-                outerGenerics,
-                namedTypes,
-                closureValueScope,
-                resolveIndexCtor,
-              )
-            : null
-
-          if (!paramTypeTerm) {
-            ok = false
-            break
-          }
-
-          const paramTypeValue = evaluate(closureContext.env, paramTypeTerm)
-          closureScope = new Map(closureScope).set(
-            param.name,
-            closureContext.level,
-          )
-          closureValueScope = new Map(closureValueScope).set(
-            param.name,
-            closureContext.level,
-          )
-          closureContext = bind(closureContext, 'many', paramTypeValue, param.name)
-        }
-
-        if (!ok) {
-          return null
-        }
-
-        // the result type: the closure's declared `like`, else peeled from the expected function type when present.
-        let resultValue: Value | undefined
-        const resultTerm = node.result
-          ? kernelTypeAt(
-              node.result,
-              closureContext.level,
-              outerGenerics,
-              namedTypes,
-              closureValueScope,
-              resolveIndexCtor,
-            )
-          : null
-
-        if (resultTerm) {
-          resultValue = evaluate(closureContext.env, resultTerm)
-        } else if (expected) {
-          let pit = quote(context.level, expected)
-
-          for (let i = 0; i < node.params.length && pit.tag === 'pi'; i++) {
-            pit = pit.codomain
-          }
-
-          resultValue = evaluate(closureContext.env, pit)
-        }
-
-        if (!resultValue) {
-          return null
-        }
-
-        const bodyTerm = body(
-          node.body,
-          closureScope,
-          closureContext,
-          resultValue,
-        )
-
-        if (!bodyTerm) {
-          return null
-        }
-
-        return lambdas(node.params.length, bodyTerm)
-      }
-
-      case 'unary': {
-        const operand = expr(node.operand, scope, context)
-
-        if (!operand) {
-          return null
-        }
-
-        return apply(constant(node.op === '-' ? 'neg' : 'not'), operand)
-      }
-
-      case 'binary': {
-        if (node.op === '==' || node.op === '!=') {
-          // polymorphic equality. Elaborate one operand, synthesize its type, then elaborate the OTHER operand against
-          // that type so an overloaded constructor (a surface name shared by two enums) resolves to the operand's enum.
-          // Prefer whichever side elaborates without a guiding type (the concrete one), then guide the other.
-          let left = expr(node.left, scope, context)
-          let right: Term | null
-          let operandType: Value
-
-          if (left) {
-            try {
-              operandType = infer(context, left).type
-            } catch {
-              return null
-            }
-
-            right = expr(node.right, scope, context, operandType)
-          } else {
-            right = expr(node.right, scope, context)
-
-            if (!right) {
-              return null
-            }
-
-            try {
-              operandType = infer(context, right).type
-            } catch {
-              return null
-            }
-
-            left = expr(node.left, scope, context, operandType)
-          }
-
-          if (!left || !right) {
-            return null
-          }
-
-          return apply(
-            constant(node.op === '==' ? 'equal' : 'notequal'),
-            quote(context.level, operandType),
-            left,
-            right,
-          )
-        }
-
-        const left = expr(node.left, scope, context)
-        const right = expr(node.right, scope, context)
-
-        if (!left || !right) {
-          return null
-        }
-
-        const op = OPERATOR[node.op]
-
-        if (!op) {
-          return null
-        }
-
-        return apply(constant(op), left, right)
-      }
-
-      case 'call': {
-        if (node.callee.form !== 'variable') {
-          return null
-        }
-
-        // calling a LOCAL function-typed binding (a `take f, like task` parameter or a `let`-bound closure): apply its
-        // de Bruijn variable directly. A local shadows a global of the same name (mirrors the `variable` case), and it
-        // carries no erased generic witnesses and no signature to peel for argument-domain guidance -- the local's type
-        // already sits in the context, so the kernel types the application. This is what makes higher-order functions
-        // (map / fold / filter taking a callback) reduce, and free theorems over them provable.
-        const localLevel = scope.get(node.callee.name)
-
-        if (localLevel === undefined && scope.has(node.callee.name)) {
-          return null
-        } // a hidden local (`hide`): the call is to it, not to a global task of the same name
-
-        if (localLevel !== undefined) {
-          const localIndex = context.level - localLevel - 1
-          const headTerm = variable(localIndex)
-          const localArgs: Term[] = []
-
-          for (const argument of node.args) {
-            const term = expr(argument, scope, context)
-
-            if (!term) {
-              return null
-            }
-
-            localArgs.push(term)
-          }
-
-          // a GENERIC function value bound to a local (`host id / read identity`) carries leading erased universe
-          // binders; calling it must supply one type witness per binder, exactly as the named generic-call path
-          // does, or the kernel sees a value where a Type is expected. Each witness is a contextual metavariable,
-          // so let-generalization holds: every call site solves its own copy.
-          const witnesses: Term[] = []
-
-          let peeled = context.types[localIndex]
-            ? whnf(context.types[localIndex]!)
-            : undefined
-
-          while (
-            peeled &&
-            peeled.v === 'pi' &&
-            peeled.mult === 0 &&
-            whnf(peeled.domain).v === 'type'
-          ) {
-            witnesses.push(contextualTypeMeta(context))
-            peeled = whnf(
-              closeOver(peeled.codomain, neutralVar(context.level)),
-            )
-          }
-
-          return apply(headTerm, ...witnesses, ...localArgs)
-        }
-
-        if (!functionType.has(node.callee.name)) {
-          return null
-        }
-
-        // a generic call gets a fresh metavariable per type parameter; the kernel solves them from the value
-        // arguments by unification (the type witnesses are erased, multiplicity 0)
-        const typeArguments = Array.from(
-          { length: functionGenerics.get(node.callee.name) ?? 0 },
-          () => contextualTypeMeta(context),
-        )
-
-        // peel the function's value-parameter types (skipping the erased generic binders) so an overloaded-constructor
-        // argument can resolve against the parameter it fills. Only a CLOSED `const` parameter type is a usable guide;
-        // a dependent one is left unguided (the arg falls back to its unique owner, or declines).
-        const paramDomains: (Term | undefined)[] = []
-
-        let pt: Term | undefined = functionType.get(node.callee.name)
-
-        while (pt?.tag === 'pi') {
-          if (pt.mult !== 0) {
-            // a closed `const` parameter type, or a closed polymorphic applied type (`stack natural`), guides the
-            // argument's elaboration -- the latter lets a field-less constructor (`make empty`) resolve its erased
-            // type parameter from the expected type. A dependent (open) domain is left unguided.
-            const domain = pt.domain
-
-            paramDomains.push(
-              domain.tag === 'const' ||
-                (domain.tag === 'app' && !hasFreeVar(domain))
-                ? domain
-                : undefined,
-            )
-          }
-
-          pt = pt.codomain
-        }
-
-        // an omitted trailing `need false` parameter: not a partial
-        // application, and not this pass's to check. See declaredArity above.
-        const arity = declaredArity.get(node.callee.name)
-
-        if (
-          arity &&
-          node.args.length < arity.total &&
-          node.args.length >= arity.need
-        ) {
-          return null
-        }
-
-        const args: Term[] = []
-
-        node.args.forEach((argument, i) => {
-          const domain = paramDomains[i]
-          const term = expr(
-            argument,
-            scope,
-            context,
-            domain ? evaluate([], domain) : undefined,
-          )
-
-          if (!term) {
-            args.push(null as unknown as Term)
-          } else {
-            args.push(term)
-          }
-        })
-
-        if (args.some(a => a === null)) {
-          return null
-        }
-
-        return apply(
-          constant(node.callee.name),
-          ...typeArguments,
-          ...args,
-        )
-      }
-
-      case 'member': {
-        // p.field -> apply the field projection, after learning p's record type from the kernel
-        const target = expr(node.target, scope, context)
-
-        if (!target) {
-          return null
-        }
-
-        let recordName: string | null = null
-
-        try {
-          const type = quote(context.level, infer(context, target).type)
-
-          if (type.tag === 'const') {
-            recordName = type.name
-          }
-        } catch {
-          return null
-        }
-
-        if (recordName === null || !recordFields.has(recordName)) {
-          return null
-        }
-
-        if (!recordFields.get(recordName)!.includes(node.name)) {
-          return null
-        }
-
-        return apply(constant(`${recordName}__${node.name}`), target)
-      }
-
-      case 'record': {
-        // a variant constructor (fieldless or applied), or a struct construction via make__r
-        if (variantToEnum.has(node.name)) {
-          const owners = variantToEnum.get(node.name)!
-
-          // pick the owning enum: the unique declarer, or the one the expected type names when the surface name is
-          // shared (an overloaded constructor like `minus` on both `pole` and `spin`). The expected type is matched by
-          // convertibility, not by name, because an enum is transparently equal to its self-encoding (so it does not
-          // always quote back to a bare `const`).
-          let enumName: string | undefined
-
-          // a shared name the surface checker already resolved (a qualified `make expression/integer`, or fields
-          // that fit one owner) keeps that owner, rather than the first the expected type converts with
-          const settled = node.type?.kind === 'named' && owners.includes(node.type.name) ? node.type.name : undefined
-
-          // the surface checker typed this construction as a form that declares the case but that the kernel did not
-          // encode (the engine AST's `expression`, whose `integer` the kernel sees only on `value`): verifying it
-          // against the owner the kernel does hold would check it against the wrong form, so decline, as an
-          // unresolved name does (the engine test port, 2026-10-04)
-          if (
-            !settled &&
-            node.type?.kind === 'named' &&
-            !owners.includes(node.type.name) &&
-            declaredOwners.get(node.name)?.has(node.type.name)
-          ) {
-            return null
-          }
-
-          if (owners.length === 1) {
-            enumName = owners[0]
-          } else if (settled) {
-            enumName = settled
-          } else if (expected) {
-            const want = quote(context.level, expected)
-
-            if (want.tag === 'const' && owners.includes(want.name)) {
-              enumName = want.name
-            } else {
-              for (const owner of owners) {
-                if (
-                  convertibleModulo(
-                    context.level,
-                    expected,
-                    evaluate([], constant(owner)),
-                    [],
-                  )
-                ) {
-                  enumName = owner
-                  break
-                }
-              }
-            }
-          }
-
-          // an overloaded constructor with no guiding type is ambiguous here: decline so the surface checker reports it
-          if (!enumName) {
-            return null
-          }
-
-          const declared =
-            variantFieldInfo.get(ctorKey(enumName, node.name)) ?? []
-
-          // a construction that leaves a declared field out (a `need false` field, which the surface checker allows):
-          // the constructor takes every field, so applied to fewer it is a function, and checking it as the case was
-          // `expected form, found (many x0 : Boolean) -> form` (`make unknown` beside `link free / need false`,
-          // compile/node.tree, 2026-10-05). Decline it, as an unresolved name is
-          if (declared.some(d => !node.fields.some(field => field.name === d.name))) {
-            return null
-          }
-
-          const fieldValues: Term[] = []
-
-          for (const field of node.fields) {
-            // give a nested constructor its expected type, so an overloaded one resolves against this field's type.
-            // A polymorphic field type (referencing a parameter) is not closed, so it cannot be evaluated in the empty
-            // environment here, and is left unguided (the value's own type drives inference of the erased parameter).
-            const fieldType = declared.find(
-              d => d.name === field.name,
-            )?.type
-
-            const value = expr(
-              field.value,
-              scope,
-              context,
-              fieldType && !hasFreeVar(fieldType)
-                ? evaluate([], fieldType)
-                : undefined,
-            )
-
-            if (!value) {
-              return null
-            }
-
-            fieldValues.push(value)
-          }
-
-          // a polymorphic constructor takes its m erased type parameters first (multiplicity 0, gone at run time). When
-          // the EXPECTED type is the parameterised type former applied to concrete arguments (e.g. a field-less `empty`
-          // checked at `stack natural`), use those actual arguments as the witnesses so the element type resolves even
-          // with no field to infer it from; otherwise a fresh meta solved by unification from the field values.
-          // contextual, like a generic call's: inside a generic task the witness may be that task's own generic (`refl`
-          // at `equal a x x` inside `task refl / head a`), and only a meta abstracted over the enclosing generic
-          // binders can be solved to one
-          const arity = typeFormerArity.get(enumName) ?? 0
-          let typeWitnesses: Term[] = Array.from({ length: arity }, () =>
-            contextualTypeMeta(context),
-          )
-
-          if (arity > 0 && expected) {
-            const expectedArgs: Term[] = []
-            let expectedHead: Term = quote(context.level, expected)
-
-            while (expectedHead.tag === 'app') {
-              expectedArgs.unshift(expectedHead.arg)
-              expectedHead = expectedHead.fun
-            }
-
-            // an INDEXED family's expected type carries its value indices after the type arguments (`equal a x x`),
-            // so the witnesses are the first `arity` arguments, not all of them
-            if (
-              expectedHead.tag === 'const' &&
-              expectedHead.name === enumName &&
-              expectedArgs.length >= arity
-            ) {
-              typeWitnesses = expectedArgs.slice(0, arity)
-            }
-          }
-
-          return apply(
-            constant(ctorKey(enumName, node.name)),
-            ...typeWitnesses,
-            ...fieldValues,
-          )
-        }
-
-        const order = recordFields.get(node.name)
-
-        if (!order) {
-          return null
-        }
-
-        const byName = new Map(node.fields.map(f => [f.name, f.value]))
-        const args: Term[] = []
-
-        for (const fieldName of order) {
-          const value = byName.get(fieldName)
-
-          if (!value) {
-            return null
-          } // a missing field: decline (the surface checker covers it)
-
-          const term = expr(value, scope, context)
-
-          if (!term) {
-            return null
-          }
-
-          args.push(term)
-        }
-
-        return apply(constant(`make__${node.name}`), ...args)
-      }
-
-      case 'await':
-        // await unwraps an async result; in this type model the awaited value has the inner type directly
-        return expr(node.expr, scope, context)
-
-      case 'array': {
-        // [a, b, ...] -> arrayPush A (... (arrayEmpty A) a ...) b, with A the element type
-        const items: Term[] = []
-
-        for (const item of node.items) {
-          const term = expr(item, scope, context)
-
-          if (!term) {
-            return null
-          }
-
-          items.push(term)
-        }
-
-        let element: Term
-
-        // an EMPTY list takes the element type the surface checker gave it, lowered with the enclosing generics in
-        // scope. A fresh meta here is created knowing no binder, so it could never be solved to a task's own `t`:
-        // `head t / like list, like t / back make list` was refused as `expected (Array t), found (Array ?0)`
-        // (self-hosting, 2026-10-04, the engine/data/array port). The meta stays the fallback when the checker left
-        // the element open. test/check/empty-generic.ts holds it
-        const typed = (node as { type?: { kind: string; element?: unknown } }).type
-        const inferred =
-          items.length === 0 && typed?.kind === 'array' && typed.element
-            ? kernelTypeAt(
-                typed.element as Parameters<typeof kernelTypeAt>[0],
-                context.level,
-                enclosingGenerics,
-                namedTypes,
-                new Map(scope),
-                resolveIndexCtor,
-              )
-            : null
-
-        if (inferred) {
-          element = inferred
-        } else if (items.length === 0) {
-          // when the checker left it open (a `host` binding is generalized, so its element is no type of this task),
-          // a CONTEXTUAL meta, applied to the enclosing generics, which unification can still solve to `t`. A bare
-          // `freshMeta` is closed and never can
-          element = contextualTypeMeta(context)
-        } else {
-          try {
-            element = quote(
-              context.level,
-              infer(context, items[0]!).type,
-            )
-          } catch {
-            return null
-          }
-        }
-
-        let result = apply(constant('arrayEmpty'), element)
-
-        for (const item of items) {
-          result = apply(constant('arrayPush'), element, result, item)
-        }
-
-        return result
-      }
-
-      default:
-        return null // map / await / hole: not in the covered fragment yet
-    }
+    return termOf(
+      viaKernel(() =>
+        terms.expr(
+          termState,
+          node as never,
+          scopeOf(scope),
+          context as never,
+          expected === undefined ? { form: 'none' } : { form: 'some', value: expected as never },
+        ),
+      ),
+    )
   }
 
-  // elaborate a statement body to a single kernel term of the result type, or null if out of the fragment. The
-  // result type is carried as a value and re-quoted at the current depth wherever a term is needed, so generic
-  // result types stay correctly indexed under inner binders.
+  // elaborate a statement body to a single kernel term of the result type, or null if out of the fragment
   function body(
     statements: Statement[],
     scope: Scope,
     context: Context,
     resultValue: Value,
   ): Term | null {
-    if (statements.length === 0) {
-      return null
-    }
-
-    const [head, ...tail] = statements
-
-    switch (head!.form) {
-      case 'return': {
-        if (tail.length > 0) {
-          return null
-        } // unreachable code after a return
-
-        if (!head.value) {
-          return isUnit(quote(context.level, resultValue))
-            ? constant('unitValue')
-            : null
-        }
-
-        return expr(head.value, scope, context, resultValue)
-      }
-
-      case 'let': {
-        // a `save` binding is parsed `mutable`, but it is a PURE let unless it is actually reassigned -- and a real
-        // reassignment puts an `assign` statement in the rest of the body, which this elaborator does not cover and so
-        // declines anyway. So treating it as a pure let here is sound: a non-reassigned `save` reduces (the task gets a
-        // computing definition); a reassigned one still falls out of the pure fragment at the `assign`.
-
-        const value = expr(head.init, scope, context)
-
-        if (!value) {
-          return null
-        }
-
-        let valueType
-
-        try {
-          valueType = infer(context, value).type
-        } catch {
-          return null
-        }
-
-        const inner = bind(context, 'many', valueType, head.name)
-        const innerScope = new Map(scope).set(head.name, context.level)
-        const rest = body(tail, innerScope, inner, resultValue)
-
-        if (!rest) {
-          return null
-        }
-
-        // model `let x = v; rest` as an immediately-applied lambda: (\ (x : T). rest) v. The codomain is the result
-        // type quoted one binder deeper (so any generic reference is shifted past the new binding).
-        const lambda: Term = { tag: 'lam', body: rest, name: head.name }
-        const piType: Term = arrow(
-          quote(context.level, valueType),
-          quote(context.level + 1, resultValue),
-        )
-
-        const annotated: Term = {
-          tag: 'ann',
-          term: lambda,
-          type: piType,
-        }
-
-        return apply(annotated, value)
-      }
-
-      case 'if': {
-        // the fall-through (or explicit else) is the final branch; require it so the value is total
-        const elseStatements = head.otherwise ?? tail
-
-        if (head.otherwise && tail.length > 0) {
-          return null
-        } // if/else followed by more code: decline
-
-        if (elseStatements.length === 0) {
-          return null
-        }
-
-        let result = body(elseStatements, scope, context, resultValue)
-
-        if (!result) {
-          return null
-        }
-
-        for (let i = head.branches.length - 1; i >= 0; i--) {
-          const branch = head.branches[i]!
-          const condition = expr(branch.cond, scope, context)
-          const consequent = body(
-            branch.body,
-            scope,
-            context,
-            resultValue,
-          )
-
-          if (!condition || !consequent) {
-            return null
-          }
-
-          result = apply(
-            constant('cond'),
-            quote(context.level, resultValue),
-            condition,
-            consequent,
-            result,
-          )
-        }
-
-        return result
-      }
-
-      case 'match': {
-        // a match on an enum is its eliminator applied to the subject and one branch value per variant, in
-        // declaration order. The eliminator binds no fields, so a branch that projects a variant field declines
-        // (its body() returns null) and the surface checker covers it; an `otherwise` or missing variant also
-        // declines (the eliminator is total over exactly the variants).
-        if (tail.length > 0) {
-          return null
-        } // the match must produce the result (be the tail)
-
-        if (head.otherwise) {
-          return null
-        }
-
-        const subject = expr(head.subject, scope, context)
-
-        if (!subject) {
-          return null
-        }
-
-        let enumName: string | null = null
-        // the subject type's polymorphic arguments (e.g. `natural` for a `stack natural`), passed as the eliminator's
-        // erased type witnesses so the branch field types instantiate concretely (a recursive field `stack a` becomes
-        // `stack natural`). Using the ACTUAL arguments, not fresh metas, propagates the element type into the branches.
-        const subjectTypeArgs: Term[] = []
-
-        try {
-          const type = quote(
-            context.level,
-            infer(context, subject).type,
-          )
-
-          // the subject's type is the enum constant, OR a polymorphic type former applied to its arguments
-          // (`apply(.. apply(constant(T), a) ..)`); peel the application spine to its head constant, collecting args.
-          let typeHead: Term = type
-
-          while (typeHead.tag === 'app') {
-            subjectTypeArgs.unshift(typeHead.arg)
-            typeHead = typeHead.fun
-          }
-
-          if (typeHead.tag === 'const') {
-            enumName = typeHead.name
-          }
-        } catch {
-          return null
-        }
-
-        const order = enumName ? variantNames.get(enumName) : undefined
-
-        if (!order) {
-          return null
-        }
-
-        const indexCount = typeFormerIndices.get(enumName!)?.length ?? 0
-
-        // INVERSION setup: for a single-index family whose subject index is CONSTRUCTOR-headed (`vec (succ n)`), the
-        // variants whose output-index head differs (`vnil` at head `zero`) are IMPOSSIBLE. They are auto-discharged --
-        // the user may omit them, and they are filled with `unitValue` under a DISCRIMINATOR motive that sends an
-        // impossible index to `Unit` and the reachable one to the result type A. So a total `head` needs no empty case.
-        const impossible = new Set<string>()
-        let subjectIndexHead: string | undefined
-        // the index POSITION the inversion discriminates on: 0 for a single-index family, or the pinned, constructor-
-        // headed position of a multi-index family (`lt m zero` discriminates on position 1, the `zero`). Found as the
-        // first position where the subject index is constructor-headed and some variant's output head there differs.
-        let discrimPos = 0
-        // a position where the subject index is constructor-headed and EVERY variant's output index is too, whether or
-        // not one differs. Matching there still teaches the branch something: `below m (succ p)` matched at `next k`,
-        // whose index is `succ k`, has k = p. The discriminator motive below says so, and is well-formed only when
-        // every variant's index there has a head to compute on (math-foundations-0005)
-        let headedPos: { pos: number; head: string } | undefined
-
-        if (indexCount > 0) {
-          const typeWitnessCount = subjectTypeArgs.length - indexCount
-
-          for (let pos = 0; pos < indexCount; pos++) {
-            const indexArgument = subjectTypeArgs[typeWitnessCount + pos]
-            let peeled: Term | undefined = indexArgument
-
-            while (peeled && peeled.tag === 'app') {
-              peeled = peeled.fun
-            }
-
-            if (!peeled || peeled.tag !== 'const') {
-              continue
-            }
-
-            const head = peeled.name
-            const impossibleHere = new Set<string>()
-            let everyHeaded = true
-
-            for (const variant of order) {
-              const heads = variantIndexHeads.get(
-                ctorKey(enumName!, variant),
-              )
-              const variantHead = heads?.[pos]
-
-              everyHeaded &&= variantHead !== undefined
-
-              if (variantHead && variantHead !== head) {
-                impossibleHere.add(variant)
-              }
-            }
-
-            if (everyHeaded && !headedPos) {
-              headedPos = { pos, head }
-            }
-
-            if (impossibleHere.size > 0) {
-              discrimPos = pos
-              subjectIndexHead = head
-
-              for (const variant of impossibleHere) {
-                impossible.add(variant)
-              }
-
-              break
-            }
-          }
-        }
-
-        // only invert when an impossible branch is actually OMITTED by the user (the discriminator motive is for
-        // filling those). If the user wrote every branch, the ordinary constant-motive path types them all as A.
-        const useInversion = [...impossible].some(
-          v => !head.cases.find(c => c.label === v),
-        )
-
-        // and with no branch impossible, a constructor-headed position still refines every branch, which is reachable
-        // and checked at the result with that index's constructor arguments set to its own (`p` to `k` above)
-        const refineAtHead = !useInversion && impossible.size === 0 && headedPos !== undefined
-
-        if (refineAtHead) {
-          discrimPos = headedPos!.pos
-          subjectIndexHead = headedPos!.head
-        }
-
-        const branches: Term[] = []
-
-        for (const variant of order) {
-          const fieldInfo =
-            variantFieldInfo.get(ctorKey(enumName!, variant)) ?? []
-
-          // an IMPOSSIBLE variant (its index can't equal the subject's) is auto-filled with `unit`: under the
-          // discriminator motive its branch type reduces to `Unit`. The user need not write it.
-          if (useInversion && impossible.has(variant)) {
-            let filled: Term = constant('unitValue')
-
-            for (let w = 0; w < fieldInfo.length; w++) {
-              filled = { tag: 'lam', body: filled }
-            }
-
-            branches.push(filled)
-            continue
-          }
-
-          const branch = head.cases.find(c => c.label === variant)
-
-          if (!branch) {
-            return null
-          } // a REACHABLE variant with no branch: non-exhaustive, decline
-
-          // bind the variant's fields: each branch is a lambda over its fields (the eliminator passes them in), with
-          // the fields in scope in the branch body. `succ p`'s branch becomes `\p. <body using p>`.
-          let branchScope = scope
-          let branchContext = context
-
-          fieldInfo.forEach((field, fieldIndex) => {
-            // honor a `binds` field-rename on the branch, else the variant's declared field name
-            const localName = branch.binds?.[fieldIndex] ?? field.name
-            branchScope = new Map(branchScope).set(
-              localName,
-              branchContext.level,
-            )
-            branchContext = bind(
-              branchContext,
-              'many',
-              evaluate([], field.type),
-              localName,
-            )
-          })
-
-          const inner = body(
-            branch.body,
-            branchScope,
-            branchContext,
-            resultValue,
-          )
-
-          if (!inner) {
-            return null
-          }
-
-          // wrap the body in one lambda per field, innermost field last, each named as the arm names it
-          let term = inner
-
-          for (let w = fieldInfo.length - 1; w >= 0; w--) {
-            term = { tag: 'lam', body: term, name: branch.binds?.[w] ?? fieldInfo[w]!.name }
-          }
-
-          branches.push(term)
-        }
-
-        // an INDEXED family uses the DEPENDENT eliminator, whose shape is `(0 p..) (P) (branches) (i..) (x)`: the type
-        // witnesses lead, then the motive, the branches, the index arguments, and the subject last.
-        if (indexCount > 0) {
-          const typeWitnessCount = subjectTypeArgs.length - indexCount
-          const typeWitnesses = subjectTypeArgs.slice(0, typeWitnessCount)
-          const indexArguments = subjectTypeArgs.slice(typeWitnessCount)
-
-          // the motive `\i_0..i_{l-1} \x. A`. When the result A depends on a scrutinee index that is a VARIABLE, the
-          // motive ABSTRACTS over it: each such index argument variable is replaced by the matching motive binder, so a
-          // match whose result mentions an index -- the convoy form `match e : eq a b returning (P a -> P b)` -- types,
-          // and the branch (`refl`) is checked at `A[indices := c]`. A no-op when A mentions no index variable (the
-          // ordinary CONSTANT motive). With inversion this is overridden below by the discriminator motive.
-          const motiveDepth = context.level + indexCount + 1
-          let motiveBody = quote(motiveDepth, resultValue)
-          const motiveRefine = new Map<number, number>()
-
-          for (let t = 0; t < indexCount; t++) {
-            const indexArgument = indexArguments[t]
-
-            if (indexArgument && indexArgument.tag === 'var') {
-              const level = context.level - indexArgument.index - 1
-              // motive binder i_t sits at de Bruijn (indexCount - t) from the body (x is 0, i_{l-1} is 1, i_0 is l)
-              motiveRefine.set(motiveDepth - level - 1, indexCount - t)
-            }
-          }
-
-          if (motiveRefine.size > 0) {
-            motiveBody = substituteVars(motiveBody, motiveRefine)
-          }
-
-          let motive: Term | null = lambdas(indexCount + 1, motiveBody)
-
-          if (useInversion || refineAtHead) {
-            // discriminate on the index TYPE at the pinned position (`discrimPos`): single-index uses position 0; a
-            // multi-index family like `lt m zero` discriminates on the `zero` at position 1. The motive sends the
-            // subject's head there to the result type and every other constructor to `Unit`, so impossible branches
-            // type-check as `Unit` and an entirely-empty match (ex-falso) still produces a computing term.
-            const indexType = familyIndexTypes.get(enumName!)?.[discrimPos]
-            const indexVariants = indexType
-              ? variantNames.get(indexType)
-              : undefined
-
-            motive = null
-
-            if (indexType && indexVariants) {
-              const indexBranches: Term[] = []
-              const motiveBinders = indexCount + 1
-
-              // the constructor-headed subject index AT discrimPos, peeled to its constructor arguments, so the
-              // reachable branch can map each argument variable to the index constructor's field (DEPENDENT refinement).
-              const subjectIndexArg = indexArguments[discrimPos]
-              const subjectIndexArgs: Term[] = []
-              {
-                let peeled: Term | undefined = subjectIndexArg
-                while (peeled && peeled.tag === 'app') {
-                  subjectIndexArgs.unshift(peeled.arg)
-                  peeled = peeled.fun
-                }
-              }
-
-              for (const indexVariant of indexVariants) {
-                const indexCtor = ctorKey(indexType, indexVariant)
-                const fieldCount = (
-                  variantFieldInfo.get(indexCtor) ?? []
-                ).length
-
-                // under the motive's `\i_0..i_{l-1} \x` (indexCount + 1 binders) and this branch's `fieldCount` fields
-                let leaf: Term
-                if (indexCtor === subjectIndexHead) {
-                  const leafDepth =
-                    context.level + motiveBinders + fieldCount
-                  const refine = new Map<number, number>()
-
-                  // each OTHER index that is a variable goes to the motive's binder for it, as in the motive above, so
-                  // `below m (succ p)` matched at `next k` is checked with m set to k as well as p
-                  for (let t = 0; t < indexCount; t++) {
-                    const a = indexArguments[t]
-
-                    if (t !== discrimPos && a && a.tag === 'var') {
-                      const level = context.level - a.index - 1
-                      refine.set(leafDepth - level - 1, leafDepth - (context.level + t) - 1)
-                    }
-                  }
-
-                  for (
-                    let w = 0;
-                    w < subjectIndexArgs.length && w < fieldCount;
-                    w++
-                  ) {
-                    const a = subjectIndexArgs[w]!
-
-                    if (a.tag === 'var') {
-                      const level = context.level - a.index - 1
-                      const fieldLevel = context.level + motiveBinders + w
-                      refine.set(
-                        leafDepth - level - 1,
-                        leafDepth - fieldLevel - 1,
-                      )
-                    }
-                  }
-
-                  leaf = quote(leafDepth, resultValue)
-
-                  if (refine.size > 0) {
-                    leaf = substituteVars(leaf, refine)
-                  }
-                } else {
-                  leaf = constant('Unit')
-                }
-
-                for (let w = 0; w < fieldCount; w++) {
-                  leaf = { tag: 'lam', body: leaf }
-                }
-
-                indexBranches.push(leaf)
-              }
-
-              // P = \i_0..i_{l-1} \x. matchType__<indexType> (\_.Type0) <branches> i_{discrimPos}. i_{discrimPos} sits at
-              // de Bruijn (indexCount - discrimPos) under the motive binders (x is 0, i_{l-1} is 1, i_0 is l).
-              motive = lambdas(
-                motiveBinders,
-                apply(
-                  constant(`matchType__${indexType}`),
-                  { tag: 'lam', body: TYPE0 },
-                  ...indexBranches,
-                  variable(indexCount - discrimPos),
-                ),
-              )
-            }
-          }
-
-          if (!motive) {
-            return null
-          }
-
-          return apply(
-            constant(`match__${enumName}`),
-            ...typeWitnesses,
-            motive,
-            ...branches,
-            ...indexArguments,
-            subject,
-          )
-        }
-
-        // A DEPENDENT MATCH on a plain form (math-foundations-0005). When the subject is a variable the result type
-        // mentions (`sift n` returning `accessible n`), each branch has the result at its own constructor (`accessible
-        // zero`, `accessible (succ prior)`), which the constant-motive eliminator cannot say. The large eliminator can:
-        // its motive is a function of the subject, `\x. accessible x`, and a result in Type0 sits in its Type1 by
-        // cumulativity. The indexed path above does the same for a family's indices. Sound: matchType__T is the form's
-        // dependent eliminator, declared only for a form whose fields carry no type, and the kernel checks each branch
-        // at the motive applied to its constructor
-        if (subject.tag === 'var' && context.globals.has(`matchType__${enumName}`)) {
-          const subjectLevel = context.level - subject.index - 1
-          const motiveDepth = context.level + 1
-          const written = quote(motiveDepth, resultValue)
-          const motiveBody = substituteVars(written, new Map([[motiveDepth - subjectLevel - 1, 0]]))
-
-          if (showTerm(motiveBody) !== showTerm(written)) {
-            return apply(
-              constant(`matchType__${enumName}`),
-              ...subjectTypeArgs,
-              { tag: 'lam', body: motiveBody },
-              ...branches,
-              subject,
-            )
-          }
-        }
-
-        const resultTerm = quote(context.level, resultValue)
-
-        // a TYPE-returning match (the result IS the universe `type`, which lives in Type1): use the LARGE eliminator
-        // `matchType`, whose motive lands in Type1 so each branch may itself be a type. This is the decoder of a
-        // universe-as-data (`El : U -> type`, where `El natcode = nat`), the computational core of induction-recursion.
-        // The motive is constant (`\_. type`); the branch order is (motive, branches, subject).
-        if (resultTerm.tag === 'type') {
-          const largeField = enumName === null ? undefined : largeForms.get(enumName)
-
-          if (enumName !== null && largeField !== undefined) {
-            // the source's name, without the module scope's `__in0_0`
-            const form = enumName.replace(/__in\d+_\d+$/, '')
-
-            throw new TypeError(
-              `form ${form} is large (its field ${largeField} carries a type), so a match on it cannot return a type: that would make type a retract of ${form} and prove false (Hurkens, see test/check/paradox.ts)`,
-            )
-          }
-
-          return apply(
-            constant(`matchType__${enumName}`),
-            ...subjectTypeArgs,
-            { tag: 'lam', body: resultTerm },
-            ...branches,
-            subject,
-          )
-        }
-
-        return apply(
-          constant(`match__${enumName}`),
-          ...subjectTypeArgs,
-          resultTerm,
-          subject,
-          ...branches,
-        )
-      }
-
-      default:
-        return null
-    }
+    return termOf(
+      viaKernel(() => terms.body(termState, statements as never, scopeOf(scope), context as never, resultValue as never)),
+    )
   }
 
-  // check an explicit proof of `left == right`. 'ok' = proved, 'fail' = an explicit tactic that did not work,
-  // 'open' = no proof or a tactic not yet supported (the linear prover then gets a chance), 'bad' = the proof
-  // REFERENCES something that does not exist (a cite of an unknown lemma): a hard error no fallback may rescue,
-  // since the goal being otherwise provable cannot make a dangling reference valid. Implemented tactics:
-  // `melt` / `calm` (definitional equality) and `cite` (a previously proven lemma of the same equality).
+  // check an explicit proof of `left == right` (check/elaborating-proof.tree): 'ok' = proved, 'fail' = an explicit
+  // tactic that did not work, 'open' = no proof or a tactic not lowered (the linear prover then gets a chance), 'bad'
+  // = the proof cites a lemma that does not exist, a hard error no fallback may rescue
   function checkProof(
     proof: Proof[] | undefined,
     level: number,
     left: Value,
     right: Value,
   ): 'ok' | 'fail' | 'open' | 'bad' {
-    if (!proof || proof.length === 0) {
-      return areConvertible(level, left, right) ? 'ok' : 'open'
-    }
-
-    if (proof.length > 1) {
-      return 'open'
-    } // a sequence of top-level tactics is not lowered yet
-
-    const tactic = proof[0]!
-    const here = {
-      left: showTerm(quote(level, left)),
-      right: showTerm(quote(level, right)),
-    }
-
-    switch (tactic.head) {
-      case 'calm':
-        // `calm` settles the goal by definitional computation: the two sides reduce to normal forms, equal for a
-        // `show hold` goal or distinct for a `show miss` goal (the goal is already negated by the mill for `miss`). The
-        // bare `calm` and the two-word forms `calm hold` / `calm miss` are the SAME tactic. The second word names the
-        // polarity being settled and mirrors the `show` mode (`calm hold` under `show hold`, `calm miss` under
-        // `show miss`), conforming `calm` to the verb-noun, two-words-per-line proof convention (every other tactic line
-        // is a pair: `show hold`, `cite lemma`, `fold x`, `base true`). Only `hold` and `miss` are valid second words;
-        // any other is rejected now so a typo cannot silently fall through to a bare `calm`.
-        if (
-          tactic.arg !== undefined &&
-          tactic.arg !== 'hold' &&
-          tactic.arg !== 'miss'
-        ) {
-          return 'fail'
-        }
-
-        return areConvertible(level, left, right) ? 'ok' : 'fail'
-
-      case 'melt':
-        return areConvertible(level, left, right) ? 'ok' : 'fail'
-
-      case 'cite': {
-        const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
-
-        if (!lemma) {
-          return tactic.arg && theoremNames.has(tactic.arg) ? 'open' : 'bad'
-        }
-
-        // a cited lemma states the same equality, in either orientation (== is symmetric), or the goal is an INSTANCE
-        // of it: one rewrite by it, at some values of its marks, makes the two sides the same
-        // a theorem stating something else may still be USED (its conclusion as a fact toward this goal): that is
-        // the arithmetic provers' citation, so it is left to them rather than failed here
-        return (lemma.left === here.left &&
-          lemma.right === here.right) ||
-          (lemma.left === here.right && lemma.right === here.left) ||
-          instanceOf(level, left, right, lemmaRules.get(tactic.arg!))
-          ? 'ok'
-          : theoremNames.has(tactic.arg!)
-            ? 'open'
-            : 'fail'
-      }
-
-      case 'turn': {
-        // symmetry: prove a == b by citing the reversed lemma b == a
-        const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
-
-        if (!lemma) {
-          return 'bad'
-        }
-
-        return lemma.left === here.right && lemma.right === here.left
-          ? 'ok'
-          : 'fail'
-      }
-
-      case 'link': {
-        // transitivity: a chain of cited lemmas a == m, m == ..., == b whose ends match the goal
-        const steps = tactic.children
-
-        if (steps.length === 0) {
-          return 'fail'
-        }
-
-        const eqs: { left: string; right: string }[] = []
-
-        for (const step of steps) {
-          if (step.head !== 'cite' || !step.arg) {
-            return 'open'
-          } // only chains of `cite` are lowered
-
-          const lemma = lemmas.get(step.arg)
-
-          if (!lemma) {
-            return 'bad'
-          }
-
-          eqs.push(lemma)
-        }
-
-        if (eqs[0]!.left !== here.left) {
-          return 'fail'
-        }
-
-        for (let i = 0; i < eqs.length - 1; i++) {
-          if (eqs[i]!.right !== eqs[i + 1]!.left) {
-            return 'fail'
-          }
-        }
-
-        return eqs[eqs.length - 1]!.right === here.right ? 'ok' : 'fail'
-      }
-
-      default:
-        return 'open' // a recognized but not-yet-lowered tactic (self / weld): fall back to the linear prover
-    }
+    return viaKernel(() =>
+      proofs.checkProof(judgeState(), lemmaState, (proof ?? []) as never, level, left as never, right as never),
+    ) as 'ok' | 'fail' | 'open' | 'bad'
   }
 
-  // the effect layer: type-check a statement body as imperative commands. Expressions are typed by the KERNEL (so
-  // it stays the authority); control flow, mutation, loops, and match are typed structurally. This covers the
-  // effectful surface (it is not a pure proof term). Throws Decline if anything is unrepresentable, or the
-  // kernel's TypeError on a genuine mismatch. Threads the context through bindings.
+  // the effect layer: a statement body type-checked as imperative commands, the path's equations carried and dropped
+  // where a write could make them false (check/elaborating-commands.tree). What it asks of this face is one host: the
+  // facts (check/facts.ts, with the task being checked's names), the two reflective walks below, and `checkHold`
+  const tuplesOf = (pairs: { left: Expression; right: Expression }[]): [Expression, Expression][] =>
+    pairs.map(pair => [pair.left, pair.right])
+  const pairsFor = (pairs: [Expression, Expression][]): { left: Expression; right: Expression }[] =>
+    pairs.map(([left, right]) => ({ left, right }))
+  const sceneOf = (scope: Map<string, number>): Scope => {
+    const out: Scope = new Map()
+
+    for (const [name, level] of scope) {
+      out.set(name, level < 0 ? (undefined as unknown as number) : level)
+    }
+
+    return out
+  }
+  const impure = (node: Statement | Statement[] | Expression): boolean =>
+    callsImpure(node, factsPure, factsFunctions, withoutRuleMarks(factsLocal))
+  const commandHost = {
+    callsImpureStatement: (statement: unknown) => impure(statement as Statement),
+    callsImpureBody: (body: unknown) => impure(body as Statement[]),
+    callsImpureExpression: (expression: unknown) => impure(expression as Expression),
+    readsState: (expression: unknown) => readsState(expression as Expression),
+    readsAny: (expression: unknown, names: string[]) => readsAny(expression as Expression, new Set(names)),
+    readsName: (expression: unknown, name: string) => readNames(expression as Expression).has(name),
+    writtenNames: (statement: unknown) => [...writtenNames(statement as Statement)],
+    writtenNamesBody: (body: unknown) => [...writtenNames(body as Statement[])],
+    rootName: (expression: unknown) => rootName(expression as Expression) ?? EVERYTHING,
+    everything: EVERYTHING,
+    volatileNames: () => [...factsVolatile],
+    containsMemberWrite: (body: unknown) => containsMemberWrite(body as Statement[]),
+    readsMember: (expression: unknown) => readsMember(expression as Expression),
+    checkHold: (statement: unknown, scope: Map<string, number>, ctx: unknown, assumptions: unknown) => {
+      checkHold(
+        statement as Extract<Statement, { form: 'hold' }>,
+        sceneOf(scope),
+        ctx as Context,
+        tuplesOf(assumptions as { left: Expression; right: Expression }[]),
+      )
+
+      return true
+    },
+  }
+
   function checkCommands(
     statements: Statement[],
     scope: Scope,
     context: Context,
     resultValue: Value,
-    // equation hypotheses true on this control-flow path: each `have`/`if` guard that is an equation `L == R` is added
-    // (as its two side EXPRESSIONS, so an induction can re-elaborate and specialize them per case) for the branch it
-    // governs, so a `hold` inside can be discharged USING its antecedents (the hypothesis-discharge path:
-    // `a == b -> f a == f b`, cancellation, and inductive implications).
+    // equation hypotheses true on this control-flow path, as their two side EXPRESSIONS
     assumptions: [Expression, Expression][] = [],
   ): void {
-    let sc = scope
-    let ctx = context
-
-    // a path assumption is an equation over NAMES, and a name can be given a new value. Every write below drops the
-    // facts that read the name it writes, every compound statement drops afterwards the facts about what its bodies
-    // may have written, and a loop drops them before its body too. Without this, `save x 0 / save x 5 / hold x == 0`
-    // was proven. See check/facts.ts.
-    assumptions = forgetPairs(assumptions, factsVolatile)
-
-    for (const statement of statements) {
-      switch (statement.form) {
-        case 'let': {
-          // a bare `save x`, given its value by a later assignment: the kernel has only the unit placeholder to type
-          // it with, so it declines the task, and the ordinary checker, which types the name by its first assignment,
-          // checks it (2026-10-05)
-          if (statement.mutable && statement.init.form === 'unit') {
-            need(null, 'a name declared and given its value later')
-          }
-
-          const term = need(expr(statement.init, sc, ctx))
-          const type = infer(ctx, term).type
-          sc = new Map(sc).set(statement.name, ctx.level)
-          ctx = bind(ctx, 'many', type, statement.name)
-          // a `let x = e` (this is also how an existential witness `find x / e` is bound) makes `x` equal to `e` until
-          // `x` is written again, so record `x == e` as a path assumption, after dropping every fact about the name's
-          // previous value (a rebinding in a loop, or a shadowing). A later `hold` referencing `x` then discharges
-          // through the hypothesis congruence closure (e.g. the existential goal `x == a` witnessed by `a`).
-          assumptions = forgetPairs(assumptions, new Set([statement.name]))
-
-          if (stableDefinition(statement.name, statement.init)) {
-            assumptions = [
-              ...assumptions,
-              [
-                {
-                  form: 'variable',
-                  name: statement.name,
-                  span: statement.span,
-                },
-                statement.init,
-              ],
-            ]
-          }
-
-          break
-        }
-
-        case 'assign': {
-          const target = need(expr(statement.target, sc, ctx))
-          const targetType = infer(ctx, target).type
-          const value = need(expr(statement.value, sc, ctx))
-
-          if (statement.op === '=') {
-            check(ctx, value, targetType)
-          } else {
-            // compound arithmetic assignment (+=, -=, *=, /=): both sides are numbers
-            check(ctx, target, NUMBER_VALUE)
-            check(ctx, value, NUMBER_VALUE)
-          }
-
-          const root = rootName(statement.target) ?? EVERYTHING
-          assumptions = forgetPairs(assumptions, new Set([root]))
-
-          // a write through a member may land in a record another name also holds, so every fact about any member
-          // goes, not only those under this root
-          if (statement.target.form === 'member') {
-            assumptions = assumptions.filter(
-              ([left, right]) => !readsMember(left) && !readsMember(right),
-            )
-          } else if (
-            statement.op === '=' &&
-            stableDefinition(root, statement.value)
-          ) {
-            assumptions = [
-              ...assumptions,
-              [
-                {
-                  form: 'variable',
-                  name: root,
-                  span: statement.span,
-                },
-                statement.value,
-              ],
-            ]
-          }
-
-          break
-        }
-
-        case 'expression':
-          infer(ctx, need(expr(statement.expr, sc, ctx))) // ensure it is well-typed
-          break
-        case 'return':
-          if (statement.value) {
-            check(
-              ctx,
-              need(expr(statement.value, sc, ctx)),
-              resultValue,
-            )
-          } else if (!isUnitValue(resultValue)) {
-            throw new Decline('a bare return from a task that returns a value')
-          }
-
-          break
-        case 'if':
-          for (const branch of statement.branches) {
-            check(ctx, need(expr(branch.cond, sc, ctx)), BOOLEAN_VALUE)
-
-            // an equation guard (`have a == b`, a branch condition `a == b`) is assumed true inside its branch. Both
-            // the binary `==` form and the surface `call is-equal a b` form (how a `have` equality is written) count,
-            // so a `have` antecedent licenses substitution (`a == b -> f a == f b`, the content of `subst` / `J`).
-            // A condition that calls something impure is not a fact: evaluating it again could answer differently.
-            const branchAssumptions = [...assumptions]
-            const cond = branch.cond
-            // a rule's own task-typed marks are values (see `ruleMarks`), so a `have` about one is a fact
-            const stableCond = !callsImpure(
-              cond,
-              factsPure,
-              factsFunctions,
-              withoutRuleMarks(factsLocal),
-            )
-
-            if (stableCond && cond.form === 'binary' && cond.op === '==') {
-              branchAssumptions.push([cond.left, cond.right])
-            } else if (
-              stableCond &&
-              cond.form === 'call' &&
-              cond.callee.form === 'variable' &&
-              cond.callee.name === 'is-equal' &&
-              cond.args.length === 2
-            ) {
-              branchAssumptions.push([cond.args[0]!, cond.args[1]!])
-            }
-
-            checkCommands(
-              branch.body,
-              sc,
-              ctx,
-              resultValue,
-              branchAssumptions,
-            )
-          }
-
-          if (statement.otherwise) {
-            checkCommands(
-              statement.otherwise,
-              sc,
-              ctx,
-              resultValue,
-              assumptions,
-            )
-          }
-
-          assumptions = forgetPairs(assumptions, writtenNames(statement))
-          break
-        case 'while': {
-          // a later turn sees what an earlier turn wrote, so facts about those names are gone before the body too,
-          // and so is every fact about state when the body changes state
-          assumptions = forgetPairs(assumptions, writtenNames(statement.body))
-          assumptions = forgetStateFor(statement.body, assumptions)
-          check(ctx, need(expr(statement.cond, sc, ctx)), BOOLEAN_VALUE)
-          checkCommands(
-            statement.body,
-            sc,
-            ctx,
-            resultValue,
-            assumptions,
-          )
-          break
-        }
-
-        case 'for-each': {
-          assumptions = forgetPairs(assumptions, writtenNames(statement))
-          assumptions = forgetStateFor(statement.body, assumptions)
-          const iterable = need(expr(statement.iterable, sc, ctx))
-          const iterableType = quote(
-            ctx.level,
-            infer(ctx, iterable).type,
-          )
-
-          if (
-            iterableType.tag !== 'app' ||
-            iterableType.fun.tag !== 'const' ||
-            iterableType.fun.name !== 'Array'
-          ) {
-            throw new Decline('a walk over something that is not a list')
-          }
-
-          const elementType = evaluate(ctx.env, iterableType.arg)
-          const innerScope = new Map(sc).set(statement.item, ctx.level)
-          checkCommands(
-            statement.body,
-            innerScope,
-            bind(ctx, 'many', elementType),
-            resultValue,
-            assumptions,
-          )
-          break
-        }
-
-        case 'match': {
-          const subject = need(expr(statement.subject, sc, ctx))
-          const subjectType = quote(ctx.level, infer(ctx, subject).type)
-
-          if (
-            subjectType.tag !== 'const' ||
-            !variantNames.has(subjectType.name)
-          ) {
-            throw new Decline('a match on something that is not an enum')
-          }
-
-          for (const branch of statement.cases) {
-            // AN ARM'S FIELDS SHADOW THE OUTER NAMES (check/arm.ts, the one rule). The kernel binds no fields here, so
-            // a field's local is taken OUT of scope: a use of it declines, as the eliminator path declines, rather
-            // than reach an outer variable of the same name. With a `miss` arm this path ran, and `case number /
-            // back value` beside a parameter `value` was checked as returning the parameter: "expected Number, found
-            // sample" for a program the surface checker accepts (deck/test/code/property-check.tree, 2026-10-05)
-            // The local stays a KEY with no level (`hidden`), never deleted: deleted, a use fell through to a GLOBAL of
-            // the same name, and `case int-value / link n / back number-text(n)` was checked against a task `n` in
-            // another module ("expected Number, found (many x1 : Number) -> smt-term", 2026-10-05)
-            const fields = (variantFieldInfo.get(ctorKey(subjectType.name, branch.label)) ?? []).map(f => f.name)
-            const shadowed = new Map(sc)
-
-            for (const { local } of armLocals(fields, branch.binds ?? [])) {
-              hide(shadowed, local)
-            }
-
-            checkCommands(
-              branch.body,
-              shadowed,
-              ctx,
-              resultValue,
-              assumptions,
-            )
-          }
-
-          if (statement.otherwise) {
-            checkCommands(
-              statement.otherwise,
-              sc,
-              ctx,
-              resultValue,
-              assumptions,
-            )
-          }
-
-          assumptions = forgetPairs(assumptions, writtenNames(statement))
-          break
-        }
-
-        case 'throw':
-          infer(ctx, need(expr(statement.value, sc, ctx))) // a thrown value must still be well-typed
-          break
-
-        case 'hold': {
-          // the kernel fallback / proof layer. A non-linear `a == b` hold is discharged when the two sides are
-          // definitionally equal (delta makes a transparent `double(n)` equal to `add(n, n)`), or by an explicit
-          // proof tree. A named hold that is discharged is registered as a lemma for later `cite`. An undischarged
-          // hold here is left to the linear prover (topLevel = false, so no unchecked flag). Path assumptions (the
-          // enclosing `have`/`if` equation guards) are passed so the goal can be discharged using its antecedents.
-          checkHold(statement, sc, ctx, assumptions)
-          break // never decline on a hold; the linear prover handles the rest
-        }
-
-        case 'break':
-        case 'continue':
-          break
-        default:
-          // a nested declaration or anything else unhandled
-          throw new Decline(`a \`${statement.form}\` statement`)
-      }
-
-      // a statement that calls something impure may have written through any record or changed what a call
-      // answers, so every fact that reads a member or a call goes. A rule's own task-typed marks are pure functions
-      if (callsImpure(statement, factsPure, factsFunctions, withoutRuleMarks(factsLocal))) {
-        assumptions = assumptions.filter(
-          ([left, right]) => !readsState(left) && !readsState(right),
-        )
-      }
-    }
-  }
-
-  // a loop body that calls anything impure or writes through a member changes state between turns, so no fact that
-  // reads a member or a call survives into the body
-  function forgetStateFor(
-    body: Statement[],
-    pairs: [Expression, Expression][],
-  ): [Expression, Expression][] {
-    const changes =
-      callsImpure(body, factsPure, factsFunctions, withoutRuleMarks(factsLocal)) ||
-      containsMemberWrite(body)
-
-    return changes
-      ? pairs.filter(([left, right]) => !readsState(left) && !readsState(right))
-      : pairs
+    viaKernel(() =>
+      commands.checkCommands(
+        termState,
+        commandHost as never,
+        statements as never,
+        scopeOf(scope),
+        context as never,
+        resultValue as never,
+        pairsFor(assumptions) as never,
+      ),
+    )
   }
 
   function containsMemberWrite(body: Statement[]): boolean {
@@ -3685,37 +815,6 @@ export function elaborateReport(
     }
 
     return found
-  }
-
-  // drop every assumption that reads one of these names
-  function forgetPairs(
-    pairs: [Expression, Expression][],
-    names: Set<string>,
-  ): [Expression, Expression][] {
-    if (names.size === 0) {
-      return pairs
-    }
-
-    if (names.has(EVERYTHING)) {
-      return []
-    }
-
-    return pairs.filter(
-      ([left, right]) => !readsAny(left, names) && !readsAny(right, names),
-    )
-  }
-
-  // is `name == value` a fact worth keeping: the value does not read the old value of the name, does not read a
-  // volatile name, and does not call anything two calls may disagree on
-  function stableDefinition(name: string, value: Expression): boolean {
-    return (
-      !factsVolatile.has(name) &&
-      !readNames(value).has(name) &&
-      !readsAny(value, factsVolatile) &&
-      // a rule's own task-typed marks are functions in the mathematical sense, as at the hold (`checkHold`), so a
-      // witness `find x, s(z)` built from one is a definition the goal can use
-      !callsImpure(value, factsPure, factsFunctions, withoutRuleMarks(factsLocal))
-    )
   }
 
   function readsMember(expression: Expression): boolean {
@@ -3762,576 +861,83 @@ export function elaborateReport(
     return convertibleModulo(level, left, right, hypotheses)
   }
 
-  // structural equality of two kernel terms (for matching folded normal forms; both come from `quote`, so a syntactic
-  // comparison is exact up to the shared readback).
+  // Rewriting kernel terms is check/elaborating-rewrite.tree: a first-order match of a lemma's side, one rewrite
+  // leftmost-outermost, rewriting to a fixed point, the shapes of a commutativity and an associativity law, and
+  // normalizing and rewriting modulo AC. A rule's holes cross as a hash, and a term none of them answers as `null`
+  type RewriteRule = { binderCount: number; lhs: Term; rhs: Term; holes?: Set<number> }
+  const ruleOf = (rule: RewriteRule): rewriting.RewriteRule => ({
+    binderCount: rule.binderCount,
+    lhs: rule.lhs as never,
+    rhs: rule.rhs as never,
+    holes: new Map([...(rule.holes ?? [])].map(hole => [hole, true])),
+  })
+  const operatorsOf = (operators: Set<string>): Map<string, boolean> =>
+    new Map([...operators].map(name => [name, true]))
+  const found = <T,>(maybe: { form: 'some'; value: T } | { form: 'none' }): T | null =>
+    maybe.form === 'some' ? maybe.value : null
+
+  // structural equality of two kernel terms (both from `quote`, so a syntactic comparison is exact)
   function termsEqual(a: Term, b: Term): boolean {
-    return showTerm(a) === showTerm(b)
+    return rewriting.termsEqual(a as never, b as never)
   }
 
-  // first-order match: bind the pattern's universal holes (its `var`s, at indices below `binders`) to subterms of the
-  // subject so that the instantiated pattern equals the subject. `depth` tracks binders crossed inside the pattern (a
-  // var at or above `depth` is a hole; below it is locally bound). Returns false on any clash. Used to instantiate a
-  // cited lemma against the goal.
-  // collect the free de Bruijn variable indices of a (closed-context) term. Used to decide which variables a generalized
-  // induction hypothesis quantifies over.
-  // replace free de Bruijn variables per `map` (keys + values are indices in the depth-0 frame), respecting binders. Used
-  // to REFINE a dependent match's result type: at an index constructor's branch the scrutinee index is destructured, so
-  // each index-argument variable becomes the corresponding constructor field (`vecnat n` at subject index `succ n`
-  // becomes `vecnat p` under the `succ p` branch). A no-op when the result mentions none of those variables.
+  // free de Bruijn variables replaced per `map` (indices in the depth-0 frame), respecting binders: a dependent match's
+  // result type refined at an index constructor's branch
   function substituteVars(
     term: Term,
     map: Map<number, number>,
     depth = 0,
   ): Term {
-    switch (term.tag) {
-      case 'var': {
-        const base = term.index - depth
-
-        if (base >= 0 && map.has(base)) {
-          return { tag: 'var', index: map.get(base)! + depth }
-        }
-
-        return term
-      }
-      case 'app':
-        return {
-          tag: 'app',
-          fun: substituteVars(term.fun, map, depth),
-          arg: substituteVars(term.arg, map, depth),
-        }
-      case 'lam':
-        return { ...term, body: substituteVars(term.body, map, depth + 1) }
-      case 'pi':
-        return {
-          ...term,
-          domain: substituteVars(term.domain, map, depth),
-          codomain: substituteVars(term.codomain, map, depth + 1),
-        }
-      default:
-        return term
-    }
+    return rewriting.substituteVars(term as never, map, depth) as Term
   }
 
+  // the free de Bruijn variable indices of a term, added to `acc` in the order they are met
   function freeVarIndices(
     term: Term,
     depth = 0,
     acc = new Set<number>(),
   ): Set<number> {
-    switch (term.tag) {
-      case 'var':
-        if (term.index - depth >= 0) {
-          acc.add(term.index - depth)
-        }
+    const met = new Map<number, boolean>()
+    rewriting.freeVarIndices(term as never, depth, met)
 
-        return acc
-      case 'app':
-        freeVarIndices(term.fun, depth, acc)
-        freeVarIndices(term.arg, depth, acc)
-
-        return acc
-      case 'lam':
-        freeVarIndices(term.body, depth + 1, acc)
-
-        return acc
-      default:
-        return acc
+    for (const index of met.keys()) {
+      acc.add(index)
     }
+
+    return acc
   }
 
-  // `holes` (optional) is a set of base de Bruijn indices that are ALSO pattern holes, beyond the leading `binders`. This
-  // is how a GENERALIZED induction hypothesis is matched: the induction's non-recursive variables (the other `mark`s)
-  // become holes at their own context indices, so the hypothesis can fire at any instance of them (e.g. a threaded
-  // accumulator that changes along the recursion). Holes are honored only at depth 0 (the equational goals are
-  // first-order), so a captured subject can never carry an escaping local binder.
-  function matchPattern(
-    pattern: Term,
-    subject: Term,
-    binders: number,
-    depth: number,
-    subst: Map<number, Term>,
-    holes?: Set<number>,
-  ): boolean {
-    if (pattern.tag === 'var') {
-      const base = pattern.index - depth
-      const isBinderHole = base >= 0 && base < binders
-      const isSetHole =
-        holes !== undefined && depth === 0 && holes.has(base)
-
-      if (isBinderHole || isSetHole) {
-        const prior = subst.get(base)
-
-        if (prior) {
-          return termsEqual(prior, subject)
-        }
-
-        subst.set(base, subject)
-
-        return true
-      }
-    }
-
-    if (pattern.tag !== subject.tag) {
-      return false
-    }
-
-    switch (pattern.tag) {
-      case 'var':
-        return subject.tag === 'var' && pattern.index === subject.index
-      case 'const':
-        return subject.tag === 'const' && pattern.name === subject.name
-      case 'app':
-        return (
-          subject.tag === 'app' &&
-          matchPattern(
-            pattern.fun,
-            subject.fun,
-            binders,
-            depth,
-            subst,
-            holes,
-          ) &&
-          matchPattern(
-            pattern.arg,
-            subject.arg,
-            binders,
-            depth,
-            subst,
-            holes,
-          )
-        )
-      case 'lam':
-        return (
-          subject.tag === 'lam' &&
-          matchPattern(
-            pattern.body,
-            subject.body,
-            binders,
-            depth + 1,
-            subst,
-            holes,
-          )
-        )
-      default:
-        // other shapes (pi, sigma, id, ...) do not occur in the first-order equational lemmas we cite
-        return termsEqual(pattern, subject)
-    }
+  // a term rewritten ONCE by a lemma, left to right, or null where it fires nowhere
+  function rewriteOnce(target: Term, rule: RewriteRule): Term | null {
+    return found(rewriting.rewriteOnce(target as never, ruleOf(rule))) as Term | null
   }
 
-  // substitute a lemma's hole assignments into its rhs (the holes are the `var`s below `binders`), yielding a concrete
-  // term in the goal's context. No inner binders occur in these first-order lemmas, so a plain replacement is exact.
-  function instantiate(
-    rhs: Term,
-    binders: number,
-    depth: number,
-    subst: Map<number, Term>,
-    holes?: Set<number>,
-  ): Term | null {
-    if (rhs.tag === 'var') {
-      const base = rhs.index - depth
-      const isBinderHole = base >= 0 && base < binders
-      const isSetHole =
-        holes !== undefined && depth === 0 && holes.has(base)
-
-      if (isBinderHole || isSetHole) {
-        const value = subst.get(base)
-
-        return value ?? null
-      }
-    }
-
-    switch (rhs.tag) {
-      case 'app': {
-        const fun = instantiate(rhs.fun, binders, depth, subst, holes)
-        const arg = instantiate(rhs.arg, binders, depth, subst, holes)
-
-        return fun && arg ? { tag: 'app', fun, arg } : null
-      }
-
-      case 'lam': {
-        const body = instantiate(
-          rhs.body,
-          binders,
-          depth + 1,
-          subst,
-          holes,
-        )
-
-        return body ? { ...rhs, body } : null
-      }
-
-      default:
-        return rhs
-    }
+  // a term rewritten to a fixed point by the lemmas, directed left to right, bounded by fuel
+  function rewriteWithLemmas(target: Term, rules: RewriteRule[], fuel: number): Term {
+    return rewriting.rewriteWithLemmas(target as never, rules.map(ruleOf), fuel) as Term
   }
 
-  // rewrite a term ONCE by a lemma (left-to-right): find the leftmost-outermost subterm matching the lemma's lhs and
-  // replace it with the instantiated rhs. Returns the rewritten term, or null if the lemma does not fire anywhere.
-  function rewriteOnce(
-    target: Term,
-    rule: {
-      binderCount: number
-      lhs: Term
-      rhs: Term
-      holes?: Set<number>
-    },
-  ): Term | null {
-    const subst = new Map<number, Term>()
-
-    if (
-      matchPattern(
-        rule.lhs,
-        target,
-        rule.binderCount,
-        0,
-        subst,
-        rule.holes,
-      )
-    ) {
-      const rhs = instantiate(
-        rule.rhs,
-        rule.binderCount,
-        0,
-        subst,
-        rule.holes,
-      )
-
-      if (rhs) {
-        return rhs
-      }
-    }
-
-    switch (target.tag) {
-      case 'app': {
-        const fun = rewriteOnce(target.fun, rule)
-
-        if (fun) {
-          return { tag: 'app', fun, arg: target.arg }
-        }
-
-        const arg = rewriteOnce(target.arg, rule)
-
-        if (arg) {
-          return { tag: 'app', fun: target.fun, arg }
-        }
-
-        return null
-      }
-
-      case 'lam': {
-        const body = rewriteOnce(target.body, rule)
-
-        return body ? { ...target, body } : null
-      }
-
-      default:
-        return null
-    }
+  // is this rule a commutativity statement `f a b == f b a`? The operator constant name, or null
+  function commutativityOperator(rule: { binderCount: number; lhs: Term; rhs: Term }): string | null {
+    return found(rewriting.commutativityOperator(ruleOf(rule)))
   }
 
-  // IS THIS GOAL AN INSTANCE OF A PROVEN EQUATION: `cite both-commutes` proving `both(f(x), g(y)) == both(g(y), f(x))`,
-  // as Lean's `exact both_comm _ _` does. Both sides are normalized with the equation's own operators kept folded
-  // (judge.ts `normalTerm`), so `both(...)` is still there to be found, and one rewrite by the equation, either way
-  // round and on either side, must make the two sides identical. Sound: the normal forms are conversions of the sides,
-  // a rewrite replaces a term by one the equation proves equal, and identical terms are equal
-  function instanceOf(
-    level: number,
-    left: Value,
-    right: Value,
-    rule: { binderCount: number; lhs: Term; rhs: Term } | undefined,
-  ): boolean {
-    if (!rule) {
-      return false
-    }
-
-    const opaque = new Set([...constantsOf(rule.lhs), ...constantsOf(rule.rhs)])
-    const sides = [normalTerm(level, left, opaque), normalTerm(level, right, opaque)] as const
-    const printed = sides.map(showTerm)
-
-    for (const directed of [rule, { ...rule, lhs: rule.rhs, rhs: rule.lhs }]) {
-      for (const [from, to] of [[0, 1], [1, 0]] as const) {
-        const rewritten = rewriteOnce(sides[from], directed)
-
-        if (rewritten && showTerm(rewritten) === printed[to]) {
-          return true
-        }
-      }
-    }
-
-    return false
+  // is this rule an associativity statement `f (f a b) c == f a (f b c)`? The operator name, or null
+  function associativityOperator(rule: { binderCount: number; lhs: Term; rhs: Term }): string | null {
+    return found(rewriting.associativityOperator(ruleOf(rule)))
   }
 
-  // rewrite a term to a fixed point by a set of lemmas (directed left-to-right), bounded by fuel so a non-terminating
-  // rewrite set cannot loop. Each rewrite replaces a subterm by a provably equal one, so the result equals the input.
-  function rewriteWithLemmas(
-    target: Term,
-    rules: {
-      binderCount: number
-      lhs: Term
-      rhs: Term
-      holes?: Set<number>
-    }[],
-    fuel: number,
-  ): Term {
-    let current = target
-    let budget = fuel
-
-    while (budget > 0) {
-      let progressed = false
-
-      for (const rule of rules) {
-        const next = rewriteOnce(current, rule)
-
-        if (next) {
-          current = next
-          progressed = true
-          budget--
-          break
-        }
-      }
-
-      if (!progressed) {
-        break
-      }
-    }
-
-    return current
+  // a nested chain of one AC operator flattened to its operand list, or null
+  function flattenAc(term: Term, operators: Set<string>): { op: string; operands: Term[] } | null {
+    return found(rewriting.flattenAc(term as never, operatorsOf(operators))) as { op: string; operands: Term[] } | null
   }
 
-  // is this rule a commutativity statement `f a b == f b a`? returns the operator constant name, or null.
-  function commutativityOperator(rule: {
-    binderCount: number
-    lhs: Term
-    rhs: Term
-  }): string | null {
-    const { lhs, rhs } = rule
-
-    if (
-      lhs.tag === 'app' &&
-      lhs.fun.tag === 'app' &&
-      lhs.fun.fun.tag === 'const' &&
-      lhs.fun.arg.tag === 'var' &&
-      lhs.arg.tag === 'var' &&
-      lhs.fun.arg.index !== lhs.arg.index &&
-      rhs.tag === 'app' &&
-      rhs.fun.tag === 'app' &&
-      rhs.fun.fun.tag === 'const' &&
-      rhs.fun.fun.name === lhs.fun.fun.name &&
-      rhs.fun.arg.tag === 'var' &&
-      rhs.arg.tag === 'var' &&
-      rhs.fun.arg.index === lhs.arg.index &&
-      rhs.arg.index === lhs.fun.arg.index
-    ) {
-      return lhs.fun.fun.name
-    }
-
-    return null
-  }
-
-  // is this rule an associativity statement `f (f a b) c == f a (f b c)`? returns the operator name, or null.
-  function associativityOperator(rule: {
-    binderCount: number
-    lhs: Term
-    rhs: Term
-  }): string | null {
-    const { lhs, rhs } = rule
-    const op = (t: Term): string | null =>
-      t.tag === 'app' &&
-      t.fun.tag === 'app' &&
-      t.fun.fun.tag === 'const'
-        ? t.fun.fun.name
-        : null
-
-    const left = (t: Term): Term | null =>
-      t.tag === 'app' && t.fun.tag === 'app' ? t.fun.arg : null
-
-    const right = (t: Term): Term | null =>
-      t.tag === 'app' ? t.arg : null
-
-    const f = op(lhs)
-
-    if (!f || op(rhs) !== f) {
-      return null
-    }
-
-    const ll = left(lhs)
-    const lr = right(lhs)
-    const rl = left(rhs)
-    const rr = right(rhs)
-
-    // lhs inner is on the LEFT: f (f a b) c ; rhs inner is on the RIGHT: f a (f b c)
-    if (ll && op(ll) === f && rr && op(rr) === f) {
-      return f
-    }
-
-    return null
-  }
-
-  // flatten a nested chain of one AC operator into its operand list (so `f (f a b) c` and `f a (f b c)` both flatten to
-  // [a, b, c]). Returns null if the term is not headed by an AC operator.
-  function flattenAc(
-    term: Term,
-    operators: Set<string>,
-  ): { op: string; operands: Term[] } | null {
-    if (
-      term.tag !== 'app' ||
-      term.fun.tag !== 'app' ||
-      term.fun.fun.tag !== 'const' ||
-      !operators.has(term.fun.fun.name)
-    ) {
-      return null
-    }
-
-    const op = term.fun.fun.name
-    const operands: Term[] = []
-
-    for (const side of [term.fun.arg, term.arg]) {
-      const inner = flattenAc(side, operators)
-
-      if (inner?.op === op) {
-        operands.push(...inner.operands)
-      } else {
-        operands.push(side)
-      }
-    }
-
-    return { op, operands }
-  }
-
-  // normalize a term modulo associativity and commutativity of the given operators: flatten each AC chain, normalize and
-  // canonically sort its operands, and rebuild a right-nested tree. Two AC-equal terms get identical normal forms, so a
-  // law that only needs to commute and reassociate a sum (which a directed rewrite cannot do, as commutativity loops)
-  // closes by syntactic equality. Sound: only operators PROVEN both commutative and associative are passed in.
+  // a term normalized modulo associativity and commutativity of the operators, which are PROVEN both
   function acNormalize(term: Term, operators: Set<string>): Term {
-    const flat = flattenAc(term, operators)
-
-    if (flat) {
-      const parts = flat.operands
-        .map(part => acNormalize(part, operators))
-        .sort((a, b) => {
-          const sa = showTerm(a)
-          const sb = showTerm(b)
-
-          return sa < sb ? -1 : sa > sb ? 1 : 0
-        })
-
-      return parts.reduceRight((acc, part) => ({
-        tag: 'app',
-        fun: { tag: 'app', fun: constant(flat.op), arg: part },
-        arg: acc,
-      }))
-    }
-
-    switch (term.tag) {
-      case 'app':
-        return {
-          tag: 'app',
-          fun: acNormalize(term.fun, operators),
-          arg: acNormalize(term.arg, operators),
-        }
-      case 'lam':
-        return { ...term, body: acNormalize(term.body, operators) }
-      default:
-        return term
-    }
+    return rewriting.acNormalize(term as never, operatorsOf(operators)) as Term
   }
 
-  // rewrite a term modulo associativity-commutativity: a rule whose lhs is itself an AC chain `f(l1, .. lk)` fires when
-  // its operands are a SUB-MULTISET of some `f`-chain in the term, replacing those operands by the rule's rhs. This is
-  // AC MATCHING: it lets the induction hypothesis `a + b = c` apply inside a larger sum `a + x + b` (which AC
-  // normalization alone could not, since `a + b` is not a syntactic subterm). Used for the closed Fibonacci / sum
-  // identities. Sound: f is a congruence and the rule equates its two sides, so swapping the matched operands preserves
-  // the value. Bounded by fuel.
-  function acRewriteAt(
-    term: Term,
-    operators: Set<string>,
-    rules: { lhs: Term; rhs: Term }[],
-  ): Term | null {
-    const flat = flattenAc(term, operators)
-
-    if (flat) {
-      const operandKeys = flat.operands.map(showTerm)
-
-      for (const rule of rules) {
-        const lhsFlat = flattenAc(rule.lhs, operators)
-
-        if (lhsFlat?.op !== flat.op) {
-          continue
-        }
-
-        // does the rule's lhs chain occur as a sub-multiset of this chain?
-        const used = new Array(flat.operands.length).fill(false)
-
-        let matched = true
-
-        for (const need of lhsFlat.operands.map(showTerm)) {
-          const at = operandKeys.findIndex(
-            (k, i) => !used[i] && k === need,
-          )
-
-          if (at < 0) {
-            matched = false
-            break
-          }
-
-          used[at] = true
-        }
-
-        if (!matched) {
-          continue
-        }
-
-        const keep = flat.operands.filter((_, i) => !used[i])
-        const rhsFlat = flattenAc(rule.rhs, operators)
-        const rhsOperands =
-          rhsFlat?.op === flat.op
-            ? rhsFlat.operands
-            : [rule.rhs]
-
-        const next = [...keep, ...rhsOperands]
-
-        if (next.length === 0) {
-          return rule.rhs
-        }
-
-        return next.reduceRight((acc, part) => ({
-          tag: 'app',
-          fun: { tag: 'app', fun: constant(flat.op), arg: part },
-          arg: acc,
-        }))
-      }
-    }
-
-    switch (term.tag) {
-      case 'app': {
-        const fun = acRewriteAt(term.fun, operators, rules)
-
-        if (fun) {
-          return { tag: 'app', fun, arg: term.arg }
-        }
-
-        const arg = acRewriteAt(term.arg, operators, rules)
-
-        if (arg) {
-          return { tag: 'app', fun: term.fun, arg }
-        }
-
-        return null
-      }
-
-      case 'lam': {
-        const body = acRewriteAt(term.body, operators, rules)
-
-        return body ? { ...term, body } : null
-      }
-
-      default:
-        return null
-    }
-  }
-
-  // AC-rewrite to a fixed point, INTERLEAVING the directed syntactic rewrites (so a sub-term the AC step introduces,
-  // like the hypothesis's right side, is itself reduced by the cited lemmas) and renormalizing between steps so the
-  // canonical form is compared.
+  // AC rewriting to a fixed point, the directed rewrites interleaved and the term renormalized between steps
   function acRewriteFix(
     term: Term,
     operators: Set<string>,
@@ -4339,1387 +945,149 @@ export function elaborateReport(
     syntacticRules: { binderCount: number; lhs: Term; rhs: Term }[],
     fuel: number,
   ): Term {
-    const reduce = (t: Term): Term =>
-      acNormalize(rewriteWithLemmas(t, syntacticRules, 200), operators)
-
-    let current = reduce(term)
-
-    for (let i = 0; i < fuel; i++) {
-      const next = acRewriteAt(current, operators, acRules)
-
-      if (!next) {
-        break
-      }
-
-      current = reduce(next)
-    }
-
-    return current
+    return rewriting.acRewriteFix(
+      term as never,
+      operatorsOf(operators),
+      acRules as never,
+      syntacticRules.map(ruleOf),
+      fuel,
+    ) as Term
   }
 
-  // which constructor (by declaration index) a value of an enum reduces to, or null if it is not a manifest constructor
-  // of that enum. Built by running the enum's eliminator with each branch returning a distinct projection function
-  // (variant i -> the function that selects its i-th argument), then matching the result against those projections.
-  // Sound and precise: it returns an index only when the value really IS that constructor (a neutral stays unmatched).
-  function constructorIndex(
-    level: number,
-    value: Value,
-    enumName: string,
-  ): number | null {
-    const order = variantNames.get(enumName)
-
-    if (!order) {
-      return null
+  // What the kernel decides by running a form's eliminator is check/elaborating-cases.tree: which case a value is, its
+  // fields, no-confusion at any depth, the truth table and an induction case read as ring arithmetic or as an order.
+  // Each is called through judge.ts's `kernel`, so a raise reaches this face as the original's class; a `decline:`
+  // failure becomes `Decline` here
+  const st = judgeState()
+  const caseState = cases.newCaseState()
+  const viaKernel = <T,>(call: () => T): T => {
+    try {
+      return kernel(call)
+    } catch (error) {
+      throw asDecline(error)
     }
-
-    const n = order.length
-    // the n distinct separators: separator_i = \a0..a_{n-1}. a_i (pairwise non-convertible)
-    const separators = order.map((_, i) =>
-      evaluate([], lambdas(n, variable(n - 1 - i))),
-    )
-
-    // branch_i : (its fields) -> separator_i ; ignores the fields, returns the i-th separator
-    const branches = order.map((variant, i) => {
-      const fieldCount = (
-        variantFieldInfo.get(ctorKey(enumName, variant)) ?? []
-      ).length
-
-      return lambdas(fieldCount + n, variable(n - 1 - i))
-    })
-
-    const idEnv: Value[] = []
-
-    for (let l = level - 1; l >= 0; l--) {
-      idEnv.push(neutralVar(l))
-    }
-
-    const discriminated = evaluate(
-      idEnv,
-      apply(
-        constant(`match__${enumName}`),
-        // a polymorphic eliminator takes its erased type parameters first; they are ignored by the reduction, so any
-        // closed type (TYPE0) serves as the dummy witness here (this is pure constructor discrimination)
-        ...Array.from(
-          { length: typeFormerArity.get(enumName) ?? 0 },
-          () => TYPE0,
-        ),
-        TYPE0,
-        quote(level, value),
-        ...branches,
-      ),
-    )
-
-    for (let i = 0; i < n; i++) {
-      if (areConvertible(level, discriminated, separators[i]!)) {
-        return i
-      }
-    }
-
-    return null
   }
+  const pairsOf = (pairs: [Value, Value][]): Value[] => pairs.flat()
+  const casesRules = (rules: { binderCount: number; lhs: Term; rhs: Term }[]) =>
+    rules.map(rule => ({ binderCount: rule.binderCount, lhs: rule.lhs, rhs: rule.rhs, holes: new Map() })) as never
+  const data = elaborated as never
 
-  // elaborate the two sides of an equality goal, letting each side guide the other's overloaded constructors: the
-  // concrete side is elaborated first, its type synthesized, and the other side elaborated against it. Used wherever a
-  // goal `L == R` is re-elaborated (the induction case splits, the equational tactics), so a shared constructor name
-  // (e.g. `pair` on both `line` and `way`) resolves to the goal's type.
+  // the two sides of an equality goal, each guiding the other's overloaded constructors (check/elaborating-theorems.tree)
   function elaborateGoalSides(
     leftNode: Expression,
     rightNode: Expression,
     scope: Scope,
     ctx: Context,
   ): [Term | null, Term | null] {
-    const guide = (term: Term): Value | undefined => {
-      try {
-        return infer(ctx, term).type
-      } catch {
-        return undefined
-      }
-    }
+    const sides = viaKernel(() =>
+      theorems.elaborateGoalSides(termState, leftNode as never, rightNode as never, scopeOf(scope), ctx as never),
+    )
 
-    let left = expr(leftNode, scope, ctx)
-
-    if (left) {
-      return [left, expr(rightNode, scope, ctx, guide(left))]
-    }
-
-    const right = expr(rightNode, scope, ctx)
-
-    if (!right) {
-      return [null, null]
-    }
-
-    left = expr(leftNode, scope, ctx, guide(right))
-
-    return [left, right]
+    return [termOf(sides.left as never), termOf(sides.right as never)]
   }
 
-  // the field values of a constructor value: extract field j by matching with a branch that returns f_j (the other
-  // branches are never selected, since `value` discriminated to `variantIndex`). Reuses the same match-eliminator
-  // machinery as `constructorIndex`. Used by no-confusion at depth to recurse into a shared constructor's arguments.
-  function constructorFields(
-    level: number,
-    value: Value,
-    enumName: string,
-    variantIndex: number,
-    fieldCount: number,
-  ): Value[] {
-    const order = variantNames.get(enumName)
-
-    if (!order) {
-      return []
-    }
-
-    const idEnv: Value[] = []
-
-    for (let l = level - 1; l >= 0; l--) {
-      idEnv.push(neutralVar(l))
-    }
-
-    const fields: Value[] = []
-
-    for (let j = 0; j < fieldCount; j++) {
-      const branches = order.map((variant, m) => {
-        const fc = (variantFieldInfo.get(ctorKey(enumName, variant)) ?? [])
-          .length
-
-        // branch m returns its j-th field for the target variant, an ignored placeholder otherwise
-        const body =
-          m === variantIndex ? variable(fc - 1 - j) : constant('unitValue')
-
-        return lambdas(fc, body)
-      })
-
-      fields.push(
-        evaluate(
-          idEnv,
-          apply(
-            constant(`match__${enumName}`),
-            ...Array.from(
-              { length: typeFormerArity.get(enumName) ?? 0 },
-              () => TYPE0,
-            ),
-            TYPE0,
-            quote(level, value),
-            ...branches,
-          ),
-        ),
-      )
-    }
-
-    return fields
-  }
-
-  // NO-CONFUSION at any depth: the equation is absurd if the two values are distinct constructors of the same enum, OR
-  // they share a constructor but a corresponding field pair is itself absurd (by injectivity, `c a = c b` forces
-  // `a = b`, so an impossible field makes the whole equation impossible). Bounded by the finite term structure, every
-  // recursion descending into strict sub-values, with a depth guard as a backstop. Sound: it only fires on genuine
-  // constructors (each confirmed by `constructorIndex`), never on neutral / stuck values, so a satisfiable case is
-  // never wrongly closed.
-  function absurdAtType(
-    level: number,
-    typeTerm: Term,
-    leftValue: Value,
-    rightValue: Value,
-    depth: number,
-  ): boolean {
-    if (depth <= 0 || typeTerm.tag !== 'const') {
-      return false
-    }
-
-    // a struct has one constructor, so it is never absurd at the top, but a FIELD pair can be. Extract each field with
-    // its (now-reducing) projection and recurse. By injectivity `make r .. = make r ..` forces the fields equal, so an
-    // impossible field makes the record equation impossible.
-    const recordInfo = recordFieldInfo.get(typeTerm.name)
-
-    if (recordInfo) {
-      const idEnv: Value[] = []
-
-      for (let l = level - 1; l >= 0; l--) {
-        idEnv.push(neutralVar(l))
-      }
-
-      for (const field of recordInfo) {
-        const project = (value: Value): Value =>
-          evaluate(
-            idEnv,
-            apply(
-              constant(`${typeTerm.name}__${field.name}`),
-              quote(level, value),
-            ),
-          )
-
-        if (
-          absurdAtType(
-            level,
-            field.type,
-            project(leftValue),
-            project(rightValue),
-            depth - 1,
-          )
-        ) {
-          return true
-        }
-      }
-
-      return false
-    }
-
-    if (!variantNames.has(typeTerm.name)) {
-      return false
-    }
-
-    const iLeft = constructorIndex(level, leftValue, typeTerm.name)
-    const iRight = constructorIndex(level, rightValue, typeTerm.name)
-
-    if (iLeft === null || iRight === null) {
-      return false
-    }
-
-    if (iLeft !== iRight) {
-      return true
-    }
-
-    const order = variantNames.get(typeTerm.name)!
-    const fieldInfo =
-      variantFieldInfo.get(ctorKey(typeTerm.name, order[iLeft]!)) ?? []
-    const k = fieldInfo.length
-
-    if (k === 0) {
-      return false
-    }
-
-    const lf = constructorFields(level, leftValue, typeTerm.name, iLeft, k)
-    const rf = constructorFields(level, rightValue, typeTerm.name, iLeft, k)
-
-    for (let j = 0; j < k; j++) {
-      if (
-        lf[j] &&
-        rf[j] &&
-        absurdAtType(level, fieldInfo[j]!.type, lf[j]!, rf[j]!, depth - 1)
-      ) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  // is an equation hypothesis ABSURD, i.e. impossible by constructor disjointness / injectivity (no confusion)? Such an
-  // equation cannot hold, which makes its case vacuously true. This is what lets a conditional theorem (like the
-  // transitivity of an order) discharge the cases whose antecedent is impossible, and what `calm miss` uses to refute.
   function equationAbsurd(
     context: Context,
     leftTerm: Term,
     leftValue: Value,
     rightValue: Value,
   ): boolean {
-    try {
-      const type = quote(context.level, infer(context, leftTerm).type)
-
-      return absurdAtType(context.level, type, leftValue, rightValue, 64)
-    } catch {
-      return false
-    }
+    return viaKernel(() =>
+      cases.equationAbsurd(st, data, context as never, leftTerm as never, leftValue as never, rightValue as never),
+    )
   }
 
-  // THE TRUTH TABLE (math-foundations-0017). A value of a form whose cases hold nothing (`flag`) is one of those cases,
-  // even when the kernel cannot compute which: `evaluate(v, p)` for a formula `p` it knows nothing about. So a goal built
-  // from such values (its ATOMS) by tasks that compute once the atoms are known is decided by trying every case for each
-  // atom: wherever the hypotheses are not shown false, the goal's two sides must compute to the same value.
-  // Sound: every value of the form is one of its cases, so the choices cover every instance of the variables, and two
-  // spellings of one value tried apart only add choices. A choice is set aside only when a hypothesis computes to two
-  // different cases, never when one stays undecided. Bounded by TRUTH_TABLE_CHOICES
+  // THE TRUTH TABLE (math-foundations-0017): a goal over values of a form whose cases hold nothing, decided by trying
+  // every case for each atom. `stated` is how many hypotheses were WRITTEN
   function truthTable(
     context: Context,
     left: Value,
     right: Value,
     hypotheses: [Value, Value][],
-    // how many of the hypotheses were WRITTEN (the rest are instances of a universal one), so a counterexample names
-    // only the atoms a reader wrote down
     stated = hypotheses.length,
   ): boolean {
-    const level = context.level
-    const unfolded = new Set<string>()
-    const terms = [left, right, ...hypotheses.flat()].map(value => normalTerm(level, value, unfolded))
-
-    // the cases of a term's form, when every case of it holds nothing and the form takes no type
-    const casesOf = (term: Term): Term[] | undefined => {
-      try {
-        const type = quote(level, whnf(infer(context, term).type))
-
-        if (type.tag !== 'const' || (typeFormerArity.get(type.name) ?? 0) > 0) {
-          return undefined
-        }
-
-        const variants = variantNames.get(type.name)
-
-        if (!variants || variants.some(v => (variantFieldInfo.get(ctorKey(type.name, v)) ?? []).length > 0)) {
-          return undefined
-        }
-
-        return variants.map(v => constant(ctorKey(type.name, v)))
-      } catch {
-        return undefined
-      }
-    }
-
-    // only a goal that is itself a truth value: one type, asked once, keeps every other goal from paying for the table
-    const goalCases = casesOf(terms[0]!)
-
-    if (!goalCases) {
-      return false
-    }
-
-    // a value of such a form that is not already one of its cases, asked once per term
-    const opened = new Map<Term, Term[] | undefined>()
-
-    const open = (term: Term): Term[] | undefined => {
-      if (term.tag === 'lam') {
-        return undefined
-      }
-
-      if (!opened.has(term)) {
-        const cases = casesOf(term)
-        const printed = showTerm(term)
-
-        opened.set(term, cases && !cases.some(c => showTerm(c) === printed) ? cases : undefined)
-      }
-
-      return opened.get(term)
-    }
-
-    const openInside = (term: Term): boolean =>
-      term.tag === 'app' && [term.fun, term.arg].some(part => open(part) !== undefined || openInside(part))
-
-    // the atoms: open values with no open value inside them. One with an open value inside is an operation on atoms,
-    // which computes once they are chosen
-    const atoms = new Map<string, { term: Term; cases: Term[] }>()
-
-    const collect = (term: Term): void => {
-      if (term.tag === 'lam') {
-        return
-      }
-
-      const cases = open(term)
-
-      if (cases && !openInside(term)) {
-        atoms.set(showTerm(term), { term, cases })
-      } else if (term.tag === 'app') {
-        collect(term.fun)
-        collect(term.arg)
-      }
-    }
-
-    terms.slice(0, 2 + 2 * stated).forEach(collect)
-
-    const written = new Set(atoms.keys())
-
-    terms.forEach(collect)
-
-    const list = [...atoms.entries()].map(([printed, atom]) => [printed, atom.cases] as const)
-    const spelled = (c: Term): string => showTerm(normalTerm(level, evaluate(context.env, c), unfolded))
-
-    // NO ATOMS: the two sides are what they are. Two different cases, with nothing assumed, is a false law
-    if (list.length === 0) {
-      const [l, r] = [terms[0]!, terms[1]!].map(t => showTerm(t))
-      const known = new Set(goalCases.map(spelled))
-      const names = context.names.map((name, index) => name || `x${level - 1 - index}`)
-
-      if (hypotheses.length === 0 && l !== r && known.has(l!) && known.has(r!)) {
-        tableCounterexample ??= {
-          at: foldCase,
-          given: false,
-          text: '',
-          sides: [surfaceOf(terms[0]!, names), surfaceOf(terms[1]!, names)],
-        }
-      }
-
-      return false
-    }
-
-    const replace = (term: Term, choice: Map<string, Term>): Term => {
-      const chosen = choice.get(showTerm(term))
-
-      if (chosen) {
-        return chosen
-      }
-
-      return term.tag === 'app' ? { tag: 'app', fun: replace(term.fun, choice), arg: replace(term.arg, choice) } : term
-    }
-
-    // each case as a normal form spells it, the goal's own and each atom's
-    const caseNames = new Set([...goalCases, ...list.flatMap(([, cases]) => cases)].map(spelled))
-    const [goalLeft, goalRight, ...given] = terms
-    const choice = new Map<string, Term>()
-    const value = (term: Term): Value => evaluate(context.env, replace(term, choice))
-
-    // a hypothesis is FALSE under the choice so far only when its two sides compute to two different cases. A case
-    // is computed for good: choosing more atoms cannot change it, so a refutation here holds for every way on
-    const refuted = (): boolean =>
-      given.some((term, i) => {
-        if (i % 2 === 1) {
-          return false
-        }
-
-        const a = normalTerm(level, value(term), unfolded)
-        const b = normalTerm(level, value(given[i + 1]!), unfolded)
-        const [x, y] = [showTerm(a), showTerm(b)]
-
-        return x !== y && caseNames.has(x) && caseNames.has(y)
-      })
-
-    // THE SEARCH. The atoms are chosen one at a time, the written ones first. A branch is closed as soon as some
-    // hypothesis is refuted, or the goal's sides already agree, because both stay so whatever is chosen after. A
-    // branch that reaches the last atom open is one where the goal fails. This decides exactly what trying every
-    // choice decides, and visits far fewer: a universal hypothesis's instances refute most branches a few atoms in.
-    // Bounded by TRUTH_TABLE_CHOICES branches visited, past which the goal is left undecided (not refuted)
-    let visited = 0
-    let exhausted = false
-
-    const holds = (at: number): boolean => {
-      if (++visited > TRUTH_TABLE_CHOICES) {
-        exhausted = true
-
-        return false
-      }
-
-      if (refuted() || areConvertible(level, value(goalLeft!), value(goalRight!))) {
-        return true
-      }
-
-      if (at === list.length) {
-        // a COUNTEREXAMPLE, said only when it is one: every hypothesis shown to hold, and the sides two different cases
-        const sides = [goalLeft!, goalRight!].map(t => showTerm(normalTerm(level, value(t), unfolded)))
-        const held = given.every((term, i) => i % 2 === 1 || areConvertible(level, value(term), value(given[i + 1]!)))
-
-        if (held && sides[0] !== sides[1] && caseNames.has(sides[0]!) && caseNames.has(sides[1]!)) {
-          const names = context.names.map((name, index) => name || `x${level - 1 - index}`)
-
-          tableCounterexample ??= {
-            at: foldCase,
-            given: given.length > 0,
-            text: list
-              .filter(([printed]) => written.has(printed))
-              .map(([printed]) => `${surfaceOf(atoms.get(printed)!.term, names)} is ${surfaceOf(choice.get(printed)!, names)}`)
-              .join(', '),
-          }
-        }
-
-        return false
-      }
-
-      const [printed, cases] = list[at]!
-
-      for (const one of cases) {
-        choice.set(printed, one)
-
-        if (!holds(at + 1)) {
-          return false
-        }
-      }
-
-      choice.delete(printed)
-
-      return true
-    }
-
-    return holds(0) && !exhausted
+    return viaKernel(() =>
+      cases.truthTable(st, data, caseState, context as never, left as never, right as never, pairsOf(hypotheses) as never, stated),
+    )
   }
 
-  // AN INDUCTION CASE THAT IS ARITHMETIC. The kernel's integers are postulates (`add`, `sub`, `mul`, `neg`, literals
-  // `numberValue#n`), so it cannot see that `count(plus(p, b)) + 1 == (count(p) + 1) + count(b)` holds under the
-  // hypothesis `count(plus(p, b)) == count(p) + count(b)`: a ring identity modulo the hypothesis, in atoms it cannot
-  // compute. Every term outside the ring operations and the literals is an atom, one per spelling, and the shared
-  // substitution and ideal reduction decides the rest (check/ring.ts `ringEqualByEquations`). Sound: atoms spelled the
-  // same are the same term, the hypotheses hold in the case, and a ring identity holds of the integers
+  // AN INDUCTION CASE THAT IS ARITHMETIC: a ring identity modulo the hypotheses, in atoms the kernel cannot compute
   function ringCase(
     level: number,
     left: Value,
     right: Value,
     hypotheses: [Value, Value][],
-    // the cited rules, rewritten with in the normal forms, where their left sides show (`count(plus(b, times(p, b)))`)
     rules: { binderCount: number; lhs: Term; rhs: Term }[] = [],
   ): boolean {
-    const { read, atoms } = arithmeticReader(level, rules)
-
-    try {
-      const equations = hypotheses.map(([l, r]) => ({ left: read(l), right: read(r) }))
-
-      return ringEqualByEquations(read(left), read(right), equations, [...atoms])
-    } catch {
-      return false
-    }
+    return viaKernel(() =>
+      cases.ringCase(st, truncating, NO_SPAN as never, level, left as never, right as never, pairsOf(hypotheses) as never, casesRules(rules)),
+    )
   }
 
-  // AN INDUCTION CASE THAT IS AN ORDER: `count(n) >= 0` by `fold n` asks, at `succ p`, `count(p) + 1 >= 0` from the
-  // hypothesis `count(p) >= 0`. Linear arithmetic over the same atoms (check/holds.ts `orderFollows`)
+  // AN INDUCTION CASE THAT IS AN ORDER, by the hold checker's `orderFollows`
   function orderCase(
     level: number,
     op: string,
     left: Value,
     right: Value,
-    // the induction hypotheses, each the goal's relation at a field, and the case's equations (its `have`s)
     ordered: [Value, Value][],
     equal: [Value, Value][],
     rules: { binderCount: number; lhs: Term; rhs: Term }[] = [],
   ): boolean {
-    const { read } = arithmeticReader(level, rules)
-    const relation = (l: Value, r: Value, as: string): Expression =>
-      ({ form: 'binary', op: as, left: read(l), right: read(r), span: NO_SPAN }) as Expression
-
-    try {
-      return orderFollows(relation(left, right, op), [
-        ...ordered.map(([l, r]) => relation(l, r, op)),
-        ...equal.map(([l, r]) => relation(l, r, '==')),
-      ])
-    } catch {
-      return false
-    }
-  }
-
-  // the kernel's terms as the ring's expressions: `add`, `sub`, `mul`, `neg` and integer literals are the ring, and every
-  // other term an atom, one per spelling, after the definitions are unfolded and the cited rules rewritten with.
-  // A TASK OVER `natural-number` STAYS FOLDED, an atom: its `subtract` stops at zero, so its body is not the polynomial it
-  // reads as (`monus(a, b) + b == a` is false at a = 0, b = 1), the rule check/unfold.ts keeps for the same reason
-  function arithmeticReader(
-    level: number,
-    rules: { binderCount: number; lhs: Term; rhs: Term }[],
-  ): { read: (value: Value) => Expression; atoms: Set<string> } {
-    const ring = new Set(['add', 'sub', 'mul', 'neg', ...truncating])
-    const atoms = new Map<string, string>()
-    const names = new Set<string>()
-    const span = NO_SPAN
-
-    const toExpression = (term: Term): Expression => {
-      const args: Term[] = []
-      let head = term
-
-      while (head.tag === 'app') {
-        args.unshift(head.arg)
-        head = head.fun
-      }
-
-      if (head.tag === 'const' && ring.has(head.name)) {
-        if (head.name === 'neg' && args.length === 1) {
-          return { form: 'binary', op: '-', left: { form: 'integer', value: 0, span }, right: toExpression(args[0]!), span }
-        }
-
-        if (head.name !== 'neg' && args.length === 2) {
-          const op = head.name === 'add' ? '+' : head.name === 'sub' ? '-' : '*'
-
-          return { form: 'binary', op, left: toExpression(args[0]!), right: toExpression(args[1]!), span }
-        }
-      }
-
-      if (head.tag === 'const' && args.length === 0 && head.name.startsWith('numberValue#')) {
-        const value = Number(head.name.slice('numberValue#'.length))
-
-        if (Number.isSafeInteger(value)) {
-          return { form: 'integer', value, span }
-        }
-      }
-
-      const printed = showTerm(term)
-
-      if (!atoms.has(printed)) {
-        atoms.set(printed, `atom_${atoms.size}`)
-        names.add(atoms.get(printed)!)
-      }
-
-      return { form: 'variable', name: atoms.get(printed)!, span }
-    }
-
-    return {
-      read: (value: Value): Expression => toExpression(rewriteWithLemmas(normalTerm(level, value, ring), rules, 64)),
-      atoms: names,
-    }
-  }
-
-  // a term as its source writes it: `evaluate(v, a)`, where `showNamed` prints `((evaluate v) a)`
-  function surfaceOf(term: Term, names: string[]): string {
-    const args: Term[] = []
-    let head = term
-
-    while (head.tag === 'app') {
-      args.unshift(head.arg)
-      head = head.fun
-    }
-
-    const name = showNamed(head, names)
-
-    return args.length === 0 ? name : `${name}(${args.map(arg => surfaceOf(arg, names)).join(', ')})`
-  }
-
-  // close one induction case: given the two sides of the case goal and the hypotheses in force (the induction
-  // hypotheses, the specialized path assumptions), discharge it. Cited lemmas are applied as directed rewrites; an
-  // operator proven both commutative and associative is normalized modulo AC; the rest is convertibility modulo the
-  // hypotheses. Shared by single-variable `structuralInduction` and multi-variable `multiInduction`.
-  function closeCase(
-    level: number,
-    env: Value[],
-    caseLeft: Value,
-    caseRight: Value,
-    hypotheses: [Value, Value][],
-    citedLemmas: string[],
-    // GENERALIZED induction hypotheses: rewrite rules whose `holes` are the induction's non-recursive variables, so the
-    // hypothesis fires at any instance of them (the strong-induction principle, needed for accumulator recursions).
-    generalIH: {
-      binderCount: number
-      lhs: Term
-      rhs: Term
-      holes: Set<number>
-    }[] = [],
-    // the case's context, for the truth table to type its atoms
-    context?: Context,
-  ): boolean {
-    const acOperators = new Set<string>()
-    const commutative = new Set<string>()
-    const associative = new Set<string>()
-
-    for (const name of citedLemmas) {
-      const rule = lemmaRules.get(name)
-
-      if (!rule) {
-        continue
-      }
-
-      const c = commutativityOperator(rule)
-
-      if (c) {
-        commutative.add(c)
-      }
-
-      const a = associativityOperator(rule)
-
-      if (a) {
-        associative.add(a)
-      }
-    }
-
-    for (const op of commutative) {
-      if (associative.has(op)) {
-        acOperators.add(op)
-      }
-    }
-
-    const rewriteRules: {
-      binderCount: number
-      lhs: Term
-      rhs: Term
-      holes?: Set<number>
-    }[] = hypotheses.map(([ihLeft, ihRight]) => ({
-      binderCount: 0,
-      lhs: quote(level, ihLeft),
-      rhs: quote(level, ihRight),
-    }))
-
-    // the generalized induction hypotheses fire before the cited lemmas, instantiating their hole variables on demand
-    for (const gih of generalIH) {
-      rewriteRules.push(gih)
-    }
-
-    for (const name of citedLemmas) {
-      const rule = lemmaRules.get(name)
-
-      if (!rule) {
-        continue
-      }
-
-      const c = commutativityOperator(rule)
-      const a = associativityOperator(rule)
-
-      if ((c && acOperators.has(c)) || (a && acOperators.has(a))) {
-        continue
-      }
-
-      rewriteRules.push(rule)
-    }
-
-    const leftTermRewritten = rewriteWithLemmas(
-      quote(level, caseLeft),
-      rewriteRules,
-      200,
-    )
-
-    const rightTermRewritten = rewriteWithLemmas(
-      quote(level, caseRight),
-      rewriteRules,
-      200,
-    )
-
-    if (acOperators.size > 0) {
-      // the hypotheses (and ground lemma instances) whose lhs is itself an AC chain can fire modulo AC, applying inside
-      // a larger sum than a syntactic match would reach (this closes the inductive sum identities).
-      const acRules = rewriteRules.filter(
-        rule =>
-          rule.binderCount === 0 &&
-          !rule.holes &&
-          flattenAc(rule.lhs, acOperators) !== null,
-      )
-
-      const lacf = acRewriteFix(
-        leftTermRewritten,
-        acOperators,
-        acRules,
-        rewriteRules,
-        64,
-      )
-
-      const racf = acRewriteFix(
-        rightTermRewritten,
-        acOperators,
-        acRules,
-        rewriteRules,
-        64,
-      )
-
-      if (showTerm(lacf) === showTerm(racf)) {
-        return true
-      }
-    }
-
-    // AND ON THE NORMAL FORMS (math-foundations-0004). `quote` reads a call back as written, so the case side stays
-    // `finish(x, join(through(n, rest), q))`, which a generalized hypothesis `finish(x, join(rest, q)) == ...` meets
-    // only once it has computed to `finish(n, join(rest, q))`. normalTerm runs every call that can run and keeps the
-    // stuck ones folded, the case and the hypotheses alike, so the hypothesis fires at x := n. What is left may differ
-    // only in how truth values combine (`both` grouped two ways), which the truth table decides. Sound: a normal form
-    // is convertible to what it came from, and the rewriting and the table are the ones used above
-    const normalForms = (): boolean => {
-      // a generic call's erased type argument is a metavariable until the term is checked, and two elaborations of
-      // one call carry two of them. Inferring each side solves them, so the two spell the call alike
-      for (const side of [caseLeft, caseRight, ...generalIH.flatMap(rule => [evaluate(env, rule.lhs), evaluate(env, rule.rhs)])]) {
-        try {
-          if (context) {
-            infer(context, quote(level, side))
-          }
-        } catch {
-          // a side the kernel cannot type keeps its metavariables, and simply will not match
-        }
-      }
-
-      const opaque = new Set<string>()
-      const normal = (term: Term): Term => normalTerm(level, evaluate(env, term), opaque)
-      const normalRules = rewriteRules.map(rule =>
-        rule.binderCount === 0 ? { ...rule, lhs: normal(rule.lhs), rhs: normal(rule.rhs) } : rule,
-      )
-      const left = evaluate(env, rewriteWithLemmas(normalTerm(level, caseLeft, opaque), normalRules, 200))
-      const right = evaluate(env, rewriteWithLemmas(normalTerm(level, caseRight, opaque), normalRules, 200))
-
-      return (
-        dischargeModulo(level, left, right, hypotheses) ||
-        (context !== undefined && truthTable(context, left, right, hypotheses))
-      )
-    }
-
-    return (
-      dischargeModulo(
+    return viaKernel(() =>
+      cases.orderCase(
+        st,
+        truncating,
+        NO_SPAN as never,
         level,
-        evaluate(env, leftTermRewritten),
-        evaluate(env, rightTermRewritten),
-        hypotheses,
-      ) ||
-      (context !== undefined && truthTable(context, caseLeft, caseRight, hypotheses)) ||
-      (generalIH.length > 0 && normalForms()) ||
-      ringCase(
-        level,
-        caseLeft,
-        caseRight,
-        hypotheses,
-        citedLemmas.flatMap(name => (lemmaRules.has(name) ? [lemmaRules.get(name)!] : [])),
-      )
+        op as never,
+        left as never,
+        right as never,
+        pairsOf(ordered) as never,
+        pairsOf(equal) as never,
+        casesRules(rules),
+        (goal, facts) => orderFollows(goal as never, facts as never),
+      ),
     )
   }
 
-  // structural induction over an inductive self-type: the `fold <var>` tactic when <var> ranges over a record-type
-  // enum. Proves a universal equation L(x) == R(x) for ALL x of the type by checking one case per constructor, using
-  // the induction hypothesis on each recursive field as a rewrite (via dischargeModulo). This is exactly the type's
-  // dependent eliminator, so it is sound. It substitutes the constructor through the evaluation environment (no surface
-  // rewriting, no de Bruijn shifting), re-elaborating the goal in a context extended by the constructor's fields.
-  // `citedLemmas` are previously proven universal equalities, instantiated against each case and added as hypotheses,
-  // so a proof can chain lemmas (e.g. commutativity over `n + 0 = n`). Returns false (never throws) for anything outside
-  // its fragment, so the ring-level `checkFold` still gets a turn.
+  // Induction is check/elaborating-induction.tree: closing a case, structural induction over one variable (field
+  // splits, an indexed family's index refined, the hypothesis generalized), simultaneous induction over several (a
+  // deep split over finite fields). Its state is the terms', the lemmas, the fold's case and the finite forms found
+  const inductionState = induction.newInductionState(
+    termState,
+    lemmaState as never,
+    caseState as never,
+    truncating,
+    NO_SPAN as never,
+    (goal, facts) => orderFollows(goal as never, facts as never),
+  )
+
+  // structural induction over an inductive self-type: the `fold <var>` tactic. False (never a throw) outside it
   function structuralInduction(
     goal: Extract<Expression, { form: 'binary' }>,
     scope: Scope,
     context: Context,
     inductVar: string,
     citedLemmas: string[],
-    // path assumptions (the rule's `have` equations, as side expressions) re-elaborated and specialized per case, then
-    // added as ground rewrites + convertibility hypotheses, so an inductive implication can use its antecedent.
     assumptions: [Expression, Expression][] = [],
   ): boolean {
-    // an equation, or an ORDER (`count(n) >= 0`), whose cases are closed over the integers (`orderCase`)
-    if (!['==', '<', '<=', '>', '>='].includes(goal.op)) {
-      return false
-    }
-
-    const varLevel = scope.get(inductVar)
-
-    if (varLevel === undefined) {
-      return false
-    }
-
-    try {
-      const index = context.level - varLevel - 1
-      const typeValue = context.types[index]
-
-      if (!typeValue) {
-        return false
-      }
-
-      const typeTerm = quote(context.level, typeValue)
-
-      // the induction variable's type is the inductive type constant, OR a polymorphic type former applied to its
-      // arguments (`apply(.. apply(constant(T), a) ..)`); peel the application spine to its head constant.
-      let typeHead: Term = typeTerm
-
-      while (typeHead.tag === 'app') {
-        typeHead = typeHead.fun
-      }
-
-      if (typeHead.tag !== 'const') {
-        return false
-      }
-
-      // captured after the guard so the narrowing survives into the nested callbacks
-      // below, where `typeHead` widens back to `Term`
-      const typeHeadName = typeHead.name
-
-      // the subject's own type arguments (`path a` gives `a`), read back at a level. A constructor rebuilt in a case
-      // takes them as its erased witnesses, so the case value has the subject's type and the kernel can type what is
-      // built from it (math-foundations-0004). A closed placeholder there computed the same, and left every generic
-      // call over the case untypable, its type arguments unsolved
-      const witnessesAt = (level: number): Term[] => {
-        const spine: Term[] = []
-        let head = quote(level, typeValue)
-
-        while (head.tag === 'app') {
-          spine.unshift(head.arg)
-          head = head.fun
-        }
-
-        return spine.slice(0, typeFormerArity.get(typeHeadName) ?? 0)
-      }
-
-      const variants = variantNames.get(typeHead.name)
-
-      if (!variants || variants.length === 0) {
-        return false
-      }
-
-      // close a case, splitting on a constructor's FIELDS when it does not reduce. `subst` maps a variable's level to a
-      // constructor RECIPE (a variant + the levels of its field variables); the environment is rebuilt by applying each
-      // recipe to its field values, deepest level first, so a value built FROM a split field (e.g. `negsucc p` once `p`
-      // becomes `succ q`) reflects the split. Try to close the case; if it does not reduce and budget remains, pick an
-      // inductive-typed field still standing for a neutral, split it into its own constructors, and recurse on each.
-      // Bounded case analysis on sub-terms (what a function matching a field needs); sound because every leaf is a case.
-      type Recipe = {
-        variant: string
-        enumName: string
-        fieldLevels: number[]
-      }
-
-      const buildSplitEnv = (
-        ctx: Context,
-        subst: Map<number, Recipe>,
-        // dependent induction over an indexed family: after rebuilding the induction variable from its constructor, also
-        // refine the family's index variable to that constructor's output index (`vcons -> succ count`), evaluated in the
-        // rebuilt env so it tracks any further field split. This lets a goal that mentions the index close per case.
-        indexRefine?: { level: number; term: Term },
-      ): Value[] => {
-        const env = [...ctx.env]
-        const levels = [...subst.keys()].sort((a, b) => b - a) // deepest (highest level) first
-
-        for (const lvl of levels) {
-          const recipe = subst.get(lvl)!
-          env[ctx.level - lvl - 1] = evaluate(
-            env,
-            apply(
-              constant(ctorKey(recipe.enumName, recipe.variant)),
-              // a polymorphic datatype's constructor takes its erased type-parameter witnesses first: the subject's
-              // own when it is the subject's type, else a closed placeholder, which the reduction ignores
-              ...(recipe.enumName === typeHeadName
-                ? witnessesAt(ctx.level)
-                : Array.from({ length: typeFormerArity.get(recipe.enumName) ?? 0 }, () => TYPE0)),
-              ...recipe.fieldLevels.map(fl =>
-                variable(ctx.level - fl - 1),
-              ),
-            ),
-          )
-        }
-
-        if (indexRefine) {
-          env[ctx.level - indexRefine.level - 1] = evaluate(
-            env,
-            indexRefine.term,
-          )
-        }
-
-        return env
-      }
-
-      const closeWithFieldSplits = (
-        ctx: Context,
-        subst: Map<number, Recipe>,
-        splittable: { level: number; enumName: string }[],
-        hyps: [Value, Value][],
-        depth: number,
-        generalIH: {
-          binderCount: number
-          lhs: Term
-          rhs: Term
-          holes: Set<number>
-        }[] = [],
-        ihLevel = -1,
-        indexRefine?: { level: number; term: Term },
-        // for an ORDER goal, how many of `hyps` lead as induction hypotheses: the goal's relation at a field. The rest
-        // are equations (the case's `have`s)
-        ordered = 0,
-      ): boolean => {
-        const [lt, rt] = elaborateGoalSides(
-          goal.left,
-          goal.right,
-          scope,
-          ctx,
-        )
-
-        if (!lt || !rt) {
-          return false
-        }
-
-        const env = buildSplitEnv(ctx, subst, indexRefine)
-
-        // the generalized IH was quoted at one context level; only apply it where that level still holds (the no-split
-        // attempt). Once a field is split, the context grows and the indices no longer align, so it is dropped there.
-        const gih = ctx.level === ihLevel ? generalIH : []
-
-        const closed =
-          goal.op === '=='
-            ? closeCase(ctx.level, ctx.env, evaluate(env, lt), evaluate(env, rt), hyps, citedLemmas, gih, ctx)
-            : orderCase(
-                ctx.level,
-                goal.op,
-                evaluate(env, lt),
-                evaluate(env, rt),
-                hyps.slice(0, ordered),
-                hyps.slice(ordered),
-                citedLemmas.flatMap(name => (lemmaRules.has(name) ? [lemmaRules.get(name)!] : [])),
-              )
-
-        if (closed) {
-          return true
-        }
-
-        if (depth <= 0) {
-          return false
-        }
-
-        for (let si = 0; si < splittable.length; si++) {
-          const target = splittable[si]!
-          const rest = splittable.filter((_, i) => i !== si)
-          const targetVariants = variantNames.get(target.enumName)
-
-          if (!targetVariants) {
-            continue
-          }
-
-          let allClosed = true
-
-          for (const targetVariant of targetVariants) {
-            const subFields =
-              variantFieldInfo.get(
-                ctorKey(target.enumName, targetVariant),
-              ) ?? []
-
-            let inner2 = ctx
-
-            const subLevels: number[] = []
-
-            for (const f of subFields) {
-              subLevels.push(inner2.level)
-              inner2 = bind(
-                inner2,
-                'many',
-                evaluate(inner2.env, f.type),
-                f.name,
-              )
-            }
-
-            const subst2 = new Map(subst)
-            subst2.set(target.level, {
-              variant: targetVariant,
-              enumName: target.enumName,
-              fieldLevels: subLevels,
-            })
-
-            const newSplit = [
-              ...rest,
-              ...subFields
-                .map((f, j) => ({ field: f, level: subLevels[j]! }))
-                .filter(x => {
-                  // a recursive / inductive sub-field, recognised by its type FORMER (so a polymorphic `stack a` counts)
-                  const former = headConstantName(x.field.type)
-
-                  return former !== undefined && variantNames.has(former)
-                })
-                .map(x => ({
-                  level: x.level,
-                  enumName: headConstantName(x.field.type)!,
-                })),
-            ]
-
-            if (
-              !closeWithFieldSplits(
-                inner2,
-                subst2,
-                newSplit,
-                hyps,
-                depth - 1,
-                [],
-                -1,
-                indexRefine,
-                ordered,
-              )
-            ) {
-              allClosed = false
-              break
-            }
-          }
-
-          if (allClosed) {
-            return true
-          }
-        }
-
-        return false
-      }
-
-      // dependent induction over an indexed family: find the index variable to refine per constructor. Only when the
-      // induction variable's type is `T <var>` carrying a SINGLE value index that is a plain variable (the common
-      // length-indexed / vector shape). The refinement then substitutes that variable to each variant's output index in
-      // the case goal, and to each recursive field's own index in the induction hypothesis. Any other shape leaves
-      // `indexRefineLevel = -1`, so non-indexed `fold` is untouched.
-      let indexRefineLevel = -1
-
-      {
-        const idxCount = typeFormerIndices.get(typeHead.name)?.length ?? 0
-        const paramCount = typeFormerArity.get(typeHead.name) ?? 0
-
-        if (idxCount === 1) {
-          const spine: Term[] = []
-          let head2: Term = typeTerm
-
-          while (head2.tag === 'app') {
-            spine.unshift(head2.arg)
-            head2 = head2.fun
-          }
-
-          const idxArg = spine[paramCount]
-
-          if (idxArg && idxArg.tag === 'var') {
-            indexRefineLevel = context.level - idxArg.index - 1
-          }
-        }
-      }
-
-      for (const variant of variants) {
-        foldCase = variant
-
-        const fields =
-          variantFieldInfo.get(ctorKey(typeHead.name, variant)) ?? []
-
-        const k = fields.length
-
-        // extend the context with one fresh free variable per field of this constructor
-        let inner = context
-
-        // each field's TYPE as a value in the frame where the preceding fields are bound; a recursive field's type
-        // carries its own index (`rest : vecnat count`), read back below to refine the index in that field's hypothesis.
-        const fieldTypeValues: Value[] = []
-        // a field's type is written in its constructor's frame: the fields before it, then the type's parameters
-        // (`next : a` in `path a`). So it is read with the subject's own type arguments in the parameter places. Read in
-        // the theorem's context instead, `a` was whatever name sat there (`q`), and nothing built from the field typed
-        const witnessValues = witnessesAt(context.level)
-          .map(term => evaluate(context.env, term))
-          .reverse()
-        const fieldValues: Value[] = []
-
-        for (const field of fields) {
-          const fieldTypeValue = evaluate([...fieldValues, ...witnessValues, ...context.env], field.type)
-          fieldTypeValues.push(fieldTypeValue)
-          inner = bind(inner, 'many', fieldTypeValue, field.name)
-          fieldValues.unshift(neutralVar(inner.level - 1))
-        }
-
-        // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
-        const consValue = evaluate(
-          inner.env,
-          apply(
-            constant(ctorKey(typeHead.name, variant)),
-            // a polymorphic constructor takes its erased type-parameter witnesses first: the subject's own
-            ...witnessesAt(inner.level),
-            ...fields.map((_, j) => variable(k - 1 - j)),
-          ),
-        )
-
-        // re-elaborate the goal in the extended context: the induction variable is now at index `index + k`
-        const [leftTerm, rightTerm] = elaborateGoalSides(
-          goal.left,
-          goal.right,
-          scope,
-          inner,
-        )
-
-        if (!leftTerm || !rightTerm) {
-          return false
-        }
-
-        const subject = index + k
-
-        // this variant's output-index expression (`vcons -> succ count`), elaborated against the freshly bound fields, so
-        // the index variable can be refined to it in the case goal and (via `buildSplitEnv`) through any further split.
-        let indexRefine: { level: number; term: Term } | undefined
-
-        if (indexRefineLevel >= 0) {
-          const idxExpr = variantIndexExpr.get(
-            ctorKey(typeHead.name, variant),
-          )
-
-          if (idxExpr) {
-            const fieldScope = new Map(scope)
-
-            fields.forEach((f, j) =>
-              fieldScope.set(f.name, context.level + j),
-            )
-
-            const idxTerm = expr(idxExpr, fieldScope, inner)
-
-            if (idxTerm) {
-              indexRefine = { level: indexRefineLevel, term: idxTerm }
-            }
-          }
-        }
-
-        // the case goal: substitute the induction variable with the constructor, through the environment
-        const caseEnv = [...inner.env]
-        caseEnv[subject] = consValue
-
-        if (indexRefine) {
-          caseEnv[inner.level - indexRefine.level - 1] = evaluate(
-            caseEnv,
-            indexRefine.term,
-          )
-        }
-
-        const caseLeft = evaluate(caseEnv, leftTerm)
-        const caseRight = evaluate(caseEnv, rightTerm)
-
-        // induction hypotheses: for each RECURSIVE field (its type is this same enum), assume L == R at that field
-        const hypotheses: [Value, Value][] = []
-
-        fields.forEach((field, j) => {
-          // a RECURSIVE field: its type former is this same inductive type (so a polymorphic `stack a` counts)
-          if (headConstantName(field.type) === typeHead.name) {
-            const ihEnv = [...inner.env]
-            ihEnv[subject] = inner.env[k - 1 - j]!
-
-            // refine the index variable to this recursive field's OWN index (`rest : vecnat count` -> index `count`), so
-            // the hypothesis is stated at the right index. Read it back from the field's type value.
-            if (indexRefineLevel >= 0) {
-              const fieldTypeTerm = quote(inner.level, fieldTypeValues[j]!)
-              const fieldSpine: Term[] = []
-              let fieldHead: Term = fieldTypeTerm
-
-              while (fieldHead.tag === 'app') {
-                fieldSpine.unshift(fieldHead.arg)
-                fieldHead = fieldHead.fun
-              }
-
-              const fieldIdx = fieldSpine[fieldSpine.length - 1]
-
-              if (fieldIdx) {
-                ihEnv[inner.level - indexRefineLevel - 1] = evaluate(
-                  ihEnv,
-                  fieldIdx,
-                )
-              }
-            }
-
-            hypotheses.push([
-              evaluate(ihEnv, leftTerm),
-              evaluate(ihEnv, rightTerm),
-            ])
-          }
-        })
-
-        // path assumptions, specialized to this case: re-elaborate each `have` equation in the extended context and
-        // substitute the induction variable with the constructor (the same caseEnv as the goal), so the antecedent holds
-        // at this case. Added as a hypothesis the discharge can use (and, below, as a directed rewrite).
-        const assumptionPairs: [Value, Value][] = []
-
-        let caseVacuous = false
-
-        for (const [aLeft, aRight] of assumptions) {
-          const lt = expr(aLeft, scope, inner)
-          const rt = expr(aRight, scope, inner)
-
-          if (lt && rt) {
-            const lv = evaluate(caseEnv, lt)
-            const rv = evaluate(caseEnv, rt)
-
-            // an antecedent that equates distinct constructors is impossible: this case is vacuously true
-            if (equationAbsurd(inner, lt, lv, rv)) {
-              caseVacuous = true
-            }
-
-            assumptionPairs.push([lv, rv])
-          }
-        }
-
-        if (caseVacuous) {
-          continue
-        }
-
-        // the induction hypotheses lead, and for an order goal they are its relation, not equations
-        const ordered = hypotheses.length
-
-        hypotheses.push(...assumptionPairs)
-
-        // the inductive-typed fields of this constructor, which can be split further if the case does not reduce
-        // fields to split when the case will not reduce: inductive-typed fields of a DIFFERENT enum than the induction
-        // variable. A field of the SAME enum is the recursive position carrying the induction hypothesis, so splitting
-        // it would clobber that hypothesis; it is handled by the IH, not by case analysis.
-        const splittable = fields
-          .map((field, j) => ({ field, level: context.level + j }))
-          .filter(
-            x =>
-              x.field.type.tag === 'const' &&
-              variantNames.has(x.field.type.name) &&
-              // compared against the HEAD constant: for a polymorphic inductive
-              // (`stack natural`) the type is an application spine with no `name` of its
-              // own, so comparing against it would never match and every recursive field
-              // would be split, clobbering the induction hypothesis this guard protects
-              x.field.type.name !== typeHeadName,
-          )
-          .map(x => ({
-            level: x.level,
-            enumName: (x.field.type as { name: string }).name,
-          }))
-
-        // GENERALIZED induction hypotheses: with no path assumptions, each recursive-field hypothesis is universally
-        // quantified over the induction's OTHER variables (the marks that are not the induction variable). Those appear
-        // free in the hypothesis at de Bruijn indices >= k (the k fields occupy 0..k-1 and stay rigid). Turning them into
-        // holes lets the hypothesis fire at any instance of them, which is what an accumulator recursion needs (a state
-        // threaded through `step` changes along the recursion). Sound: this is the strong-induction principle, valid
-        // precisely because those variables are unconstrained universals (no `have` ties them to the induction variable).
-        const generalIH: {
-          binderCount: number
-          lhs: Term
-          rhs: Term
-          holes: Set<number>
-        }[] =
-          assumptions.length === 0
-            ? hypotheses
-                .map(([ihLeft, ihRight]) => {
-                  const lhs = quote(inner.level, ihLeft)
-                  const rhs = quote(inner.level, ihRight)
-                  const free = new Set<number>()
-                  freeVarIndices(lhs, 0, free)
-                  freeVarIndices(rhs, 0, free)
-
-                  const holes = new Set<number>()
-
-                  for (const idx of free) {
-                    if (idx >= k) {
-                      holes.add(idx)
-                    }
-                  }
-
-                  return { binderCount: 0, lhs, rhs, holes }
-                })
-                .filter(rule => rule.holes.size > 0)
-            : []
-
-        if (
-          !closeWithFieldSplits(
-            inner,
-            new Map([
-              [
-                varLevel,
-                {
-                  variant,
-                  enumName: typeHead.name,
-                  fieldLevels: fields.map((_, j) => context.level + j),
-                },
-              ],
-            ]),
-            splittable,
-            hypotheses,
-            2,
-            generalIH,
-            inner.level,
-            indexRefine,
-            ordered,
-          )
-        ) {
-          return false
-        }
-      }
-
-      return true
-    } catch {
-      return false
-    }
+    return viaKernel(() =>
+      induction.structuralInduction(
+        inductionState,
+        goal.left as never,
+        goal.right as never,
+        goal.op as never,
+        scopeOf(scope),
+        context as never,
+        inductVar,
+        citedLemmas,
+        pairsFor(assumptions) as never,
+      ),
+    )
   }
 
-  // simultaneous structural induction on SEVERAL variables (`fold a b ...`): it walks the cartesian product of the
-  // variables' constructors and discharges each combination. In a case where every inducted variable is at a recursive
-  // constructor, the induction hypothesis is the goal with all of them stepped to their fields at once (the diagonal),
-  // which is exactly the recursion of a function that matches several arguments together (min, max, the order `at-most`).
-  // Sound: this is well-founded induction on the product order. Returns false (never throws) for anything outside it.
-  // is an inductive type FINITE: no variant reaches the type again through its fields, and every field's type is itself
-  // finite. A finite type has finitely many closed values, so splitting a variable of that type into every constructor,
-  // and every field of that constructor in turn, is exhaustive case analysis. Memoized per type name.
-  const finiteTypes = new Map<string, boolean>()
-
-  function isFiniteType(name: string, visiting = new Set<string>()): boolean {
-    const known = finiteTypes.get(name)
-
-    if (known !== undefined) {
-      return known
-    }
-
-    const variants = variantNames.get(name)
-
-    if (!variants || variants.length === 0 || visiting.has(name)) {
-      return false
-    }
-
-    visiting.add(name)
-
-    let finite = true
-
-    for (const variant of variants) {
-      for (const field of variantFieldInfo.get(ctorKey(name, variant)) ?? []) {
-        if (
-          field.type.tag !== 'const' ||
-          !isFiniteType(field.type.name, visiting)
-        ) {
-          finite = false
-        }
-      }
-    }
-
-    visiting.delete(name)
-    finiteTypes.set(name, finite)
-
-    return finite
-  }
-
-  // `deep`: also case-split every field whose type is finite, so a variable of a record type (a pair of tones, a
-  // matrix of residues) is split all the way down to its closed values rather than leaving its fields as neutral
-  // variables the goal cannot compute on. Only tried after the shallow split fails, so a proof that closes today closes
-  // the same way.
+  // simultaneous structural induction on SEVERAL variables (`fold a b ...`); `deep` also splits every finite field
   function multiInduction(
     goal: Extract<Expression, { form: 'binary' }>,
     scope: Scope,
@@ -5729,661 +1097,140 @@ export function elaborateReport(
     assumptions: [Expression, Expression][] = [],
     deep = false,
   ): boolean {
-    if (goal.op !== '==') {
-      return false
-    }
-
-    try {
-      const infos = inductVars.map(name => {
-        const level = scope.get(name)
-
-        if (level === undefined) {
-          return null
-        }
-
-        const typeValue = context.types[context.level - level - 1]
-
-        if (!typeValue) {
-          return null
-        }
-
-        const typeTerm = quote(context.level, typeValue)
-
-        if (typeTerm.tag !== 'const') {
-          return null
-        }
-
-        const variants = variantNames.get(typeTerm.name)
-
-        if (!variants || variants.length === 0) {
-          return null
-        }
-
-        return { name, level, enumName: typeTerm.name, variants }
-      })
-
-      if (infos.some(i => i === null)) {
-        return false
-      }
-
-      const chosen: {
-        level: number
-        enumName: string
-        variant: string
-        fields: { name: string; type: Term }[]
-        fieldLevels: number[]
-      }[] = []
-
-      // discharge the current cartesian combination (all variables already assigned a constructor in `chosen`)
-      const dischargeLeaf = (ctx: Context): boolean => {
-        const caseEnv = [...ctx.env]
-
-        // a deep split chose constructors for FIELDS too, and those choices come after their parent's, so the
-        // environment is rebuilt from the last choice back: a field is assigned before the record built from it
-        for (const choice of deep ? [...chosen].reverse() : chosen) {
-          const consTerm = apply(
-            constant(ctorKey(choice.enumName, choice.variant)),
-            ...choice.fields.map((_, j) =>
-              variable(ctx.level - choice.fieldLevels[j]! - 1),
-            ),
-          )
-
-          caseEnv[ctx.level - choice.level - 1] = evaluate(
-            deep ? caseEnv : ctx.env,
-            consTerm,
-          )
-        }
-
-        const [leftTerm, rightTerm] = elaborateGoalSides(
-          goal.left,
-          goal.right,
-          scope,
-          ctx,
-        )
-
-        if (!leftTerm || !rightTerm) {
-          return false
-        }
-
-        const caseLeft = evaluate(caseEnv, leftTerm)
-        const caseRight = evaluate(caseEnv, rightTerm)
-
-        const hypotheses: [Value, Value][] = []
-
-        // the diagonal induction hypothesis: step every variable at a recursive constructor to its field, together
-        const recursive = chosen.filter(choice =>
-          choice.fields.some(
-            f =>
-              f.type.tag === 'const' && f.type.name === choice.enumName,
-          ),
-        )
-
-        if (recursive.length > 0) {
-          const ihEnv = [...caseEnv]
-
-          for (const choice of recursive) {
-            const fieldIndex = choice.fields.findIndex(
-              f =>
-                f.type.tag === 'const' &&
-                f.type.name === choice.enumName,
-            )
-
-            ihEnv[ctx.level - choice.level - 1] =
-              ctx.env[ctx.level - choice.fieldLevels[fieldIndex]! - 1]!
-          }
-
-          hypotheses.push([
-            evaluate(ihEnv, leftTerm),
-            evaluate(ihEnv, rightTerm),
-          ])
-        }
-
-        for (const [aLeft, aRight] of assumptions) {
-          const lt = expr(aLeft, scope, ctx)
-          const rt = expr(aRight, scope, ctx)
-
-          if (lt && rt) {
-            const lv = evaluate(caseEnv, lt)
-            const rv = evaluate(caseEnv, rt)
-
-            // an antecedent that equates distinct constructors is impossible: this case is vacuously true
-            if (equationAbsurd(ctx, lt, lv, rv)) {
-              return true
-            }
-
-            hypotheses.push([lv, rv])
-          }
-        }
-
-        return closeCase(
-          ctx.level,
-          ctx.env,
-          caseLeft,
-          caseRight,
-          hypotheses,
-          citedLemmas,
-          [],
-          ctx,
-        )
-      }
-
-      // the variables still to split: the folded ones, and under `deep` every finite-typed field of a chosen
-      // constructor, appended as it is chosen and removed again on the way back out
-      const pending: { level: number; enumName: string; variants: string[] }[] =
-        infos.map(info => ({
-          level: info!.level,
-          enumName: info!.enumName,
-          variants: info!.variants,
-        }))
-
-      // pick a constructor for variable `i`, extend the context with its fields, and recurse to the next variable
-      const pick = (i: number, ctx: Context): boolean => {
-        if (i === pending.length) {
-          return dischargeLeaf(ctx)
-        }
-
-        const info = pending[i]!
-
-        for (const variant of info.variants) {
-          const fields =
-            variantFieldInfo.get(ctorKey(info.enumName, variant)) ?? []
-
-          let inner = ctx
-
-          const fieldLevels: number[] = []
-
-          for (const field of fields) {
-            fieldLevels.push(inner.level)
-            inner = bind(inner, 'many', evaluate(inner.env, field.type), field.name)
-          }
-
-          chosen.push({
-            level: info.level,
-            enumName: info.enumName,
-            variant,
-            fields,
-            fieldLevels,
-          })
-
-          const added: typeof pending = []
-
-          if (deep) {
-            fields.forEach((field, j) => {
-              if (
-                field.type.tag === 'const' &&
-                isFiniteType(field.type.name)
-              ) {
-                added.push({
-                  level: fieldLevels[j]!,
-                  enumName: field.type.name,
-                  variants: variantNames.get(field.type.name)!,
-                })
-              }
-            })
-          }
-
-          pending.push(...added)
-
-          const ok = pick(i + 1, inner)
-
-          pending.splice(pending.length - added.length, added.length)
-          chosen.pop()
-
-          if (!ok) {
-            return false
-          }
-        }
-
-        return true
-      }
-
-      return pick(0, context)
-    } catch {
-      return false
-    }
+    return viaKernel(() =>
+      induction.multiInduction(
+        inductionState,
+        goal.left as never,
+        goal.right as never,
+        goal.op as never,
+        scopeOf(scope),
+        context as never,
+        inductVars,
+        citedLemmas,
+        pairsFor(assumptions) as never,
+        deep,
+      ),
+    )
   }
 
-  // record a discharged named equation as a citable rewrite rule (its `seat` binders are the universal holes). Stores
-  // both the structural rule (for `fold ... / cite`) and the string form (for the exact-match `cite`/`turn`/`link`).
-  // the `have` guards of a rule, read off the shape the mill lowers a rule to (mint-bridge.ts): its body is witness
-  // `let`s, then a chain of single-branch `if`s, one per `have`, each holding only the next, with the `hold` innermost.
-  // Nothing on such a chain can write a name, so every guard is a fact at the hold. Null when the hold is not inside
-  // that shape, so no other code's conditions are ever read as hypotheses.
-  // whether the hold is the goal of a theorem with universal hypotheses (`have h / seat t / ...`): the hold checker
-  // proves those, induction included (holds.ts universalGoal, universalInduction), and this pass leaves them to it
-  // the theorem whose goal this hold is, by the shape the mill builds (its `have` guards around the goal)
+  // What a hold asks of the theorem around it is check/elaborating-theorems.tree: the theorem that holds it alone, its
+  // `have` guards (null when the hold is not in that shape), whether it is an order, or applies a task taking a function
+  // or a recursive task, and the universal hypotheses at the goal's terms. `callsItself` stays here: it reads every key
+  // of every node
+  const theoremOf = (found: { form: 'some'; value: unknown } | { form: 'none' }) =>
+    (found.form === 'some' ? found.value : undefined) as Extract<Statement, { form: 'function' }> | undefined
+
   function enclosingTheorem(program: Program, hold: Statement): Extract<Statement, { form: 'function' }> | undefined {
-    for (const fn of program) {
-      if (fn.form !== 'function' || !fn.theorem) {
-        continue
-      }
-
-      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
-
-      while (body.length === 1) {
-        const only = body[0]!
-
-        if (only === hold) {
-          return fn
-        }
-
-        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
-          break
-        }
-
-        body = only.branches[0]!.body
-      }
-    }
-
-    return undefined
+    return theoremOf(theorems.enclosingTheorem(program as never, hold as never))
   }
 
-  // whether a term is a number, or cannot be typed (which is read as a number, the reading that leaves it to the
-  // arithmetic provers as before)
+  // whether a term is a number, or cannot be typed (read as a number, leaving it to the arithmetic provers)
   function numericTerm(context: Context, term: Term): boolean {
-    try {
-      return areConvertible(context.level, infer(context, term).type, evaluate(context.env, number))
-    } catch {
-      return true
-    }
+    return viaKernel(() => theorems.numericTerm(termState, context as never, term as never))
   }
 
-  // THE UNIVERSAL HYPOTHESES OF A THEOREM, at the goal's own terms (math-foundations-0004). `have symmetric / seat u,
-  // like a / seat v, like a / is-equal r(u, v), r(v, u)` holds for every u and v, so it holds at every pair of the
-  // terms of type `a` that the goal and the path's guards name. Each such instance is an equation true on this path,
-  // and the truth table, the rewriting by `have` equations and the ring all use it as they use a guard. Sound: a term
-  // is a candidate for a binder only when the kernel types it at the binder's declared type, and an instance only when
-  // its two sides type alike. A universal over numbers is the hold checker's (check/holds.ts universalGoal), so it is
-  // left out here, and one whose instances would pass UNIVERSAL_INSTANCES is skipped whole
+  // THE UNIVERSAL HYPOTHESES OF A THEOREM, at the goal's own terms (math-foundations-0004)
   function universalInstances(
     statement: Extract<Statement, { form: 'hold' }>,
     scope: Scope,
     context: Context,
     assumptions: [Expression, Expression][],
   ): [Expression, Expression][] {
-    const theorem = enclosingTheorem(program, statement)
-    const universals = theorem?.universals ?? []
-
-    if (universals.length === 0) {
-      return []
-    }
-
-    // every term the goal and the guards name, a variable, a call or a field read, never a callee
-    const named: Expression[] = []
-    const visit = (e: Expression): void => {
-      switch (e.form) {
-        case 'variable':
-        case 'member':
-          named.push(e)
-          break
-        case 'call':
-          named.push(e)
-          e.args.forEach(visit)
-          break
-        case 'binary':
-          visit(e.left)
-          visit(e.right)
-          break
-        case 'unary':
-          visit(e.operand)
-          break
-      }
-    }
-
-    visit(statement.expr)
-    assumptions.forEach(([l, r]) => {
-      visit(l)
-      visit(r)
-    })
-
-    // and the witnesses (`find x, s(t(z))`), whose parts the goal reaches through the witness's name
-    for (const step of theorem!.body) {
-      if (step.form === 'let' && !step.mutable) {
-        visit(step.init)
-      }
-    }
-
-    // each candidate once, by its kernel term, with its type
-    const candidates: { expression: Expression; type: Value }[] = []
-    const seen = new Set<string>()
-
-    for (const expression of named) {
-      try {
-        const term = expr(expression, scope, context)
-
-        if (!term || seen.has(showTerm(term))) {
-          continue
-        }
-
-        seen.add(showTerm(term))
-        candidates.push({ expression, type: infer(context, term).type })
-      } catch {
-        // a term the kernel cannot type is no candidate
-      }
-    }
-
-    const out: [Expression, Expression][] = []
-
-    for (const universal of universals) {
-      const sides = universal.expr.form === 'binary' && universal.expr.op === '==' ? universal.expr : undefined
-
-      if (!sides) {
-        continue
-      }
-
-      // the candidates of each binder: those the kernel types at its declared type
-      const perBinder = universal.binders.map((_, at) => {
-        const declared = universal.types?.[at]?.type
-        const binderType = declared
-          ? kernelTypeAt(declared, context.level, enclosingGenerics, namedTypes, scope, resolveIndexCtor)
-          : null
-
-        if (!binderType) {
-          return undefined
-        }
-
-        const typeValue = evaluate(context.env, binderType)
-
-        if (areConvertible(context.level, typeValue, evaluate(context.env, number))) {
-          return undefined
-        }
-
-        return candidates.filter(c => areConvertible(context.level, c.type, typeValue)).map(c => c.expression)
-      })
-
-      if (perBinder.some(list => list === undefined)) {
-        continue
-      }
-
-      const count = perBinder.reduce((total, list) => total * list!.length, 1)
-
-      if (count === 0 || count > UNIVERSAL_INSTANCES) {
-        continue
-      }
-
-      for (let n = 0; n < count; n++) {
-        const binding = new Map<string, Expression>()
-        let rest = n
-
-        universal.binders.forEach((binder, at) => {
-          const list = perBinder[at]!
-          binding.set(binder, list[rest % list.length]!)
-          rest = Math.floor(rest / list.length)
-        })
-
-        const left = substitute(sides.left, binding)
-        const right = substitute(sides.right, binding)
-
-        try {
-          const lt = expr(left, scope, context)
-          const rt = expr(right, scope, context)
-
-          if (lt && rt && areConvertible(context.level, infer(context, lt).type, infer(context, rt).type)) {
-            out.push([left, right])
-          }
-        } catch {
-          // an instance the kernel cannot type is left out
-        }
-      }
-    }
-
-    return out
+    return tuplesOf(
+      viaKernel(() =>
+        theorems.universalInstances(
+          termState,
+          program as never,
+          statement as never,
+          scopeOf(scope),
+          context as never,
+          pairsFor(assumptions) as never,
+        ),
+      ) as never,
+    )
   }
 
-  // `fold n` on a number in a theorem about functions: one of its marks is a function (directly or through an alias),
-  // or its goal applies a task that takes one (`total(identity, n)`, a sum of a task passed by name)
   // a comparison, or a conjunction of comparisons: what checkFoldOrder inducts over
   function isOrderGoal(e: Expression): boolean {
-    return (
-      e.form === 'binary' &&
-      (['<', '<=', '>', '>='].includes(e.op) || (e.op === '&&' && isOrderGoal(e.left) && isOrderGoal(e.right)))
-    )
+    return theorems.isOrderGoal(e as never)
   }
 
+  // `fold n` on a number in a theorem about functions
   function numberFoldOverFunctions(program: Program, hold: Extract<Statement, { form: 'hold' }>): boolean {
-    const fn = enclosingTheorem(program, hold)
-    const counter = fn?.params.find(p => p.name === hold.proof?.[0]?.arg)
-
-    return (
-      counter !== undefined &&
-      (counter.refine === 'natural' || counter.type?.kind === 'number') &&
-      (fn!.params.some(p => isFunctionType(p.type)) ||
-        appliesHigherOrder(program, hold.expr) ||
-        appliesRecursion(program, hold.expr))
+    return theorems.numberFoldOverFunctions(termState, program as never, hold as never, statement =>
+      callsItself(statement as unknown as Extract<Statement, { form: 'function' }>),
     )
   }
 
-  // does the expression apply a task whose body calls itself (`remainder(a, b)`): the hold checker reads such a
-  // task's own equations at the arguments the goal writes (check/holds.ts `recurrenceFacts`), which is what a numeric
-  // induction over it needs, and the kernel's own numeric induction does not (math-foundations-0007)
-  function appliesRecursion(program: Program, expr: Expression): boolean {
-    // a task whose body holds a call of its own name, found by walking every node of it
-    const callsItself = (s: Extract<Statement, { form: 'function' }>): boolean => {
-      const stack: unknown[] = [s.body]
+  // a task whose body holds a call of its own name, found by walking every node of it
+  function callsItself(s: Extract<Statement, { form: 'function' }>): boolean {
+    const stack: unknown[] = [s.body]
 
-      while (stack.length > 0) {
-        const node = stack.pop()
+    while (stack.length > 0) {
+      const node = stack.pop()
 
-        if (node === null || typeof node !== 'object') {
-          continue
-        }
-
-        if (Array.isArray(node)) {
-          stack.push(...node)
-          continue
-        }
-
-        const record = node as Record<string, unknown>
-        const callee = record.callee as { form?: string; name?: string } | undefined
-
-        if (record.form === 'call' && callee?.form === 'variable' && callee.name === s.name) {
-          return true
-        }
-
-        stack.push(...Object.values(record))
+      if (node === null || typeof node !== 'object') {
+        continue
       }
 
-      return false
-    }
-
-    const recursive = new Set(
-      program.flatMap(s => (s.form === 'function' && !s.theorem && callsItself(s) ? [s.name] : [])),
-    )
-    let appliesOne = false
-
-    const visit = (e: Expression): void => {
-      if (e.form === 'call') {
-        appliesOne ||= e.callee.form === 'variable' && recursive.has(e.callee.name)
-        e.args.forEach(visit)
-      } else if (e.form === 'binary') {
-        visit(e.left)
-        visit(e.right)
-      } else if (e.form === 'unary') {
-        visit(e.operand)
+      if (Array.isArray(node)) {
+        stack.push(...node)
+        continue
       }
+
+      const record = node as Record<string, unknown>
+      const callee = record.callee as { form?: string; name?: string } | undefined
+
+      if (record.form === 'call' && callee?.form === 'variable' && callee.name === s.name) {
+        return true
+      }
+
+      stack.push(...Object.values(record))
     }
 
-    visit(expr)
-
-    return appliesOne
-  }
-
-  // a task type, written as one or named through an alias
-  function isFunctionType(type: Type | undefined): boolean {
-    return type?.kind === 'function' || (type !== undefined && throughAlias(type, typeAliases).type.kind === 'function')
+    return false
   }
 
   // does the expression apply a task that takes a function (`total(f, n)`)
   function appliesHigherOrder(program: Program, expr: Expression): boolean {
-    const higherOrder = new Set(
-      program.flatMap(s => (s.form === 'function' && s.params.some(p => isFunctionType(p.type)) ? [s.name] : [])),
-    )
-    let appliesOne = false
-
-    const visit = (e: Expression): void => {
-      if (e.form === 'call') {
-        appliesOne ||= e.callee.form === 'variable' && higherOrder.has(e.callee.name)
-        e.args.forEach(visit)
-      } else if (e.form === 'binary') {
-        visit(e.left)
-        visit(e.right)
-      } else if (e.form === 'unary') {
-        visit(e.operand)
-      }
-    }
-
-    visit(expr)
-
-    return appliesOne
+    return theorems.appliesHigherOrder(termState, program as never, expr as never)
   }
 
   function inUniversalTheorem(program: Program, hold: Statement): boolean {
-    for (const fn of program) {
-      if (fn.form !== 'function' || !fn.universals?.length) {
-        continue
-      }
-
-      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
-
-      while (body.length === 1) {
-        const only = body[0]!
-
-        if (only === hold) {
-          return true
-        }
-
-        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
-          break
-        }
-
-        body = only.branches[0]!.body
-      }
-    }
-
-    return false
+    return theorems.inUniversalTheorem(program as never, hold as never)
   }
 
   function ruleGuards(
     program: Program,
     hold: Statement,
   ): Expression[] | null {
-    for (const fn of program) {
-      if (fn.form !== 'function') {
-        continue
-      }
+    const found = theorems.ruleGuards(program as never, hold as never)
 
-      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
-      const guards: Expression[] = []
-
-      while (body.length === 1) {
-        const only = body[0]!
-
-        if (only === hold) {
-          return guards
-        }
-
-        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
-          break
-        }
-
-        guards.push(only.branches[0]!.cond)
-        body = only.branches[0]!.body
-      }
-    }
-
-    return null
+    return found.form === 'some' ? (found.value as Expression[]) : null
   }
 
+  // a proven equation recorded as a citable lemma and a rewrite rule
   function recordLemmaRule(
     name: string | undefined,
     goal: Extract<Statement, { form: 'hold' }>['expr'],
     scope: Scope,
     context: Context,
   ): void {
-    if (!name || goal.form !== 'binary') {
-      return
-    }
-
-    try {
-      const [left, right] = elaborateGoalSides(
-        goal.left,
-        goal.right,
-        scope,
-        context,
-      )
-
-      if (!left || !right) {
-        return
-      }
-
-      const leftValue = evaluate(context.env, left)
-      const rightValue = evaluate(context.env, right)
-      const lhs = quote(context.level, leftValue)
-      const rhs = quote(context.level, rightValue)
-      lemmaRules.set(name, { binderCount: context.level, lhs, rhs })
-      lemmas.set(name, { left: showTerm(lhs), right: showTerm(rhs) })
-    } catch {
-      // not elaborable: skip; the proof still stands, it just is not citable
-    }
+    viaKernel(() =>
+      theorems.recordLemmaRule(termState, lemmaState as never, name ?? '', goal as never, scopeOf(scope), context as never),
+    )
   }
 
-  // function extensionality: discharge a goal `is-equal f g` between two FUNCTIONS by a cited pointwise lemma that
-  // states `f x == g x` for all x. Sound by the kernel's observational equality (Id at a function type computes to the
-  // pointwise identity): a proof of the pointwise equality IS a proof of the function equality. Checks that the cited
-  // (already proven, so it is in `lemmaRules`) lemma's two sides, at a fresh point, are the two functions applied to it.
+  // FUNCTION EXTENSIONALITY: discharge `f == g` by a cited pointwise lemma `f x == g x`
   function tryFunext(
     goal: Extract<Statement, { form: 'hold' }>['expr'],
     scope: Scope,
     context: Context,
     citedName: string,
   ): boolean {
-    if (goal.form !== 'binary' || goal.op !== '==') {
-      return false
-    }
-
-    const lemma = lemmaRules.get(citedName)
-
-    if (lemma?.binderCount !== 1) {
-      return false
-    }
-
-    try {
-      const [left, right] = elaborateGoalSides(
-        goal.left,
-        goal.right,
-        scope,
-        context,
-      )
-
-      if (!left || !right) {
-        return false
-      }
-
-      // both sides must be functions (their type is a pi)
-      if (
-        quote(context.level, infer(context, left).type).tag !== 'pi'
-      ) {
-        return false
-      }
-
-      const point = neutralVar(context.level)
-      const leftAtPoint = applyValue(evaluate(context.env, left), point)
-      const rightAtPoint = applyValue(
-        evaluate(context.env, right),
-        point,
-      )
-
-      // the lemma instantiated at the same fresh point (its single binder -> the point)
-      const lemmaLeft = evaluate([point], lemma.lhs)
-      const lemmaRight = evaluate([point], lemma.rhs)
-
-      return (
-        areConvertible(context.level + 1, leftAtPoint, lemmaLeft) &&
-        areConvertible(context.level + 1, rightAtPoint, lemmaRight)
-      )
-    } catch {
-      return false
-    }
+    return viaKernel(() =>
+      theorems.tryFunext(termState, lemmaState as never, goal as never, scopeOf(scope), context as never, citedName),
+    )
   }
 
   // check one `hold` proof obligation (an `a == b` claim plus an optional proof tree) by the KERNEL, in a given
@@ -6652,8 +1499,8 @@ export function elaborateReport(
     }
 
     if (tactic?.head === 'fold' && tactic.arg) {
-      foldCase = undefined
-      tableCounterexample = undefined
+      caseState.foldCase = { form: 'none' }
+      caseState.counterexample = { form: 'none' }
 
       // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
       // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
@@ -6723,7 +1570,7 @@ export function elaborateReport(
         }
       } else {
         // a counterexample the truth table found is the reason, and the most useful sentence the refusal can say
-        const found = tableCounterexample as { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined
+        const found = counterexampleOf()
         const where = found?.at ? `in the case \`${found.at}\`` : 'in one case'
 
         diagnostics.push(
@@ -6855,8 +1702,8 @@ export function elaborateReport(
         const stated = values(assumptions.slice(0, assumptions.length - instances.length))
         const given = [...stated, ...values(instances)]
 
-        foldCase = undefined
-        tableCounterexample = undefined
+        caseState.foldCase = { form: 'none' }
+        caseState.counterexample = { form: 'none' }
 
         if (truthTable(context, evaluate(context.env, left), evaluate(context.env, right), given, stated.length)) {
           discharged.push(statement.span)
@@ -6874,7 +1721,7 @@ export function elaborateReport(
           return
         }
 
-        const found = tableCounterexample as { text: string; sides?: [string, string] } | undefined
+        const found = counterexampleOf()
 
         // under a universal hypothesis the table saw it only at the goal's own terms, so its choice is a case the
         // hypotheses do not rule out there, not a counterexample to them everywhere
@@ -7205,8 +2052,8 @@ export function elaborateReport(
     const resultValue = remaining
     // first try a pure term (proof-relevant); if the body is outside the pure fragment, type-check it as effectful
     // commands. Either way the kernel is the authority for the expression types.
-    enclosingGenericLevels = genericLevels
-    enclosingGenerics = new Map(
+    termState.genericLevels = genericLevels
+    termState.generics = new Map(
       statement.generics
         .slice(0, genericLevels.length)
         .map((g, i) => [g.name, genericLevels[i]!]),
@@ -7297,8 +2144,8 @@ export function elaborateReport(
       }
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
     } finally {
-      enclosingGenericLevels = []
-      enclosingGenerics = new Map()
+      termState.genericLevels = []
+      termState.generics = new Map()
       factsLocal = new Set()
       factsVolatile = new Set()
       ruleMarks = new Set()

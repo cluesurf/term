@@ -95,6 +95,11 @@ form token-result
 form token-source
   link file, like text
   link text, like text
+  # names to read as grammars beside the ones the text's own loads import: for a caller lexing ONE line of a file, the
+  # formatter re-reading what it printed, which must lex the way the whole file does (grammar-names-of)
+  link grammars
+    like maybe, like list, like text
+    need false
 
 # A GRAMMAR SCOPE, handed over: the tokens that stand for it (the separator as written, then a text literal whose
 # open token names the spelling, `line`, `paren` or `block`, holding the scope's text verbatim), where reading goes on,
@@ -169,6 +174,14 @@ task tokenize
   # the names this file imports as GRAMMARS, read off its own load lines before the body (grammar-names-of): a word
   # that is one of them opens a grammar scope
   save grammars, grammar-names-of(lines)
+  sift source/grammars
+    case some
+      link given
+      walk given
+        take one
+        push(grammars, one)
+    case none
+      save nothing, 0
   # the first line past a block a grammar scope took, which the walk then skips: those lines are the scope's text
   save skip-to, 0
   # where the current line's tokens begin in the list, so a scope can look back along its own line only
@@ -452,7 +465,6 @@ task tokenize
 task grammar-names-of
   take lines, like list, like text
   like list, like text
-  mark private
 
   save names, make list
   # the path of the load whose finds are being read, or empty outside one
@@ -680,6 +692,11 @@ task scope-at
     hold
       save role, true
       save head, is-line-head(list, subtract(word-at, 2), line-start)
+      # a `role` heading an UNINDENTED line is a role.tree's rule, whatever it names: `role special` there is a rule
+      # (and a misspelled `role hots` is refused as one, by call/code/role-check.tree). A scope is inside code
+      fork test, and(head, is-equal(indent-width(get(lines, line)), 0))
+        hold
+          back no-scope(at, column)
     miss
       fork test, not(and(has-name(grammars, name), opens-here(list, word-at, line-start)))
         hold

@@ -1,0 +1,1113 @@
+# Elaboration, part three: what the kernel decides about a value of a form by running its eliminator. Which case a
+# value is (`constructor-index`) and its fields (`constructor-fields`), no-confusion at any depth (`absurd-at-type`,
+# `equation-absurd`), the truth table over the atoms of a goal of a form whose cases hold nothing (`truth-table`), and
+# an induction case read as ring arithmetic or as an order over its atoms (`ring-case`, `order-case`).
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures these were. The decisions:
+#   - the kernel is called directly, on the face's one `judge-state`. Where the original caught a kernel error it goes
+#     through `attempt`, which puts the unfold fuel back as judge.ts's `kernel()` did at each call and answers none.
+#     A raise nothing here catches reaches the face, which gives it the original's class
+#   - the original's `absurdAtType` read `.tag` off a field type that did not read (`null`) and threw, which
+#     `equationAbsurd` caught as `false`. Here such a field type raises `failure`, and `equation-absurd` catches it alike
+#   - the truth table's per-term memo was keyed by the term object. It is keyed by the printed term, which the answer
+#     depends on alone, so it asks the kernel no more often than the shared subterms did
+#   - the counterexample the table finds, and the case of the fold being closed, are one `case-state` the face holds
+#   - `Number(digits)` and `Number.isSafeInteger` are the host's, as the original read a literal's digits
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load ../compile/node
+  find expression
+  find binary-op
+  find span
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find whnf
+  find infer
+  find are-convertible
+  find normal-term
+  find neutral-var
+  find show-term
+  find show-named
+
+load ./elaborating-data
+  find elaboration-data
+  find field-info
+  find constant
+  find variable
+  find lambdas
+  find apply-term
+  find type-zero
+  find ctor-key
+
+load ./elaborating-rewrite
+  find rewrite-rule
+  find rewrite-with-lemmas
+
+load ./ring
+  find equation, name ring-equation
+  find ring-equal-by-equations
+
+# ---- the host's numbers ----
+
+bind number-of-digits
+  take digits, like text
+  like number
+  case node
+    text <Number($digits)>
+  case browser
+    text <Number($digits)>
+  case rust
+    text <$digits.parse::\<f64\>().unwrap_or(f64::NAN)>
+  case swift
+    text <(Double($digits) ?? Double.nan)>
+  case kotlin
+    text <($digits.toDoubleOrNull() ?: Double.NaN)>
+
+bind is-safe-integer
+  take value, like number
+  like boolean
+  case node
+    text <Number.isSafeInteger($value)>
+  case browser
+    text <Number.isSafeInteger($value)>
+  case rust
+    text <($value.fract() == 0.0 && $value.abs() \<= 9007199254740991.0)>
+  case swift
+    text <($value.rounded() == $value && abs($value) \<= 9007199254740991.0)>
+  case kotlin
+    text <($value % 1.0 == 0.0 && Math.abs($value) \<= 9007199254740991.0)>
+
+# ---- a kernel step whose failure is an answer ----
+
+# run a step and answer its value, none on ANY raise, the unfold fuel put back first: the original's bare `catch`
+# around calls the face's `kernel()` had already put the fuel back for
+task attempt
+  take st, like judge-state
+  take step
+    like task
+      like unknown
+  like maybe, like unknown
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save value, step()
+    back make(some, value)
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back make none
+  back make none
+
+# `attempt` for a step answering a term, a boolean
+task attempt-term
+  take st, like judge-state
+  take step
+    like task
+      like kernel-term
+  like maybe, like kernel-term
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save value, step()
+    back make(some, value)
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back make none
+  back make none
+
+task attempt-boolean
+  take st, like judge-state
+  take step
+    like task
+      like boolean
+  like boolean
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    back step()
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    back false
+  back false
+
+# ---- what the face reads back ----
+
+form counterexample
+  link at, like maybe, like text
+  link text, like text
+  link given, like boolean
+  link sides, like list, like text
+
+form case-state
+  mark shared
+  # the case of the `fold` being closed
+  link fold-case, like maybe, like text
+  # the first counterexample the truth table found, which the fold's refusal names
+  link counterexample, like maybe, like counterexample
+
+task new-case-state
+  like case-state
+
+  back
+    make case-state
+      bind fold-case, make none
+      bind counterexample, make none
+
+# the identity environment at `level`: each binder its own neutral, the innermost first
+task identity-env
+  take level, like number
+  like list, like kernel-value
+  mark private
+
+  save env, make list
+  save l, subtract(level, 1)
+  walk test
+    hook test, is-minimum(l, 0)
+    hook hold
+      push(env, neutral-var(l))
+      save l, subtract(l, 1)
+  back env
+
+task variant-fields
+  take data, like elaboration-data
+  take key, like text
+  like list, like field-info
+  mark private
+
+  fork test, data/variant-field-info/has(key)
+    hold
+      back data/variant-field-info/get(key)
+  save none, make list
+  back none
+
+task former-arity
+  take data, like elaboration-data
+  take name, like text
+  like number
+  mark private
+
+  fork test, data/type-former-arity/has(name)
+    hold
+      back data/type-former-arity/get(name)
+  back 0
+
+# `match__T` applied to its erased witnesses (any closed type), the motive, the subject and the branches
+task matched
+  take st, like judge-state
+  take data, like elaboration-data
+  take level, like number
+  take value, like kernel-value
+  take enum-name, like text
+  take branches, like list, like kernel-term
+  like kernel-term
+  mark private
+
+  save term, constant(<match__{enum-name}>)
+  save p, 0
+  save arity, former-arity(data, enum-name)
+  walk test
+    hook test, is-below(p, arity)
+    hook hold
+      save term, apply-term(term, type-zero())
+      save p, add(p, 1)
+  save term, apply-term(term, type-zero())
+  save term, apply-term(term, quote(st, level, value))
+  walk branches
+    take branch
+    save term, apply-term(term, branch)
+  back term
+
+# which constructor, by declaration index, a value of an enum reduces to, none when it is not a manifest constructor.
+# The enum's eliminator runs with branch i answering the i-th of n distinct separators
+task constructor-index
+  take st, like judge-state
+  take data, like elaboration-data
+  take level, like number
+  take value, like kernel-value
+  take enum-name, like text
+  like maybe, like number
+
+  fork test, is-equal(data/variant-names/has(enum-name), false)
+    hold
+      back make none
+  save order, data/variant-names/get(enum-name)
+  save n, order/length
+  save separators, make list
+  save no-env, make list
+  walk order
+    take variant
+    take i
+    push(separators, evaluate(st, no-env, lambdas(n, variable(subtract(subtract(n, 1), i)))))
+  save branches, make list
+  walk order
+    take variant
+    take i
+    save field-count, variant-fields(data, ctor-key(enum-name, variant))/length
+    push(branches, lambdas(add(field-count, n), variable(subtract(subtract(n, 1), i))))
+  save discriminated, evaluate(st, identity-env(level), matched(st, data, level, value, enum-name, branches))
+  save i, 0
+  walk test
+    hook test, is-below(i, n)
+    hook hold
+      fork test, are-convertible(st, level, discriminated, get(separators, i))
+        hold
+          save found, i
+          back make(some, found)
+      save i, add(i, 1)
+  back make none
+
+# the field values of a constructor value, field j by a match whose target branch answers it
+task constructor-fields
+  take st, like judge-state
+  take data, like elaboration-data
+  take level, like number
+  take value, like kernel-value
+  take enum-name, like text
+  take variant-index, like number
+  take field-count, like number
+  like list, like kernel-value
+
+  save fields, make list
+  fork test, is-equal(data/variant-names/has(enum-name), false)
+    hold
+      back fields
+  save order, data/variant-names/get(enum-name)
+  save env, identity-env(level)
+  save j, 0
+  walk test
+    hook test, is-below(j, field-count)
+    hook hold
+      save branches, make list
+      walk order
+        take variant
+        take m
+        save fc, variant-fields(data, ctor-key(enum-name, variant))/length
+        save body, constant(<unitValue>)
+        fork test, is-equal(m, variant-index)
+          hold
+            save body, variable(subtract(subtract(fc, 1), j))
+        push(branches, lambdas(fc, body))
+      push(fields, evaluate(st, env, matched(st, data, level, value, enum-name, branches)))
+      save j, add(j, 1)
+  back fields
+
+# a field's kernel type, or the original's crash reading `.tag` off a `null` one, as a raise
+task field-type
+  take type, like maybe, like kernel-term
+  like kernel-term
+  mark private
+
+  sift type
+    case some
+      link found
+      back found
+    case none
+      halt <Cannot read properties of null (reading 'tag')>
+
+# NO-CONFUSION at any depth: absurd when the two values are distinct constructors of the enum, or share one and a
+# field pair is itself absurd. A struct's fields are read through its projections
+task absurd-at-type
+  take st, like judge-state
+  take data, like elaboration-data
+  take level, like number
+  take type-maybe, like maybe, like kernel-term
+  take left, like kernel-value
+  take right, like kernel-value
+  take depth, like number
+  like boolean
+
+  fork test, is-maximum(depth, 0)
+    hold
+      back false
+  save type-term, field-type(type-maybe)
+  sift type-term
+    case const
+      link name
+      fork test, data/record-field-info/has(name)
+        hold
+          save env, identity-env(level)
+          walk data/record-field-info/get(name)
+            take field
+            save projection, constant(<{name}__{field/name}>)
+            save left-field, evaluate(st, env, apply-term(projection, quote(st, level, left)))
+            save right-field, evaluate(st, env, apply-term(projection, quote(st, level, right)))
+            fork test, absurd-at-type(st, data, level, field/type, left-field, right-field, subtract(depth, 1))
+              hold
+                back true
+          back false
+      fork test, is-equal(data/variant-names/has(name), false)
+        hold
+          back false
+      save at-left, constructor-index(st, data, level, left, name)
+      save at-right, constructor-index(st, data, level, right, name)
+      sift at-left
+        case some
+          link i-left
+          sift at-right
+            case some
+              link i-right
+              fork test, is-unequal(i-left, i-right)
+                hold
+                  back true
+              save order, data/variant-names/get(name)
+              save infos, variant-fields(data, ctor-key(name, get(order, i-left)))
+              save k, infos/length
+              fork test, is-equal(k, 0)
+                hold
+                  back false
+              save lf, constructor-fields(st, data, level, left, name, i-left, k)
+              save rf, constructor-fields(st, data, level, right, name, i-left, k)
+              save j, 0
+              walk test
+                hook test, is-below(j, k)
+                hook hold
+                  fork test, absurd-at-type(st, data, level, get(infos, j)/type, get(lf, j), get(rf, j), subtract(depth, 1))
+                    hold
+                      back true
+                  save j, add(j, 1)
+              back false
+            case none
+              back false
+        case none
+          back false
+    miss
+      back false
+
+# is an equation hypothesis impossible by constructor disjointness or injectivity? Any raise answers no
+task equation-absurd
+  take st, like judge-state
+  take data, like elaboration-data
+  take ctx, like context
+  take left-term, like kernel-term
+  take left, like kernel-value
+  take right, like kernel-value
+  like boolean
+
+  save step
+    task
+      like boolean
+      save type, quote(st, ctx/level, infer(st, ctx, left-term)/type)
+      back absurd-at-type(st, data, ctx/level, make(some, type), left, right, 64)
+  back attempt-boolean(st, step)
+
+# ---- the truth table ----
+
+# a term as its source writes it: `evaluate(v, a)`, where `show-named` prints `((evaluate v) a)`
+task surface-of
+  take term, like kernel-term
+  take names, like list, like text
+  like text
+
+  save args, make list
+  save head, term
+  walk test
+    hook test, is-app(head)
+    hook hold
+      save args, prepended(app-arg(head), args)
+      save head, app-fun(head)
+  save name, show-named(head, names)
+  fork test, is-equal(args/length, 0)
+    hold
+      back name
+  save parts, make list
+  walk args
+    take arg
+    push(parts, surface-of(arg, names))
+  back <{name}({join(parts, <, >)})>
+
+task is-app
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case app
+      back true
+    miss
+      back false
+
+task app-fun
+  take term, like kernel-term
+  like kernel-term
+  mark private
+
+  sift term
+    case app
+      link fun
+      back fun
+    miss
+      back term
+
+task app-arg
+  take term, like kernel-term
+  like kernel-term
+  mark private
+
+  sift term
+    case app
+      link fun
+      link arg
+      back arg
+    miss
+      back term
+
+task prepended
+  take first, like kernel-term
+  take rest, like list, like kernel-term
+  like list, like kernel-term
+  mark private
+
+  save out, make list
+  push(out, first)
+  walk rest
+    take one
+    push(out, one)
+  back out
+
+task never-opaque
+  take name, like text
+  like boolean
+  mark private
+
+  back false
+
+task normal-of
+  take st, like judge-state
+  take level, like number
+  take value, like kernel-value
+  like kernel-term
+  mark private
+
+  back normal-term(st, level, value, never-opaque, 0)
+
+# the names of the context's binders as an error prints them, `x<n>` where the source gave none
+task binder-names
+  take ctx, like context
+  like list, like text
+  mark private
+
+  save out, make list
+  walk ctx/names
+    take name
+    take index
+    fork test, is-unequal(name, <>)
+      hold
+        push(out, name)
+      miss
+        push(out, <x{subtract(subtract(ctx/level, 1), index)}>)
+  back out
+
+# an atom of the truth table: an open value with no open value inside it, and its form's cases
+form atom
+  link term, like kernel-term
+  link cases, like list, like kernel-term
+
+form table
+  mark shared
+  link st, like judge-state
+  link data, like elaboration-data
+  link ctx, like context
+  link level, like number
+  # each term's cases asked once, by its printed form: present with none where it is not open
+  link opened, like hash, like text, like maybe, like list, like kernel-term
+  link atoms, like hash, like text, like atom
+  link choice, like hash, like text, like kernel-term
+  link case-names, like hash, like text, like boolean
+  link given, like list, like kernel-term
+  link goal-left, like kernel-term
+  link goal-right, like kernel-term
+  link written, like hash, like text, like boolean
+  link order, like list, like text
+  link visited, like number
+  link exhausted, like boolean
+
+# the cases of a term's form, when every case of it holds nothing and the form takes no type
+task cases-of
+  take tb, like table
+  take term, like kernel-term
+  like maybe, like list, like kernel-term
+  mark private
+
+  save st, tb/st
+  save step
+    task
+      like kernel-term
+      back quote(st, tb/level, whnf(st, infer(st, tb/ctx, term)/type))
+  sift attempt-term(st, step)
+    case some
+      link found
+      save type, found
+      sift type
+        case const
+          link name
+          fork test, is-above(former-arity(tb/data, name), 0)
+            hold
+              back make none
+          fork test, is-equal(tb/data/variant-names/has(name), false)
+            hold
+              back make none
+          save variants, tb/data/variant-names/get(name)
+          save cases, make list
+          walk variants
+            take v
+            fork test, is-above(variant-fields(tb/data, ctor-key(name, v))/length, 0)
+              hold
+                back make none
+            push(cases, constant(ctor-key(name, v)))
+          back make(some, cases)
+        miss
+          back make none
+    case none
+      back make none
+
+task open-cases
+  take tb, like table
+  take term, like kernel-term
+  like maybe, like list, like kernel-term
+  mark private
+
+  sift term
+    case lam
+      back make none
+    miss
+      save printed, show-term(term)
+  save printed, show-term(term)
+  fork test, is-equal(tb/opened/has(printed), false)
+    hold
+      save answer, make none
+      sift cases-of(tb, term)
+        case some
+          link cases
+          save closed, false
+          walk cases
+            take c
+            fork test, is-equal(show-term(c), printed)
+              hold
+                save closed, true
+          fork test, is-equal(closed, false)
+            hold
+              save answer, make(some, cases)
+        case none
+          save answer, make none
+      tb/opened/set(printed, answer)
+  back tb/opened/get(printed)
+
+task open-inside
+  take tb, like table
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case app
+      link fun
+      link arg
+      sift open-cases(tb, fun)
+        case some
+          back true
+        case none
+          fork test, open-inside(tb, fun)
+            hold
+              back true
+      sift open-cases(tb, arg)
+        case some
+          back true
+        case none
+          back open-inside(tb, arg)
+    miss
+      back false
+
+task collect-atoms
+  take tb, like table
+  take term, like kernel-term
+  mark private
+
+  sift term
+    case lam
+      back
+    miss
+      save term, term
+  sift open-cases(tb, term)
+    case some
+      link cases
+      fork test, is-equal(open-inside(tb, term), false)
+        hold
+          save found
+            make atom
+              bind term, term
+              bind cases, cases
+          tb/atoms/set(show-term(term), found)
+          back
+    case none
+      save term, term
+  sift term
+    case app
+      link fun
+      link arg
+      collect-atoms(tb, fun)
+      collect-atoms(tb, arg)
+    miss
+      back
+
+task replaced
+  take tb, like table
+  take term, like kernel-term
+  like kernel-term
+  mark private
+
+  save printed, show-term(term)
+  fork test, tb/choice/has(printed)
+    hold
+      back tb/choice/get(printed)
+  sift term
+    case app
+      link fun
+      link arg
+      back
+        make app
+          bind fun, replaced(tb, fun)
+          bind arg, replaced(tb, arg)
+    miss
+      back term
+
+task chosen-value
+  take tb, like table
+  take term, like kernel-term
+  like kernel-value
+  mark private
+
+  back evaluate(tb/st, tb/ctx/env, replaced(tb, term))
+
+# a hypothesis is FALSE under the choice so far only when its two sides compute to two different cases
+task refuted
+  take tb, like table
+  like boolean
+  mark private
+
+  save i, 0
+  walk test
+    hook test, is-below(i, tb/given/length)
+    hook hold
+      save a, show-term(normal-of(tb/st, tb/level, chosen-value(tb, get(tb/given, i))))
+      save b, show-term(normal-of(tb/st, tb/level, chosen-value(tb, get(tb/given, add(i, 1)))))
+      fork test, and(is-unequal(a, b), and(tb/case-names/has(a), tb/case-names/has(b)))
+        hold
+          back true
+      save i, add(i, 2)
+  back false
+
+task held
+  take tb, like table
+  like boolean
+  mark private
+
+  save i, 0
+  walk test
+    hook test, is-below(i, tb/given/length)
+    hook hold
+      fork test, is-equal(are-convertible(tb/st, tb/level, chosen-value(tb, get(tb/given, i)), chosen-value(tb, get(tb/given, add(i, 1)))), false)
+        hold
+          back false
+      save i, add(i, 2)
+  back true
+
+# THE SEARCH: the atoms chosen one at a time, the written ones first, a branch closed as soon as a hypothesis is refuted
+# or the goal's sides agree. Bounded by 16,384 branches visited, past which the goal is left undecided
+task table-holds
+  take tb, like table
+  take cs, like case-state
+  take at, like number
+  like boolean
+  mark private
+
+  save tb/visited, add(tb/visited, 1)
+  fork test, is-above(tb/visited, 16384)
+    hold
+      save tb/exhausted, true
+      back false
+  fork test, refuted(tb)
+    hold
+      back true
+  fork test, are-convertible(tb/st, tb/level, chosen-value(tb, tb/goal-left), chosen-value(tb, tb/goal-right))
+    hold
+      back true
+  fork test, is-equal(at, tb/order/length)
+    hold
+      # a COUNTEREXAMPLE, said only when it is one: every hypothesis shown to hold, the sides two different cases
+      save left-side, show-term(normal-of(tb/st, tb/level, chosen-value(tb, tb/goal-left)))
+      save right-side, show-term(normal-of(tb/st, tb/level, chosen-value(tb, tb/goal-right)))
+      save all-held, held(tb)
+      fork test, and(and(all-held, is-unequal(left-side, right-side)), and(tb/case-names/has(left-side), tb/case-names/has(right-side)))
+        hold
+          sift cs/counterexample
+            case none
+              save names, binder-names(tb/ctx)
+              save parts, make list
+              walk tb/order
+                take printed
+                fork test, tb/written/has(printed)
+                  hold
+                    push(parts, <{surface-of(tb/atoms/get(printed)/term, names)} is {surface-of(tb/choice/get(printed), names)}>)
+              save no-sides, make list
+              save found
+                make counterexample
+                  bind at, cs/fold-case
+                  bind text, join(parts, <, >)
+                  bind given, is-above(tb/given/length, 0)
+                  bind sides, no-sides
+              save cs/counterexample, make(some, found)
+            case some
+              save at, at
+      back false
+  save printed, get(tb/order, at)
+  walk tb/atoms/get(printed)/cases
+    take one
+    tb/choice/set(printed, one)
+    fork test, is-equal(table-holds(tb, cs, add(at, 1)), false)
+      hold
+        back false
+  tb/choice/delete(printed)
+  back true
+
+task spelled
+  take tb, like table
+  take c, like kernel-term
+  like text
+  mark private
+
+  back show-term(normal-of(tb/st, tb/level, evaluate(tb/st, tb/ctx/env, c)))
+
+# THE TRUTH TABLE: a goal built from values of a form whose cases hold nothing, decided by trying every case for each
+# atom wherever the hypotheses are not shown false. `stated` is how many hypotheses were WRITTEN, so a counterexample
+# names only the atoms a reader wrote down
+task truth-table
+  take st, like judge-state
+  take data, like elaboration-data
+  take cs, like case-state
+  take ctx, like context
+  take left, like kernel-value
+  take right, like kernel-value
+  take hypotheses, like list, like kernel-value
+  take stated, like number
+  like boolean
+
+  save level, ctx/level
+  save terms, make list
+  push(terms, normal-of(st, level, left))
+  push(terms, normal-of(st, level, right))
+  walk hypotheses
+    take one
+    push(terms, normal-of(st, level, one))
+  save rest, make list
+  walk terms
+    take term
+    take i
+    fork test, is-above(i, 1)
+      hold
+        push(rest, term)
+  save tb
+    make table
+      bind st, st
+      bind data, data
+      bind ctx, ctx
+      bind level, level
+      bind opened, make hash
+      bind atoms, make hash
+      bind choice, make hash
+      bind case-names, make hash
+      bind given, rest
+      bind goal-left, get(terms, 0)
+      bind goal-right, get(terms, 1)
+      bind written, make hash
+      bind order, make list
+      bind visited, 0
+      bind exhausted, false
+  # only a goal that is itself a truth value
+  save goal-cases, make list
+  sift cases-of(tb, get(terms, 0))
+    case some
+      link cases
+      save goal-cases, cases
+    case none
+      back false
+  walk terms
+    take term
+    take i
+    fork test, is-below(i, add(2, multiply(2, stated)))
+      hold
+        collect-atoms(tb, term)
+  walk tb/atoms/keys()
+    take printed
+    tb/written/set(printed, true)
+  walk terms
+    take term
+    collect-atoms(tb, term)
+  walk tb/atoms/keys()
+    take printed
+    push(tb/order, printed)
+  # NO ATOMS: the two sides are what they are. Two different cases, with nothing assumed, is a false law
+  fork test, is-equal(tb/order/length, 0)
+    hold
+      save l, show-term(get(terms, 0))
+      save r, show-term(get(terms, 1))
+      save known, make hash
+      walk goal-cases
+        take c
+        known/set(spelled(tb, c), true)
+      fork test, and(and(is-equal(hypotheses/length, 0), is-unequal(l, r)), and(known/has(l), known/has(r)))
+        hold
+          sift cs/counterexample
+            case none
+              save names, binder-names(ctx)
+              save sides, make list
+              push(sides, surface-of(get(terms, 0), names))
+              push(sides, surface-of(get(terms, 1), names))
+              save found
+                make counterexample
+                  bind at, cs/fold-case
+                  bind text, <>
+                  bind given, false
+                  bind sides, sides
+              save cs/counterexample, make(some, found)
+            case some
+              save l, l
+      back false
+  walk goal-cases
+    take c
+    tb/case-names/set(spelled(tb, c), true)
+  walk tb/order
+    take printed
+    walk tb/atoms/get(printed)/cases
+      take c
+      tb/case-names/set(spelled(tb, c), true)
+  save answer, table-holds(tb, cs, 0)
+  back and(answer, is-equal(tb/exhausted, false))
+
+# ---- arithmetic over atoms ----
+
+# the kernel's terms as the ring's expressions: `add`, `sub`, `mul`, `neg` and integer literals are the ring, every
+# other term an atom, one per spelling. A task over `natural-number` stays folded, an atom
+form arithmetic-reader
+  mark shared
+  link ring, like hash, like text, like boolean
+  link atoms, like hash, like text, like text
+  link names, like list, like text
+  # the span every expression it builds carries, the face's `NO_SPAN` (an offset the parser's position has no field for)
+  link span, like span
+
+task new-arithmetic-reader
+  take truncating, like list, like text
+  take no-span, like span
+  like arithmetic-reader
+
+  save ring, make hash
+  ring/set(<add>, true)
+  ring/set(<sub>, true)
+  ring/set(<mul>, true)
+  ring/set(<neg>, true)
+  walk truncating
+    take name
+    ring/set(name, true)
+  back
+    make arithmetic-reader
+      bind ring, ring
+      bind atoms, make hash
+      bind names, make list
+      bind span, no-span
+
+task binary-of
+  take reader, like arithmetic-reader
+  take op, like binary-op
+  take left, like expression
+  take right, like expression
+  like expression
+
+  back
+    make binary
+      bind op, op
+      bind left, left
+      bind right, right
+      bind span, reader/span
+
+task arithmetic-expression
+  take reader, like arithmetic-reader
+  take term, like kernel-term
+  like expression
+  mark private
+
+  save args, make list
+  save head, term
+  walk test
+    hook test, is-app(head)
+    hook hold
+      save args, prepended(app-arg(head), args)
+      save head, app-fun(head)
+  sift head
+    case const
+      link name
+      fork test, reader/ring/has(name)
+        hold
+          fork test, and(is-equal(name, <neg>), is-equal(args/length, 1))
+            hold
+              save zero
+                make integer
+                  bind value, 0
+                  bind span, reader/span
+              save negated, arithmetic-expression(reader, get(args, 0))
+              save minus, make binary-op/minus
+              back binary-of(reader, minus, zero, negated)
+          fork test, and(is-unequal(name, <neg>), is-equal(args/length, 2))
+            hold
+              save left, arithmetic-expression(reader, get(args, 0))
+              save right, arithmetic-expression(reader, get(args, 1))
+              save op, make binary-op/times
+              fork test, is-equal(name, <add>)
+                hold
+                  save op, make binary-op/plus
+              fork test, is-equal(name, <sub>)
+                hold
+                  save op, make binary-op/minus
+              back binary-of(reader, op, left, right)
+      fork test, and(is-equal(args/length, 0), starts-with(name, <numberValue#>))
+        hold
+          save value, number-of-digits(substring(name, 12, name/length))
+          fork test, is-safe-integer(value)
+            hold
+              back
+                make integer
+                  bind value, value
+                  bind span, reader/span
+    miss
+      save head, head
+  save printed, show-term(term)
+  fork test, is-equal(reader/atoms/has(printed), false)
+    hold
+      save atom-name, <atom_{reader/names/length}>
+      reader/atoms/set(printed, atom-name)
+      push(reader/names, atom-name)
+  back
+    make variable
+      bind name, reader/atoms/get(printed)
+      bind span, reader/span
+
+# a value as the ring reads it, after the definitions are unfolded (the ring's own operations kept) and the cited
+# rules rewritten with
+task read-arithmetic
+  take st, like judge-state
+  take reader, like arithmetic-reader
+  take level, like number
+  take rules, like list, like rewrite-rule
+  take value, like kernel-value
+  like expression
+
+  save ring, reader/ring
+  save opaque
+    task
+      take name, like text
+      like boolean
+      back ring/has(name)
+  back arithmetic-expression(reader, rewrite-with-lemmas(normal-term(st, level, value, opaque, 0), rules, 64))
+
+# AN INDUCTION CASE THAT IS ARITHMETIC: a ring identity modulo the hypotheses, in atoms the kernel cannot compute.
+# Any raise answers no
+task ring-case
+  take st, like judge-state
+  take truncating, like list, like text
+  take no-span, like span
+  take level, like number
+  take left, like kernel-value
+  take right, like kernel-value
+  take hypotheses, like list, like kernel-value
+  take rules, like list, like rewrite-rule
+  like boolean
+
+  save reader, new-arithmetic-reader(truncating, no-span)
+  save step
+    task
+      like boolean
+      save equations, make list
+      save i, 0
+      walk test
+        hook test, is-below(i, hypotheses/length)
+        hook hold
+          save equation
+            make ring-equation
+              bind left, read-arithmetic(st, reader, level, rules, get(hypotheses, i))
+              bind right, read-arithmetic(st, reader, level, rules, get(hypotheses, add(i, 1)))
+          push(equations, equation)
+          save i, add(i, 2)
+      save l, read-arithmetic(st, reader, level, rules, left)
+      save r, read-arithmetic(st, reader, level, rules, right)
+      back ring-equal-by-equations(l, r, equations, reader/names)
+  back attempt-boolean(st, step)
+
+# AN INDUCTION CASE THAT IS AN ORDER: linear arithmetic over the same atoms, by the hold checker's `orderFollows`,
+# handed in. `ordered` are the induction hypotheses (the goal's relation at a field) and `equal` the case's equations,
+# each as consecutive pairs. Any raise answers no
+task order-case
+  take st, like judge-state
+  take truncating, like list, like text
+  take no-span, like span
+  take level, like number
+  take op, like binary-op
+  take left, like kernel-value
+  take right, like kernel-value
+  take ordered, like list, like kernel-value
+  take equal, like list, like kernel-value
+  take rules, like list, like rewrite-rule
+  take order-follows
+    like task
+      take goal, like expression
+      take facts, like list, like expression
+      like boolean
+  like boolean
+
+  save reader, new-arithmetic-reader(truncating, no-span)
+  save step
+    task
+      like boolean
+      save goal-left, read-arithmetic(st, reader, level, rules, left)
+      save goal-right, read-arithmetic(st, reader, level, rules, right)
+      save goal, binary-of(reader, op, goal-left, goal-right)
+      save facts, make list
+      save i, 0
+      walk test
+        hook test, is-below(i, ordered/length)
+        hook hold
+          save l, read-arithmetic(st, reader, level, rules, get(ordered, i))
+          save r, read-arithmetic(st, reader, level, rules, get(ordered, add(i, 1)))
+          push(facts, binary-of(reader, op, l, r))
+          save i, add(i, 2)
+      save equals, make binary-op/equal
+      save i, 0
+      walk test
+        hook test, is-below(i, equal/length)
+        hook hold
+          save l, read-arithmetic(st, reader, level, rules, get(equal, i))
+          save r, read-arithmetic(st, reader, level, rules, get(equal, add(i, 1)))
+          push(facts, binary-of(reader, equals, l, r))
+          save i, add(i, 2)
+      back order-follows(goal, facts)
+  back attempt-boolean(st, step)

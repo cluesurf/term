@@ -1,0 +1,733 @@
+# The Rust declarations of a program's forms, masks and instances: a form as a `struct` or an `enum` with what it
+# derives and the key rule it implements, a recursive case held by its box or by a payload struct, a generic form's
+# phantom marker, the tag accessor; a mask as a `trait` whose methods take one instance's signature with the receiver as
+# `Self`; an instance as an `impl` whose methods call the free implementations.
+#
+# Ported from compile/rust.ts (self-hosting, 2026-10-06), which stays as the face. Nothing here is keyed by a node: the
+# program's tables cross as one `rust-form-facts`, built once per pass, and a type's spelling reads compile/rust-names'
+# `rust-type-context`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find to-upper-case
+
+load ./node
+  find type
+  find statement
+
+load ./rust-names
+  find rust-type-context
+  find rust-type
+  find rust-type-of
+  find rust-element
+  find snake
+  find pascal
+  find json-text
+
+load ./rust-tables
+  find key-params
+  find keyed-equality
+
+load ./tag
+  find tag-text
+
+# what the declarations read of the program and of the pass
+form rust-form-facts
+  link payloads, like hash, like text, like text
+  link recursive-fields, like hash, like text, like boolean
+  link boxed-forms, like hash, like text, like boolean
+  link field-lists, like hash, like text, like boolean
+  link phantom, like hash, like text, like text
+  link tagged, like hash, like text, like boolean
+  link equatable, like hash, like text, like boolean
+  link hashable, like hash, like text, like boolean
+  link keyable, like hash, like text, like boolean
+  link raising, like hash, like text, like boolean
+  link instance-targets, like hash, like text, like list, like text
+  link impl-fn, like hash, like text, like statement
+  link mask-of, like hash, like text, like text
+  link context, like rust-type-context
+
+# ---- small helpers ----
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save k, 0
+  walk test
+    hook test, is-below(k, depth)
+    hook hold
+      save out, <{out}    >
+      save k, add(k, 1)
+  back out
+
+# the struct a case's fields are held in, keyed `form/case`
+task payload-of
+  take facts, like rust-form-facts
+  take owner, like text
+  take label, like text
+  like maybe, like text
+  mark private
+
+  save key, <{owner}/{label}>
+  fork test, facts/payloads/has(key)
+    hold
+      save name, facts/payloads/get(key)
+      back make(some, name)
+  back make none
+
+# what holds a form's payload: a `Box` for a form nothing clones, an `Rc` for one the program shares
+task payload-holder
+  take facts, like rust-form-facts
+  take owner, like text
+  like text
+  mark private
+
+  fork test, facts/boxed-forms/has(owner)
+    hold
+      back <Box>
+  back <std::rc::Rc>
+
+task upper-params
+  take params, like list, like text
+  like text
+  mark private
+
+  save letters, make list
+  walk params
+    take param
+    push(letters, to-upper-case(param))
+  back join-texts(letters, <, >)
+
+# ---- forms ----
+
+# `impl TermHash` for a struct, or a payload struct: its fields one by one
+task struct-key
+  take name, like text
+  take bounds, like text
+  take type-args, like text
+  take fields, like list, like text
+  take depth, like number
+  like text
+  mark private
+
+  save hashes, make list
+  save eqs, make list
+  walk fields
+    take field
+    push(hashes, <self.{field}.term_hash(h);>)
+    push(eqs, <self.{field}.term_eq(&other.{field})>)
+  save eq, join-texts(eqs, < && >)
+  fork test, is-equal(eq, <>)
+    hold
+      save eq, <true>
+  back <\n{pad(depth)}impl{bounds} TermHash for {name}{type-args} \{\n{pad(add(depth, 1))}fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ let _ = &h; {join-texts(hashes, < >)} \}\n{pad(add(depth, 1))}fn term_eq(&self, other: &Self) -\> bool \{ let _ = other; {eq} \}\n{pad(depth)}\}>
+
+# a form as a `struct` (fields) or an `enum` (cases), or a type alias for a form that is its base and nothing of its own
+task emit-form
+  take node, like statement
+  take facts, like rust-form-facts
+  take depth, like number
+  like text
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      link form-alias
+      save context, facts/context
+      save letters, upper-params(form-params)
+      save generics, <>
+      save bounds, <>
+      fork test, is-above(form-params/length, 0)
+        hold
+          save generics, <\<{letters}\>>
+          save bound-list, make list
+          walk form-params
+            take param
+            push(bound-list, <{to-upper-case(param)}: TermHash + Clone>)
+          save bounds, <\<{join-texts(bound-list, <, >)}\>>
+      save type-args, generics
+      save keyable, facts/keyable/has(form-name)
+      save equatable, facts/equatable/has(form-name)
+      save keyed, make list
+      fork test, equatable
+        hold
+          save keyed, key-params(node)
+      save write-it, and(equatable, is-above(keyed/length, 0))
+      save derived, make list
+      push(derived, <Clone>)
+      fork test, and(equatable, not(write-it))
+        hold
+          push(derived, <PartialEq>)
+      fork test, facts/hashable/has(form-name)
+        hold
+          push(derived, <Eq>)
+          push(derived, <Hash>)
+      save derive, <#[derive({join-texts(derived, <, >)})]\n{pad(depth)}>
+      save written, <>
+      fork test, write-it
+        hold
+          save written, <\n{pad(depth)}{keyed-equality(node, keyed)}>
+
+      # an ALIAS form (a base and nothing of its own) is its base
+      sift form-alias
+        case some
+          link base
+          fork test, and(is-equal(form-fields/length, 0), is-equal(form-variants/length, 0))
+            hold
+              back <pub type {pascal(form-name)}{generics} = {rust-type-of(base, context)};>
+        case none
+          save nothing, 0
+
+      fork test, is-above(form-variants/length, 0)
+        hold
+          save structs, make list
+          save cases, make list
+          walk form-variants
+            take variant
+            save payload, payload-of(facts, form-name, variant/name)
+            save has-payload, false
+            sift payload
+              case some
+                save has-payload, true
+              case none
+                save nothing, 0
+            save fields, make list
+            walk variant/fields
+              take field
+              save field-type, field/type
+              save spelled, rust-type-of(field-type, context)
+              fork test, and(facts/recursive-fields/has(<{variant/name}/{field/name}>), not(has-payload))
+                hold
+                  save spelled, <std::rc::Rc\<{rust-type-of(field-type, context)}\>>
+                  fork test, facts/boxed-forms/has(form-name)
+                    hold
+                      save spelled, <Box\<{rust-type-of(field-type, context)}\>>
+                miss
+                  fork test, facts/field-lists/has(<{variant/name}/{field/name}>)
+                    hold
+                      sift field-type
+                        case array
+                          link element
+                          save spelled, <Vec\<{rust-element(element, context)}\>>
+                        miss
+                          save nothing, 0
+              push(fields, <{snake(field/name)}: {spelled}>)
+            sift payload
+              case some
+                link payload-name
+                push(structs, <\n{pad(depth)}{derive}struct {payload-name} \{ {join-texts(fields, <, >)} \}>)
+                fork test, and(keyable, is-equal(form-params/length, 0))
+                  hold
+                    save names, make list
+                    walk variant/fields
+                      take field
+                      push(names, snake(field/name))
+                    push(structs, struct-key(payload-name, <>, <>, names, depth))
+                push(cases, <{pad(add(depth, 1))}{pascal(variant/name)}({payload-holder(facts, form-name)}\<{payload-name}\>)>)
+              case none
+                save case-fields, <>
+                fork test, is-above(fields/length, 0)
+                  hold
+                    save case-fields, < \{ {join-texts(fields, <, >)} \}>
+                push(cases, <{pad(add(depth, 1))}{pascal(variant/name)}{case-fields}>)
+
+          save enum-key, <>
+          fork test, keyable
+            hold
+              save enum-key, enum-key-of(node, facts, bounds, type-args, depth)
+          save tagged, <>
+          fork test, facts/tagged/has(form-name)
+            hold
+              save tag-arms, make list
+              walk form-variants
+                take variant
+                save shape, <>
+                save is-payload, false
+                sift payload-of(facts, form-name, variant/name)
+                  case some
+                    save is-payload, true
+                  case none
+                    save nothing, 0
+                fork test, is-payload
+                  hold
+                    save shape, <(_)>
+                  miss
+                    fork test, is-above(variant/fields/length, 0)
+                      hold
+                        save shape, < \{ .. \}>
+                push(tag-arms, <Self::{pascal(variant/name)}{shape} =\> {json-text(tag-text(variant/name))}>)
+              save tagged, <\n{pad(depth)}impl{generics} {pascal(form-name)}{type-args} \{\n{pad(add(depth, 1))}#[allow(dead_code)]\n{pad(add(depth, 1))}pub fn term_tag(&self) -\> String \{ match self \{ {join-texts(tag-arms, <, >)} \}.to_string() \}\n{pad(depth)}\}>
+          back <{derive}enum {pascal(form-name)}{generics} \{\n{join-texts(cases, <,\n>)}\n{pad(depth)}\}{join-texts(structs, <>)}{written}{enum-key}{tagged}>
+
+      # a list the record owns is the plain `Vec`
+      save lines, make list
+      save field-names, make list
+      walk form-fields
+        take field
+        save field-type, field/type
+        save spelled, rust-type-of(field-type, context)
+        fork test, facts/field-lists/has(<{form-name}/{field/name}>)
+          hold
+            sift field-type
+              case array
+                link element
+                save spelled, <Vec\<{rust-element(element, context)}\>>
+              miss
+                save nothing, 0
+        push(lines, <{pad(add(depth, 1))}{snake(field/name)}: {spelled}>)
+        push(field-names, snake(field/name))
+      # a generic parameter no field mentions still has to be used, or rustc refuses the struct (E0392)
+      fork test, facts/phantom/has(form-name)
+        hold
+          push(lines, <{pad(add(depth, 1))}_marker: std::marker::PhantomData\<{facts/phantom/get(form-name)}\>>)
+      save struct-key-text, <>
+      fork test, keyable
+        hold
+          save struct-key-text, struct-key(pascal(form-name), bounds, type-args, field-names, depth)
+      back <{derive}struct {pascal(form-name)}{generics} \{\n{join-texts(lines, <,\n>)}\n{pad(depth)}\}{written}{struct-key-text}>
+    miss
+      back <>
+
+# the key rule over the cases: the case's index, then its fields (or its payload, which is keyed itself)
+task enum-key-of
+  take node, like statement
+  take facts, like rust-form-facts
+  take bounds, like text
+  take type-args, like text
+  take depth, like number
+  like text
+  mark private
+
+  sift node
+    case record-type
+      link form-name
+      link form-params
+      link form-indices
+      link form-fields
+      link form-variants
+      save hashes, make list
+      save eqs, make list
+      save fieldless, true
+      walk form-variants
+        take variant
+        take at
+        save case-name, pascal(variant/name)
+        save names, make list
+        walk variant/fields
+          take field
+          push(names, snake(field/name))
+        save is-payload, false
+        sift payload-of(facts, form-name, variant/name)
+          case some
+            save is-payload, true
+          case none
+            save nothing, 0
+        fork test, or(is-payload, is-above(names/length, 0))
+          hold
+            save fieldless, false
+        fork test, is-payload
+          hold
+            push(hashes, <Self::{case-name}(p) =\> \{ std::hash::Hash::hash(&{at}u32, h); p.term_hash(h) \}>)
+            push(eqs, <(Self::{case-name}(a), Self::{case-name}(b)) =\> a.term_eq(b)>)
+            turn next
+        fork test, is-equal(names/length, 0)
+          hold
+            push(hashes, <Self::{case-name} =\> std::hash::Hash::hash(&{at}u32, h)>)
+            push(eqs, <(Self::{case-name}, Self::{case-name}) =\> true>)
+            turn next
+        save field-hashes, make list
+        save left, make list
+        save right, make list
+        save compared, make list
+        walk names
+          take name
+          push(field-hashes, <{name}.term_hash(h);>)
+          push(left, <{name}: a_{name}>)
+          push(right, <{name}: b_{name}>)
+          push(compared, <a_{name}.term_eq(b_{name})>)
+        push(hashes, <Self::{case-name} \{ {join-texts(names, <, >)} \} =\> \{ std::hash::Hash::hash(&{at}u32, h); {join-texts(field-hashes, < >)} \}>)
+        push(eqs, <(Self::{case-name} \{ {join-texts(left, <, >)} \}, Self::{case-name} \{ {join-texts(right, <, >)} \}) =\> {join-texts(compared, < && >)}>)
+      # every case field-less: the equality is which case both are, `matches!` over the pairs
+      save eq, <match (self, other) \{ {join-texts(eqs, <, >)}, _ =\> false \}>
+      fork test, fieldless
+        hold
+          save pairs, make list
+          walk form-variants
+            take variant
+            save case-name, pascal(variant/name)
+            push(pairs, <(Self::{case-name}, Self::{case-name})>)
+          save eq, <matches!((self, other), {join-texts(pairs, < | >)})>
+      back <\n{pad(depth)}impl{bounds} TermHash for {pascal(form-name)}{type-args} \{\n{pad(add(depth, 1))}fn term_hash\<H: std::hash::Hasher\>(&self, h: &mut H) \{ match self \{ {join-texts(hashes, <, >)} \} \}\n{pad(add(depth, 1))}#[allow(unreachable_patterns)]\n{pad(add(depth, 1))}fn term_eq(&self, other: &Self) -\> bool \{ {eq} \}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# ---- masks and instances ----
+
+# a named type inside a trait declaration: the receiver type becomes `Self`
+task sub-self
+  take given, like maybe, like type
+  take target, like text
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      save made, sub-self-type(known, target)
+      back make(some, made)
+    case none
+      back make none
+
+task sub-self-type
+  take known, like type
+  take target, like text
+  like type
+  mark private
+
+  sift known
+    case named
+      link type-name
+      link type-args
+      fork test, is-equal(type-name, target)
+        hold
+          back
+            make type/named
+              bind name, <Self>
+      save args, make list
+      walk type-args
+        take arg
+        push(args, sub-self-type(arg, target))
+      back
+        make type/named
+          bind name, type-name
+          bind args, args
+    case array
+      link element
+      back
+        make type/array
+          bind element, sub-self-type(element, target)
+    case map
+      link map-key
+      link map-value
+      back
+        make type/map
+          bind key, sub-self-type(map-key, target)
+          bind value, sub-self-type(map-value, target)
+    case function
+      link fn-params
+      link fn-result
+      link fn-effects
+      save params, make list
+      walk fn-params
+        take param
+        push(params, sub-self-type(param, target))
+      save effects, make list
+      walk fn-effects
+        take effect
+        push(effects, effect)
+      back
+        make type/function
+          bind params, params
+          bind result, sub-self-type(fn-result, target)
+          bind effects, effects
+    miss
+      back known
+
+# A TRAIT METHOD RAISES WHEN ANY INSTANCE'S TASK DOES, so the trait answers `Result<T, TermException>` and an impl whose
+# task does not raise wraps its answer in `Ok`
+task trait-raises
+  take facts, like rust-form-facts
+  take mask, like maybe, like text
+  take method-name, like text
+  like boolean
+  mark private
+
+  sift mask
+    case some
+      link known
+      fork test, not(facts/instance-targets/has(known))
+        hold
+          back false
+      walk facts/instance-targets/get(known)
+        take target
+        save key, <{target}:{method-name}>
+        fork test, facts/impl-fn/has(key)
+          hold
+            save task, facts/impl-fn/get(key)
+            sift task
+              case function
+                link task-name
+                fork test, facts/raising/has(task-name)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+      back false
+    case none
+      back false
+
+# what a trait method answers: the task's result, or that result or the raise
+task trait-result
+  take facts, like rust-form-facts
+  take result, like maybe, like type
+  take target, like text
+  take raises, like boolean
+  like text
+  mark private
+
+  save has-result, false
+  sift result
+    case some
+      save has-result, true
+    case none
+      save nothing, 0
+  save value, <()>
+  fork test, has-result
+    hold
+      save value, rust-type(sub-self(result, target), facts/context)
+  fork test, raises
+    hold
+      back < -\> std::result::Result\<{value}, TermException\>>
+  fork test, has-result
+    hold
+      back < -\> {value}>
+  back <>
+
+task method-name-of
+  take task, like statement
+  like text
+  mark private
+
+  sift task
+    case function
+      link task-name
+      sift read(method)
+        case some
+          link known
+          back known/name
+        case none
+          back <>
+    miss
+      back <>
+
+task rest-params
+  take task, like statement
+  take facts, like rust-form-facts
+  take target, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  sift task
+    case function
+      link task-name
+      link task-params
+      walk task-params
+        take param
+        take at
+        fork test, is-above(at, 0)
+          hold
+            push(out, <{snake(param/name)}: {rust-type(sub-self(param/type, target), facts/context)}>)
+    miss
+      save nothing, 0
+  back out
+
+task rest-names
+  take task, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift task
+    case function
+      link task-name
+      link task-params
+      walk task-params
+        take param
+        take at
+        fork test, is-above(at, 0)
+          hold
+            push(out, snake(param/name))
+    miss
+      save nothing, 0
+  back out
+
+task task-result
+  take task, like statement
+  like maybe, like type
+  mark private
+
+  sift task
+    case function
+      link task-name
+      link task-params
+      link task-body
+      link task-result
+      back task-result
+    miss
+      back make none
+
+task task-name-of
+  take task, like statement
+  like text
+  mark private
+
+  sift task
+    case function
+      link task-name
+      back task-name
+    miss
+      back <>
+
+task with-self
+  take rest, like list, like text
+  like text
+  mark private
+
+  save all, make list
+  push(all, <self>)
+  walk rest
+    take one
+    push(all, one)
+  back join-texts(all, <, >)
+
+# a trait method declaration (no body): `fn measure(self) -> i64;`, derived from an implementation's signature with the
+# receiver as `self` and the receiver type as `Self`. A `Result` holding `Self` needs `Self` sized
+task trait-method-decl
+  take facts, like rust-form-facts
+  take task, like statement
+  take target, like text
+  take mask, like text
+  like text
+  mark private
+
+  save method, method-name-of(task)
+  save raises, trait-raises(facts, make(some, mask), method)
+  save sized, <>
+  fork test, raises
+    hold
+      save sized, < where Self: Sized>
+  back <fn {snake(method)}({with-self(rest-params(task, facts, target))}){trait-result(facts, task-result(task), target, raises)}{sized};>
+
+# an `impl` method that delegates to the free implementation function: `fn measure(self) -> i64 { box_measure(self) }`
+task impl-method
+  take facts, like rust-form-facts
+  take task, like statement
+  take target, like text
+  take mask, like text
+  like text
+  mark private
+
+  save method, method-name-of(task)
+  save raises, trait-raises(facts, make(some, mask), method)
+  save call, <{snake(task-name-of(task))}({with-self(rest-names(task))})>
+  save body, call
+  fork test, and(raises, not(facts/raising/has(task-name-of(task))))
+    hold
+      save body, <std::result::Result::Ok({call})>
+  back <fn {snake(method)}({with-self(rest-params(task, facts, target))}){trait-result(facts, task-result(task), target, raises)} \{ return {body}; \}>
+
+# a trait, with each method derived from the first implementing instance's signature (receiver type to `Self`)
+task emit-mask
+  take node, like statement
+  take facts, like rust-form-facts
+  take depth, like number
+  like text
+
+  sift node
+    case mask
+      link mask-name
+      link mask-methods
+      save decls, make list
+      fork test, facts/instance-targets/has(mask-name)
+        hold
+          save targets, facts/instance-targets/get(mask-name)
+          fork test, is-above(targets/length, 0)
+            hold
+              save target, get(targets, 0)
+              walk mask-methods
+                take method
+                save key, <{target}:{method}>
+                fork test, facts/impl-fn/has(key)
+                  hold
+                    save line, trait-method-decl(facts, facts/impl-fn/get(key), target, mask-name)
+                    fork test, is-unequal(line, <>)
+                      hold
+                        push(decls, line)
+      save inner, <>
+      fork test, is-above(decls/length, 0)
+        hold
+          save lines, make list
+          walk decls
+            take line
+            push(lines, <{pad(add(depth, 1))}{line}>)
+          save inner, <\n{join-texts(lines, <\n>)}\n{pad(depth)}>
+      back <trait {pascal(mask-name)} \{{inner}\}>
+    miss
+      back <>
+
+# an `impl` block whose methods delegate to the free implementation functions
+task emit-instance
+  take node, like statement
+  take facts, like rust-form-facts
+  take depth, like number
+  like text
+
+  sift node
+    case instance
+      link instance-mask
+      link instance-target
+      link instance-methods
+      save impls, make list
+      walk instance-methods
+        take method
+        save key, <{instance-target}:{method}>
+        fork test, facts/impl-fn/has(key)
+          hold
+            save line, impl-method(facts, facts/impl-fn/get(key), instance-target, instance-mask)
+            fork test, is-unequal(line, <>)
+              hold
+                push(impls, line)
+      save inner, <>
+      fork test, is-above(impls/length, 0)
+        hold
+          save lines, make list
+          walk impls
+            take line
+            push(lines, <{pad(add(depth, 1))}{line}>)
+          save inner, <\n{join-texts(lines, <\n>)}\n{pad(depth)}>
+      back <impl {pascal(instance-mask)} for {pascal(instance-target)} \{{inner}\}>
+    miss
+      back <>

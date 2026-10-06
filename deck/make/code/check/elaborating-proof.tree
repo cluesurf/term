@@ -1,0 +1,340 @@
+# Elaboration, part five: an explicit proof of `left == right` checked by the kernel, and the program's proven lemmas
+# it cites. `check-proof` answers `ok` (proved), `fail` (an explicit tactic that did not work), `open` (no proof, or a
+# tactic not lowered, which the linear prover then gets) or `bad` (the proof names a lemma that does not exist, which
+# nothing may rescue). `melt` / `calm` are definitional equality, `cite` a proven lemma of the same equality or one
+# the goal is an instance of, `turn` its symmetry, `link` a chain of them.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures `checkProof`, `instanceOf` and
+# `constantsOf` these were. The decisions:
+#   - the lemmas, their rewrite rules and the program's theorem names are one `lemma-state`, which the face reads and
+#     writes as the original's maps
+#   - a tactic's `arg` is a `need false` text, read as the original read it: present (`!== undefined`) for `calm`'s
+#     second word, truthy everywhere else, by two host binds
+#   - `constantsOf` walked a term's `Object.values` in key order; `constants-of` walks the same children in the same
+#     order, so the opaque set is the same
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find proof
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find quote
+  find are-convertible
+  find normal-term
+  find show-term
+
+load ./elaborating-rewrite
+  find rewrite-rule
+  find rewrite-once
+
+bind text-present
+  take value, like text
+  like boolean
+  case node
+    text <($value !== undefined)>
+  case browser
+    text <($value !== undefined)>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+bind text-filled
+  take value, like text
+  like boolean
+  case node
+    text <Boolean($value)>
+  case browser
+    text <Boolean($value)>
+  case rust
+    text <!$value.is_empty()>
+  case swift
+    text <!$value.isEmpty>
+  case kotlin
+    text <$value.isNotEmpty()>
+
+# a named, proven `a == b`, as its two sides print
+form lemma
+  link left, like text
+  link right, like text
+
+# a named, proven UNIVERSAL equation as a rewrite rule: `binder-count` leading universal binders, the sides quoted at
+# that depth
+form lemma-rule
+  link binder-count, like number
+  link lhs, like kernel-term
+  link rhs, like kernel-term
+
+form lemma-state
+  mark shared
+  link lemmas, like hash, like text, like lemma
+  link rules, like hash, like text, like lemma-rule
+  link theorems, like hash, like text, like boolean
+
+task new-lemma-state
+  take theorems, like hash, like text, like boolean
+  like lemma-state
+
+  back
+    make lemma-state
+      bind lemmas, make hash
+      bind rules, make hash
+      bind theorems, theorems
+
+# every constant a term names, in the order its fields are walked
+task constants-of
+  take term, like kernel-term
+  take into, like hash, like text, like boolean
+
+  sift term
+    case const
+      link name
+      into/set(name, true)
+    case pi
+      link domain
+      link codomain
+      constants-of(domain, into)
+      constants-of(codomain, into)
+    case sigma
+      link domain
+      link codomain
+      constants-of(domain, into)
+      constants-of(codomain, into)
+    case lam
+      link body
+      constants-of(body, into)
+    case self
+      link body
+      constants-of(body, into)
+    case app
+      link fun
+      link arg
+      constants-of(fun, into)
+      constants-of(arg, into)
+    case ann
+      link term
+      link type
+      constants-of(term, into)
+      constants-of(type, into)
+    case id
+      link type
+      link left
+      link right
+      constants-of(type, into)
+      constants-of(left, into)
+      constants-of(right, into)
+    case refl
+      link type
+      link value
+      constants-of(type, into)
+      constants-of(value, into)
+    case j
+      link proof
+      link motive
+      link base
+      constants-of(proof, into)
+      constants-of(motive, into)
+      constants-of(base, into)
+    case pair
+      link first
+      link second
+      constants-of(first, into)
+      constants-of(second, into)
+    case fst
+      link pair
+      constants-of(pair, into)
+    case snd
+      link pair
+      constants-of(pair, into)
+    miss
+      back
+
+task directed
+  take lhs, like kernel-term
+  take rhs, like kernel-term
+  like rewrite-rule
+  mark private
+
+  back
+    make rewrite-rule
+      bind binder-count, 0
+      bind lhs, lhs
+      bind rhs, rhs
+      bind holes, make hash
+
+# IS THIS GOAL AN INSTANCE OF A PROVEN EQUATION: both sides normalized with the equation's own operators kept folded,
+# and one rewrite by it, either way round and on either side, makes them identical
+task instance-of
+  take st, like judge-state
+  take level, like number
+  take left, like kernel-value
+  take right, like kernel-value
+  take rule, like lemma-rule
+  like boolean
+
+  save opaque-names, make hash
+  constants-of(rule/lhs, opaque-names)
+  constants-of(rule/rhs, opaque-names)
+  save opaque
+    task
+      take name, like text
+      like boolean
+      back opaque-names/has(name)
+  save sides, make list
+  push(sides, normal-term(st, level, left, opaque, 0))
+  push(sides, normal-term(st, level, right, opaque, 0))
+  save printed, make list
+  push(printed, show-term(get(sides, 0)))
+  push(printed, show-term(get(sides, 1)))
+  save forward
+    make rewrite-rule
+      bind binder-count, rule/binder-count
+      bind lhs, rule/lhs
+      bind rhs, rule/rhs
+      bind holes, make hash
+  save backward
+    make rewrite-rule
+      bind binder-count, rule/binder-count
+      bind lhs, rule/rhs
+      bind rhs, rule/lhs
+      bind holes, make hash
+  save rules, make list
+  push(rules, forward)
+  push(rules, backward)
+  walk rules
+    take one
+    save from, 0
+    walk test
+      hook test, is-below(from, 2)
+      hook hold
+        sift rewrite-once(get(sides, from), one)
+          case some
+            link rewritten
+            fork test, is-equal(show-term(rewritten), get(printed, subtract(1, from)))
+              hold
+                back true
+          case none
+            save from, from
+        save from, add(from, 1)
+  back false
+
+# check an explicit proof of `left == right`: `ok`, `fail`, `open` or `bad`
+task check-proof
+  take st, like judge-state
+  take ls, like lemma-state
+  take proof, like list, like proof
+  take level, like number
+  take left, like kernel-value
+  take right, like kernel-value
+  like text
+
+  fork test, is-equal(proof/length, 0)
+    hold
+      fork test, are-convertible(st, level, left, right)
+        hold
+          back <ok>
+      back <open>
+  # a sequence of top-level tactics is not lowered yet
+  fork test, is-above(proof/length, 1)
+    hold
+      back <open>
+  save tactic, get(proof, 0)
+  save here-left, show-term(quote(st, level, left))
+  save here-right, show-term(quote(st, level, right))
+  save arg, tactic/arg
+  save head, tactic/head
+  # `calm`, bare or `calm hold` / `calm miss`, settles by computation, and any other second word is refused
+  fork test, is-equal(head, <calm>)
+    hold
+      fork test, and(text-present(arg), and(is-unequal(arg, <hold>), is-unequal(arg, <miss>)))
+        hold
+          back <fail>
+      fork test, are-convertible(st, level, left, right)
+        hold
+          back <ok>
+      back <fail>
+  fork test, is-equal(head, <melt>)
+    hold
+      fork test, are-convertible(st, level, left, right)
+        hold
+          back <ok>
+      back <fail>
+  fork test, is-equal(head, <cite>)
+    hold
+      fork test, or(is-equal(text-filled(arg), false), is-equal(ls/lemmas/has(arg), false))
+        hold
+          fork test, and(text-filled(arg), ls/theorems/has(arg))
+            hold
+              back <open>
+          back <bad>
+      save lemma, ls/lemmas/get(arg)
+      fork test, and(is-equal(lemma/left, here-left), is-equal(lemma/right, here-right))
+        hold
+          back <ok>
+      fork test, and(is-equal(lemma/left, here-right), is-equal(lemma/right, here-left))
+        hold
+          back <ok>
+      fork test, ls/rules/has(arg)
+        hold
+          fork test, instance-of(st, level, left, right, ls/rules/get(arg))
+            hold
+              back <ok>
+      fork test, ls/theorems/has(arg)
+        hold
+          back <open>
+      back <fail>
+  fork test, is-equal(head, <turn>)
+    hold
+      fork test, or(is-equal(text-filled(arg), false), is-equal(ls/lemmas/has(arg), false))
+        hold
+          back <bad>
+      save lemma, ls/lemmas/get(arg)
+      fork test, and(is-equal(lemma/left, here-right), is-equal(lemma/right, here-left))
+        hold
+          back <ok>
+      back <fail>
+  fork test, is-equal(head, <link>)
+    hold
+      save steps, tactic/children
+      fork test, is-equal(steps/length, 0)
+        hold
+          back <fail>
+      save chain, make list
+      walk steps
+        take step
+        # only chains of `cite` are lowered
+        fork test, or(is-unequal(step/head, <cite>), is-equal(text-filled(step/arg), false))
+          hold
+            back <open>
+        fork test, is-equal(ls/lemmas/has(step/arg), false)
+          hold
+            back <bad>
+        push(chain, ls/lemmas/get(step/arg))
+      fork test, is-unequal(get(chain, 0)/left, here-left)
+        hold
+          back <fail>
+      save i, 0
+      walk test
+        hook test, is-below(i, subtract(chain/length, 1))
+        hook hold
+          fork test, is-unequal(get(chain, i)/right, get(chain, add(i, 1))/left)
+            hold
+              back <fail>
+          save i, add(i, 1)
+      fork test, is-equal(get(chain, subtract(chain/length, 1))/right, here-right)
+        hold
+          back <ok>
+      back <fail>
+  # a recognized but not-yet-lowered tactic (self / weld): fall back to the linear prover
+  back <open>

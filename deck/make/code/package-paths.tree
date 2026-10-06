@@ -1,0 +1,1156 @@
+# Module resolution shared by every front end (the CLI, the dev server, the language server): THE PACKAGE PATH RULE, a
+# manifest's code root, a module's top-level definitions, the completions under a partial `load` path, and the import
+# an unknown name is offered.
+#
+# Ported from resolve.ts (self-hosting, 2026-10-06), which stays as the face. It holds what reads the disk and the
+# process: `stat` and its cache, `readdir`, `realpath`, the walk up from its own file to the stdlib, the environment,
+# and each resolver as a closure. Every file this reads comes through a task handed in, called at the points the
+# original read it, so the reads are the same reads in the same order. The decisions:
+#   - node's posix `path.join`, `normalize` and `dirname` are written out here, `normalizeString` and all: a trailing
+#     slash kept, `..` above the root dropped for an absolute path and kept for a relative one, an empty result `.`
+#   - `localeCompare` is deck/lock's `locale-compare`
+#   - the regular expressions are written out by character: `.` is anything but a line terminator (`\n`, `\r`,
+#     U+2028, U+2029), and `\s` is JavaScript's (compile/main-entry `whitespace-code`)
+#
+# THE PACKAGE PATH RULE (note/term/plan/manifest-mark-and-code-root.md). A load of `@scope/name/<path>` names a file in
+# ONE package, with package root P (the directory holding its deck.tree) and code root C (what the manifest's
+# `code ./dir` names, `./code` when absent): try C/<path> by the usual file resolution (`.tree`, `/base.tree`,
+# `/note.tree`), otherwise P/<path>. `base <dir>` under the load forces the package root, and its value must be the
+# path's first segment. A bare package path names the package's entry: C/note.tree, C/base.tree, then the same two under
+# P. EVERY RESOLVER CALLS THIS, so when the rule changes, it changes here.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find char-code-at
+  find substring
+  find starts-with
+  find ends-with
+  find index-of
+  find last-index-of
+  find split
+  find contains
+
+load ./parser/tree
+  find node
+  find root-node
+  find parse
+  find render-head
+
+load ./parser/token
+  find token-source
+
+load ./compile/mill-running
+  find span-of-node
+
+load ./deck/resolve
+  find file-candidates
+  find base-refusal
+
+load ./deck/lock
+  find locale-compare
+
+load ./compile/main-entry
+  find whitespace-code
+
+# ---- node's posix path ----
+
+# `normalizeString`: the segments of a path with `.` dropped and `..` taking off the one before, a `..` that has nothing
+# to take off kept when `above-root` says so
+task normalize-string
+  take path, like text
+  take above-root, like boolean
+  like text
+  mark private
+
+  save res, <>
+  save last-segment-length, 0
+  save last-slash, -1
+  save dots, 0
+  save code, 0
+  save i, 0
+  walk test
+    hook test, is-maximum(i, path/length)
+    hook hold
+      save at-end, false
+      fork test, is-below(i, path/length)
+        hold
+          save code, char-code-at(path, i)
+        miss
+          fork test, is-equal(code, 47)
+            hold
+              halt
+          save code, 47
+      fork test, is-equal(code, 47)
+        hold
+          save skip, or(is-equal(last-slash, subtract(i, 1)), is-equal(dots, 1))
+          fork test, skip
+            hold
+              save skip, skip
+            miss
+              fork test, is-equal(dots, 2)
+                hold
+                  save handled, false
+                  save is-dot-dot, and(and(is-minimum(res/length, 2), is-equal(last-segment-length, 2)), and(is-equal(char-code-at(res, subtract(res/length, 1)), 46), is-equal(char-code-at(res, subtract(res/length, 2)), 46)))
+                  fork test, is-equal(is-dot-dot, false)
+                    hold
+                      fork test, is-above(res/length, 2)
+                        hold
+                          save last-slash-index, last-index-of(res, </>)
+                          fork test, is-equal(last-slash-index, -1)
+                            hold
+                              save res, <>
+                              save last-segment-length, 0
+                            miss
+                              save res, substring(res, 0, last-slash-index)
+                              save last-segment-length, subtract(subtract(res/length, 1), last-index-of(res, </>))
+                          save handled, true
+                        miss
+                          fork test, is-unequal(res/length, 0)
+                            hold
+                              save res, <>
+                              save last-segment-length, 0
+                              save handled, true
+                  fork test, is-equal(handled, false)
+                    hold
+                      fork test, above-root
+                        hold
+                          fork test, is-above(res/length, 0)
+                            hold
+                              save res, <{res}/..>
+                            miss
+                              save res, <..>
+                          save last-segment-length, 2
+                miss
+                  save segment, substring(path, add(last-slash, 1), i)
+                  fork test, is-above(res/length, 0)
+                    hold
+                      save res, <{res}/{segment}>
+                    miss
+                      save res, segment
+                  save last-segment-length, subtract(subtract(i, last-slash), 1)
+          save last-slash, i
+          save dots, 0
+        miss
+          fork test, and(is-equal(code, 46), is-unequal(dots, -1))
+            hold
+              save dots, add(dots, 1)
+            miss
+              save dots, -1
+      save i, add(i, 1)
+  back res
+
+# node's posix `path.normalize`
+task normalize-path
+  take path, like text
+  like text
+
+  fork test, is-equal(path/length, 0)
+    hold
+      back <.>
+  save absolute, starts-with(path, </>)
+  save trailing, ends-with(path, </>)
+  save body, normalize-string(path, not(absolute))
+  fork test, is-equal(body/length, 0)
+    hold
+      fork test, absolute
+        hold
+          back </>
+      fork test, trailing
+        hold
+          back <./>
+      back <.>
+  fork test, trailing
+    hold
+      save body, <{body}/>
+  fork test, absolute
+    hold
+      back </{body}>
+  back body
+
+# node's posix `path.join`: the non-empty parts joined by `/`, then normalized, `.` for none
+task join-paths
+  take parts, like list, like text
+  like text
+
+  save kept, make list
+  walk parts
+    take part
+    fork test, is-above(part/length, 0)
+      hold
+        push(kept, part)
+  fork test, is-equal(kept/length, 0)
+    hold
+      back <.>
+  back normalize-path(join(kept, </>))
+
+task join-two
+  take a, like text
+  take b, like text
+  like text
+
+  save parts, make list
+  push(parts, a)
+  push(parts, b)
+  back join-paths(parts)
+
+task join-three
+  take a, like text
+  take b, like text
+  take c, like text
+  like text
+
+  save parts, make list
+  push(parts, a)
+  push(parts, b)
+  push(parts, c)
+  back join-paths(parts)
+
+# node's posix `path.dirname`
+task dirname-of
+  take path, like text
+  like text
+
+  fork test, is-equal(path/length, 0)
+    hold
+      back <.>
+  save has-root, starts-with(path, </>)
+  save end, -1
+  save matched-slash, true
+  save i, subtract(path/length, 1)
+  walk test
+    hook test, is-minimum(i, 1)
+    hook hold
+      fork test, is-equal(char-code-at(path, i), 47)
+        hold
+          fork test, is-equal(matched-slash, false)
+            hold
+              save end, i
+              halt
+        miss
+          save matched-slash, false
+      save i, subtract(i, 1)
+  fork test, is-equal(end, -1)
+    hold
+      fork test, has-root
+        hold
+          back </>
+      back <.>
+  fork test, and(has-root, is-equal(end, 1))
+    hold
+      back <//>
+  back substring(path, 0, end)
+
+# ---- the package path rule ----
+
+# the file candidates for one path with no extension, in order: the entry of a package for an empty one
+task candidates-of
+  take base, like text
+  take rest, like text
+  like list, like text
+  mark private
+
+  fork test, is-equal(rest, <>)
+    hold
+      save out, make list
+      push(out, join-two(base, <note.tree>))
+      push(out, join-two(base, <base.tree>))
+      back out
+  back file-candidates(join-two(base, rest))
+
+# a node's head, when it is a group whose first node is a name
+task head-of
+  take given, like maybe, like node
+  like maybe, like text
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case group
+          link nodes
+          fork test, is-above(nodes/length, 0)
+            hold
+              save first, get(nodes, 0)
+              sift first
+                case name
+                  save head, render-head(first)
+                  back make(some, head)
+                miss
+                  back make none
+          back make none
+        miss
+          back make none
+    case none
+      back make none
+
+task node-at
+  take nodes, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      save found, get(nodes, at)
+      back make(some, found)
+  back make none
+
+task text-or-empty
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link found
+      back found
+    case none
+      back <>
+
+# a folder as a manifest writes it: one leading `./` and every trailing `/` taken off, `.` for the package itself
+task folder-of
+  take value, like text
+  like text
+  mark private
+
+  save dir, value
+  fork test, starts-with(dir, <./>)
+    hold
+      save dir, substring(dir, 2, dir/length)
+  walk test
+    hook test, ends-with(dir, </>)
+    hook hold
+      save dir, substring(dir, 0, subtract(dir/length, 1))
+  fork test, or(is-equal(dir, <>), is-equal(dir, <.>))
+    hold
+      back <.>
+  back dir
+
+task default-code-root
+  like text
+
+  back <code>
+
+# the code root a package's manifest names, relative to it: the argument of `code <path>` under the `deck` statement.
+# `code <0.0.1>` is the version's OLD spelling, told apart by FORM (a text literal is not a path), and `bear <path>` is
+# the older spelling of the same field. Absent means `code`
+task code-root-of-text
+  take text, like text
+  take file, like text
+  like text
+
+  save given
+    make token-source
+      bind file, file
+      bind text, text
+  save parsed, parse(given)
+  fork test, is-equal(parsed/ok, false)
+    hold
+      back default-code-root()
+  save top, make list
+  sift parsed/tree
+    case root
+      link nodes
+      save top, nodes
+  walk top
+    take statement
+    sift statement
+      case group
+        link members
+        save statement-head, text-or-empty(head-of(make(some, statement)))
+        fork test, is-unequal(statement-head, <deck>)
+          hold
+            turn next
+        save older, make none
+        walk members
+          take child
+          take index
+          fork test, is-equal(index, 0)
+            hold
+              turn next
+          sift child
+            case group
+              link child-nodes
+              save head, text-or-empty(head-of(make(some, child)))
+              fork test, and(is-unequal(head, <code>), is-unequal(head, <bear>))
+                hold
+                  turn next
+              # a path argument parses as a group; `code <1.4.2>` is a text node and is the version, not a folder
+              sift head-of(node-at(child-nodes, 1))
+                case some
+                  link written
+                  save dir, folder-of(written)
+                  fork test, is-equal(head, <code>)
+                    hold
+                      back dir
+                  sift older
+                    case none
+                      save older, make(some, dir)
+                    case some
+                      save older, older
+                case none
+                  turn next
+            miss
+              turn next
+        sift older
+          case some
+            link found
+            back found
+          case none
+            save older, older
+      miss
+        turn next
+  back default-code-root()
+
+# what a package path names: the file, a second file in the package root that the code root's file shadows, and why a
+# `base` was refused
+form package-hit
+  link file
+    like maybe, like text
+    need false
+  link shadowed
+    like maybe, like text
+    need false
+  link refused
+    like maybe, like text
+    need false
+
+task hit-of
+  take file, like maybe, like text
+  like package-hit
+  mark private
+
+  sift file
+    case some
+      back
+        make package-hit
+          bind file, file
+    case none
+      back make package-hit
+
+# the first candidate that exists, under one directory
+task first-of
+  take base, like text
+  take rest, like text
+  take exists
+    like task
+      take file, like text
+      like boolean
+  like maybe, like text
+  mark private
+
+  walk candidates-of(base, rest)
+    take candidate
+    fork test, exists(candidate)
+      hold
+        back make(some, candidate)
+  back make none
+
+task resolve-package-path
+  take dir, like text
+  take rest, like text
+  take base, like maybe, like text
+  take exists
+    like task
+      take file, like text
+      like boolean
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like package-hit
+
+  sift base
+    case some
+      link forced
+      save first, <>
+      save parts, split(rest, </>)
+      fork test, is-above(parts/length, 0)
+        hold
+          save first, get(parts, 0)
+      fork test, is-equal(first, forced)
+        hold
+          back hit-of(first-of(dir, rest, exists))
+      save refusal, base-refusal(<@/{rest}>, forced)
+      save refused, make(some, refusal)
+      back
+        make package-hit
+          bind refused, refused
+    case none
+      save code, code-root-of(dir)
+      save code-dir, dir
+      fork test, is-unequal(code, <.>)
+        hold
+          save code-dir, join-two(dir, code)
+      save in-package, first-of(dir, rest, exists)
+      fork test, is-equal(code-dir, dir)
+        hold
+          back hit-of(in-package)
+      save in-code-hit, first-of(code-dir, rest, exists)
+      sift in-code-hit
+        case some
+          link in-code
+          sift in-package
+            case some
+              link other
+              fork test, is-unequal(other, in-code)
+                hold
+                  back
+                    make package-hit
+                      bind file, in-code-hit
+                      bind shadowed, in-package
+            case none
+              save in-package, in-package
+          back hit-of(in-code-hit)
+        case none
+          back hit-of(in-package)
+
+# ---- the resolvers' own decisions ----
+
+# the stdlib's one name, and what a path names inside it: `@term/base/<rest>`, or `@term/base` alone for its entry
+task stdlib-rest
+  take path, like text
+  like maybe, like text
+
+  fork test, starts-with(path, <@term/base/>)
+    hold
+      save rest, substring(path, 11, path/length)
+      back make(some, rest)
+  fork test, is-equal(path, <@term/base>)
+    hold
+      back make(some, <>)
+  back make none
+
+task is-line-end
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+# whether a text holds no line terminator, as `.*` must to reach the end
+task one-line
+  take value, like text
+  like boolean
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      fork test, is-line-end(char-code-at(value, at))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# a package and the path inside it
+form package-in-tree
+  link pkg, like text
+  link rest, like text
+
+# `^@(?:term|cluesurf)\/([^/]+)(?:\/(.*))?$`: an in-tree package, by name, and the path after it
+task sibling-of
+  take path, like text
+  like maybe, like package-in-tree
+
+  save after, <>
+  fork test, starts-with(path, <@term/>)
+    hold
+      save after, substring(path, 6, path/length)
+    miss
+      fork test, starts-with(path, <@cluesurf/>)
+        hold
+          save after, substring(path, 10, path/length)
+        miss
+          back make none
+  save slash, index-of(after, </>)
+  fork test, is-below(slash, 0)
+    hold
+      fork test, is-equal(after/length, 0)
+        hold
+          back make none
+      save found
+        make package-in-tree
+          bind pkg, after
+          bind rest, <>
+      back make(some, found)
+  fork test, is-equal(slash, 0)
+    hold
+      back make none
+  save rest, substring(after, add(slash, 1), after/length)
+  fork test, is-equal(one-line(rest), false)
+    hold
+      back make none
+  save found
+    make package-in-tree
+      bind pkg, substring(after, 0, slash)
+      bind rest, rest
+  back make(some, found)
+
+# the deck root for a file: the nearest ancestor directory holding a `link/` dir or a `deck.tree` manifest
+task find-project-root
+  take from-file, like text
+  take exists
+    like task
+      take file, like text
+      like boolean
+  like maybe, like text
+
+  save dir, dirname-of(from-file)
+  walk test
+    hook test, true
+    hook hold
+      fork test, or(exists(join-two(dir, <link>)), exists(join-two(dir, <deck.tree>)))
+        hold
+          back make(some, dir)
+      save up, dirname-of(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back make none
+      save dir, up
+  back make none
+
+# ---- definitions ----
+
+# a module's top-level definition: its name, its kind, and the 0-based position of the name
+form module-export
+  link name, like text
+  link kind, like text
+  link line, like number
+  link column, like number
+
+task is-definition-kind
+  take kind, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(kind, <task>), is-equal(kind, <form>)), or(is-equal(kind, <mask>), is-equal(kind, <bind>)))
+
+# the top-level definitions a source declares, read with the parser. A file mid-edit does not parse, and then there are
+# no definitions to offer, which is what the editor wants anyway
+task scan-defs
+  take text, like text
+  like list, like module-export
+
+  save defs, make list
+  save given
+    make token-source
+      bind file, <\<scan\>>
+      bind text, text
+  save parsed, parse(given)
+  fork test, is-equal(parsed/ok, false)
+    hold
+      back defs
+  save top, make list
+  sift parsed/tree
+    case root
+      link nodes
+      save top, nodes
+  walk top
+    take group
+    sift group
+      case group
+        link members
+        save kind, <>
+        sift node-at(members, 0)
+          case some
+            link head
+            sift head
+              case name
+                save kind, render-head(head)
+              miss
+                turn next
+          case none
+            turn next
+        fork test, is-equal(is-definition-kind(kind), false)
+          hold
+            turn next
+        sift node-at(members, 1)
+          case some
+            link name-node
+            sift name-node
+              case group
+                link name-members
+                sift node-at(name-members, 0)
+                  case some
+                    link named
+                    sift named
+                      case name
+                        sift span-of-node(named)
+                          case some
+                            link span
+                            save found
+                              make module-export
+                                bind name, render-head(named)
+                                bind kind, kind
+                                bind line, span/start/line
+                                bind column, span/start/column
+                            push(defs, found)
+                          case none
+                            turn next
+                      miss
+                        turn next
+                  case none
+                    turn next
+              miss
+                turn next
+          case none
+            turn next
+      miss
+        turn next
+  back defs
+
+# the definition of `name` a file's text holds at top level. A text that does not contain the name cannot define it,
+# and is never parsed
+task definition-in-text
+  take text, like text
+  take name, like text
+  like maybe, like module-export
+
+  fork test, is-equal(contains(text, name), false)
+    hold
+      back make none
+  walk scan-defs(text)
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one)
+  back make none
+
+# `^(mark|note) draft\s*$` on any line: a shelved file
+task is-draft
+  take text, like text
+  like boolean
+
+  save start, 0
+  save at, 0
+  walk test
+    hook test, is-maximum(at, text/length)
+    hook hold
+      fork test, or(is-equal(at, text/length), is-line-end(char-code-at(text, at)))
+        hold
+          save line, substring(text, start, at)
+          fork test, or(starts-with(line, <mark draft>), starts-with(line, <note draft>))
+            hold
+              save tail, substring(line, 10, line/length)
+              save blank, true
+              save k, 0
+              walk test
+                hook test, and(blank, is-below(k, tail/length))
+                hook hold
+                  fork test, is-equal(whitespace-code(char-code-at(tail, k)), false)
+                    hold
+                      save blank, false
+                  save k, add(k, 1)
+              fork test, blank
+                hold
+                  back true
+          save start, add(at, 1)
+      save at, add(at, 1)
+  back false
+
+# ---- the shortest path, and an import for a name ----
+
+# a file of a package, the path from the package to it, and whether it is aside (a platform module, a test, a shelved
+# file): one an import should not prefer
+form defining-file
+  link path, like text
+  link rel, like text
+  link def, like module-export
+  link aside, like boolean
+  link depth, like number
+
+# a public module before one aside, then the shorter path, the package's own home for the name, then by path
+task file-order
+  take left, like defining-file
+  take right, like defining-file
+  like ordering
+  mark private
+
+  fork test, and(is-equal(left/aside, false), right/aside)
+    hold
+      back make less
+  fork test, and(left/aside, is-equal(right/aside, false))
+    hold
+      back make greater
+  fork test, is-below(left/depth, right/depth)
+    hold
+      back make less
+  fork test, is-above(left/depth, right/depth)
+    hold
+      back make greater
+  save sign, locale-compare(left/rel, right/rel)
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# a file found under a package
+form tree-file
+  link path, like text
+  link rel, like text
+
+# every file of a package that defines `name`, in the order an import should prefer them
+task definitions-in
+  take files, like list, like tree-file
+  take name, like text
+  take read-file
+    like task
+      take path, like text
+      like maybe, like text
+  like list, like defining-file
+  mark private
+
+  save found, make list
+  walk files
+    take file
+    sift read-file(file/path)
+      case some
+        link text
+        sift definition-in-text(text, name)
+          case some
+            link def
+            save segments, split(file/rel, </>)
+            save aside, or(or(contains-text(segments, <native>), contains-text(segments, <test>)), is-draft-read(read-file, file/path))
+            save one
+              make defining-file
+                bind path, file/path
+                bind rel, file/rel
+                bind def, def
+                bind aside, aside
+                bind depth, segments/length
+            push(found, one)
+          case none
+            turn next
+      case none
+        turn next
+  back sort(found, file-order)
+
+# whether a file is shelved, its text read again as the original read it
+task is-draft-read
+  take read-file
+    like task
+      take path, like text
+      like maybe, like text
+  take path, like text
+  like boolean
+  mark private
+
+  sift read-file(path)
+    case some
+      link text
+      back is-draft(text)
+    case none
+      back false
+
+task contains-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# the shortest load path for a file inside a package: `<code root>/<rest>` written as `<rest>` when the short path
+# resolves to the SAME file, which it does unless the package root holds a file the code root would shadow
+task short-rest
+  take pkg-dir, like text
+  take rel, like text
+  take file, like text
+  take exists
+    like task
+      take file, like text
+      like boolean
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like text
+
+  save code, code-root-of(pkg-dir)
+  fork test, or(is-equal(code, <.>), is-equal(starts-with(rel, <{code}/>), false))
+    hold
+      back rel
+  save short, substring(rel, add(code/length, 1), rel/length)
+  save none, make none
+  save hit, resolve-package-path(pkg-dir, short, none, exists, code-root-of)
+  sift hit/file
+    case some
+      link found
+      fork test, is-equal(found, file)
+        hold
+          back short
+    case none
+      back rel
+  back rel
+
+# a module an import of a name may come from, and the kind of its definition
+form import-offer
+  link import-path, like text
+  link kind, like text
+  link aside, like boolean
+
+# `@term` first, so a name is offered under the current scope, then by the host's collation
+task scope-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  fork test, and(is-equal(left, <@term>), is-unequal(right, <@term>))
+    hold
+      back make less
+  fork test, and(is-equal(right, <@term>), is-unequal(left, <@term>))
+    hold
+      back make greater
+  save sign, locale-compare(left, right)
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# a file's path from its package as a load path: the `.tree` taken off
+task load-rest
+  take rel, like text
+  like text
+  mark private
+
+  fork test, ends-with(rel, <.tree>)
+    hold
+      back substring(rel, 0, subtract(rel/length, 5))
+  back rel
+
+# what the walk of the disk answers, handed in by the face
+form package-disk
+  link exists
+    like task
+      take file, like text
+      like boolean
+  link code-root-of
+    like task
+      take dir, like text
+      like text
+  link read-file
+    like task
+      take path, like text
+      like maybe, like text
+  link read-dir
+    like task
+      take dir, like text
+      like maybe, like list, like text
+  link is-dir
+    like task
+      take path, like text
+      like boolean
+  link real-of
+    like task
+      take dir, like text
+      like text
+  link tree-files-in
+    like task
+      take dir, like text
+      like list, like tree-file
+  link stdlib-base
+    like task
+      like maybe, like text
+
+# every module of the stdlib and the project's `link/` packages that defines `name` at top level, as the import path to
+# load it by and the kind: the stdlib's first, then each package once, `@term` first. A module aside is offered only when
+# no public module defines the name
+task find-modules-exporting
+  take root, like text
+  take name, like text
+  take disk, like package-disk
+  like list, like import-offer
+
+  save found, make list
+  save stdlib, disk/stdlib-base()
+  sift stdlib
+    case some
+      link stdlib-dir
+      walk definitions-in(disk/tree-files-in(stdlib-dir), name, disk/read-file)
+        take one
+        save rel, load-rest(one/rel)
+        save offer
+          make import-offer
+            bind import-path, <@term/base/{short-rest(stdlib-dir, rel, one/path, disk/exists, disk/code-root-of)}>
+            bind kind, one/def/kind
+            bind aside, one/aside
+        push(found, offer)
+    case none
+      save found, found
+
+  save link-dir, join-two(root, <link>)
+  sift disk/read-dir(link-dir)
+    case some
+      link scopes
+      save seen, make hash
+      sift stdlib
+        case some
+          link stdlib-dir
+          seen/set(disk/real-of(stdlib-dir), true)
+        case none
+          save seen, seen
+      walk sort(scopes, scope-order)
+        take scope
+        fork test, is-equal(starts-with(scope, <@>), false)
+          hold
+            turn next
+        save scope-dir, join-two(link-dir, scope)
+        sift disk/read-dir(scope-dir)
+          case some
+            link pkgs
+            walk pkgs
+              take pkg
+              save pkg-base, join-two(scope-dir, pkg)
+              save real, disk/real-of(pkg-base)
+              fork test, or(seen/has(real), is-equal(disk/exists(join-two(pkg-base, <deck.tree>)), false))
+                hold
+                  turn next
+              seen/set(real, true)
+              walk definitions-in(disk/tree-files-in(pkg-base), name, disk/read-file)
+                take one
+                save rel, load-rest(one/rel)
+                save offer
+                  make import-offer
+                    bind import-path, <{scope}/{pkg}/{short-rest(pkg-base, rel, one/path, disk/exists, disk/code-root-of)}>
+                    bind kind, one/def/kind
+                    bind aside, one/aside
+                push(found, offer)
+          case none
+            turn next
+    case none
+      save found, found
+
+  # a module aside only when no public module defines the name
+  save open, make list
+  walk found
+    take one
+    fork test, is-equal(one/aside, false)
+      hold
+        push(open, one)
+  fork test, is-above(open/length, 0)
+    hold
+      back open
+  back found
+
+# ---- completions ----
+
+# an entry a partial load path can continue with: a folder, or a module by its name without `.tree`
+form completion
+  link name, like text
+  link is-dir, like boolean
+
+# the modules available under a partial `load` path, `@scope/pkg/sub/partial`: the entries of the package's
+# `sub/` directory, the code root first and then the package root, each name once. The stdlib needs no `link/` entry
+task module-completions
+  take root, like text
+  take partial, like text
+  take disk, like package-disk
+  like list, like completion
+
+  save out, make list
+  # `^(@[^/]+\/[^/]+)\/(.*)$`
+  fork test, is-equal(starts-with(partial, <@>), false)
+    hold
+      back out
+  save first-slash, index-of(partial, </>)
+  fork test, is-below(first-slash, 2)
+    hold
+      back out
+  save second-slash, index-of(partial, </>, add(first-slash, 1))
+  fork test, is-below(second-slash, add(first-slash, 2))
+    hold
+      back out
+  save pkg, substring(partial, 0, second-slash)
+  save rest, substring(partial, add(second-slash, 1), partial/length)
+  fork test, is-equal(one-line(rest), false)
+    hold
+      back out
+
+  save slash, last-index-of(rest, </>)
+  save sub-dir, <>
+  fork test, is-minimum(slash, 0)
+    hold
+      save sub-dir, substring(rest, 0, slash)
+  save linked-pkg, join-three(root, <link>, pkg)
+  save pkg-dir, linked-pkg
+  fork test, and(is-equal(pkg, <@term/base>), is-equal(disk/exists(linked-pkg), false))
+    hold
+      sift disk/stdlib-base()
+        case some
+          link stdlib-dir
+          save pkg-dir, stdlib-dir
+        case none
+          save pkg-dir, linked-pkg
+  save code, disk/code-root-of(pkg-dir)
+  save dirs, make list
+  push(dirs, join-three(pkg-dir, code, sub-dir))
+  save package-sub, join-two(pkg-dir, sub-dir)
+  fork test, is-unequal(package-sub, get(dirs, 0))
+    hold
+      push(dirs, package-sub)
+
+  save seen, make hash
+  walk dirs
+    take dir
+    sift disk/read-dir(dir)
+      case some
+        link entries
+        walk entries
+          take entry
+          fork test, starts-with(entry, <.>)
+            hold
+              turn next
+          save is-dir, disk/is-dir(join-two(dir, entry))
+          save name, <>
+          save named, false
+          fork test, is-dir
+            hold
+              save name, entry
+              save named, true
+            miss
+              fork test, ends-with(entry, <.tree>)
+                hold
+                  save name, substring(entry, 0, subtract(entry/length, 5))
+                  save named, true
+          fork test, is-equal(named, false)
+            hold
+              turn next
+          save key, <{name}:{is-dir}>
+          fork test, seen/has(key)
+            hold
+              turn next
+          seen/set(key, true)
+          save one
+            make completion
+              bind name, name
+              bind is-dir, is-dir
+          push(out, one)
+      case none
+        turn next
+  back out

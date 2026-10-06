@@ -1,0 +1,5190 @@
+# THE KOTLIN EMITTER: a statement, an expression, a type and a task's unchecked or reusing copy written as Kotlin
+# (compile/kotlin.ts says what each choice buys and when it was made).
+#
+# Ported from compile/kotlin.ts's `emitKotlin` (self-hosting, 2026-10-06). kotlin.ts stays the face: it runs the analyses
+# other modules answer, reads the program's forms into the tables below (compile/kotlin-facts.tree computes the ones
+# that were computed inside `emitKotlin`), asks this for each statement, and writes the module: its imports, the
+# preludes the recorded needs call for, the reused variants' spares, the copies, and the wake chain.
+#
+# What crosses, and how:
+#   - the program's tables as one `kotlin-facts`
+#   - every analysis answer keyed by a NODE (a proven step, a loop's guard, a place write, a reuse site, a redeclared
+#     `let`, a cursor read, a subject taken from its slot) as a test the face answers on its own maps
+#   - the emitter's mutable state (the needs, the loop copy being written, the task being written and what it holds) as
+#     one `mark shared` `kotlin-state`, which the face reads back
+#
+# The original wrote `fastCalls.has(node)` for the calls of the loop copy being written: here the loops whose fast copy
+# is being written are a stack, and the face is asked whether a call is one of a loop's. Its `currentFn`, set at each
+# task and never put back, is `current-fn`, and the per-task facts it restored after each task (the cursors, the
+# redeclared `let`s, the taken subjects) are asked of `scope-fn`, which is put back.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find char-code-at
+  find substring
+  find to-upper-case
+  find replace-all
+
+load ./node
+  find type
+  find expression
+  find statement
+  find field-value
+  find declared-param
+  find match-case
+  find expression-type
+  find binary-op
+  find assign-op
+  find unary-op
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./kotlin-names
+  find kotlin-camel
+  find kotlin-pascal
+  find kotlin-primitive
+  find collect-vars
+  find type-mentions
+  find sub-self
+  find float-literal
+  find is-decimal
+
+load ./kotlin-facts
+  find reuse-variant
+  find variant-array-facts
+  find holds-float
+  find local-spares
+  find let-types
+  find array-kind
+  find fixed-kind
+
+load ./backend-shapes
+  find collection-call
+  find collection-read
+  find collection-op
+  find string-call
+  find string-read
+  find string-op
+  find is-text
+  find text-valued
+  find reassigned
+  find has-valued-return
+  find swap-at
+  find form-spec
+  find form-spec-of
+  find spec-forms
+  find refuse-any
+  find record-field
+
+load ./backend-names
+  find names-in
+  find assigns-name
+  find text-append-of
+  find ascii-char-append
+  find map-update-of
+  find fill
+  find fill-call-of
+  find empty-text
+  find text-builders
+  find declared-later
+
+load ./backend-loops
+  find list-generator-at
+
+load ./type-text
+  find integer-text
+
+load ./bind
+  find render-bind
+  find bind-gap
+
+load ./tag
+  find tag-text
+
+load ./lowered-members
+  find list-length-tasks
+
+load ../check/arm
+  find arm-locals
+
+load ../ir/facts/guards
+  find list-key
+
+load ../term/quote
+  find json-quote
+
+# ---- what the face hands in ----
+
+# one bound a loop's guard checks (ir/facts/bounds.ts `BoundCheck`): `base + offset` against 0 or the list's size
+form bound-check
+  link list, like text
+  link base
+    like text
+    need false
+  link offset, like number
+  link side, like text
+  link path
+    like maybe, like expression
+    need false
+
+# a bound on a name the guard also reads (`Limit`)
+form bound-limit
+  link name, like text
+  link low
+    like boolean
+    need false
+  link high
+    like number
+    need false
+
+form loop-guard
+  link checks, like list, like bound-check
+  link limits
+    like list, like bound-limit
+    need false
+  # how many calls the guard lets the copy make unchecked
+  link fast-count, like number
+
+# a record written back to its slot, its changed fields assigned on the object already there (compile/place.ts)
+form place-write
+  link local, like text
+  link fields, like list, like field-value
+  link temps, like boolean
+
+# a mask a form wears, with the tasks it gives the mask
+form conformance
+  link mask, like text
+  link methods, like list, like text
+
+form kotlin-facts
+  link program, like list, like statement
+  # opaque per-backend handle types, seed name to Kotlin type
+  link opaque, like hash, like text, like text
+  # the forms whose tag the program reads as a field
+  link tagged, like hash, like text, like boolean
+  link generic-arity, like hash, like text, like number
+  link function-params, like hash, like text, like list, like declared-param
+  link binds, like hash, like text, like statement
+  # every struct form's declared fields
+  link record-fields, like hash, like text, like list, like record-field
+  link shared-forms, like hash, like text, like boolean
+  link union-forms, like hash, like text, like boolean
+  link float-forms, like hash, like text, like boolean
+  # the field names some write reaches: every other field is a `val`
+  link assigned-fields, like hash, like text, like boolean
+  link variant-class, like hash, like text, like text
+  link variant-class-of, like hash, like text, like hash, like text, like text
+  link variant-field-names, like hash, like text, like list, like text
+  link owned-field-names, like hash, like text, like list, like text
+  link mask-methods, like hash, like text, like boolean
+  link self-results, like hash, like text, like boolean
+  link type-parameters, like hash, like text, like boolean
+  # the fixed lists: each task's parameter positions, and its locals
+  link fixed-params, like hash, like text, like list, like number
+  link fixed-locals, like hash, like text, like list, like text
+  link reuse-variants, like hash, like text, like reuse-variant
+  link field-lists, like hash, like text, like boolean
+  link arrays, like variant-array-facts
+  link fills, like hash, like text, like fill
+  link conformances, like hash, like text, like list, like conformance
+  link instance-targets, like hash, like text, like list, like text
+  link impl-fns, like hash, like text, like statement
+  link exception-forms, like hash, like text, like boolean
+  link native-aliases, like hash, like text, like boolean
+  link hidden-generic, like hash, like text, like boolean
+  link async-fns, like hash, like text, like boolean
+  link bodied-tasks, like hash, like text, like boolean
+  link inline-tasks, like hash, like text, like boolean
+  link tail-calls, like hash, like text, like boolean
+  link copy-params, like hash, like text, like hash, like number, like boolean
+  link hive-tell, like boolean
+  # the analyses' answers about nodes, each asked of the face
+  link is-proven
+    like task
+      take node, like expression
+      like boolean
+  link loop-guard-of
+    like task
+      take node, like statement
+      like maybe, like loop-guard
+  link is-fast-in
+    like task
+      take node, like expression
+      take loop, like statement
+      like boolean
+  link copy-of-let
+    like task
+      take node, like statement
+      like boolean
+  link is-ascii
+    like task
+      take node, like expression
+      like boolean
+  link is-reuse-site
+    like task
+      take node, like expression
+      like boolean
+  link reuse-kept-of
+    like task
+      take node, like statement
+      like maybe, like text
+  link is-write-back
+    like task
+      take node, like statement
+      like boolean
+  link is-build
+    like task
+      take task-name, like text
+      take node, like expression
+      like boolean
+  link is-carrier
+    like task
+      take task-name, like text
+      take node, like expression
+      like boolean
+  link place-of
+    like task
+      take node, like statement
+      like maybe, like place-write
+  link is-redeclared
+    like task
+      take fn, like statement
+      take node, like statement
+      like boolean
+  link cursor-names
+    like task
+      take fn, like statement
+      like list, like text
+  link cursor-of
+    like task
+      take fn, like statement
+      take node, like expression
+      like maybe, like text
+  link is-taken
+    like task
+      take fn, like statement
+      take node, like expression
+      like boolean
+  link same-statement
+    like task
+      take left, like statement
+      take right, like statement
+      like boolean
+
+# ---- the emitter's state ----
+
+# set while a task's reusing copy is written: its record parameter, the task, and the field a carrier keeps alone
+form reusing
+  link param, like text
+  link task, like text
+  link keep, like text
+
+form kotlin-state
+  mark shared
+  # the prelude helpers the emitted text calls, each recorded where its call is written
+  link needs, like hash, like text, like boolean
+  # the loops whose fast copy is being written, innermost last, and the tasks some such call reached
+  link fast-loops, like list, like statement
+  link fast-tasks, like list, like text
+  link reuse-tasks, like list, like text
+  # set while a task's unchecked copy is written
+  link unchecked-ints, like boolean
+  # the lists the loop copy being written indexes with `toInt()`, by key, and the lists it read once before it
+  link int-lists, like list, like text
+  link hoisted, like hash, like text, like text
+  link path-count, like number
+  # the text locals of the task being written built only by appending
+  link builders, like list, like text
+  # the task being written, put back after it: its cursors, redeclared `let`s and taken subjects are asked of it
+  link scope-fn
+    like maybe, like statement
+  # the task last met, which a generator is checked against
+  link current-fn
+    like maybe, like statement
+  link reusing
+    like maybe, like reusing
+  link carrier-locals, like hash, like text, like text
+  # the names the task being written reassigns; none at module level
+  link fn-assigned
+    like maybe, like list, like text
+  link local-names, like hash, like text, like boolean
+  link suspend-context, like boolean
+  link awaiting, like boolean
+  link match-count, like number
+  link current-result
+    like maybe, like type
+  link scope-generics, like hash, like text, like boolean
+  # the forms a `fill` / `melt` with a form walks, gathered while the bodies are written
+  link fill-specs, like hash, like text, like form-spec
+  link melt-specs, like hash, like text, like form-spec
+  link var-names, like hash, like number, like text
+  # the primitive-array names of the task being written, each with its kind
+  link array-names, like hash, like text, like text
+  link walk-count, like number
+  link spares, like list, like text
+  link spare-temps, like number
+
+task new-kotlin-state
+  like kotlin-state
+
+  back
+    make kotlin-state
+      bind needs, make hash
+      bind fast-loops, make list
+      bind fast-tasks, make list
+      bind reuse-tasks, make list
+      bind unchecked-ints, false
+      bind int-lists, make list
+      bind hoisted, text-texts()
+      bind path-count, 0
+      bind builders, make list
+      bind scope-fn, make none
+      bind current-fn, make none
+      bind reusing, make none
+      bind carrier-locals, text-texts()
+      bind fn-assigned, make none
+      bind local-names, text-flags()
+      bind suspend-context, false
+      bind awaiting, false
+      bind match-count, 0
+      bind current-result, make none
+      bind scope-generics, text-flags()
+      bind fill-specs, make hash
+      bind melt-specs, make hash
+      bind var-names, make hash
+      bind array-names, text-texts()
+      bind walk-count, 0
+      bind spares, make list
+      bind spare-temps, 0
+
+# ---- small helpers ----
+
+task text-texts
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-texts
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+# the parts that are not empty, as `.filter(Boolean)` kept them
+task kept-texts
+  take parts, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk parts
+    take part
+    fork test, is-unequal(part, <>)
+      hold
+        push(out, part)
+  back out
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}    >
+      save at, add(at, 1)
+  back out
+
+task abs-of
+  take value, like number
+  like number
+  mark private
+
+  fork test, is-below(value, 0)
+    hold
+      back subtract(0, value)
+  back value
+
+task max-zero
+  take value, like number
+  like number
+  mark private
+
+  fork test, is-below(value, 0)
+    hold
+      back 0
+  back value
+
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 95)))
+
+# `^\w+$`
+task is-word-text
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      fork test, not(is-word-code(char-code-at(text, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# `^\d+$`
+task is-digits
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# `^[a-z]$`
+task is-one-letter
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(char-count(text), 1)
+    hold
+      back false
+  save code, char-code-at(text, 0)
+  back and(is-minimum(code, 97), is-maximum(code, 122))
+
+# every whole-word `word` in `text` (no word character either side) replaced, as `(?<!\w)word(?!\w)` did
+task replace-word
+  take text, like text
+  take word, like text
+  take with, like text
+  like text
+  mark private
+
+  save out, <>
+  save size, char-count(text)
+  save width, char-count(word)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save matched, false
+      fork test, and(is-maximum(add(at, width), size), is-equal(substring(text, at, add(at, width)), word))
+        hold
+          save before-ok, true
+          fork test, is-above(at, 0)
+            hold
+              save before-ok, not(is-word-code(char-code-at(text, subtract(at, 1))))
+          save after-ok, true
+          fork test, is-below(add(at, width), size)
+            hold
+              save after-ok, not(is-word-code(char-code-at(text, add(at, width))))
+          save matched, and(before-ok, after-ok)
+      fork test, matched
+        hold
+          save out, <{out}{with}>
+          save at, add(at, width)
+        miss
+          save out, <{out}{char-at(text, at)}>
+          save at, add(at, 1)
+  back out
+
+task contains-text
+  take text, like text
+  take part, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  save width, char-count(part)
+  save at, 0
+  walk test
+    hook test, is-maximum(add(at, width), size)
+    hook hold
+      fork test, is-equal(substring(text, at, add(at, width)), part)
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+task statement-handle-of
+  take node, like statement
+  like node-handle
+  mark private
+
+  back
+    make node-handle/statement-handle
+      bind node, node
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task is-variable
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case variable
+      back true
+    miss
+      back false
+
+# the variable names an expression reads
+task expression-names
+  take node, like expression
+  like list, like text
+  mark private
+
+  save roots, make list
+  push(roots, expression-handle-of(node))
+  back names-in(roots)
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <number>
+        case float
+          back <float>
+        case boolean
+          back <boolean>
+        case string
+          back <string>
+        case unit
+          back <unit>
+        case unknown
+          back <unknown>
+        case dynamic
+          back <dynamic>
+        case bytes
+          back <bytes>
+        case array
+          back <array>
+        case map
+          back <map>
+        case named
+          back <named>
+        case function
+          back <function>
+        case variable
+          back <variable>
+    case none
+      back <>
+
+task named-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link named-name
+          back named-name
+        miss
+          back <>
+    case none
+      back <>
+
+# the element type of a list type, none for any other
+task element-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          link element
+          back make(some, element)
+        miss
+          back make none
+    case none
+      back make none
+
+# a named type's arguments, copied: the list handed to a call would be written into the type where it was left out
+task type-args
+  take given, like maybe, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          walk read(args)
+            take one
+            push(out, one)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back out
+
+task expression-kind
+  take node, like expression
+  like text
+  mark private
+
+  back kind-of(expression-type(node))
+
+# an arm's `link` names, copied
+task arm-binds
+  take arm, like match-case
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  back out
+
+# whether the code being written may name `name` as a local
+task is-local
+  take name, like text
+  take st, like kotlin-state
+  like boolean
+  mark private
+
+  back st/local-names/has(name)
+
+# a prelude helper the emitted text calls, recorded where its call is written
+task need
+  take helper, like text
+  take code, like text
+  take st, like kotlin-state
+  like text
+  mark private
+
+  save st/needs/{helper}, true
+  back code
+
+task needs-add
+  take helper, like text
+  take st, like kotlin-state
+  mark private
+
+  save st/needs/{helper}, true
+
+task copy-flags
+  take given, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save out, text-flags()
+  walk given/keys()
+    take key
+    save out/{key}, given/get(key)
+  back out
+
+# ---- types ----
+
+# a checked type's Kotlin spelling
+task kotlin-type
+  take given, like maybe, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  sift given
+    case some
+      link known
+      sift known
+        case boolean
+          back <Boolean>
+        case string
+          back <String>
+        case unit
+          back <Unit>
+        # the stdlib list mutates in place, so it lowers to a mutable, reference-typed collection
+        case array
+          link element
+          back <MutableList\<{kotlin-type(make(some, element), st, facts)}\>>
+        case map
+          link key-type
+          link value-type
+          back <MutableMap\<{kotlin-type(make(some, key-type), st, facts)}, {kotlin-type(make(some, value-type), st, facts)}\>>
+        case named
+          link named-name
+          fork test, facts/opaque/has(named-name)
+            hold
+              back facts/opaque/get(named-name)
+          save primitive, kotlin-primitive(named-name)
+          fork test, is-unequal(primitive, <>)
+            hold
+              back primitive
+          save type-arguments, type-args(given)
+          fork test, is-above(type-arguments/length, 0)
+            hold
+              save spelled, make list
+              walk type-arguments
+                take one
+                push(spelled, kotlin-type(make(some, one), st, facts))
+              back <{kotlin-pascal(named-name)}\<{join-texts(spelled, <, >)}\>>
+          # a generic form named without its arguments: kotlin needs every parameter, so each is Any
+          save arity, 0
+          fork test, facts/generic-arity/has(named-name)
+            hold
+              save arity, facts/generic-arity/get(named-name)
+          fork test, is-above(arity, 0)
+            hold
+              save anys, make list
+              save at, 0
+              walk test
+                hook test, is-below(at, arity)
+                hook hold
+                  push(anys, <Any>)
+                  save at, add(at, 1)
+              back <{kotlin-pascal(named-name)}\<{join-texts(anys, <, >)}\>>
+          back kotlin-pascal(named-name)
+        # an async function value is a `suspend` function type
+        case function
+          link fn-params
+          link fn-result
+          save suspend, <>
+          walk read(effects)
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                save suspend, <suspend >
+          save spelled, make list
+          walk fn-params
+            take one
+            push(spelled, kotlin-type(make(some, one), st, facts))
+          back <{suspend}({join-texts(spelled, <, >)}) -\> {kotlin-type(make(some, fn-result), st, facts)}>
+        case number
+          back <Long>
+        case float
+          back <Double>
+        case dynamic
+          back <Any>
+        case bytes
+          back <ByteArray>
+        # a free variable not in this task's scope: nothing concrete ever met it, so the faithful type is `Any`
+        case variable
+          link var-id
+          fork test, st/var-names/has(var-id)
+            hold
+              back st/var-names/get(var-id)
+          back <Any>
+        case unknown
+          back <Any>
+    case none
+      back <Unit>
+
+# a type known to be there, spelled
+task kotlin-type-of
+  take known, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  back kotlin-type(make(some, known), st, facts)
+
+# a generic type parameter (`like t`), as opposed to a form the program declares
+task generic-letter
+  take given, like maybe, like type
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case variable
+          back true
+        case named
+          link named-name
+          back and(and(is-one-letter(named-name), is-equal(type-args(given)/length, 0)), not(facts/record-fields/has(named-name)))
+        miss
+          back false
+    case none
+      back false
+
+# a list whose element is an integer, known where it is built: held as `TermLongs`
+task long-list
+  take given, like maybe, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift element-of(given)
+    case some
+      link element
+      back is-equal(kotlin-type(make(some, element), st, facts), <Long>)
+    case none
+      back false
+
+# the empty value of a type: what a left-out field holds
+task empty-of
+  take given, like maybe, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back <"">
+        case boolean
+          back <false>
+        case number
+          back <0L>
+        case float
+          back <0.0>
+        case bytes
+          back <ByteArray(0)>
+        case array
+          fork test, long-list(given, st, facts)
+            hold
+              back need(<longs>, <mutableLongListOf()>, st)
+          back <mutableListOf()>
+        case map
+          back <mutableMapOf()>
+        case named
+          link named-name
+          fork test, is-equal(named-name, <text>)
+            hold
+              back <"">
+          fork test, is-equal(named-name, <boolean>)
+            hold
+              back <false>
+          fork test, or(is-equal(named-name, <number>), is-equal(named-name, <integer>))
+            hold
+              back <0L>
+          fork test, is-equal(named-name, <float>)
+            hold
+              back <0.0>
+          fork test, is-equal(named-name, <maybe>)
+            hold
+              back <MaybeNone>
+          fork test, is-equal(named-name, <list>)
+            hold
+              back <mutableListOf()>
+          fork test, is-equal(named-name, <hash>)
+            hold
+              back <mutableMapOf()>
+          back <0L>
+        miss
+          back <0L>
+    case none
+      back <0L>
+
+# a label several enums share: the class by owner, steered by the checked type, `''` for none
+task class-for
+  take label, like text
+  take given, like maybe, like type
+  take facts, like kotlin-facts
+  like text
+
+  save owner, named-of(given)
+  fork test, and(is-unequal(owner, <>), facts/variant-class-of/has(label))
+    hold
+      save by-owner, facts/variant-class-of/get(label)
+      fork test, by-owner/has(owner)
+        hold
+          back by-owner/get(owner)
+  fork test, facts/variant-class/has(label)
+    hold
+      back facts/variant-class/get(label)
+  back <>
+
+task named-type
+  take name, like text
+  like maybe, like type
+  mark private
+
+  save made
+    make type/named
+      bind name, name
+  back make(some, made)
+
+# a reused variant's class, which names its spares
+task spare-class
+  take label, like text
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save reused, facts/reuse-variants/get(label)
+  save cls, class-for(label, named-type(reused/form), facts)
+  fork test, is-equal(cls, <>)
+    hold
+      back <{kotlin-pascal(reused/form)}{kotlin-pascal(label)}>
+  back cls
+
+# a key whose own `equals` keeps `-0.0` apart from `0.0`: a float, or a list of them
+task folds-key
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case float
+          back true
+        case named
+          link named-name
+          fork test, is-equal(named-name, <float>)
+            hold
+              back true
+          fork test, is-equal(named-name, <list>)
+            hold
+              save type-arguments, type-args(given)
+              fork test, is-above(type-arguments/length, 0)
+                hold
+                  save first-item, get(type-arguments, 0)
+                  back folds-key(make(some, first-item))
+          back false
+        case array
+          link element
+          back folds-key(make(some, element))
+        miss
+          back false
+    case none
+      back false
+
+task key-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case map
+          link key-type
+          back make(some, key-type)
+        case named
+          link named-name
+          fork test, is-equal(named-name, <hash>)
+            hold
+              save type-arguments, type-args(given)
+              fork test, is-above(type-arguments/length, 0)
+                hold
+                  save first-key, get(type-arguments, 0)
+                  back make(some, first-key)
+          back make none
+        miss
+          back make none
+    case none
+      back make none
+
+# a map key folded to the one key it is (`termKey`), where it may be a float
+task key-text
+  take given, like maybe, like type
+  take text, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save key, key-of(given)
+  fork test, or(folds-key(key), generic-letter(key, facts))
+    hold
+      back need(<key>, <termKey({text})>, st)
+  back text
+
+# a data class's members for a form that holds a float: `equals` and `hashCode` by the key rule, `termValueEq` by IEEE
+task float-members
+  take cls, like text
+  take fields, like list, like text
+  take depth, like number
+  take st, like kotlin-state
+  like list, like text
+  mark private
+
+  needs-add(<key>, st)
+  save keyed, make list
+  save hashed, <17>
+  save valued, make list
+  walk fields
+    take one
+    push(keyed, <termKeyEq({one}, other.{one})>)
+    save hashed, <31 * ({hashed}) + termKeyHash({one})>
+    push(valued, <termEqual({one}, other.{one})>)
+  save keyed-text, join-texts(keyed, < && >)
+  fork test, is-equal(keyed-text, <>)
+    hold
+      save keyed-text, <true>
+  save valued-text, join-texts(valued, < && >)
+  fork test, is-equal(valued-text, <>)
+    hold
+      save valued-text, <true>
+  save out, make list
+  push(out, <{pad(add(depth, 1))}override fun equals(other: Any?): Boolean = other is {cls} && {keyed-text}>)
+  push(out, <{pad(add(depth, 1))}override fun hashCode(): Int = {hashed}>)
+  push(out, <{pad(add(depth, 1))}override fun termValueEq(other: Any?): Boolean = other is {cls} && {valued-text}>)
+  back out
+
+# a binding's type with every type argument nothing constrains written `Nothing`
+task spell-closed
+  take given, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save free, make list
+  collect-vars(make(some, given), free)
+  save saved, st/var-names
+  save widened, make hash
+  walk saved/keys()
+    take key
+    save widened/{key}, saved/get(key)
+  walk free
+    take id
+    fork test, not(saved/has(id))
+      hold
+        save widened/{id}, <Nothing>
+  save st/var-names, widened
+  save text, kotlin-type(make(some, given), st, facts)
+  save st/var-names, saved
+  back text
+
+# the primitive array a fixed list of this element is held as, `Object` for an `Array<T>`, `''` for none
+task fixed-kind-of
+  take given, like maybe, like type
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  back fixed-kind(given, facts/type-parameters)
+
+# a fixed list of this kind taken from a fresh task's result: one copy of the storage
+task to-array
+  take kind, like text
+  take list, like text
+  take st, like kotlin-state
+  like text
+  mark private
+
+  fork test, is-equal(kind, <Long>)
+    hold
+      back need(<longs>, <termLongArray({list})>, st)
+  fork test, is-equal(kind, <Object>)
+    hold
+      back <({list}).toTypedArray()>
+  back <({list}).to{kind}Array()>
+
+# the trait-bounded and implicit generics of a task, `<T, U : Sizer> ` or `''`, each inference variable given a letter
+task generic-clause
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      link fn-result-width
+      link fn-generics
+      save ids, make list
+      walk fn-params
+        take param
+        collect-vars(param/type, ids)
+      collect-vars(fn-result, ids)
+      save declared, make list
+      walk fn-generics
+        take generic
+        push(declared, to-upper-case(generic/name))
+      save pool, make list
+      walk split-letters(<T U V W X Y Z A B C>)
+        take letter
+        push(pool, letter)
+      save used, make list
+      walk declared
+        take one
+        push(used, one)
+      save st/var-names, make hash
+      save fresh, make list
+      walk ids
+        take id
+        save letter, <T{id}>
+        save found, false
+        walk pool
+          take candidate
+          fork test, and(not(found), not(has-text(used, candidate)))
+            hold
+              save letter, candidate
+              save found, true
+        push(used, letter)
+        save st/var-names/{id}, letter
+        push(fresh, <{letter} : Any>)
+      save named, make list
+      walk fn-params
+        take param
+        scan-named(param/type, named)
+      scan-named(fn-result, named)
+      save traits, text-texts()
+      walk fn-generics
+        take generic
+        save needed, generic/need
+        fork test, is-unequal(needed, <>)
+          hold
+            save traits/{to-upper-case(generic/name)}, kotlin-pascal(needed)
+      save all, make list
+      walk declared
+        take one
+        fork test, has-text(named, one)
+          hold
+            fork test, traits/has(one)
+              hold
+                push(all, <{one} : {traits/get(one)}>)
+              miss
+                push(all, one)
+      walk fresh
+        take one
+        push(all, one)
+      fork test, is-above(all/length, 0)
+        hold
+          back <\<{join-texts(all, <, >)}\> >
+      back <>
+    miss
+      back <>
+
+task split-letters
+  take letters, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save size, char-count(letters)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(letters, at)
+      fork test, is-unequal(one, < >)
+        hold
+          push(out, one)
+      save at, add(at, 1)
+  back out
+
+# every named type a signature mentions, upper-cased
+task scan-named
+  take given, like maybe, like type
+  take into, like list, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link named-name
+          add-text(into, to-upper-case(named-name))
+          walk type-args(given)
+            take one
+            scan-named(make(some, one), into)
+        case array
+          link element
+          scan-named(make(some, element), into)
+        case map
+          link key-type
+          link value-type
+          scan-named(make(some, key-type), into)
+          scan-named(make(some, value-type), into)
+        case function
+          link fn-params
+          link fn-result
+          walk fn-params
+            take one
+            scan-named(make(some, one), into)
+          scan-named(make(some, fn-result), into)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# a parameter's type with the receiver widened to the mask
+task widened-type
+  take given, like maybe, like type
+  take target, like text
+  take mask, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  back kotlin-type(sub-self(given, target, mask), st, facts)
+
+# an interface method requirement: the receiver is the implicit `this`, so the first parameter is dropped
+task interface-method
+  take found, like maybe, like statement
+  take target, like text
+  take mask, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift found
+    case some
+      link fn
+      sift fn
+        case function
+          link fn-name
+          link fn-params
+          link fn-body
+          link fn-result
+          save rest, make list
+          save at, 0
+          walk fn-params
+            take param
+            fork test, is-above(at, 0)
+              hold
+                push(rest, <{kotlin-camel(param/name)}: {widened-type(param/type, target, mask, st, facts)}>)
+            save at, add(at, 1)
+          save method-name, <>
+          sift read(method)
+            case some
+              link method-of
+              save method-name, method-of/name
+            case none
+              save nothing, 0
+          back <fun {kotlin-camel(method-name)}({join-texts(rest, <, >)}): {widened-type(fn-result, target, mask, st, facts)}>
+        miss
+          back <>
+    case none
+      back <>
+
+# an override that delegates to the free implementation, downcasting a receiver-typed parameter back to its form
+task override-method
+  take found, like maybe, like statement
+  take target, like text
+  take mask, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift found
+    case some
+      link fn
+      sift fn
+        case function
+          link fn-name
+          link fn-params
+          link fn-body
+          link fn-result
+          save rest, make list
+          save call-args, make list
+          push(call-args, <this>)
+          save at, 0
+          walk fn-params
+            take param
+            fork test, is-above(at, 0)
+              hold
+                push(rest, <{kotlin-camel(param/name)}: {widened-type(param/type, target, mask, st, facts)}>)
+                fork test, is-equal(named-of(param/type), target)
+                  hold
+                    push(call-args, <{kotlin-camel(param/name)} as {kotlin-pascal(target)}>)
+                  miss
+                    push(call-args, kotlin-camel(param/name))
+            save at, add(at, 1)
+          save method-name, <>
+          sift read(method)
+            case some
+              link method-of
+              save method-name, method-of/name
+            case none
+              save nothing, 0
+          back <override fun {kotlin-camel(method-name)}({join-texts(rest, <, >)}): {widened-type(fn-result, target, mask, st, facts)} \{ return {kotlin-camel(fn-name)}({join-texts(call-args, <, >)}) \}>
+        miss
+          back <>
+    case none
+      back <>
+
+# ---- expressions ----
+
+# an operand of a `Math.*Exact` call as a Long: an integer literal, a number variable or slot, integer arithmetic and a
+# call to a task the program defines with a body are one already; anything else is widened
+task long-of
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save number, is-equal(expression-kind(node), <number>)
+  save known, false
+  sift node
+    case integer
+      save known, true
+    case variable
+      save known, number
+    case member
+      link member-target
+      link member-name
+      sift read(index)
+        case some
+          save known, number
+        case none
+          save nothing, 0
+    case binary
+      save known, number
+    case call
+      link call-callee
+      save name, variable-name-of(call-callee)
+      fork test, and(is-unequal(name, <>), facts/bodied-tasks/has(name))
+        hold
+          save known, number
+    miss
+      save nothing, 0
+  fork test, known
+    hold
+      back kt-expr(node, st, facts)
+  back <({kt-expr(node, st, facts)}).toLong()>
+
+# the value answered by an untyped shim: a call to a Term task, or to a `dock load` module, awaited or not
+task is-call-value
+  take value, like expression
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  save call, value
+  sift value
+    case await
+      link awaited
+      save call, awaited
+    miss
+      save nothing, 0
+  sift call
+    case call
+      link call-callee
+      sift call-callee
+        case variable
+          link callee-name
+          back not(facts/native-aliases/has(callee-name))
+        case member
+          link member-target
+          save target-name, variable-name-of(member-target)
+          back and(is-unequal(target-name, <>), facts/native-aliases/has(target-name))
+        miss
+          back false
+    miss
+      back false
+
+# whether the call is one of a loop's fast calls, for a loop whose fast copy is being written
+task is-fast-call
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  walk st/fast-loops
+    take loop
+    fork test, facts/is-fast-in(node, loop)
+      hold
+        back true
+  back false
+
+# a callee renamed, for a task's copy (`<task>-reuse`, `<task>-fast`): a new call, so no analysis answer about the
+# original reaches it
+task renamed-call
+  take node, like expression
+  take suffix, like text
+  like expression
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      link call-span
+      link call-type
+      sift call-callee
+        case variable
+          link callee-name
+          link callee-span
+          link callee-type
+          save renamed
+            make expression/variable
+              bind name, <{callee-name}{suffix}>
+              bind span, callee-span
+              bind type, callee-type
+          save made
+            make expression/call
+              bind callee, renamed
+              bind args, call-args
+              bind span, call-span
+              bind type, call-type
+          back made
+        miss
+          back node
+    miss
+      back node
+
+task kt-all
+  take values, like list, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, kt-expr(one, st, facts))
+  back out
+
+# the item of a fill a construction can repeat: a literal or a name, which runs once per element
+task fill-item-ok
+  take item, like expression
+  like boolean
+  mark private
+
+  sift item
+    case variable
+      back true
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    miss
+      back false
+
+# a fill's size as an Int
+task fill-size
+  take size, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift size
+    case integer
+      link size-value
+      back <{max-zero(size-value)}>
+    miss
+      back <Math.toIntExact(maxOf({kt-expr(size, st, facts)}, 0L))>
+
+# A call to a task that only fills a list as one allocation: the primitive array itself where a fixed list of `kind`
+# takes it, an `Array<T>` for `Object`, a `MutableList` for none. `''` where the call is no such fill
+task filled
+  take node, like expression
+  take kind, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save found, make none
+  sift node
+    case call
+      link call-callee
+      save name, variable-name-of(call-callee)
+      fork test, and(is-unequal(name, <>), not(is-local(name, st)))
+        hold
+          save found, fill-call-of(node, facts/fills)
+    miss
+      save nothing, 0
+  sift found
+    case some
+      link fill
+      fork test, not(fill-item-ok(fill/item))
+        hold
+          back <>
+      save size, fill-size(fill/size, st, facts)
+      # a primitive array starts at its kind's zero, so a fill with that zero is the array alone
+      save zero, false
+      sift fill/item
+        case integer
+          link item-value
+          save zero, is-equal(item-value, 0)
+        case float
+          link item-value
+          save zero, is-equal(item-value, 0.0)
+        case boolean
+          link item-value
+          save zero, not(item-value)
+        miss
+          save nothing, 0
+      fork test, is-equal(kind, <Object>)
+        hold
+          back <Array({size}) \{ {kt-expr(fill/item, st, facts)} \}>
+      fork test, and(is-unequal(kind, <>), zero)
+        hold
+          back <{kind}Array({size})>
+      fork test, is-unequal(kind, <>)
+        hold
+          back <{kind}Array({size}) \{ {kt-expr(fill/item, st, facts)} \}>
+      back <MutableList({size}) \{ {kt-expr(fill/item, st, facts)} \}>
+    case none
+      back <>
+
+# a fill, else the list copied once into the array of `kind`
+task filled-or-array
+  take node, like expression
+  take kind, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save made, filled(node, kind, st, facts)
+  fork test, is-unequal(made, <>)
+    hold
+      back made
+  back to-array(kind, kt-expr(node, st, facts), st)
+
+# the text of a string, escaped for a Kotlin literal: a `$` would open a template
+task kotlin-string
+  take value, like text
+  like text
+  mark private
+
+  back replace-all(json-quote(value), <$>, <\\$>)
+
+task kt-expr
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  sift node
+    case integer
+      back <{integer-text(node)}L>
+    case float
+      link float-value
+      back float-literal(float-value)
+    case boolean
+      link boolean-value
+      fork test, boolean-value
+        hold
+          back <true>
+      back <false>
+    case string
+      link string-value
+      back kotlin-string(string-value)
+    case template
+      link template-parts
+      # one text value alone is that value, where the interpolation built a copy of it. Not a bare name
+      fork test, is-equal(template-parts/length, 1)
+        hold
+          save only, get(template-parts, 0)
+          sift only
+            case value
+              link alone
+              fork test, and(not(is-variable(alone)), text-valued(alone))
+                hold
+                  back kt-expr(alone, st, facts)
+            case chunk
+              save nothing, 0
+      save out, <>
+      walk template-parts
+        take part
+        sift part
+          case chunk
+            link chunk-value
+            save quoted, json-quote(chunk-value)
+            save inner, substring(quoted, 1, subtract(char-count(quoted), 1))
+            save out, <{out}{replace-all(inner, <$>, <\\$>)}>
+          case value
+            link part-value
+            fork test, is-equal(expression-kind(part-value), <float>)
+              hold
+                save out, <{out}{need(<number>, <$\{termNumber({kt-expr(part-value, st, facts)})\}>, st)}>
+              miss
+                save out, <{out}$\{{kt-expr(part-value, st, facts)}\}>
+      back <"{out}">
+    case unit
+      back <Unit>
+    case null
+      back <null>
+    case variable
+      link variable-name
+      fork test, and(facts/function-params/has(variable-name), not(is-local(variable-name, st)))
+        hold
+          back <::{kotlin-camel(variable-name)}>
+      # a text built by appending is a StringBuilder: read as its text
+      fork test, has-text(st/builders, variable-name)
+        hold
+          back <{kotlin-camel(variable-name)}.toString()>
+      back kotlin-camel(variable-name)
+    case hole
+      link hole-name
+      back kotlin-camel(hole-name)
+    case unary
+      link unary-op
+      link operand
+      # `-Long.MIN_VALUE` is MIN_VALUE again on the JVM: negateExact stops instead
+      fork test, and(is-equal(to-text(unary-op), <->), is-equal(expression-kind(operand), <number>))
+        hold
+          back <Math.negateExact({long-of(operand, st, facts)})>
+      back <{to-text(unary-op)}{kt-expr(operand, st, facts)}>
+    case binary
+      back kt-binary(node, st, facts)
+    case call
+      back kt-call(node, st, facts)
+    case array
+      link items
+      save args, <>
+      sift element-of(expression-type(node))
+        case some
+          link element
+          save spelled, false
+          fork test, is-equal(items/length, 0)
+            hold
+              save spelled, true
+          sift element
+            case function
+              save spelled, true
+            case named
+              link element-name
+              fork test, facts/union-forms/has(element-name)
+                hold
+                  save spelled, true
+            miss
+              save nothing, 0
+          fork test, spelled
+            hold
+              save args, <\<{kotlin-type(make(some, element), st, facts)}\>>
+        case none
+          save nothing, 0
+      # an empty one spelled `<Long>` is committed to its element, so it is the LongArray list
+      fork test, is-equal(args, <\<Long\>>)
+        hold
+          back need(<longs>, <mutableLongListOf()>, st)
+      back <mutableListOf{args}({join-texts(kt-all(items, st, facts), <, >)})>
+    case map
+      link entries
+      save args, <>
+      sift expression-type(node)
+        case some
+          link known
+          sift known
+            case map
+              link key-type
+              link value-type
+              save args, <\<{kotlin-type(make(some, key-type), st, facts)}, {kotlin-type(make(some, value-type), st, facts)}\>>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save rendered, make list
+      walk entries
+        take entry
+        save key, key-text(expression-type(node), kt-expr(entry/key, st, facts), st, facts)
+        push(rendered, <{key} to {kt-expr(entry/value, st, facts)}>)
+      back <mutableMapOf{args}({join-texts(rendered, <, >)})>
+    case record
+      back kt-record(node, st, facts)
+    case member
+      back kt-member(node, st, facts)
+    case await
+      link awaited
+      save st/awaiting, true
+      save operand, kt-expr(awaited, st, facts)
+      save st/awaiting, false
+      back operand
+    case closure
+      back kt-closure(node, st, facts)
+    case conditional
+      link branches
+      link otherwise
+      save text, <Unit>
+      sift otherwise
+        case some
+          link other
+          save text, kt-expr(other, st, facts)
+        case none
+          save nothing, 0
+      # the chain is built from the last branch back, as `reduceRight` built it
+      save at, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(at, 0)
+        hook hold
+          save branch, get(branches, at)
+          save cond, kt-expr(branch/cond, st, facts)
+          save value, kt-expr(branch/value, st, facts)
+          save text, <if ({cond}) {value} else {text}>
+          save at, subtract(at, 1)
+      back text
+
+task kt-binary
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case binary
+      link binary-op
+      link left
+      link right
+      save op-text, to-text(binary-op)
+      save numbers, and(is-equal(expression-kind(left), <number>), is-equal(expression-kind(right), <number>))
+      # a sum, difference or product of two numbers is the integer one or the program stops: `Math.*Exact` throws
+      save exact, <>
+      fork test, is-equal(op-text, <+>)
+        hold
+          save exact, <addExact>
+      fork test, is-equal(op-text, <->)
+        hold
+          save exact, <subtractExact>
+      fork test, is-equal(op-text, <*>)
+        hold
+          save exact, <multiplyExact>
+      fork test, and(and(is-unequal(exact, <>), numbers), and(not(facts/is-proven(node)), not(st/unchecked-ints)))
+        hold
+          back <Math.{exact}({long-of(left, st, facts)}, {long-of(right, st, facts)})>
+      # `Long.MIN_VALUE / -1` wraps on the JVM; termDivide stops on it as every backend does
+      fork test, and(is-equal(op-text, </>), numbers)
+        hold
+          fork test, or(st/unchecked-ints, facts/is-proven(node))
+            hold
+              back <({long-of(left, st, facts)} / {long-of(right, st, facts)})>
+          needs-add(<exception>, st)
+          back need(<divide>, <termDivide({long-of(left, st, facts)}, {long-of(right, st, facts)})>, st)
+      # a remainder by an unproven divisor raises the `defect` a division does
+      fork test, and(and(is-equal(op-text, <%>), numbers), and(not(st/unchecked-ints), not(facts/is-proven(node))))
+        hold
+          needs-add(<exception>, st)
+          needs-add(<divide>, st)
+          back need(<remainder>, <termRemainder({long-of(left, st, facts)}, {long-of(right, st, facts)})>, st)
+      # two texts order by code point
+      fork test, and(or(or(is-equal(op-text, <\<>), is-equal(op-text, <\>>)), or(is-equal(op-text, <\<=>), is-equal(op-text, <\>=>))), and(is-text(expression-type(left)), is-text(expression-type(right))))
+        hold
+          back need(<text>, <(TermText.compare({kt-expr(left, st, facts)}, {kt-expr(right, st, facts)}) {op-text} 0L)>, st)
+      # two values that hold a float compare by IEEE (`termEqual`)
+      save no-params, make list
+      fork test, and(or(is-equal(op-text, <==>), is-equal(op-text, <!=>)), and(is-unequal(expression-kind(left), <float>), holds-float(expression-type(left), no-params, facts/float-forms)))
+        hold
+          save negate, <>
+          fork test, is-equal(op-text, <!=>)
+            hold
+              save negate, <!>
+          back need(<key>, <{negate}termEqual({kt-expr(left, st, facts)}, {kt-expr(right, st, facts)})>, st)
+      back <({kt-expr(left, st, facts)} {op-text} {kt-expr(right, st, facts)})>
+    miss
+      back <>
+
+# ---- calls ----
+
+task kt-call
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case call
+      link call-callee
+      link call-args
+      save callee-name, variable-name-of(call-callee)
+      save named-callee, is-variable(call-callee)
+      # a call at a reuse site: the task's copy that builds its result in the object it is given
+      fork test, and(facts/is-reuse-site(node), named-callee)
+        hold
+          add-text(st/reuse-tasks, callee-name)
+          back kt-expr(renamed-call(node, <-reuse>), st, facts)
+      # a call to a task that only fills a list is the one allocation
+      fork test, and(and(named-callee, not(is-local(callee-name, st))), is-equal(expression-kind(node), <array>))
+        hold
+          sift fill-call-of(node, facts/fills)
+            case some
+              link fill
+              fork test, fill-item-ok(fill/item)
+                hold
+                  fork test, long-list(expression-type(node), st, facts)
+                    hold
+                      back need(<longs>, <termLongsFilled({kt-expr(fill/size, st, facts)}, {kt-expr(fill/item, st, facts)})>, st)
+                  back filled(node, <>, st, facts)
+            case none
+              save nothing, 0
+      # a call the guarded loop copy may make unchecked: the task's copy with no overflow checks
+      fork test, and(is-fast-call(node, st, facts), named-callee)
+        hold
+          add-text(st/fast-tasks, callee-name)
+          back kt-expr(renamed-call(node, <-fast>), st, facts)
+      # whether this call sits directly under `wait true`, read before the arguments render their own calls
+      save awaited, st/awaiting
+      save st/awaiting, false
+      # `fill` and `melt` with a form: a function per form, generated at the end of the module
+      fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
+        hold
+          sift read(into)
+            case some
+              link into-type
+              save spec, form-spec-of(into-type, facts/record-fields, make list)
+              sift refuse-any(spec, <Kotlin>)
+                case some
+                  link refused
+                  halt <{refused}>
+                case none
+                  save nothing, 0
+              save fills, is-equal(callee-name, <fill-form>)
+              save known, make list
+              fork test, fills
+                hold
+                  walk st/fill-specs/keys()
+                    take key
+                    push(known, key)
+                miss
+                  walk st/melt-specs/keys()
+                    take key
+                    push(known, key)
+              walk spec-forms(spec, known)
+                take one
+                fork test, fills
+                  hold
+                    save st/fill-specs/{one/form}, one
+                  miss
+                    save st/melt-specs/{one/form}, one
+              fork test, fills
+                hold
+                  needs-add(<exception>, st)
+                  back <__fill{kotlin-pascal(spec/form)}({kt-expr(get(call-args, 0), st, facts)}, "")>
+              back <__melt{kotlin-pascal(spec/form)}({kt-expr(get(call-args, 0), st, facts)})>
+            case none
+              save nothing, 0
+      # a declarative native binding renders its `case kotlin` template
+      fork test, and(named-callee, facts/binds/has(callee-name))
+        hold
+          save bound, facts/binds/get(callee-name)
+          # the code-point count of an ASCII text is its length
+          fork test, and(is-equal(callee-name, <code-point-count>), is-above(call-args/length, 0))
+            hold
+              fork test, facts/is-ascii(get(call-args, 0))
+                hold
+                  back <{kt-expr(get(call-args, 0), st, facts)}.length.toLong()>
+          sift render-bind(bound, <kotlin>, kt-all(call-args, st, facts))
+            case some
+              link rendered
+              back rendered
+            case none
+              back bind-gap(callee-name)
+      save first-array, false
+      fork test, is-above(call-args/length, 0)
+        hold
+          save first-array, st/array-names/has(variable-name-of(get(call-args, 0)))
+      # a push onto a list of `Long` passes the value unboxed
+      fork test, and(and(is-equal(callee-name, <list_push>), is-equal(call-args/length, 2)), named-callee)
+        hold
+          fork test, and(not(first-array), long-list(expression-type(get(call-args, 0)), st, facts))
+            hold
+              back need(<longs>, <termPushLong({kt-expr(get(call-args, 0), st, facts)}, {long-of(get(call-args, 1), st, facts)})>, st)
+      # the size of a fixed list is its own
+      fork test, and(and(named-callee, has-text(list-length-tasks(), callee-name)), first-array)
+        hold
+          back <{kt-expr(get(call-args, 0), st, facts)}.size.toLong()>
+      # a native map / list operation lowers to kotlin's collection API
+      sift collection-call(call-callee)
+        case some
+          link operation
+          back kt-collection(operation, call-args, st, facts)
+        case none
+          save nothing, 0
+      # a host string method lowers to TermText
+      sift string-call(call-callee)
+        case some
+          link text-op
+          back kt-string-call(node, text-op, call-args, st, facts)
+        case none
+          save nothing, 0
+      # a generic trait-method call lowers to an interface method call on the receiver
+      fork test, and(and(named-callee, facts/mask-methods/has(callee-name)), is-above(call-args/length, 0))
+        hold
+          save rest, make list
+          save at, 0
+          walk call-args
+            take arg
+            fork test, is-above(at, 0)
+              hold
+                push(rest, kt-expr(arg, st, facts))
+            save at, add(at, 1)
+          save receiver, kt-expr(get(call-args, 0), st, facts)
+          save called, <{receiver}.{kotlin-camel(callee-name)}({join-texts(rest, <, >)})>
+          fork test, facts/self-results/has(callee-name)
+            hold
+              sift expression-type(node)
+                case some
+                  link node-type
+                  back <({called} as {kotlin-type(make(some, node-type), st, facts)})>
+                case none
+                  save nothing, 0
+          back called
+      # a fixed list parameter takes its array as it is, and a fresh task's list converted once; a record passed to a
+      # task that writes its fields is the task's own copy
+      save task-callee, and(named-callee, not(is-local(callee-name, st)))
+      save fixed-at, make list
+      save copy-at, make hash
+      fork test, task-callee
+        hold
+          fork test, facts/fixed-params/has(callee-name)
+            hold
+              save fixed-at, facts/fixed-params/get(callee-name)
+          fork test, facts/copy-params/has(callee-name)
+            hold
+              save copy-at, facts/copy-params/get(callee-name)
+      save rendered, make list
+      save at, 0
+      walk call-args
+        take arg
+        save kind, <>
+        fork test, has-number(fixed-at, at)
+          hold
+            save kind, fixed-kind-of(element-of(expression-type(arg)), facts)
+        fork test, and(copy-at/has(at), not(is-record(arg)))
+          hold
+            push(rendered, <{kt-expr(arg, st, facts)}.copy()>)
+          miss
+            fork test, and(is-unequal(kind, <>), not(st/array-names/has(variable-name-of(arg))))
+              hold
+                push(rendered, filled-or-array(arg, kind, st, facts))
+              miss
+                push(rendered, kt-expr(arg, st, facts))
+        save at, add(at, 1)
+      # a trailing parameter left out still exists in the native signature: its type's empty value
+      fork test, and(task-callee, facts/function-params/has(callee-name))
+        hold
+          save declared, facts/function-params/get(callee-name)
+          save at, rendered/length
+          walk test
+            hook test, is-below(at, declared/length)
+            hook hold
+              save missing, get(declared, at)/type
+              save missing-kind, kind-of(missing)
+              fork test, or(is-equal(missing-kind, <>), is-equal(missing-kind, <unknown>))
+                hold
+                  push(rendered, <Unit>)
+                miss
+                  push(rendered, empty-of(missing, st, facts))
+              save at, add(at, 1)
+          # a generic value handed to an `unknown` parameter crosses as `Any` explicitly
+          save at, 0
+          walk call-args
+            take arg
+            fork test, is-below(at, declared/length)
+              hold
+                fork test, and(is-equal(kind-of(get(declared, at)/type), <unknown>), generic-letter(expression-type(arg), facts))
+                  hold
+                    save rendered/{at}, <({get(rendered, at)} as Any)>
+            save at, add(at, 1)
+      # a callee is called, never referenced
+      save callee-text, <>
+      fork test, named-callee
+        hold
+          save callee-text, kotlin-camel(callee-name)
+        miss
+          save callee-text, kt-expr(call-callee, st, facts)
+      # an async task called without `wait true` from code that cannot suspend runs on its own
+      fork test, and(and(task-callee, facts/async-fns/has(callee-name)), and(not(awaited), not(st/suspend-context)))
+        hold
+          back need(<start>, <termStart \{ {callee-text}({join-texts(rendered, <, >)}) \}>, st)
+      back <{callee-text}({join-texts(rendered, <, >)})>
+    miss
+      back <>
+
+task is-record
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case record
+      back true
+    miss
+      back false
+
+# a host string method on a text, through `TermText`, read by index where the text is ASCII and through its cursor
+# where the task reads it by position
+task kt-string-call
+  take node, like expression
+  take text-op, like string-op
+  take args, like list, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save op, text-op/op
+  save target, text-op/target
+  save cursor, <>
+  sift st/scope-fn
+    case some
+      link fn
+      sift facts/cursor-of(fn, node)
+        case some
+          link found
+          save cursor, found
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save sliced, or(is-equal(op, <substring>), is-equal(op, <slice>))
+  fork test, and(is-unequal(cursor, <>), sliced)
+    hold
+      save to, <Long.MAX_VALUE>
+      fork test, is-above(args/length, 1)
+        hold
+          save to, kt-expr(get(args, 1), st, facts)
+      back need(<text>, <TermText.cursorSlice({kt-expr(target, st, facts)}, {kt-expr(get(args, 0), st, facts)}, {to}, __cursor{kotlin-pascal(cursor)})>, st)
+  fork test, is-unequal(cursor, <>)
+    hold
+      save read-name, <cursorCharAt>
+      fork test, is-equal(op, <charCodeAt>)
+        hold
+          save read-name, <cursorCodeAt>
+      back need(<text>, <TermText.{read-name}({kt-expr(target, st, facts)}, {kt-expr(get(args, 0), st, facts)}, __cursor{kotlin-pascal(cursor)})>, st)
+  save ascii, facts/is-ascii(target)
+  fork test, and(ascii, or(or(is-equal(op, <charAt>), is-equal(op, <at>)), is-equal(op, <charCodeAt>)))
+    hold
+      save read-name, <asciiCharAt>
+      fork test, is-equal(op, <charCodeAt>)
+        hold
+          save read-name, <asciiCodeAt>
+      back need(<text>, <TermText.{read-name}({kt-expr(target, st, facts)}, {kt-expr(get(args, 0), st, facts)})>, st)
+  fork test, and(ascii, sliced)
+    hold
+      save parts, make list
+      push(parts, kt-expr(target, st, facts))
+      walk args
+        take arg
+        push(parts, kt-expr(arg, st, facts))
+      back need(<text>, <TermText.asciiSubstring({join-texts(parts, <, >)})>, st)
+  # a search of an ASCII text answers a unit index, which is the code-point index
+  fork test, and(ascii, is-equal(op, <indexOf>))
+    hold
+      save from, <0L>
+      fork test, is-above(args/length, 1)
+        hold
+          save from, kt-expr(get(args, 1), st, facts)
+      fork test, is-equal(from, <0L>)
+        hold
+          back <{kt-expr(target, st, facts)}.indexOf({kt-expr(get(args, 0), st, facts)}).toLong()>
+      back <{kt-expr(target, st, facts)}.let \{ h -\> h.indexOf({kt-expr(get(args, 0), st, facts)}, ({from}).coerceIn(0L, h.length.toLong()).toInt()).toLong() \}>
+  fork test, and(ascii, is-equal(op, <lastIndexOf>))
+    hold
+      back <{kt-expr(target, st, facts)}.lastIndexOf({kt-expr(get(args, 0), st, facts)}).toLong()>
+  save parts, make list
+  push(parts, kt-expr(target, st, facts))
+  walk args
+    take arg
+    push(parts, kt-expr(arg, st, facts))
+  back kt-string(op, parts, st)
+
+# The text operations count code points, so each goes through `TermText` in the prelude
+task kt-string
+  take op, like text
+  take parts, like list, like text
+  take st, like kotlin-state
+  like text
+  mark private
+
+  save method, op
+  fork test, is-equal(op, <at>)
+    hold
+      save method, <charAt>
+  back need(<text>, <TermText.{method}({join-texts(parts, <, >)})>, st)
+
+# a native map / list operation in kotlin's collection API, answering what the JS collection API answers
+task kt-collection
+  take op, like collection-op
+  take args, like list, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save target, kt-expr(op/target, st, facts)
+  save arg, kt-all(args, st, facts)
+  save target-type, expression-type(op/target)
+  save name, op/op
+  # a copy of an integer list is one too, built once into a LongArray
+  save longs, and(is-unequal(op/kind, <map>), long-list(target-type, st, facts))
+  fork test, is-equal(op/kind, <map>)
+    hold
+      save key, <>
+      fork test, is-above(arg/length, 0)
+        hold
+          save key, key-text(target-type, get(arg, 0), st, facts)
+      fork test, is-equal(name, <has>)
+        hold
+          back <{target}.containsKey({key})>
+      fork test, is-equal(name, <get>)
+        hold
+          back <{target}.getValue({key})>
+      fork test, is-equal(name, <set>)
+        hold
+          back <{target}.also \{ __m -\> __m.put({key}, {arg-at(arg, 1)}) \}>
+      fork test, is-equal(name, <delete>)
+        hold
+          back <({target}.remove({key}) != null)>
+      fork test, is-equal(name, <keys>)
+        hold
+          back <{target}.keys.toMutableList()>
+      fork test, is-equal(name, <values>)
+        hold
+          back <{target}.values.toMutableList()>
+      back <>
+  fork test, is-equal(name, <push>)
+    hold
+      back <{target}.also \{ __l -\> __l.add({arg-at(arg, 0)}) \}.size.toLong()>
+  fork test, is-equal(name, <pop>)
+    hold
+      back <{target}.run \{ removeAt(lastIndex) \}>
+  fork test, or(is-equal(name, <at>), is-equal(name, <get>))
+    hold
+      back <{target}[Math.toIntExact({arg-at(arg, 0)})]>
+  fork test, is-equal(name, <set>)
+    hold
+      back <run \{ {target}[Math.toIntExact({arg-at(arg, 0)})] = {arg-at(arg, 1)} \}>
+  fork test, is-equal(name, <includes>)
+    hold
+      back <{target}.contains({arg-at(arg, 0)})>
+  fork test, is-equal(name, <indexOf>)
+    hold
+      back <{target}.indexOf({arg-at(arg, 0)}).toLong()>
+  fork test, is-equal(name, <lastIndexOf>)
+    hold
+      back <{target}.lastIndexOf({arg-at(arg, 0)}).toLong()>
+  fork test, is-equal(name, <concat>)
+    hold
+      back <{copy-of(target, longs, st)}.also \{ __l -\> __l.addAll({arg-at(arg, 0)}) \}>
+  fork test, is-equal(name, <slice>)
+    hold
+      save end, <d.size>
+      fork test, is-above(arg/length, 1)
+        hold
+          save end, <({get(arg, 1)}).toInt()>
+      back <{target}.let \{ d -\> val x = ({arg-at(arg, 0)}).toInt().coerceIn(0, d.size); val y = ({end}).coerceIn(0, d.size); if (x \< y) {copy-of(<d.subList(x, y)>, longs, st)} else {copy-of(<d.subList(0, 0)>, longs, st)} \}>
+  fork test, is-equal(name, <toReversed>)
+    hold
+      back copy-of(<{target}.asReversed()>, longs, st)
+  fork test, is-equal(name, <join>)
+    hold
+      fork test, is-equal(kind-of(element-of(target-type)), <float>)
+        hold
+          back need(<number>, <{target}.joinToString({arg-at(arg, 0)}) \{ termNumber(it) \}>, st)
+      back <{target}.joinToString({arg-at(arg, 0)})>
+  fork test, is-equal(name, <map>)
+    hold
+      back <{target}.mapTo(ArrayList(), {arg-at(arg, 0)})>
+  fork test, is-equal(name, <filter>)
+    hold
+      fork test, longs
+        hold
+          back need(<longs>, <{target}.filterTo(mutableLongListOf(), {arg-at(arg, 0)})>, st)
+      back <{target}.filterTo(ArrayList(), {arg-at(arg, 0)})>
+  fork test, is-equal(name, <some>)
+    hold
+      back <{target}.any({arg-at(arg, 0)})>
+  fork test, is-equal(name, <every>)
+    hold
+      back <{target}.all({arg-at(arg, 0)})>
+  fork test, is-equal(name, <reduce>)
+    hold
+      back <{target}.fold({arg-at(arg, 1)}, {arg-at(arg, 0)})>
+  fork test, is-equal(name, <findIndex>)
+    hold
+      back <{target}.indexOfFirst({arg-at(arg, 0)}).toLong()>
+  fork test, is-equal(name, <flat>)
+    hold
+      fork test, is-equal(kind-of(element-of(target-type)), <array>)
+        hold
+          back <{target}.flatMapTo(ArrayList()) \{ it \}>
+      back <{target}.toMutableList()>
+  fork test, is-equal(name, <unshift>)
+    hold
+      back <{target}.also \{ __l -\> __l.add(0, {arg-at(arg, 0)}) \}.size.toLong()>
+  fork test, is-equal(name, <shift>)
+    hold
+      back <{target}.removeAt(0)>
+  fork test, is-equal(name, <splice>)
+    hold
+      save items, make list
+      save at, 0
+      walk arg
+        take one
+        fork test, is-minimum(at, 2)
+          hold
+            push(items, one)
+        save at, add(at, 1)
+      back <{target}.let \{ __l -\> val s = ({arg-at(arg, 0)}).toInt().coerceIn(0, __l.size); val c = ({arg-at(arg, 1)}).toInt().coerceIn(0, __l.size - s); __l.subList(s, s + c).clear(); __l.addAll(s, listOf({join-texts(items, <, >)})); 0L \}>
+  back <>
+
+# an argument's text, `undefined` past the end as the original's template wrote it
+task arg-at
+  take args, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, args/length)
+    hold
+      back get(args, at)
+  back <undefined>
+
+task copy-of
+  take of, like text
+  take longs, like boolean
+  take st, like kotlin-state
+  like text
+  mark private
+
+  fork test, longs
+    hold
+      back need(<longs>, <mutableLongListOf({of})>, st)
+  back <{of}.toMutableList()>
+
+# ---- constructions ----
+
+# whether a value is the empty list, as a literal or a `make list`
+task empty-list
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case array
+      link items
+      back is-equal(items/length, 0)
+    case record
+      link record-name
+      link record-fields
+      back and(is-equal(record-name, <list>), is-equal(record-fields/length, 0))
+    miss
+      back false
+
+task empty-hash
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case record
+      link record-name
+      link record-fields
+      back and(is-equal(record-name, <hash>), is-equal(record-fields/length, 0))
+    miss
+      back false
+
+# the declared type of a field of a struct form
+task record-field-type
+  take form-name, like text
+  take field-name, like text
+  take facts, like kotlin-facts
+  like maybe, like type
+  mark private
+
+  fork test, facts/record-fields/has(form-name)
+    hold
+      walk facts/record-fields/get(form-name)
+        take field
+        fork test, is-equal(field/name, field-name)
+          hold
+            back make(some, field/type)
+  back make none
+
+# the value of one field of a construction: an empty `make list` / `make hash` spells the DECLARED element type, a list
+# a variant holds as an array is made as one, and a list of integers a record owns as the `TermLongs` it is
+task kt-field-value
+  take record-name, like text
+  take field-name, like text
+  take value, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save key, <{record-name}/{field-name}>
+  fork test, facts/arrays/variant-arrays/has(key)
+    hold
+      save array, facts/arrays/variant-arrays/get(key)
+      save empty, empty-list(value)
+      # an `Array<T>` is made directly by every construction: empty, a fill, or a generator's own array
+      fork test, is-equal(array, <Object>)
+        hold
+          save element-text, <Any?>
+          fork test, facts/arrays/variant-field-types/has(record-name)
+            hold
+              save matched, false
+              walk facts/arrays/variant-field-types/get(record-name)
+                take field
+                fork test, and(not(matched), is-equal(field/name, field-name))
+                  hold
+                    save matched, true
+                    sift field/type
+                      case array
+                        link field-element
+                        save element-text, kotlin-type(make(some, field-element), st, facts)
+                      miss
+                        save nothing, 0
+          save found, make none
+          sift value
+            case call
+              link call-callee
+              fork test, is-variable(call-callee)
+                hold
+                  save found, fill-call-of(value, facts/fills)
+            miss
+              save nothing, 0
+          fork test, empty
+            hold
+              back <emptyArray\<{element-text}\>()>
+          sift found
+            case some
+              link fill
+              save size, fill-size(fill/size, st, facts)
+              back <Array\<{element-text}\>({size}) \{ {kt-expr(fill/item, st, facts)} \}>
+            case none
+              save nothing, 0
+          back kt-expr(value, st, facts)
+      fork test, empty
+        hold
+          back <{array}Array(0)>
+      back filled-or-array(value, array, st, facts)
+  # a generic form's declared element is its own type parameter, which the construction instantiates
+  fork test, facts/generic-arity/has(record-name)
+    hold
+      fork test, is-above(facts/generic-arity/get(record-name), 0)
+        hold
+          back kt-expr(value, st, facts)
+  save declared, record-field-type(record-name, field-name, facts)
+  fork test, facts/field-lists/has(key)
+    hold
+      back need(<longs>, <termLongs({kt-expr(value, st, facts)})>, st)
+  fork test, empty-list(value)
+    hold
+      sift element-of(declared)
+        case some
+          link element
+          fork test, long-list(declared, st, facts)
+            hold
+              back need(<longs>, <mutableLongListOf()>, st)
+          back <mutableListOf\<{kotlin-type(make(some, element), st, facts)}\>()>
+        case none
+          save nothing, 0
+  fork test, empty-hash(value)
+    hold
+      sift declared
+        case some
+          link known
+          sift known
+            case map
+              link key-type
+              link value-type
+              back <mutableMapOf\<{kotlin-type(make(some, key-type), st, facts)}, {kotlin-type(make(some, value-type), st, facts)}\>()>
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+  # a whole-number literal in a field declared a float is a Double: kotlin does not widen `1L` to one
+  sift value
+    case integer
+      link integer-value
+      fork test, is-decimal(declared)
+        hold
+          back <{integer-value}.0>
+    miss
+      save nothing, 0
+  back kt-expr(value, st, facts)
+
+# whether a type argument names a generic not in scope here (Kotlin infers those from the field values)
+task stray-generic
+  take given, like type
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link named-name
+      save type-arguments, type-args(make(some, given))
+      fork test, and(and(is-equal(type-arguments/length, 0), not(facts/generic-arity/has(named-name))), and(is-one-letter(named-name), not(st/scope-generics/has(to-upper-case(named-name)))))
+        hold
+          back true
+      walk type-arguments
+        take one
+        fork test, stray-generic(one, st, facts)
+          hold
+            back true
+      back false
+    case array
+      link element
+      back stray-generic(element, st, facts)
+    case map
+      link key-type
+      link value-type
+      back or(stray-generic(key-type, st, facts), stray-generic(value-type, st, facts))
+    miss
+      back false
+
+# an argument the checker left open: pinned, it reads `Any`
+task open-type
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case unknown
+      back true
+    case dynamic
+      back true
+    case variable
+      back true
+    miss
+      back false
+
+task kt-record
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case record
+      link record-name
+      link record-fields
+      # a build the reusing copy makes in the object it was given: every field computed first, then assigned on it
+      sift st/reusing
+        case some
+          link using
+          save build, make none
+          save build-is-node, false
+          fork test, and(is-unequal(using/keep, <>), facts/is-carrier(using/task, node))
+            hold
+              walk record-fields
+                take field
+                sift build
+                  case none
+                    fork test, facts/is-build(using/task, field/value)
+                      hold
+                        save build, make(some, field/value)
+                  case some
+                    save nothing, 0
+            miss
+              fork test, facts/is-build(using/task, node)
+                hold
+                  save build, make(some, node)
+                  save build-is-node, true
+          sift build
+            case some
+              link built
+              sift built
+                case record
+                  link built-name
+                  link built-fields
+                  save parts, make list
+                  save at, 0
+                  walk built-fields
+                    take field
+                    push(parts, <val __reuse{at} = {kt-expr(field/value, st, facts)}>)
+                    save at, add(at, 1)
+                  save at, 0
+                  walk built-fields
+                    take field
+                    push(parts, <{kotlin-camel(using/param)}.{kotlin-camel(field/name)} = __reuse{at}>)
+                    save at, add(at, 1)
+                  save answer, kotlin-camel(using/param)
+                  fork test, not(build-is-node)
+                    hold
+                      save kept-done, false
+                      walk record-fields
+                        take field
+                        fork test, and(not(kept-done), is-equal(field/name, using/keep))
+                          hold
+                            save kept-done, true
+                            save answer, kt-expr(field/value, st, facts)
+                  push(parts, answer)
+                  back <run \{ {join-texts(parts, <; >)} \}>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      save node-type, expression-type(node)
+      save no-fields, is-equal(record-fields/length, 0)
+      # `make hash` / `make list` with no binds are the native collections
+      fork test, and(is-equal(record-name, <hash>), no-fields)
+        hold
+          save args, <>
+          sift node-type
+            case some
+              link known
+              sift known
+                case map
+                  link key-type
+                  link value-type
+                  fork test, and(is-unequal(kind-of(make(some, key-type)), <variable>), is-unequal(kind-of(make(some, value-type)), <variable>))
+                    hold
+                      save args, <\<{kotlin-type(make(some, key-type), st, facts)}, {kotlin-type(make(some, value-type), st, facts)}\>>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          back <mutableMapOf{args}()>
+      fork test, and(is-equal(record-name, <list>), no-fields)
+        hold
+          # a still-FREE element stays unspelled, so kotlin infers it from the expected type at the use site
+          save args, <>
+          sift element-of(node-type)
+            case some
+              link element
+              fork test, is-unequal(kind-of(make(some, element)), <variable>)
+                hold
+                  save args, <\<{kotlin-type(make(some, element), st, facts)}\>>
+            case none
+              save nothing, 0
+          fork test, is-equal(args, <\<Long\>>)
+            hold
+              back need(<longs>, <mutableLongListOf()>, st)
+          back <mutableListOf{args}()>
+      # `make void` is the absent value: kotlin's Unit
+      fork test, and(is-equal(record-name, <void>), no-fields)
+        hold
+          back <Unit>
+      save cls, class-for(record-name, node-type, facts)
+      # a node of a reused variant is built in the spare a pop kept, when there is one
+      save reused-count, subtract(0, 1)
+      fork test, and(is-unequal(cls, <>), facts/reuse-variants/has(record-name))
+        hold
+          save reused-count, facts/reuse-variants/get(record-name)/fields/length
+      save rebuilt, is-equal(record-fields/length, reused-count)
+      save builder, cls
+      fork test, rebuilt
+        hold
+          save builder, <termReuse{cls}>
+      # in a task that keeps its own spare: every field computed first, then the spare taken and rebuilt, or a new node
+      fork test, and(rebuilt, has-text(st/spares, record-name))
+        hold
+          save k, st/spare-temps
+          save st/spare-temps, add(k, 1)
+          save temps, make list
+          save sets, make list
+          save fresh, make list
+          save at, 0
+          walk record-fields
+            take field
+            push(temps, <val __f{k}_{at} = {kt-field-value(record-name, field/name, field/value, st, facts)}>)
+            save at, add(at, 1)
+          save at, 0
+          walk record-fields
+            take field
+            push(sets, <__h{k}.{kotlin-camel(field/name)} = __f{k}_{at}>)
+            save at, add(at, 1)
+          save at, 0
+          walk record-fields
+            take field
+            push(fresh, <{kotlin-camel(field/name)} = __f{k}_{at}>)
+            save at, add(at, 1)
+          back <run \{ {join-texts(temps, <; >)}; val __h{k} = __spare{cls}; if (__h{k} != null) \{ __spare{cls} = null; {join-texts(sets, <; >)}; __h{k} \} else {cls}({join-texts(fresh, <, >)}) \}>
+      fork test, is-unequal(cls, <>)
+        hold
+          fork test, no-fields
+            hold
+              back cls
+          save given, make list
+          walk record-fields
+            take field
+            push(given, <{kotlin-camel(field/name)} = {kt-field-value(record-name, field/name, field/value, st, facts)}>)
+          back <{builder}({join-texts(given, <, >)})>
+      # a struct: a field the construction leaves out takes its type's empty value, so the data class is whole
+      fork test, facts/record-fields/has(record-name)
+        hold
+          save missing, make list
+          walk facts/record-fields/get(record-name)
+            take declared
+            save named, false
+            walk record-fields
+              take field
+              fork test, is-equal(field/name, declared/name)
+                hold
+                  save named, true
+            fork test, not(named)
+              hold
+                save empty, <>
+                fork test, facts/field-lists/has(<{record-name}/{declared/name}>)
+                  hold
+                    save empty, need(<longs>, <TermLongs(10)>, st)
+                  miss
+                    save empty, empty-of(make(some, declared/type), st, facts)
+                push(missing, <{kotlin-camel(declared/name)} = {empty}>)
+          # every given field is written here whether or not one is missing, as the original wrote them
+          save all, make list
+          walk record-fields
+            take field
+            push(all, <{kotlin-camel(field/name)} = {kt-field-value(record-name, field/name, field/value, st, facts)}>)
+          walk missing
+            take one
+            push(all, one)
+          fork test, is-above(missing/length, 0)
+            hold
+              back <{kotlin-pascal(record-name)}({join-texts(all, <, >)})>
+      # a generic struct built from empty collections cannot infer its parameters: pin them from the checked type,
+      # unless an argument names a generic not in scope here or the checker left one open
+      save args, <>
+      save type-arguments, type-args(node-type)
+      fork test, is-above(type-arguments/length, 0)
+        hold
+          save pinned, true
+          save spelled, make list
+          walk type-arguments
+            take one
+            fork test, or(stray-generic(one, st, facts), open-type(one))
+              hold
+                save pinned, false
+          fork test, pinned
+            hold
+              walk type-arguments
+                take one
+                push(spelled, kotlin-type(make(some, one), st, facts))
+              save args, <\<{join-texts(spelled, <, >)}\>>
+      save given, make list
+      walk record-fields
+        take field
+        push(given, <{kotlin-camel(field/name)} = {kt-field-value(record-name, field/name, field/value, st, facts)}>)
+      back <{kotlin-pascal(record-name)}{args}({join-texts(given, <, >)})>
+    miss
+      back <>
+
+# ---- members ----
+
+task hash-size
+  take given, like hash, like text, like text
+  like number
+  mark private
+
+  save count, 0
+  walk given/keys()
+    take key
+    save count, add(count, 1)
+  back count
+
+task key-or-empty
+  take node, like expression
+  like text
+  mark private
+
+  sift list-key(node)
+    case some
+      link key
+      back key
+    case none
+      back <>
+
+# a path `r/field` to a list of integers the record owns
+task owned-path
+  take target, like expression
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift target
+    case member
+      link member-target
+      link member-name
+      sift read(index)
+        case some
+          back false
+        case none
+          save owner, named-of(expression-type(member-target))
+          back and(is-unequal(owner, <>), facts/field-lists/has(<{owner}/{member-name}>))
+    miss
+      back false
+
+task kt-member
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      # a form's tag read as a field: its case's name, from the property the sealed class is given
+      fork test, is-unequal(read(tag), <>)
+        hold
+          back <{kt-expr(member-target, st, facts)}.termTag>
+      save member-index, read(index)
+      save indexed, false
+      sift member-index
+        case some
+          save indexed, true
+        case none
+          save nothing, 0
+      # the kept field of a carrier that holds it alone
+      save target-name, variable-name-of(member-target)
+      fork test, and(and(is-unequal(target-name, <>), not(indexed)), st/carrier-locals/has(target-name))
+        hold
+          fork test, is-equal(st/carrier-locals/get(target-name), member-name)
+            hold
+              back kotlin-camel(target-name)
+      # a list reached through a path that this loop copy read once before it
+      fork test, and(and(is-above(hash-size(st/hoisted), 0), not(indexed)), is-equal(expression-kind(node), <array>))
+        hold
+          save key, key-or-empty(node)
+          fork test, st/hoisted/has(key)
+            hold
+              back st/hoisted/get(key)
+      # `map.size` / `array.length` lower to the platform's count property, as a Long
+      sift collection-read(node)
+        case some
+          link read-op
+          back <{kt-expr(read-op/target, st, facts)}.size.toLong()>
+        case none
+          save nothing, 0
+      sift string-read(node)
+        case some
+          link length-op
+          back need(<text>, <TermText.length({kt-expr(length-op/target, st, facts)})>, st)
+        case none
+          save nothing, 0
+      sift member-index
+        case some
+          link index-node
+          # a list subscript takes Int: toIntExact stops on an index past Int; inside a guarded copy it narrows plainly
+          save inside, and(is-above(st/int-lists/length, 0), has-text(st/int-lists, key-or-empty(member-target)))
+          save index-text, kt-expr(index-node, st, facts)
+          save narrowed, index-text
+          fork test, is-equal(expression-kind(member-target), <array>)
+            hold
+              fork test, inside
+                hold
+                  fork test, is-word-text(index-text)
+                    hold
+                      save narrowed, <{index-text}.toInt()>
+                    miss
+                      save narrowed, <({index-text}).toInt()>
+                miss
+                  save narrowed, <Math.toIntExact({index-text})>
+          # a list of integers a record owns is read past the generic List signature
+          fork test, owned-path(member-target, facts)
+            hold
+              fork test, inside
+                hold
+                  back <{kt-expr(member-target, st, facts)}.data[{narrowed}]>
+              back <{kt-expr(member-target, st, facts)}.getLong({narrowed})>
+          back <{kt-expr(member-target, st, facts)}[{narrowed}]>
+        case none
+          save nothing, 0
+      # a LITERAL index segment on an array target subscripts it
+      fork test, and(is-digits(member-name), is-equal(expression-kind(member-target), <array>))
+        hold
+          back <{kt-expr(member-target, st, facts)}[{member-name}]>
+      back <{kt-expr(member-target, st, facts)}.{kotlin-camel(member-name)}>
+    miss
+      back <>
+
+# ---- closures ----
+
+# whether a return stands anywhere under this node outside a closure of its own
+task deep-return
+  take handle, like node-handle
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case return
+          back true
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          back false
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    fork test, deep-return(child)
+      hold
+        back true
+  back false
+
+task kt-closure
+  take node, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case closure
+      link closure-params
+      link closure-body
+      walk closure-params
+        take param
+        save st/local-names/{param/name}, true
+      # a closure's body suspends when the closure is async, whatever the task around it does
+      save outer-suspend, st/suspend-context
+      save st/suspend-context, read(async)
+      save count, closure-body/length
+      # a body with a return anywhere but its end cannot be a lambda: it lowers to an anonymous function
+      save non-tail, false
+      save at, 0
+      walk closure-body
+        take one
+        fork test, is-below(at, subtract(count, 1))
+          hold
+            fork test, deep-return(statement-handle-of(one))
+              hold
+                save non-tail, true
+          miss
+            sift one
+              case return
+                save nothing, 0
+              miss
+                fork test, deep-return(statement-handle-of(one))
+                  hold
+                    save non-tail, true
+        save at, add(at, 1)
+      save closure-result, read(result)
+      sift closure-result
+        case some
+          save nothing, 0
+        case none
+          sift expression-type(node)
+            case some
+              link known
+              sift known
+                case function
+                  link fn-params
+                  link fn-result
+                  save closure-result, make(some, fn-result)
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+      fork test, non-tail
+        hold
+          save typed, make list
+          walk closure-params
+            take param
+            push(typed, <{kotlin-camel(param/name)}: {kotlin-type(param/type, st, facts)}>)
+          save result-text, <>
+          sift closure-result
+            case some
+              link known
+              save result-text, <: {kotlin-type(make(some, known), st, facts)}>
+            case none
+              save nothing, 0
+          save lines, make list
+          walk closure-body
+            take one
+            push(lines, kt-statement(one, 1, st, facts))
+          save st/suspend-context, outer-suspend
+          back <fun({join-texts(typed, <, >)}){result-text} \{\n{join-texts(kept-texts(lines), <\n>)}\n\}>
+      save names, make list
+      walk closure-params
+        take param
+        push(names, kotlin-camel(param/name))
+      save parts, make list
+      save at, 0
+      walk closure-body
+        take one
+        fork test, is-below(at, subtract(count, 1))
+          hold
+            push(parts, kt-statement(one, 0, st, facts))
+        save at, add(at, 1)
+      save tail, <>
+      fork test, is-above(count, 0)
+        hold
+          save last, get(closure-body, subtract(count, 1))
+          save done, false
+          sift last
+            case return
+              link return-value
+              sift return-value
+                case some
+                  link returned
+                  save done, true
+                  save as-any, false
+                  sift closure-result
+                    case some
+                      link known
+                      sift known
+                        case unknown
+                          save as-any, generic-letter(expression-type(returned), facts)
+                        miss
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+                  fork test, as-any
+                    hold
+                      save tail, <({kt-expr(returned, st, facts)} as Any)>
+                    miss
+                      save tail, kt-expr(returned, st, facts)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          fork test, not(done)
+            hold
+              save tail, kt-statement(last, 0, st, facts)
+      push(parts, tail)
+      save st/suspend-context, outer-suspend
+      back <\{ {join-texts(names, <, >)} -\> {join-texts(kept-texts(parts), <; >)} \}>
+    miss
+      back <>
+
+# ---- blocks ----
+
+task is-array-generator
+  take node, like statement
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  walk facts/arrays/array-generators
+    take one
+    fork test, facts/same-statement(one, node)
+      hold
+        back true
+  back false
+
+task kt-block
+  take body, like list, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  save lines, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, body/length)
+    hook hold
+      # the three-statement swap of two slots is `Collections.swap`, which checks both indexes before it writes; a
+      # LongArray has none, so its own three statements
+      sift swap-at(body, at)
+        case some
+          link swap
+          fork test, st/array-names/has(variable-name-of(swap/list))
+            hold
+              push(lines, <{pad(depth)}{kt-statement(get(body, at), depth, st, facts)}>)
+              save at, add(at, 1)
+              turn next
+          push(lines, <{pad(depth)}java.util.Collections.swap({kt-expr(swap/list, st, facts)}, Math.toIntExact({kt-expr(swap/first, st, facts)}), Math.toIntExact({kt-expr(swap/second, st, facts)}))>)
+          save at, add(at, 3)
+          turn next
+        case none
+          save nothing, 0
+      # a list generated by a counted loop, made at its size in one construction
+      save found, make none
+      sift st/current-fn
+        case some
+          link fn
+          save found, list-generator-at(body, at, fn)
+        case none
+          save nothing, 0
+      sift found
+        case some
+          link generator
+          save fixed-as, <>
+          fork test, st/array-names/has(generator/list)
+            hold
+              save fixed-as, st/array-names/get(generator/list)
+          fork test, or(is-unequal(fixed-as, <>), not(long-list(make(some, generator/type), st, facts)))
+            hold
+              save size, <>
+              sift generator/bound
+                case integer
+                  link bound-value
+                  save size, <{max-zero(subtract(bound-value, generator/base))}>
+                miss
+                  save less, <>
+                  fork test, is-unequal(generator/base, 0)
+                    hold
+                      save less, < - {generator/base}L>
+                  save size, <Math.toIntExact(maxOf({kt-expr(generator/bound, st, facts)}{less}, 0L))>
+              save counter, kotlin-camel(generator/counter)
+              save binds, has-text(expression-names(generator/item), generator/counter)
+              save st/local-names/{generator/list}, true
+              save item, kt-expr(generator/item, st, facts)
+              save element, kotlin-type(element-of(make(some, generator/type)), st, facts)
+              save at-zero, <__g.toLong() + {generator/base}L>
+              fork test, is-equal(generator/base, 0)
+                hold
+                  save at-zero, <__g.toLong()>
+              save lambda, <\{ {item} \}>
+              fork test, binds
+                hold
+                  save lambda, <\{ __g -\> val {counter} = {at-zero}; {item} \}>
+              save made, <MutableList\<{element}\>({size}) {lambda}>
+              fork test, and(is-unequal(fixed-as, <>), is-unequal(fixed-as, <Object>))
+                hold
+                  save made, <{fixed-as}Array({size}) {lambda}>
+                miss
+                  fork test, or(is-equal(fixed-as, <Object>), is-array-generator(get(body, at), facts))
+                    hold
+                      save made, <Array\<{element}\>({size}) {lambda}>
+              push(lines, <{pad(depth)}val {kotlin-camel(generator/list)} = {made}>)
+              save at, add(at, 3)
+              turn next
+        case none
+          save nothing, 0
+      # a list made empty and then filled by a counted loop is made at the size the loop fills it to
+      sift reserve-at(body, at, st, facts)
+        case some
+          link reserve
+          save st/local-names/{reserve/list}, true
+          push(lines, <{pad(depth)}val {kotlin-camel(reserve/list)}: MutableList\<{reserve/element}\> = {reserve/made}>)
+          save at, add(at, 1)
+          turn next
+        case none
+          save nothing, 0
+      push(lines, <{pad(depth)}{kt-statement(get(body, at), depth, st, facts)}>)
+      save at, add(at, 1)
+  back join-texts(lines, <\n>)
+
+form reserve
+  link list, like text
+  link element, like text
+  link made, like text
+
+# whether a value is the empty list, as a literal or a `make list`
+task is-redeclared-here
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift st/scope-fn
+    case some
+      link fn
+      back facts/is-redeclared(fn, node)
+    case none
+      back false
+
+# A list made empty and then filled by a counted loop later in the same block, `while (i < n)` with `i` from a literal
+# and k pushes onto it among the loop's own statements, is made with room for k * (n - base), clamped to [0, 2^20]
+task reserve-at
+  take body, like list, like statement
+  take at, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like maybe, like reserve
+  mark private
+
+  sift st/current-fn
+    case some
+      link current
+      back reserve-in(body, at, current, st, facts)
+    case none
+      back make none
+
+task reserve-in
+  take body, like list, like statement
+  take at, like number
+  take fn, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like maybe, like reserve
+  mark private
+
+  save made, get(body, at)
+  sift made
+    case let
+      link made-name
+      link made-init
+      link made-mutable
+      link made-span
+      link made-type
+      save element-type, element-of(made-type)
+      sift element-type
+        case some
+          link element
+          sift element
+            case variable
+              back make none
+            miss
+              save nothing, 0
+        case none
+          back make none
+      fork test, not(empty-list(made-init))
+        hold
+          back make none
+      fork test, or(or(is-redeclared-here(made, st, facts), st/array-names/has(made-name)), has-text(st/builders, made-name))
+        hold
+          back make none
+      sift facts/reuse-kept-of(made)
+        case some
+          back make none
+        case none
+          save nothing, 0
+      sift fn
+        case function
+          link fn-name
+          link fn-params
+          link fn-body
+          fork test, assigns-name(block-handles(fn-body), made-name)
+            hold
+              back make none
+          # the first loop after the list
+          save loop-at, subtract(0, 1)
+          save index, add(at, 1)
+          walk test
+            hook test, and(is-below(index, body/length), is-below(loop-at, 0))
+            hook hold
+              sift get(body, index)
+                case while
+                  save loop-at, index
+                miss
+                  save nothing, 0
+              save index, add(index, 1)
+          fork test, is-below(loop-at, 0)
+            hold
+              back make none
+          sift get(body, loop-at)
+            case while
+              link while-cond
+              link while-body
+              sift while-cond
+                case binary
+                  link cond-op
+                  link cond-left
+                  link cond-right
+                  fork test, is-unequal(to-text(cond-op), <\<>)
+                    hold
+                      back make none
+                  save counter, variable-name-of(cond-left)
+                  fork test, is-equal(counter, <>)
+                    hold
+                      back make none
+                  # the counter's start, a `let` between the list and the loop
+                  save base, 0
+                  save started, false
+                  save start-ok, false
+                  save index, add(at, 1)
+                  walk test
+                    hook test, and(is-below(index, loop-at), not(started))
+                    hook hold
+                      sift get(body, index)
+                        case let
+                          link start-name
+                          link start-init
+                          fork test, is-equal(start-name, counter)
+                            hold
+                              save started, true
+                              sift start-init
+                                case integer
+                                  link start-value
+                                  save base, start-value
+                                  save start-ok, true
+                                miss
+                                  save nothing, 0
+                        miss
+                          save nothing, 0
+                      save index, add(index, 1)
+                  save pushes, 0
+                  walk while-body
+                    take one
+                    sift one
+                      case expression
+                        link pushed
+                        sift pushed
+                          case call
+                            link push-callee
+                            link push-args
+                            fork test, and(is-equal(variable-name-of(push-callee), <list_push>), is-above(push-args/length, 0))
+                              hold
+                                fork test, is-equal(variable-name-of(get(push-args, 0)), made-name)
+                                  hold
+                                    save pushes, add(pushes, 1)
+                          miss
+                            save nothing, 0
+                      miss
+                        save nothing, 0
+                  save bound-ok, false
+                  sift cond-right
+                    case integer
+                      save bound-ok, true
+                    case variable
+                      link bound-name
+                      walk fn-params
+                        take param
+                        fork test, is-equal(param/name, bound-name)
+                          hold
+                            save bound-ok, true
+                      save index, 0
+                      walk test
+                        hook test, is-below(index, at)
+                        hook hold
+                          sift get(body, index)
+                            case let
+                              link before-name
+                              fork test, is-equal(before-name, bound-name)
+                                hold
+                                  save bound-ok, true
+                            miss
+                              save nothing, 0
+                          save index, add(index, 1)
+                    miss
+                      save nothing, 0
+                  fork test, or(or(not(start-ok), is-equal(pushes, 0)), not(bound-ok))
+                    hold
+                      back make none
+                  save turns, <>
+                  sift cond-right
+                    case integer
+                      link bound-value
+                      save room, max-zero(subtract(bound-value, base))
+                      fork test, is-above(room, 1048576)
+                        hold
+                          save room, 1048576
+                      save turns, <{multiply(room, pushes)}>
+                    case variable
+                      link bound-name
+                      save less, <>
+                      fork test, is-unequal(base, 0)
+                        hold
+                          save less, < - {base}L>
+                      save times, <>
+                      fork test, is-unequal(pushes, 1)
+                        hold
+                          save times, < * {pushes}>
+                      save turns, <Math.toIntExact(minOf(maxOf({kotlin-camel(bound-name)}{less}, 0L), 1048576L)){times}>
+                    miss
+                      save nothing, 0
+                  save element, kotlin-type(element-type, st, facts)
+                  save made-text, <ArrayList\<{element}\>({turns})>
+                  fork test, long-list(made-type, st, facts)
+                    hold
+                      save made-text, need(<longs>, <TermLongs({turns})>, st)
+                  save found
+                    make reserve
+                      bind list, made-name
+                      bind element, element
+                      bind made, made-text
+                  back make(some, found)
+                miss
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# ---- statements ----
+
+task kt-statement
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  sift node
+    case let
+      back kt-let(node, st, facts)
+    case assign
+      back kt-assign(node, st, facts)
+    case expression
+      link expression-value
+      # a map entry updated from its own value is one probe through `compute`, the sum still stopping past Long
+      sift map-update-of(node)
+        case some
+          link update
+          sift expression-type(update/map)
+            case some
+              link known
+              sift known
+                case map
+                  link key-type
+                  link value-type
+                  save value-kind, kind-of(make(some, value-type))
+                  fork test, or(is-equal(value-kind, <number>), is-equal(value-kind, <float>))
+                    hold
+                      save old, <(__v ?: {kt-expr(update/fallback, st, facts)})>
+                      save step, kt-expr(update/step, st, facts)
+                      save sum, <{old} + {step}>
+                      fork test, is-equal(value-kind, <number>)
+                        hold
+                          save sum, <Math.addExact({old}, {step})>
+                      save map-text, kt-expr(update/map, st, facts)
+                      save key-text-value, key-text(expression-type(update/map), kt-expr(update/key, st, facts), st, facts)
+                      back <{map-text}.compute({key-text-value}) \{ _, __v -\> {sum} \}>
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+      back kt-expr(expression-value, st, facts)
+    case return
+      back kt-return(node, st, facts)
+    case throw
+      link thrown
+      # a raise carries the exception record whole in a TermException; a new carrier tells the hive first
+      needs-add(<exception>, st)
+      sift thrown
+        case string
+          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, facts)
+        case template
+          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, facts)
+        case record
+          link thrown-name
+          fork test, facts/exception-forms/has(thrown-name)
+            hold
+              back kt-told(<run \{ val raised = {kt-expr(thrown, st, facts)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) \}>, facts)
+        miss
+          save nothing, 0
+      back <throw termException({kt-expr(thrown, st, facts)})>
+    case while
+      back kt-while(node, depth, st, facts)
+    case guard
+      link guard-body
+      link guard-catch
+      # a coroutine's cancellation and the VM's own failures pass through
+      save pass-on, <{pad(add(depth, 1))}if (thrown is kotlin.coroutines.cancellation.CancellationException || thrown is VirtualMachineError) throw thrown>
+      save handler, <catch (thrown: Throwable) \{\n{pass-on}\n{pad(depth)}\}>
+      sift guard-catch
+        case some
+          link caught
+          save st/local-names/{caught/name}, true
+          needs-add(<exception>, st)
+          save handler, <catch (thrown: Throwable) \{\n{pass-on}\n{pad(add(depth, 1))}val {kotlin-camel(caught/name)} = termException(thrown)\n{kt-block(caught/body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+        case none
+          save nothing, 0
+      back <try \{\n{kt-block(guard-body, add(depth, 1), st, facts)}\n{pad(depth)}\} {handler}>
+    case for-each
+      back kt-for-each(node, depth, st, facts)
+    case match
+      back kt-match(node, depth, st, facts)
+    case if
+      link if-branches
+      link if-otherwise
+      save out, <>
+      save at, 0
+      walk if-branches
+        take branch
+        save opener, <>
+        fork test, is-above(at, 0)
+          hold
+            save opener, < else >
+        save cond, kt-expr(branch/cond, st, facts)
+        save out, <{out}{opener}if ({cond}) \{\n{kt-block(branch/body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+        save at, add(at, 1)
+      sift if-otherwise
+        case some
+          link other
+          save out, <{out} else \{\n{kt-block(other, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+        case none
+          save nothing, 0
+      back out
+    case break
+      save label-text, read(label)
+      fork test, is-unequal(label-text, <>)
+        hold
+          back <break@{kotlin-camel(label-text)}>
+      back <break>
+    case continue
+      save label-text, read(label)
+      fork test, is-unequal(label-text, <>)
+        hold
+          back <continue@{kotlin-camel(label-text)}>
+      back <continue>
+    case exit
+      back <kotlin.system.exitProcess(0)>
+    case debug
+      back <// breakpoint>
+    case function
+      back kt-function(node, depth, st, facts)
+    case record-type
+      back kt-record-type(node, depth, st, facts)
+    case mask
+      link mask-name
+      link mask-methods
+      save method-lines, make list
+      fork test, facts/instance-targets/has(mask-name)
+        hold
+          save targets, facts/instance-targets/get(mask-name)
+          fork test, is-above(targets/length, 0)
+            hold
+              save target, get(targets, 0)
+              walk mask-methods
+                take method
+                save line, interface-method(impl-fn(<{target}:{method}>, facts), target, mask-name, st, facts)
+                fork test, is-unequal(line, <>)
+                  hold
+                    push(method-lines, <{pad(add(depth, 1))}{line}>)
+      fork test, is-above(method-lines/length, 0)
+        hold
+          back <interface {kotlin-pascal(mask-name)} \{\n{join-texts(method-lines, <\n>)}\n{pad(depth)}\}>
+      back <interface {kotlin-pascal(mask-name)} \{\}>
+    case instance
+      back <>
+    case hold
+      back <// hold: verified at compile time>
+    case native
+      back <>
+    # view / routing DSLs are lowered by the dedicated compiler, not this backend
+    miss
+      back <>
+
+task impl-fn
+  take key, like text
+  take facts, like kotlin-facts
+  like maybe, like statement
+  mark private
+
+  fork test, facts/impl-fns/has(key)
+    hold
+      save found, facts/impl-fns/get(key)
+      back make(some, found)
+  back make none
+
+# a raise, telling the hive first when the program has it
+task kt-told
+  take built, like text
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  fork test, facts/hive-tell
+    hold
+      back <throw run \{ val told = {built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told \}>
+  back <throw {built}>
+
+# a let's function type, from the closure it is bound to
+task closure-type
+  take init, like expression
+  like type
+  mark private
+
+  save param-types, make list
+  save result-maybe, make none
+  save is-async, false
+  sift init
+    case closure
+      link closure-params
+      walk closure-params
+        take param
+        sift param/type
+          case some
+            link known
+            push(param-types, known)
+          case none
+            push(param-types, make type/unknown)
+      save result-maybe, read(result)
+      save is-async, read(async)
+    miss
+      save nothing, 0
+  save result-type, make type/unknown
+  sift result-maybe
+    case some
+      link known
+      save result-type, known
+    case none
+      save nothing, 0
+  save effects, make list
+  fork test, is-async
+    hold
+      push(effects, <async>)
+  back
+    make type/function
+      bind params, param-types
+      bind result, result-type
+      bind effects, effects
+
+# a `let` bound to a call that cannot name its own type arguments whose type the checker knows concretely
+task uninferable-call
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  sift node
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      save call, make none
+      sift let-init
+        case call
+          save call, make(some, let-init)
+        case await
+          link awaited
+          sift awaited
+            case call
+              save call, make(some, awaited)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      sift call
+        case some
+          link found
+          sift found
+            case call
+              link call-callee
+              link call-args
+              save hidden, false
+              save callee-name, variable-name-of(call-callee)
+              fork test, and(is-unequal(callee-name, <>), facts/hidden-generic/has(callee-name))
+                hold
+                  save hidden, true
+              fork test, not(or(is-equal(call-args/length, 0), hidden))
+                hold
+                  back false
+              fork test, is-unequal(kind-of(let-type), <named>)
+                hold
+                  back false
+              save type-arguments, type-args(let-type)
+              fork test, is-equal(type-arguments/length, 0)
+                hold
+                  back false
+              walk type-arguments
+                take one
+                sift one
+                  case variable
+                    link var-id
+                    fork test, st/var-names/has(var-id)
+                      hold
+                        back false
+                  case unknown
+                    back false
+                  miss
+                    fork test, generic-letter(make(some, one), facts)
+                      hold
+                        back false
+              back true
+            miss
+              back false
+        case none
+          back false
+    miss
+      back false
+
+task kt-let
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      save st/local-names/{let-name}, true
+      save spelled-name, kotlin-camel(let-name)
+      # a second declaration of a name the same statement list declared already is an assignment to it
+      fork test, is-redeclared-here(node, st, facts)
+        hold
+          back <{spelled-name} = {kt-expr(let-init, st, facts)}>
+      # a bare `save x`, given its value by a later assignment: declared with its type and no value
+      fork test, declared-later(node)
+        hold
+          back <var {spelled-name}: {kotlin-type(let-type, st, facts)}>
+      # a carrier at a reuse site holds its kept field alone
+      sift facts/reuse-kept-of(node)
+        case some
+          link kept
+          save st/carrier-locals/{let-name}, kept
+          back <val {spelled-name} = {kt-expr(let-init, st, facts)}>
+        case none
+          save nothing, 0
+      # a text built only by appending is a StringBuilder, its init read before it becomes one
+      fork test, has-text(st/builders, let-name)
+        hold
+          back <val {spelled-name} = StringBuilder({kt-expr(let-init, st, facts)})>
+      # a fixed list local is its primitive array or an `Array<T>`, taken once from the fresh task that made it
+      fork test, st/array-names/has(let-name)
+        hold
+          sift let-init
+            case call
+              back <val {spelled-name} = {filled-or-array(let-init, st/array-names/get(let-name), st, facts)}>
+            miss
+              save nothing, 0
+      # a lambda binding is annotated with its full function type; a variant construction is bound as its sealed type;
+      # a call that cannot name its own type arguments is annotated with them
+      save ann, <>
+      save annotated, false
+      sift let-init
+        case closure
+          save ann, <: {kotlin-type-of(closure-type(let-init), st, facts)}>
+          save annotated, true
+        case record
+          link init-name
+          save init-type, expression-type(let-init)
+          fork test, and(is-equal(kind-of(init-type), <named>), facts/variant-class-of/has(init-name))
+            hold
+              save ann, <: {kotlin-type(init-type, st, facts)}>
+              save annotated, true
+        miss
+          save nothing, 0
+      fork test, and(not(annotated), uninferable-call(node, st, facts))
+        hold
+          sift let-type
+            case some
+              link known
+              save ann, <: {spell-closed(known, st, facts)}>
+            case none
+              save nothing, 0
+      # a valueless typed module slot is kotlin's lateinit var
+      sift let-init
+        case unit
+          fork test, is-equal(kind-of(let-type), <named>)
+            hold
+              back <lateinit var {spelled-name}: {kotlin-type(let-type, st, facts)}>
+        miss
+          save nothing, 0
+      # the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
+      save declared-form, named-of(let-type)
+      fork test, and(is-unequal(declared-form, <>), facts/record-fields/has(declared-form))
+        hold
+          sift let-init
+            case member
+              save init-kind, expression-kind(let-init)
+              fork test, or(is-equal(init-kind, <unknown>), is-equal(init-kind, <dynamic>))
+                hold
+                  save held, <val>
+                  fork test, let-mutable
+                    hold
+                      save held, <var>
+                  back <{held} {spelled-name} = {kt-expr(let-init, st, facts)} as {kotlin-type(let-type, st, facts)}>
+            miss
+              save nothing, 0
+      # a second name for a record one of the two is written through: its own copy
+      save init-text, <>
+      fork test, facts/copy-of-let(node)
+        hold
+          save init-text, <{kt-expr(let-init, st, facts)}.copy()>
+        miss
+          save init-text, kt-expr(let-init, st, facts)
+      # `var` only for a binding something reassigns; at module level, the declared mutability
+      save held, <val>
+      fork test, let-mutable
+        hold
+          sift st/fn-assigned
+            case some
+              link assigned
+              fork test, has-text(assigned, let-name)
+                hold
+                  save held, <var>
+            case none
+              save held, <var>
+      back <{held} {spelled-name}{ann} = {init-text}>
+    miss
+      back <>
+
+# a write two or more fields deep never changes the nested record in place: the path is rebuilt from its first field
+task path-segments
+  take target, like expression
+  take facts, like kotlin-facts
+  take segments, like list, like text
+  like boolean
+  mark private
+
+  save rebuild, true
+  save base, target
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      sift base
+        case member
+          link member-target
+          link member-name
+          save holder, named-of(expression-type(member-target))
+          sift read(index)
+            case some
+              save rebuild, false
+            case none
+              save nothing, 0
+          fork test, or(or(is-digits(member-name), is-equal(holder, <>)), or(not(facts/record-fields/has(holder)), facts/shared-forms/has(holder)))
+            hold
+              save rebuild, false
+          push(segments, member-name)
+          save base, member-target
+        miss
+          save going, false
+  back rebuild
+
+task path-base
+  take target, like expression
+  like expression
+  mark private
+
+  sift target
+    case member
+      link member-target
+      back path-base(member-target)
+    miss
+      back target
+
+task kt-assign
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case assign
+      link assign-target
+      link assign-op
+      link assign-value
+      # the write-back of a reuse site: the reusing copy built the record in the object this slot holds already
+      fork test, facts/is-write-back(node)
+        hold
+          back <// the slot holds the record its task built in place>
+      # an append to a text built only by appending is the StringBuilder's own, in place
+      sift text-append-of(node)
+        case some
+          link append
+          fork test, has-text(st/builders, append/name)
+            hold
+              save ascii
+                task
+                  take one, like expression
+                  like boolean
+                  back facts/is-ascii(one)
+              sift ascii-char-append(append/rest, ascii)
+                case some
+                  link char
+                  back need(<text>, <TermText.asciiAppend({kotlin-camel(append/name)}, {kt-expr(char/text, st, facts)}, {kt-expr(char/index, st, facts)})>, st)
+                case none
+                  save nothing, 0
+              back <{kotlin-camel(append/name)}.append({kt-expr(append/rest, st, facts)})>
+        case none
+          save nothing, 0
+      # a builder reset to the empty text keeps its storage
+      save target-name, variable-name-of(assign-target)
+      fork test, and(and(is-unequal(target-name, <>), has-text(st/builders, target-name)), empty-text(make(some, assign-value)))
+        hold
+          back <{kotlin-camel(target-name)}.setLength(0)>
+      save op-text, to-text(assign-op)
+      # a slot of a list of integers a record owns, written past the generic List signature
+      fork test, is-equal(op-text, <=>)
+        hold
+          sift assign-target
+            case member
+              link member-target
+              sift read(index)
+                case some
+                  link index-node
+                  fork test, owned-path(member-target, facts)
+                    hold
+                      # inside a guarded copy, straight into its storage, the index proven below the list's count
+                      fork test, and(is-above(st/int-lists/length, 0), has-text(st/int-lists, key-or-empty(member-target)))
+                        hold
+                          save at, kt-expr(index-node, st, facts)
+                          save narrowed, <({at}).toInt()>
+                          fork test, is-word-text(at)
+                            hold
+                              save narrowed, <{at}.toInt()>
+                          save list-text, kt-expr(member-target, st, facts)
+                          back <{list-text}.data[{narrowed}] = {kt-expr(assign-value, st, facts)}>
+                      save list-text, kt-expr(member-target, st, facts)
+                      save at, kt-expr(index-node, st, facts)
+                      back <{list-text}.setLong(Math.toIntExact({at}), {kt-expr(assign-value, st, facts)})>
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+      sift facts/place-of(node)
+        case some
+          link place
+          save local, kotlin-camel(place/local)
+          fork test, not(place/temps)
+            hold
+              save sets, make list
+              walk place/fields
+                take field
+                push(sets, <{local}.{kotlin-camel(field/name)} = {kt-expr(field/value, st, facts)}>)
+              back join-texts(sets, <; >)
+          save parts, make list
+          save at, 0
+          walk place/fields
+            take field
+            push(parts, <val __place{at} = {kt-expr(field/value, st, facts)}>)
+            save at, add(at, 1)
+          save at, 0
+          walk place/fields
+            take field
+            push(parts, <{local}.{kotlin-camel(field/name)} = __place{at}>)
+            save at, add(at, 1)
+          back <run \{ {join-texts(parts, <; >)} \}>
+        case none
+          save nothing, 0
+      save segments, make list
+      save rebuild, and(is-equal(op-text, <=>), path-segments(assign-target, facts, segments))
+      fork test, and(rebuild, is-above(segments/length, 1))
+        hold
+          # the segments, first field first
+          save fields, make list
+          save at, subtract(segments/length, 1)
+          walk test
+            hook test, is-minimum(at, 0)
+            hook hold
+              push(fields, get(segments, at))
+              save at, subtract(at, 1)
+          save base, path-base(assign-target)
+          save value-text, kt-expr(assign-value, st, facts)
+          save k, subtract(fields/length, 1)
+          walk test
+            hook test, is-minimum(k, 1)
+            hook hold
+              save value-text, <{path-at(base, fields, k, st, facts)}.copy({kotlin-camel(get(fields, k))} = {value-text})>
+              save k, subtract(k, 1)
+          back <{path-at(base, fields, 1, st, facts)} = {value-text}>
+      fork test, is-equal(op-text, <=>)
+        hold
+          save target-text, kt-expr(assign-target, st, facts)
+          back <{target-text} = {kt-expr(assign-value, st, facts)}>
+      save target-text, kt-expr(assign-target, st, facts)
+      back <{target-text} {op-text} {kt-expr(assign-value, st, facts)}>
+    miss
+      back <>
+
+# the path to the k-th field of a rebuilt write, `base.a.b`
+task path-at
+  take base, like expression
+  take fields, like list, like text
+  take k, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save names, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, k)
+    hook hold
+      push(names, kotlin-camel(get(fields, at)))
+      save at, add(at, 1)
+  back <{kt-expr(base, st, facts)}.{join-texts(names, <.>)}>
+
+task kt-return
+  take node, like statement
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case return
+      link return-value
+      sift return-value
+        case some
+          link returned
+          # the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly, and a call
+          # answering the unknown at a generic letter
+          save value-kind, expression-kind(returned)
+          sift returned
+            case await
+              link awaited
+              sift expression-type(returned)
+                case some
+                  save nothing, 0
+                case none
+                  save value-kind, expression-kind(awaited)
+            miss
+              save nothing, 0
+          save unknown-value, or(is-equal(value-kind, <unknown>), is-equal(value-kind, <dynamic>))
+          save cast, <>
+          save result-form, named-of(st/current-result)
+          save is-member, false
+          sift returned
+            case member
+              save is-member, true
+            miss
+              save nothing, 0
+          fork test, and(and(is-member, unknown-value), and(is-unequal(result-form, <>), facts/record-fields/has(result-form)))
+            hold
+              save cast, < as {kotlin-type(st/current-result, st, facts)}>
+            miss
+              fork test, and(and(unknown-value, is-call-value(returned, facts)), generic-letter(st/current-result, facts))
+                hold
+                  save cast, < as {kotlin-type(st/current-result, st, facts)}>
+          back <return {kt-expr(returned, st, facts)}{cast}>
+        case none
+          fork test, is-equal(kind-of(st/current-result), <unknown>)
+            hold
+              back <return Unit>
+          back <return>
+    miss
+      back <>
+
+# ---- loops ----
+
+task kt-while
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case while
+      link while-cond
+      link while-body
+      # a named walk's label, on both copies of a guarded one
+      save named, <>
+      save label-text, read(label)
+      fork test, is-unequal(label-text, <>)
+        hold
+          save named, <{kotlin-camel(label-text)}@ >
+      sift facts/loop-guard-of(node)
+        case some
+          link guard
+          fork test, or(is-above(guard/fast-count, 0), is-above(guard/checks/length, 0))
+            hold
+              save outer-lists, st/int-lists
+              save widened, make list
+              walk outer-lists
+                take one
+                push(widened, one)
+              walk guard/checks
+                take check
+                push(widened, check/list)
+              # a list reached through a path reads its size through it, its own slots narrowed plainly
+              save st/int-lists, widened
+              save terms, make list
+              walk guard/checks
+                take check
+                save base, check/base
+                save value, <{check/offset}L>
+                fork test, is-unequal(base, <>)
+                  hold
+                    fork test, is-equal(check/offset, 0)
+                      hold
+                        save value, kotlin-camel(base)
+                      miss
+                        save sign, <+>
+                        fork test, is-below(check/offset, 0)
+                          hold
+                            save sign, <->
+                        save value, <({kotlin-camel(base)} {sign} {abs-of(check/offset)}L)>
+                fork test, is-equal(check/side, <low>)
+                  hold
+                    push(terms, <{value} \>= 0L>)
+                  miss
+                    save size-of, kotlin-camel(check/list)
+                    sift check/path
+                      case some
+                        link path
+                        save size-of, kt-expr(path, st, facts)
+                      case none
+                        save nothing, 0
+                    push(terms, <{value} \< {size-of}.size>)
+              save st/int-lists, outer-lists
+              walk guard/limits
+                take limit
+                fork test, limit/low
+                  hold
+                    push(terms, <{kotlin-camel(limit/name)} \>= 0L>)
+                  miss
+                    push(terms, <{kotlin-camel(limit/name)} \<= {limit/high}L>)
+              save unique, make list
+              walk terms
+                take term
+                add-text(unique, term)
+              save test, join-texts(unique, < && >)
+              save outer-loops, st/fast-loops
+              save outer-hoisted, st/hoisted
+              save loops, make list
+              walk outer-loops
+                take one
+                push(loops, one)
+              push(loops, node)
+              save st/fast-loops, loops
+              save st/int-lists, widened
+              # each list reached through a path is read ONCE before the copy
+              save reads, make list
+              save path-keys, make list
+              save paths, make list
+              walk guard/checks
+                take check
+                sift check/path
+                  case some
+                    link path
+                    fork test, not(has-text(path-keys, check/list))
+                      hold
+                        push(path-keys, check/list)
+                        push(paths, path)
+                  case none
+                    save nothing, 0
+              save at, 0
+              walk paths
+                take path
+                save local, <__path{st/path-count}>
+                save st/path-count, add(st/path-count, 1)
+                push(reads, <val {local} = {kt-expr(path, st, facts)}>)
+                save grown, text-texts()
+                walk st/hoisted/keys()
+                  take key
+                  save grown/{key}, st/hoisted/get(key)
+                save grown/{get(path-keys, at)}, local
+                save st/hoisted, grown
+                save at, add(at, 1)
+              push(reads, guarded-loop(node, named, depth, st, facts))
+              save fast, join-texts(reads, <\n{pad(add(depth, 1))}>)
+              save st/fast-loops, outer-loops
+              save st/int-lists, outer-lists
+              save st/hoisted, outer-hoisted
+              save slow, guarded-loop(node, named, depth, st, facts)
+              back <if ({test}) \{\n{pad(add(depth, 1))}{fast}\n{pad(depth)}\} else \{\n{pad(add(depth, 1))}{slow}\n{pad(depth)}\}>
+        case none
+          save nothing, 0
+      save cond-text, kt-expr(while-cond, st, facts)
+      back <{named}while ({cond-text}) \{\n{kt-block(while-body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# one copy of a guarded loop, one level in
+task guarded-loop
+  take node, like statement
+  take named, like text
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case while
+      link while-cond
+      link while-body
+      save cond-text, kt-expr(while-cond, st, facts)
+      back <{named}while ({cond-text}) \{\n{kt-block(while-body, add(depth, 2), st, facts)}\n{pad(add(depth, 1))}\}>
+    miss
+      back <>
+
+task kt-for-each
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case for-each
+      # the item (and index) are locals: a top-level task of the same name must not turn a read into a reference
+      save st/local-names/{item}, true
+      save index-name, read(index)
+      fork test, is-unequal(index-name, <>)
+        hold
+          save st/local-names/{index-name}, true
+      save label-text, read(label)
+      save named, <>
+      fork test, is-unequal(label-text, <>)
+        hold
+          save named, <{kotlin-camel(label-text)}@ >
+      # a walk by POSITION, the size read every turn, where the body may push onto the list it walks, or the list is
+      # one of integers
+      save walked-name, variable-name-of(iterable)
+      fork test, and(is-equal(expression-kind(iterable), <array>), not(st/array-names/has(walked-name)))
+        hold
+          save grows, false
+          fork test, is-unequal(walked-name, <>)
+            hold
+              save grows, has-text(names-in(block-handles(body)), walked-name)
+          save longs, long-list(expression-type(iterable), st, facts)
+          fork test, or(grows, longs)
+            hold
+              save n, st/walk-count
+              save st/walk-count, add(n, 1)
+              save walked, <__walked{n}>
+              save at, <__at{n}>
+              save read-text, <{walked}[{at}]>
+              fork test, longs
+                hold
+                  save read-text, <if ({walked}Longs != null) {walked}Longs.data[{at}] else {walked}[{at}]>
+              save index-text, <>
+              fork test, is-unequal(index-name, <>)
+                hold
+                  save index-text, <\n{pad(add(depth, 1))}val {kotlin-camel(index-name)} = {at}.toLong()>
+              save lines, make list
+              push(lines, <val {walked} = {kt-expr(iterable, st, facts)}>)
+              fork test, longs
+                hold
+                  push(lines, <{pad(depth)}{need(<longs>, <val {walked}Longs = {walked} as? TermLongs>, st)}>)
+              push(lines, <{pad(depth)}var {at} = 0>)
+              push(lines, <{pad(depth)}{named}while ({at} \< {walked}.size) \{>)
+              push(lines, <{pad(add(depth, 1))}val {kotlin-camel(item)} = {read-text}{index-text}>)
+              push(lines, <{pad(add(depth, 1))}{at}++>)
+              push(lines, kt-block(body, add(depth, 1), st, facts))
+              push(lines, <{pad(depth)}\}>)
+              back join-texts(lines, <\n>)
+      # a walk that names its INDEX uses withIndex
+      fork test, is-unequal(index-name, <>)
+        hold
+          save iterable-text, kt-expr(iterable, st, facts)
+          back <{named}for ((__at, {kotlin-camel(item)}) in {iterable-text}.withIndex()) \{\n{pad(add(depth, 1))}val {kotlin-camel(index-name)} = __at.toLong()\n{kt-block(body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+      save iterable-text, kt-expr(iterable, st, facts)
+      back <{named}for ({kotlin-camel(item)} in {iterable-text}) \{\n{kt-block(body, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# ---- matches ----
+
+task type-arm-type
+  take label, like text
+  like text
+  mark private
+
+  fork test, is-equal(label, <number>)
+    hold
+      back <Long>
+  fork test, is-equal(label, <float>)
+    hold
+      back <Double>
+  fork test, is-equal(label, <text>)
+    hold
+      back <String>
+  fork test, is-equal(label, <boolean>)
+    hold
+      back <Boolean>
+  back <undefined>
+
+# the `else` arm, with the otherwise's block or empty
+task else-arm
+  take otherwise, like maybe, like list, like statement
+  take depth, like number
+  take empty, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift otherwise
+    case some
+      link other
+      back <{pad(depth)}else -\> \{\n{kt-block(other, add(depth, 1), st, facts)}\n{pad(depth)}\}>
+    case none
+      back <{pad(depth)}else -\> \{{empty}\}>
+
+# whether a case of the subject's form has no fields
+task fieldless-case
+  take form-node, like maybe, like statement
+  take label, like text
+  like boolean
+  mark private
+
+  sift form-node
+    case some
+      link found
+      sift found
+        case record-type
+          link rt-name
+          link rt-params
+          link rt-indices
+          link rt-fields
+          link rt-variants
+          walk rt-variants
+            take variant
+            fork test, is-equal(variant/name, label)
+              hold
+                back is-equal(variant/fields/length, 0)
+          back false
+        miss
+          back false
+    case none
+      back false
+
+# the record-type the program declares under a name, the first where several do
+task form-named
+  take name, like text
+  take facts, like kotlin-facts
+  like maybe, like statement
+  mark private
+
+  walk facts/program
+    take one
+    sift one
+      case record-type
+        link rt-name
+        fork test, is-equal(rt-name, name)
+          hold
+            back make(some, one)
+      miss
+        save nothing, 0
+  back make none
+
+task kt-match
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      # an `unknown` narrowed by type: a `when` with an `is` pattern per arm over the subject held in a `val`
+      fork test, read(type-arms)
+        hold
+          save held, <__at{depth}>
+          save shadow, variable-name-of(match-subject)
+          save arms, make list
+          walk match-cases
+            take arm
+            save bind-name, shadow
+            save binds, arm-binds(arm)
+            fork test, is-above(binds/length, 0)
+              hold
+                save bind-name, get(binds, 0)
+            save bind, <>
+            fork test, is-unequal(bind-name, <>)
+              hold
+                save bind, <{pad(add(depth, 3))}val {kotlin-camel(bind-name)} = {held}\n>
+            push(arms, <{pad(add(depth, 2))}is {type-arm-type(arm/label)} -\> \{\n{bind}{kt-block(arm/body, add(depth, 3), st, facts)}\n{pad(add(depth, 2))}\}>)
+          push(arms, else-arm(match-otherwise, add(depth, 2), <>, st, facts))
+          save subject-text, kt-expr(match-subject, st, facts)
+          back <run \{\n{pad(add(depth, 1))}val {held}: Any? = {subject-text}\n{pad(add(depth, 1))}when ({held}) \{\n{join-texts(arms, <\n>)}\n{pad(add(depth, 1))}\}\n{pad(depth)}\}>
+      # a fork case over a caught TermException: `when` on `form`, the record recovered from `base` by its form
+      save caught-list, read(exception-arms)
+      fork test, is-above(caught-list/length, 0)
+        hold
+          save caught-arms, caught-list
+          save carrier, kt-expr(match-subject, st, facts)
+          save arms, make list
+          walk match-cases
+            take arm
+            save shared-names, make list
+            save link-names, make list
+            walk caught-arms
+              take one
+              fork test, and(is-equal(shared-names/length, 0), is-equal(one/label, arm/label))
+                hold
+                  walk one/shared
+                    take name
+                    push(shared-names, name)
+                  walk one/link
+                    take name
+                    push(link-names, name)
+                  push(shared-names, <>)
+            save fields, make list
+            walk shared-names
+              take name
+              fork test, is-unequal(name, <>)
+                hold
+                  push(fields, name)
+            walk link-names
+              take name
+              push(fields, name)
+            save body-text, kt-block(arm/body, add(depth, 2), st, facts)
+            save read-names, names-in(block-handles(arm/body))
+            save lines, make list
+            walk arm-locals(fields, arm-binds(arm))
+              take bound
+              fork test, has-text(read-names, bound/local)
+                hold
+                  fork test, has-text(link-names, bound/field)
+                    hold
+                      push(lines, <{pad(add(depth, 2))}val {kotlin-camel(bound/local)} = ({carrier}.base as {kotlin-pascal(arm/label)}).link.{kotlin-camel(bound/field)}>)
+                    miss
+                      push(lines, <{pad(add(depth, 2))}val {kotlin-camel(bound/local)} = {carrier}.{kotlin-camel(bound/field)}>)
+            push(lines, body-text)
+            push(arms, <{pad(add(depth, 1))}{json-quote(arm/label)} -\> \{\n{join-texts(lines, <\n>)}\n{pad(add(depth, 1))}\}>)
+          # the checker holds the arms to the guarded body's raise set; the else passes the carrier on
+          push(arms, else-arm(match-otherwise, add(depth, 1), < throw {carrier} >, st, facts))
+          back <when ({carrier}.form) \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      save booleans, is-above(match-cases/length, 0)
+      walk match-cases
+        take arm
+        fork test, not(or(is-equal(arm/label, <true>), is-equal(arm/label, <false>)))
+          hold
+            save booleans, false
+      save subject-type, expression-type(match-subject)
+      # a fork case over a TEXT subject: the labels are string values, matched by literal
+      fork test, is-equal(kind-of(subject-type), <string>)
+        hold
+          save arms, make list
+          walk match-cases
+            take arm
+            push(arms, <{pad(add(depth, 1))}{json-quote(arm/label)} -\> \{\n{kt-block(arm/body, add(depth, 2), st, facts)}\n{pad(add(depth, 1))}\}>)
+          push(arms, else-arm(match-otherwise, add(depth, 1), <>, st, facts))
+          save subject-text, kt-expr(match-subject, st, facts)
+          back <when ({subject-text}) \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      # an exhaustive `when` on the sealed type, the subject bound to a local first unless it is a name
+      save subject-expr, kt-expr(match-subject, st, facts)
+      save stable, is-variable(match-subject)
+      save subject-name, subject-expr
+      fork test, not(stable)
+        hold
+          save st/match-count, add(st/match-count, 1)
+          save subject-name, <subject{st/match-count}>
+      save subject-form-name, named-of(subject-type)
+      save subject-form, make none
+      fork test, is-unequal(subject-form-name, <>)
+        hold
+          save subject-form, form-named(subject-form-name, facts)
+      save by-identity, false
+      fork test, and(not(booleans), is-unequal(subject-form-name, <>))
+        hold
+          walk match-cases
+            take arm
+            fork test, fieldless-case(subject-form, arm/label)
+              hold
+                save by-identity, true
+      save arms, make list
+      walk match-cases
+        take arm
+        fork test, booleans
+          hold
+            push(arms, <{pad(add(depth, 1))}{arm/label} -\> \{\n{kt-block(arm/body, add(depth, 2), st, facts)}\n{pad(add(depth, 1))}\}>)
+            turn next
+        save cls, class-for(arm/label, subject-type, facts)
+        fork test, is-equal(cls, <>)
+          hold
+            save cls, kotlin-pascal(arm/label)
+        # a node taken from its slot, of a reused variant: once the arm's first statement has written the slot back,
+        # nothing holds the node, so its links are cleared and it is kept as the variant's spare
+        save spare, make list
+        fork test, and(and(stable, is-unequal(subject-form-name, <>)), is-above(arm/body/length, 0))
+          hold
+            fork test, is-taken-here(match-subject, st, facts)
+              hold
+                fork test, facts/reuse-variants/has(arm/label)
+                  hold
+                    save reused, facts/reuse-variants/get(arm/label)
+                    fork test, is-equal(reused/form, subject-form-name)
+                      hold
+                        fork test, has-text(st/spares, arm/label)
+                          hold
+                            push(spare, <{pad(add(depth, 2))}__spare{cls} = {subject-name}>)
+                          miss
+                            save empty-cls, class-for(reused/empty, subject-type, facts)
+                            fork test, is-equal(empty-cls, <>)
+                              hold
+                                save empty-cls, kotlin-pascal(reused/empty)
+                            walk reused/recursive
+                              take field
+                              push(spare, <{pad(add(depth, 2))}{subject-name}.{kotlin-camel(field)} = {empty-cls}>)
+                            push(spare, <{pad(add(depth, 2))}termSpare{cls} = {subject-name}>)
+        # the case of the subject's own form, where two forms name a case alike
+        save field-names, make list
+        save owned-key, <{subject-form-name}/{arm/label}>
+        fork test, and(is-unequal(subject-form-name, <>), facts/owned-field-names/has(owned-key))
+          hold
+            save field-names, facts/owned-field-names/get(owned-key)
+          miss
+            fork test, facts/variant-field-names/has(arm/label)
+              hold
+                save field-names, facts/variant-field-names/get(arm/label)
+        # the ones the arm's program READS: a smart cast serves a `subject.field` read on its own
+        save read-names, names-in(block-handles(arm/body))
+        save locals, make list
+        save added, make list
+        walk arm-locals(field-names, arm-binds(arm))
+          take bound
+          fork test, has-text(read-names, bound/local)
+            hold
+              push(locals, <{pad(add(depth, 2))}val {kotlin-camel(bound/local)} = {subject-name}.{kotlin-camel(bound/field)}>)
+              fork test, not(is-local(bound/local, st))
+                hold
+                  push(added, bound/local)
+        walk added
+          take local
+          save st/local-names/{local}, true
+        save body-text, <>
+        fork test, is-above(spare/length, 0)
+          hold
+            save first-part, make list
+            save rest-part, make list
+            save at, 0
+            walk arm/body
+              take one
+              fork test, is-equal(at, 0)
+                hold
+                  push(first-part, one)
+                miss
+                  push(rest-part, one)
+              save at, add(at, 1)
+            save parts, make list
+            push(parts, kt-block(first-part, add(depth, 2), st, facts))
+            walk spare
+              take line
+              push(parts, line)
+            push(parts, kt-block(rest-part, add(depth, 2), st, facts))
+            save body-text, join-texts(kept-texts(parts), <\n>)
+          miss
+            save body-text, kt-block(arm/body, add(depth, 2), st, facts)
+        walk added
+          take local
+          st/local-names/delete(local)
+        # a field-less case is one `object`, so it is that object by identity
+        save test, <is {cls}>
+        fork test, by-identity
+          hold
+            fork test, fieldless-case(subject-form, arm/label)
+              hold
+                save test, <{subject-name} === {cls}>
+              miss
+                save test, <{subject-name} is {cls}>
+        push(locals, body-text)
+        push(arms, <{pad(add(depth, 1))}{test} -\> \{\n{join-texts(locals, <\n>)}\n{pad(add(depth, 1))}\}>)
+      sift match-otherwise
+        case some
+          link other
+          push(arms, <{pad(add(depth, 1))}else -\> \{\n{kt-block(other, add(depth, 2), st, facts)}\n{pad(add(depth, 1))}\}>)
+        case none
+          # a `when` with no subject is not checked for exhaustiveness: its last arm is the `else` the cases cover
+          fork test, by-identity
+            hold
+              push(arms, <{pad(add(depth, 1))}else -\> throw IllegalStateException("unreachable")>)
+      save opened, < ({subject-name})>
+      fork test, by-identity
+        hold
+          save opened, <>
+      save when-text, <when{opened} \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
+      fork test, stable
+        hold
+          back when-text
+      back <val {subject-name} = {subject-expr}\n{pad(depth)}{when-text}>
+    miss
+      back <>
+
+# whether the subject was taken from a list slot at its last read, in the task being written
+task is-taken-here
+  take subject, like expression
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like boolean
+  mark private
+
+  save any, false
+  walk facts/reuse-variants/keys()
+    take key
+    save any, true
+  fork test, not(any)
+    hold
+      back false
+  sift st/scope-fn
+    case some
+      link fn
+      back facts/is-taken(fn, subject)
+    case none
+      back false
+
+# ---- tasks ----
+
+task kt-function
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      link fn-result
+      save clause, generic-clause(node, st, facts)
+      save st/current-fn, make(some, node)
+      save scope, text-flags()
+      walk read(generics)
+        take generic
+        save scope/{to-upper-case(generic/name)}, true
+      save st/scope-generics, scope
+      save st/local-names, text-flags()
+      walk fn-params
+        take param
+        save st/local-names/{param/name}, true
+      # a fixed list parameter or local is a primitive array or an `Array<T>`, by its element
+      save fixed-at, make list
+      fork test, facts/fixed-params/has(fn-name)
+        hold
+          save fixed-at, facts/fixed-params/get(fn-name)
+      save outer-arrays, st/array-names
+      save lets, let-types(fn-body)
+      save arrays, text-texts()
+      save at, 0
+      walk fn-params
+        take param
+        fork test, has-number(fixed-at, at)
+          hold
+            save kind, fixed-kind-of(element-of(param/type), facts)
+            fork test, is-unequal(kind, <>)
+              hold
+                save arrays/{param/name}, kind
+        save at, add(at, 1)
+      fork test, facts/fixed-locals/has(fn-name)
+        hold
+          walk facts/fixed-locals/get(fn-name)
+            take local
+            save local-type, make none
+            fork test, lets/has(local)
+              hold
+                save local-type, lets/get(local)
+            save kind, fixed-kind-of(element-of(local-type), facts)
+            fork test, is-unequal(kind, <>)
+              hold
+                save arrays/{local}, kind
+      # the arm locals bound to a variant's primitive array field
+      fork test, facts/arrays/arm-arrays/has(fn-name)
+        hold
+          save arm-locals-of, facts/arrays/arm-arrays/get(fn-name)
+          walk arm-locals-of/keys()
+            take local
+            save arrays/{local}, arm-locals-of/get(local)
+      save st/array-names, arrays
+      save param-texts, make list
+      save at, 0
+      walk fn-params
+        take param
+        save kind, <>
+        fork test, has-number(fixed-at, at)
+          hold
+            save kind, fixed-kind-of(element-of(param/type), facts)
+        save spelled, kotlin-type(param/type, st, facts)
+        fork test, is-unequal(kind, <>)
+          hold
+            save spelled, <{kind}Array>
+            sift element-of(param/type)
+              case some
+                link element
+                fork test, is-equal(kind, <Object>)
+                  hold
+                    save spelled, <Array\<{kotlin-type(make(some, element), st, facts)}\>>
+              case none
+                save nothing, 0
+        push(param-texts, <{kotlin-camel(param/name)}: {spelled}>)
+        save at, add(at, 1)
+      save is-async, read(async)
+      save suspend, <>
+      fork test, is-async
+        hold
+          save suspend, <suspend >
+      save st/suspend-context, is-async
+      # a reassigned parameter is shadowed by a mutable local; a local nothing reassigns is a `val`
+      save mutated, reassigned(fn-body)
+      save outer-assigned, st/fn-assigned
+      save st/fn-assigned, make(some, mutated)
+      save outer-builders, st/builders
+      save st/builders, text-builders(node)
+      save outer-scope, st/scope-fn
+      save st/scope-fn, make(some, node)
+      save outer-carriers, st/carrier-locals
+      save st/carrier-locals, text-texts()
+      save outer-spares, st/spares
+      save st/spares, make list
+      save any-reused, false
+      walk facts/reuse-variants/keys()
+        take key
+        save any-reused, true
+      fork test, any-reused
+        hold
+          save taken
+            task
+              take fn, like statement
+              take one, like expression
+              like boolean
+              back facts/is-taken(fn, one)
+          save st/spares, local-spares(node, facts/reuse-variants, taken)
+      save shadows, make list
+      walk fn-params
+        take param
+        fork test, has-text(mutated, param/name)
+          hold
+            push(shadows, <{pad(add(depth, 1))}var {kotlin-camel(param/name)} = {kotlin-camel(param/name)}>)
+      # a task with no declared result but a valued `send back` is Any, not Unit
+      save result-type, fn-result
+      save result-kind, kind-of(fn-result)
+      fork test, or(is-equal(result-kind, <>), is-equal(result-kind, <unit>))
+        hold
+          fork test, has-valued-return(fn-body)
+            hold
+              save result-type, make(some, make type/unknown)
+      save st/current-result, result-type
+      # a valued task whose body ends in branching that returns from every live path: the fall-through throws
+      save unreachable, <>
+      save count, fn-body/length
+      fork test, and(is-above(count, 0), and(is-unequal(result-kind, <>), is-unequal(result-kind, <unit>)))
+        hold
+          sift get(fn-body, subtract(count, 1))
+            case if
+              save unreachable, <{pad(add(depth, 1))}throw IllegalStateException("unreachable")>
+            case while
+              save unreachable, <{pad(add(depth, 1))}throw IllegalStateException("unreachable")>
+            case match
+              save unreachable, <{pad(add(depth, 1))}throw IllegalStateException("unreachable")>
+            miss
+              save nothing, 0
+      save body-text, <>
+      fork test, is-equal(count, 0)
+        hold
+          save body-text, <{pad(add(depth, 1))}TODO({json-quote(<stub: {fn-name}>)})>
+        miss
+          save lines, make list
+          walk shadows
+            take line
+            push(lines, line)
+          walk facts/cursor-names(node)
+            take cursor
+            push(lines, <{pad(add(depth, 1))}val __cursor{kotlin-pascal(cursor)} = LongArray(2)>)
+          walk st/spares
+            take label
+            save cls, spare-class(label, facts)
+            push(lines, <{pad(add(depth, 1))}var __spare{cls}: {cls}? = null>)
+          push(lines, kt-block(fn-body, add(depth, 1), st, facts))
+          push(lines, unreachable)
+          save body-text, join-texts(kept-texts(lines), <\n>)
+      save st/spares, outer-spares
+      save st/fn-assigned, outer-assigned
+      save st/array-names, outer-arrays
+      save st/builders, outer-builders
+      save st/scope-fn, outer-scope
+      save st/carrier-locals, outer-carriers
+      # a task whose every self call is a tail call is `tailrec`
+      save inline, facts/inline-tasks/has(fn-name)
+      save prefix, <>
+      fork test, inline
+        hold
+          save prefix, <inline >
+      fork test, and(facts/tail-calls/has(fn-name), not(inline))
+        hold
+          save prefix, <{prefix}tailrec >
+      back <{prefix}{suspend}fun {clause}{kotlin-camel(fn-name)}({join-texts(param-texts, <, >)}): {kotlin-type(result-type, st, facts)} \{\n{body-text}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# ---- forms ----
+
+# a field's type in a variant, as its array where it is held as one; where T stands inside another type, its variance is
+# asserted, since a variant's class is `out T` and a list the variant holds is invariant
+task variant-field-type
+  take variant-name, like text
+  take field-name, like text
+  take field-type, like type
+  take own, like list, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save key, <{variant-name}/{field-name}>
+  save kind, <>
+  fork test, facts/arrays/variant-arrays/has(key)
+    hold
+      save kind, facts/arrays/variant-arrays/get(key)
+  save written, kotlin-type-of(field-type, st, facts)
+  fork test, is-unequal(kind, <>)
+    hold
+      save written, <{kind}Array>
+      fork test, is-equal(kind, <Object>)
+        hold
+          sift field-type
+            case array
+              link element
+              save written, <Array\<{kotlin-type(make(some, element), st, facts)}\>>
+            miss
+              save nothing, 0
+  fork test, or(contains-text(written, <\<>), contains-text(written, <-\>>))
+    hold
+      walk own
+        take param
+        save upper, to-upper-case(param)
+        save written, replace-word(written, upper, <@UnsafeVariance {upper}>)
+  back written
+
+task stars
+  take count, like number
+  like text
+  mark private
+
+  save parts, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      push(parts, <*>)
+      save at, add(at, 1)
+  back join-texts(parts, <, >)
+
+task kt-record-type
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift node
+    case record-type
+      link rt-name
+      link rt-params
+      link rt-indices
+      link rt-fields
+      link rt-variants
+      save form-name, kotlin-pascal(rt-name)
+      # an ALIAS form (a base and nothing of its own) is its base
+      sift read(alias)
+        case some
+          link aliased
+          fork test, and(is-equal(rt-fields/length, 0), is-equal(rt-variants/length, 0))
+            hold
+              back <typealias {form-name} = {kotlin-type(make(some, aliased), st, facts)}>
+        case none
+          save nothing, 0
+      save param-count, rt-params/length
+      fork test, is-above(rt-variants/length, 0)
+        hold
+          save generics, <>
+          fork test, is-above(param-count, 0)
+            hold
+              save outs, make list
+              walk rt-params
+                take param
+                push(outs, <out {to-upper-case(param)}>)
+              save generics, <\<{join-texts(outs, <, >)}\>>
+          save lines, make list
+          push(lines, <sealed class {form-name}{generics}>)
+          walk rt-variants
+            take variant
+            push(lines, kt-variant-class(node, variant/name, variant/fields, st, facts))
+          # the tag, when the program reads it as a field: the case's name as text
+          fork test, facts/tagged/has(rt-name)
+            hold
+              save star, <>
+              fork test, is-above(param-count, 0)
+                hold
+                  save star, <\<{stars(param-count)}\>>
+              save cases, make list
+              walk rt-variants
+                take variant
+                save cls, variant-class-name(rt-name, variant/name, facts)
+                save own-count, 0
+                walk rt-params
+                  take param
+                  save mentioned, false
+                  walk variant/fields
+                    take field
+                    fork test, type-mentions(make(some, field/type), param)
+                      hold
+                        save mentioned, true
+                  fork test, mentioned
+                    hold
+                      save own-count, add(own-count, 1)
+                save own-stars, <>
+                fork test, and(is-above(variant/fields/length, 0), is-above(own-count, 0))
+                  hold
+                    save own-stars, <\<{stars(own-count)}\>>
+                push(cases, <{pad(2)}is {cls}{own-stars} -\> {json-quote(tag-text(variant/name))}>)
+              push(lines, <val {form-name}{star}.termTag: String\n{pad(1)}get() = when (this) \{\n{join-texts(cases, <\n>)}\n{pad(1)}\}>)
+          back join-texts(lines, <\n>)
+      # a field nothing in the program reassigns is a `val`; a list of integers the record owns is the `TermLongs` it is
+      save field-texts, make list
+      save field-names, make list
+      walk rt-fields
+        take field
+        save held, <val>
+        fork test, facts/assigned-fields/has(field/name)
+          hold
+            save held, <var>
+        save spelled, <>
+        fork test, facts/field-lists/has(<{rt-name}/{field/name}>)
+          hold
+            save spelled, need(<longs>, <TermLongs>, st)
+          miss
+            save spelled, kotlin-type-of(field/type, st, facts)
+        push(field-texts, <{held} {kotlin-camel(field/name)}: {spelled}>)
+        push(field-names, kotlin-camel(field/name))
+      save fields-text, join-texts(field-texts, <, >)
+      save generics, <>
+      fork test, is-above(param-count, 0)
+        hold
+          save uppers, make list
+          walk rt-params
+            take param
+            push(uppers, to-upper-case(param))
+          save generics, <\<{join-texts(uppers, <, >)}\>>
+      save is-shared, read(shared)
+      save has-fields, is-above(rt-fields/length, 0)
+      save fieldless, and(not(has-fields), not(is-shared))
+      save decl, <class {form-name}{generics}>
+      fork test, is-shared
+        hold
+          fork test, has-fields
+            hold
+              save decl, <class {form-name}{generics}({fields-text})>
+        miss
+          fork test, has-fields
+            hold
+              save decl, <data class {form-name}{generics}({fields-text})>
+      save star, <>
+      fork test, is-above(param-count, 0)
+        hold
+          save star, <\<{stars(param-count)}\>>
+      save fieldless-equality, make list
+      push(fieldless-equality, <{pad(add(depth, 1))}override fun equals(other: Any?): Boolean = other is {form-name}{star}>)
+      push(fieldless-equality, <{pad(add(depth, 1))}override fun hashCode(): Int = {json-quote(rt-name)}.hashCode()>)
+      # a form that holds a float compares by the key rule and answers `is-equal` by IEEE
+      save floaty, and(and(facts/float-forms/has(rt-name), has-fields), not(is-shared))
+      save float-equality, make list
+      fork test, floaty
+        hold
+          save float-equality, float-members(<{form-name}{star}>, field-names, depth, st)
+      # a form that wears masks declares them, with overrides delegating to the free tasks
+      save impls, make list
+      fork test, facts/conformances/has(rt-name)
+        hold
+          save impls, facts/conformances/get(rt-name)
+      fork test, is-equal(impls/length, 0)
+        hold
+          fork test, fieldless
+            hold
+              back <{decl} \{\n{join-texts(fieldless-equality, <\n>)}\n{pad(depth)}\}>
+          fork test, floaty
+            hold
+              back <{decl} : TermValued \{\n{join-texts(float-equality, <\n>)}\n{pad(depth)}\}>
+          back decl
+      save supers, make list
+      walk impls
+        take impl
+        push(supers, kotlin-pascal(impl/mask))
+      fork test, floaty
+        hold
+          push(supers, <TermValued>)
+      save members, make list
+      fork test, fieldless
+        hold
+          walk fieldless-equality
+            take line
+            push(members, line)
+      walk float-equality
+        take line
+        push(members, line)
+      walk impls
+        take impl
+        walk impl/methods
+          take method
+          save line, override-method(impl-fn(<{rt-name}:{method}>, facts), rt-name, impl/mask, st, facts)
+          fork test, is-unequal(line, <>)
+            hold
+              push(members, <{pad(add(depth, 1))}{line}>)
+      back <{decl} : {join-texts(supers, <, >)} \{\n{join-texts(members, <\n>)}\n{pad(depth)}\}>
+    miss
+      back <>
+
+# a variant's class name, by its form
+task variant-class-name
+  take form-name, like text
+  take variant-name, like text
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  fork test, facts/variant-class-of/has(variant-name)
+    hold
+      save by-owner, facts/variant-class-of/get(variant-name)
+      fork test, by-owner/has(form-name)
+        hold
+          back by-owner/get(form-name)
+  back <{kotlin-pascal(form-name)}{kotlin-pascal(variant-name)}>
+
+# one case of a form with cases: a data class carrying only the generics its own fields mention, the rest `Nothing`, or
+# an `object` for a case with no fields
+task kt-variant-class
+  take form-node, like statement
+  take variant-name, like text
+  take variant-fields, like list, like variant-field
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift form-node
+    case record-type
+      link rt-name
+      link rt-params
+      save cls, variant-class-name(rt-name, variant-name, facts)
+      save form-name, kotlin-pascal(rt-name)
+      save own, make list
+      save super-parts, make list
+      walk rt-params
+        take param
+        save mentioned, false
+        walk variant-fields
+          take field
+          fork test, type-mentions(make(some, field/type), param)
+            hold
+              save mentioned, true
+        fork test, mentioned
+          hold
+            push(own, param)
+            push(super-parts, to-upper-case(param))
+          miss
+            push(super-parts, <Nothing>)
+      save super-args, <>
+      fork test, is-above(rt-params/length, 0)
+        hold
+          save super-args, <\<{join-texts(super-parts, <, >)}\>>
+      fork test, is-equal(variant-fields/length, 0)
+        hold
+          save object-super, <>
+          fork test, is-above(rt-params/length, 0)
+            hold
+              save nothings, make list
+              walk rt-params
+                take param
+                push(nothings, <Nothing>)
+              save object-super, <\<{join-texts(nothings, <, >)}\>>
+          back <object {cls} : {form-name}{object-super}()>
+      save generic-decl, <>
+      fork test, is-above(own/length, 0)
+        hold
+          save outs, make list
+          walk own
+            take param
+            push(outs, <out {to-upper-case(param)}>)
+          save generic-decl, <\<{join-texts(outs, <, >)}\>>
+      # a reused variant's fields are written when its spare is rebuilt
+      save held, <val>
+      fork test, facts/reuse-variants/has(variant-name)
+        hold
+          save held, <@JvmField var>
+      save field-texts, make list
+      save names, make list
+      save printed-parts, make list
+      save equal-parts, make list
+      save hash-parts, make list
+      save any-array, false
+      save float-case, false
+      walk variant-fields
+        take field
+        save field-label, kotlin-camel(field/name)
+        push(names, field-label)
+        push(field-texts, <{held} {field-label}: {variant-field-type(variant-name, field/name, field/type, own, st, facts)}>)
+        save arrayed, facts/arrays/variant-arrays/has(<{variant-name}/{field/name}>)
+        fork test, arrayed
+          hold
+            save any-array, true
+            push(printed-parts, <{field-label}=$\{{field-label}.contentToString()\}>)
+            push(equal-parts, <{field-label}.contentEquals(other.{field-label})>)
+            push(hash-parts, <{field-label}.contentHashCode()>)
+          miss
+            push(printed-parts, <{field-label}=$\{{field-label}\}>)
+            push(equal-parts, <{field-label} == other.{field-label}>)
+            push(hash-parts, <{field-label}.hashCode()>)
+        fork test, holds-float(make(some, field/type), rt-params, facts/float-forms)
+          hold
+            save float-case, true
+      save printed, <{pad(1)}override fun toString(): String = "{cls}({join-texts(printed-parts, <, >)})">
+      save body, <>
+      fork test, float-case
+        hold
+          save own-stars, <>
+          fork test, is-above(own/length, 0)
+            hold
+              save own-stars, <\<{stars(own/length)}\>>
+          save members, float-members(<{cls}{own-stars}>, names, 0, st)
+          fork test, any-array
+            hold
+              push(members, printed)
+          save body, < \{\n{join-texts(members, <\n>)}\n\}>
+        miss
+          fork test, any-array
+            hold
+              save hashed, get(hash-parts, 0)
+              save at, 0
+              walk hash-parts
+                take part
+                fork test, is-above(at, 0)
+                  hold
+                    save hashed, <31 * ({hashed}) + {part}>
+                save at, add(at, 1)
+              save body, < \{\n{pad(1)}override fun equals(other: Any?): Boolean = other is {cls} && {join-texts(equal-parts, < && >)}\n{pad(1)}override fun hashCode(): Int = {hashed}\n{pad(1)}override fun toString(): String = "{cls}({join-texts(printed-parts, <, >)})"\n\}>
+      save valued, <>
+      fork test, float-case
+        hold
+          save valued, <, TermValued>
+      back <data class {cls}{generic-decl}({join-texts(field-texts, <, >)}) : {form-name}{super-args}(){valued}{body}>
+    miss
+      back <>
+
+# ---- the face's entries ----
+
+# one top-level statement, at its depth
+task emit-statement
+  take node, like statement
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+
+  back kt-statement(node, depth, st, facts)
+
+# a reused variant's class, which names its spare and the construction that rebuilds it
+task reuse-class
+  take label, like text
+  take facts, like kotlin-facts
+  like text
+
+  back spare-class(label, facts)

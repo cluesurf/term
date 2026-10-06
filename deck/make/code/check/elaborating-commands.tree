@@ -1,0 +1,588 @@
+# Elaboration, part six: the effect layer. A statement body type-checked as imperative commands: each expression typed
+# by the KERNEL, control flow, mutation, loops and match typed structurally. It also carries the equations true on the
+# path (a `let`'s definition, an assignment's, an `if` guard's), dropping each one a later write could make false, so a
+# `hold` inside is discharged under its antecedents. A construct it cannot represent declines; a genuine mismatch is the
+# kernel's error.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures `checkCommands`, `forgetPairs`,
+# `stableDefinition` and `forgetStateFor` these were. The decisions:
+#   - what the face still answers is one `command-host` of tasks: check/facts.ts's walks (a face over check/purity.tree
+#     with an identity cache, given the task being checked's pure, local and volatile names, which the face keeps),
+#     `containsMemberWrite` and `readsMember` (each reads every key of a node by reflection), and `checkHold`, not yet
+#     Term
+#   - a path assumption is an `expression-pair`; a scope's hidden name is -1, as in check/elaborating-terms.tree
+#   - `need(null, reason)` and `throw new Decline(reason)` are `decline(reason)`
+
+load @term/base/list
+  find list
+  find get
+
+load ../compile/node
+  find expression
+  find statement
+  find match-case
+  find statement-branch
+
+load ./arm
+  find arm-locals
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find infer
+  find check
+  find bind-context
+  find decline
+
+load ./elaborating-data
+  find constant
+  find ctor-key
+
+load ./elaborating-terms
+  find term-state
+  find expr
+
+# an equation true on a path, as its two side expressions
+form expression-pair
+  link left, like expression
+  link right, like expression
+
+form command-host
+  # does a statement, a body or an expression call something impure (check/facts.ts `callsImpure`, the rule's own
+  # task-typed marks counted pure)
+  link calls-impure-statement
+    like task
+      take statement, like statement
+      like boolean
+  link calls-impure-body
+    like task
+      take body, like list, like statement
+      like boolean
+  link calls-impure-expression
+    like task
+      take expression, like expression
+      like boolean
+  link reads-state
+    like task
+      take expression, like expression
+      like boolean
+  # does the expression read any of the names (`readsAny`), or the one name (`readNames(e).has`)
+  link reads-any
+    like task
+      take expression, like expression
+      take names, like list, like text
+      like boolean
+  link reads-name
+    like task
+      take expression, like expression
+      take name, like text
+      like boolean
+  link written-names
+    like task
+      take statement, like statement
+      like list, like text
+  link written-names-body
+    like task
+      take body, like list, like statement
+      like list, like text
+  # the root a write lands on, `everything` where it cannot be told
+  link root-name
+    like task
+      take expression, like expression
+      like text
+  link everything, like text
+  # the names a closure in the task being checked may write at any time
+  link volatile-names
+    like task
+      like list, like text
+  link contains-member-write
+    like task
+      take body, like list, like statement
+      like boolean
+  link reads-member
+    like task
+      take expression, like expression
+      like boolean
+  link check-hold
+    like task
+      take statement, like statement
+      take scope, like hash, like text, like number
+      take ctx, like context
+      take assumptions, like list, like expression-pair
+      like boolean
+
+task some-value
+  take given, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  back make(some, given)
+
+task no-value
+  like maybe, like kernel-value
+  mark private
+
+  back make none
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+task scope-with
+  take scope, like hash, like text, like number
+  take name, like text
+  take level, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk scope/keys()
+    take key
+    out/set(key, scope/get(key))
+  out/set(name, level)
+  back out
+
+task copied
+  take scope, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk scope/keys()
+    take key
+    out/set(key, scope/get(key))
+  back out
+
+# an expression's term, or the decline the original's `need` raised
+task needed
+  take ts, like term-state
+  take node, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like kernel-term
+  mark private
+
+  sift expr(ts, node, scope, ctx, no-value())
+    case some
+      link found
+      back found
+    case none
+      decline(<an expression the kernel cannot represent>)
+      back constant(<unitValue>)
+
+task number-value
+  take st, like judge-state
+  like kernel-value
+  mark private
+
+  back evaluate(st, no-values(), constant(<Number>))
+
+task boolean-value
+  take st, like judge-state
+  like kernel-value
+  mark private
+
+  back evaluate(st, no-values(), constant(<Boolean>))
+
+task has-text
+  take items, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk items
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# every assumption that reads none of these names
+task forget-pairs
+  take host, like command-host
+  take pairs, like list, like expression-pair
+  take names, like list, like text
+  like list, like expression-pair
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back pairs
+  fork test, has-text(names, host/everything)
+    hold
+      save none, make list
+      back none
+  save out, make list
+  walk pairs
+    take pair
+    fork test, and(is-equal(host/reads-any(pair/left, names), false), is-equal(host/reads-any(pair/right, names), false))
+      hold
+        push(out, pair)
+  back out
+
+# every assumption that reads no state
+task without-state
+  take host, like command-host
+  take pairs, like list, like expression-pair
+  like list, like expression-pair
+  mark private
+
+  save out, make list
+  walk pairs
+    take pair
+    fork test, and(is-equal(host/reads-state(pair/left), false), is-equal(host/reads-state(pair/right), false))
+      hold
+        push(out, pair)
+  back out
+
+# a loop body that calls anything impure or writes through a member changes state between turns
+task forget-state-for
+  take host, like command-host
+  take body, like list, like statement
+  take pairs, like list, like expression-pair
+  like list, like expression-pair
+
+  fork test, or(host/calls-impure-body(body), host/contains-member-write(body))
+    hold
+      back without-state(host, pairs)
+  back pairs
+
+# is `name == value` a fact worth keeping: the value reads neither the name's old value nor a volatile name, and calls
+# nothing two calls may disagree on
+task stable-definition
+  take host, like command-host
+  take name, like text
+  take value, like expression
+  like boolean
+
+  save volatile, host/volatile-names()
+  fork test, has-text(volatile, name)
+    hold
+      back false
+  fork test, host/reads-name(value, name)
+    hold
+      back false
+  fork test, host/reads-any(value, volatile)
+    hold
+      back false
+  back is-equal(host/calls-impure-expression(value), false)
+
+task defined-pair
+  take name, like text
+  take statement, like statement
+  take value, like expression
+  like expression-pair
+  mark private
+
+  save span-of, statement-span(statement)
+  save named
+    make variable
+      bind name, name
+      bind span, span-of
+  back
+    make expression-pair
+      bind left, named
+      bind right, value
+
+task statement-span
+  take statement, like statement
+  like span
+  mark private
+
+  sift statement
+    case let
+      link span
+      back span
+    case assign
+      link span
+      back span
+    miss
+      halt <a statement without a span>
+
+task pushed
+  take pairs, like list, like expression-pair
+  take pair, like expression-pair
+  like list, like expression-pair
+  mark private
+
+  save out, make list
+  walk pairs
+    take one
+    push(out, one)
+  push(out, pair)
+  back out
+
+task is-unit-value
+  take st, like judge-state
+  take value, like kernel-value
+  like boolean
+  mark private
+
+  sift quote(st, 0, value)
+    case const
+      link name
+      back is-equal(name, <Unit>)
+    miss
+      back false
+
+# the condition of a branch as a path equation: `a == b`, or `is-equal(a, b)`, when it calls nothing impure
+task guard-pair
+  take host, like command-host
+  take cond, like expression
+  like maybe, like expression-pair
+  mark private
+
+  fork test, host/calls-impure-expression(cond)
+    hold
+      back make none
+  sift cond
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case equal
+          save pair
+            make expression-pair
+              bind left, left
+              bind right, right
+          back make(some, pair)
+        miss
+          back make none
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link callee-name
+          fork test, and(is-equal(callee-name, <is-equal>), is-equal(args/length, 2))
+            hold
+              save pair
+                make expression-pair
+                  bind left, get(args, 0)
+                  bind right, get(args, 1)
+              back make(some, pair)
+          back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# a statement body checked as commands, threading the context through its bindings and the path's equations through
+# its writes
+task check-commands
+  take ts, like term-state
+  take host, like command-host
+  take statements, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take given, like list, like expression-pair
+
+  save st, ts/st
+  save sc, scope
+  save cx, ctx
+  save assumptions, forget-pairs(host, given, host/volatile-names())
+  walk statements
+    take statement
+    sift statement
+      case let
+        link name
+        link init
+        link mutable
+        sift init
+          case unit
+            fork test, mutable
+              hold
+                decline(<a name declared and given its value later>)
+          miss
+            save name, name
+        save term, needed(ts, init, sc, cx)
+        save type, infer(st, cx, term)/type
+        save sc, scope-with(sc, name, cx/level)
+        save cx, bind-context(cx, <many>, type, name)
+        save forgotten, make list
+        push(forgotten, name)
+        save assumptions, forget-pairs(host, assumptions, forgotten)
+        fork test, stable-definition(host, name, init)
+          hold
+            save assumptions, pushed(assumptions, defined-pair(name, statement, init))
+      case assign
+        link target
+        link op
+        link value
+        save target-term, needed(ts, target, sc, cx)
+        save target-type, infer(st, cx, target-term)/type
+        save value-term, needed(ts, value, sc, cx)
+        save plain, false
+        sift op
+          case set
+            save plain, true
+          miss
+            save plain, false
+        fork test, plain
+          hold
+            check(st, cx, value-term, target-type)
+          miss
+            check(st, cx, target-term, number-value(st))
+            check(st, cx, value-term, number-value(st))
+        save root, host/root-name(target)
+        save forgotten, make list
+        push(forgotten, root)
+        save assumptions, forget-pairs(host, assumptions, forgotten)
+        save member-write, false
+        sift target
+          case member
+            save member-write, true
+          miss
+            save member-write, false
+        fork test, member-write
+          hold
+            save kept, make list
+            walk assumptions
+              take pair
+              fork test, and(is-equal(host/reads-member(pair/left), false), is-equal(host/reads-member(pair/right), false))
+                hold
+                  push(kept, pair)
+            save assumptions, kept
+          miss
+            fork test, and(plain, stable-definition(host, root, value))
+              hold
+                save assumptions, pushed(assumptions, defined-pair(root, statement, value))
+      case expression
+        link expr
+        infer(st, cx, needed(ts, expr, sc, cx))
+      case return
+        link value
+        sift value
+          case some
+            link returned
+            check(st, cx, needed(ts, returned, sc, cx), result-value)
+          case none
+            fork test, is-equal(is-unit-value(st, result-value), false)
+              hold
+                decline(<a bare return from a task that returns a value>)
+      case if
+        link branches
+        link otherwise
+        walk branches
+          take branch
+          check(st, cx, needed(ts, branch/cond, sc, cx), boolean-value(st))
+          save branch-assumptions, make list
+          walk assumptions
+            take pair
+            push(branch-assumptions, pair)
+          sift guard-pair(host, branch/cond)
+            case some
+              link pair
+              push(branch-assumptions, pair)
+            case none
+              save branch-assumptions, branch-assumptions
+          check-commands(ts, host, branch/body, sc, cx, result-value, branch-assumptions)
+        sift otherwise
+          case some
+            link rest
+            check-commands(ts, host, rest, sc, cx, result-value, assumptions)
+          case none
+            save sc, sc
+        save assumptions, forget-pairs(host, assumptions, host/written-names(statement))
+      case while
+        link cond
+        link body
+        save assumptions, forget-pairs(host, assumptions, host/written-names-body(body))
+        save assumptions, forget-state-for(host, body, assumptions)
+        check(st, cx, needed(ts, cond, sc, cx), boolean-value(st))
+        check-commands(ts, host, body, sc, cx, result-value, assumptions)
+      case for-each
+        link item
+        link iterable
+        link body
+        save assumptions, forget-pairs(host, assumptions, host/written-names(statement))
+        save assumptions, forget-state-for(host, body, assumptions)
+        save iterable-term, needed(ts, iterable, sc, cx)
+        save iterable-type, quote(st, cx/level, infer(st, cx, iterable-term)/type)
+        save element-term, constant(<Unit>)
+        save is-list, false
+        sift iterable-type
+          case app
+            link fun
+            link arg
+            sift fun
+              case const
+                link fun-name
+                fork test, is-equal(fun-name, <Array>)
+                  hold
+                    save is-list, true
+                    save element-term, arg
+              miss
+                save is-list, false
+          miss
+            save is-list, false
+        fork test, is-equal(is-list, false)
+          hold
+            decline(<a walk over something that is not a list>)
+        save element-type, evaluate(st, cx/env, element-term)
+        save inner-scope, scope-with(sc, item, cx/level)
+        check-commands(ts, host, body, inner-scope, bind-context(cx, <many>, element-type, <>), result-value, assumptions)
+      case match
+        link subject
+        link cases
+        link otherwise
+        save subject-term, needed(ts, subject, sc, cx)
+        save subject-type, quote(st, cx/level, infer(st, cx, subject-term)/type)
+        save enum-name, <>
+        sift subject-type
+          case const
+            link type-name
+            save enum-name, type-name
+          miss
+            save enum-name, <>
+        fork test, or(is-equal(enum-name, <>), is-equal(ts/data/variant-names/has(enum-name), false))
+          hold
+            decline(<a match on something that is not an enum>)
+        walk cases
+          take arm
+          # AN ARM'S FIELDS SHADOW THE OUTER NAMES: each field's local is taken out of scope, a key with no level
+          save fields, make list
+          save key, ctor-key(enum-name, arm/label)
+          fork test, ts/data/variant-field-info/has(key)
+            hold
+              walk ts/data/variant-field-info/get(key)
+                take field
+                push(fields, field/name)
+          save binds, make list
+          walk arm/binds
+            take one
+            push(binds, one)
+          save shadowed, copied(sc)
+          walk arm-locals(fields, binds)
+            take local
+            shadowed/set(local/local, -1)
+          check-commands(ts, host, arm/body, shadowed, cx, result-value, assumptions)
+        sift otherwise
+          case some
+            link rest
+            check-commands(ts, host, rest, sc, cx, result-value, assumptions)
+          case none
+            save sc, sc
+        save assumptions, forget-pairs(host, assumptions, host/written-names(statement))
+      case throw
+        link value
+        infer(st, cx, needed(ts, value, sc, cx))
+      case hold
+        host/check-hold(statement, sc, cx, assumptions)
+      case break
+        save sc, sc
+      case continue
+        save sc, sc
+      miss
+        decline(<a `{statement/form}` statement>)
+    # a statement calling something impure may have written through any record or changed what a call answers
+    fork test, host/calls-impure-statement(statement)
+      hold
+        save assumptions, without-state(host, assumptions)

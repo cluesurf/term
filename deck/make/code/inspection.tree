@@ -1,0 +1,668 @@
+# The module inspector behind `term look`: the forms and tasks a module's load closure defines, and the ones the
+# module OFFERS (its own that are not `mark private`, and those of every module it passes on with `bear`), each with
+# its fields or its signature and the `#` lines written above it, and three renderings of them: JSON, CSV and a table.
+#
+# Ported from inspect.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - the face walks the load closure (compile/load.ts `collectModules`, with the build's parse memo and scan cache)
+#     and hands in the sources and each module's `bear`s. It also mills, through a task (`mill-of`), since the mill
+#     is compile/mint-bridge.ts, and names a file's deck through another (`deck-of`), since the roll is TypeScript
+#   - a task whose source writes no result type comes back in `unwritten` as well, the very records, and the face
+#     keeps them in the WeakSet `fillInferred` reads
+#   - `JSON.stringify` of a text is term/quote.tree's `json-quote`, and of the symbols, with two spaces, is written out
+#     here for their two shapes
+#   - the table pads to a width in UTF-16 units, as `padEnd` did
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/math
+  find maximum
+
+load @term/base/text
+  find substring
+  find starts-with
+  find ends-with
+  find split
+  find char-code-at
+
+load @term/base/text/unicode
+  find to-runes
+
+load ./parser/tree
+  find node
+  find root-node
+  find parse
+  find comment
+
+load ./parser/token
+  find token-source
+
+load ./compile/node
+  find statement
+
+load ./compile/loading
+  find source
+
+load ./compile/templates
+  find expand-templates
+  find tree-template
+  find template-problem
+
+load ./compile/type-text
+  find show-type
+
+load ./compile/main-entry
+  find whitespace-code
+  find js-trim
+
+load ./term/quote
+  find json-quote
+
+# one field of a form, its type as `term look` prints it
+form symbol-field
+  link name, like text
+  link type, like text
+
+# a definition a module has: a form, with its fields and variants, or a task, with its parameters and result.
+# `inferred` says the result was not written and was read off a compile of the module (`fillInferred`)
+form symbol
+  mark tag, name kind
+  case form
+    link name, like text
+    link module, like text
+    link deck, like text
+    link fields, like list, like symbol-field
+    link variants, like list, like text
+    link note, like text
+  case task
+    link name, like text
+    link module, like text
+    link deck, like text
+    link params, like list, like symbol-field
+    link result, like text
+    link inferred, like boolean
+    link note, like text
+
+# what `inspect-sources` answers
+form inspected
+  link symbols, like list, like symbol
+  link offered, like list, like symbol
+  # how many modules `offered` is drawn from: the entry and its `bear` chain
+  link offered-modules, like number
+  # the tasks whose source writes no result type: their `unit` is a placeholder, not a claim
+  link unwritten, like list, like symbol
+
+# a module's short label: the last two path segments without the `.tree` suffix
+task module-label
+  take file, like text
+  like text
+
+  save stem, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stem, substring(file, 0, subtract(file/length, 5))
+  save parts, split(stem, </>)
+  save from, maximum(0, subtract(parts/length, 2))
+  save kept, make list
+  walk parts
+    take part
+    take index
+    fork test, is-minimum(index, from)
+      hold
+        push(kept, part)
+  back join(kept, </>)
+
+# ---- the doc comments ----
+
+# a name node's text: its chunks joined, an interpolation as nothing; any other node, or none, is empty
+task word-of
+  take one, like maybe, like node
+  like text
+  mark private
+
+  sift one
+    case some
+      link found
+      sift found
+        case name
+          save out, <>
+          walk parts
+            take part
+            sift part
+              case chunk
+                link chunk-text
+                save out, <{out}{chunk-text}>
+              miss
+                save out, out
+          back out
+        miss
+          back <>
+    case none
+      back <>
+
+# the node at `at` among `nodes`, or none past the end
+task node-at
+  take nodes, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      save found, get(nodes, at)
+      back make(some, found)
+  back make none
+
+# a comment line as a note: `^#\s?` taken off, then trimmed
+task comment-line
+  take value, like text
+  like text
+  mark private
+
+  save rest, value
+  fork test, starts-with(rest, <#>)
+    hold
+      save rest, substring(rest, 1, rest/length)
+      fork test, and(is-above(rest/length, 0), whitespace-code(char-code-at(rest, 0)))
+        hold
+          save rest, substring(rest, 1, rest/length)
+  back js-trim(rest)
+
+# the doc comment of each top-level `task` and `form`, by `<kind> <name>`: the comment lines the parser keeps on the
+# definition's group, each a note line, the empty ones dropped, joined by a space. A later definition of one name wins
+task notes-of
+  take tree, like root-node
+  like hash, like text, like text
+  mark private
+
+  save notes, make hash
+  save top, make list
+  sift tree
+    case root
+      link nodes
+      save top, nodes
+  walk top
+    take group
+    sift group
+      # renamed in declaration order (`nodes`, `optional`, `comments`), so the inner `case group` below hides none of them
+      case group
+        link members
+        link optional-mark
+        link group-comments
+        save head, word-of(node-at(members, 0))
+        save named, node-at(members, 1)
+        save name, <>
+        sift named
+          case some
+            link second
+            sift second
+              case group
+                link inner
+                save name, word-of(node-at(inner, 0))
+              miss
+                save name, word-of(named)
+          case none
+            save name, <>
+        save lines, make list
+        sift group-comments
+          case some
+            link written
+            walk written
+              take one
+              save line, comment-line(one/text)
+              fork test, is-unequal(line, <>)
+                hold
+                  push(lines, line)
+          case none
+            save lines, lines
+        save has-comments, false
+        sift group-comments
+          case some
+            link written
+            save has-comments, is-above(written/length, 0)
+          case none
+            save has-comments, false
+        fork test, and(or(is-equal(head, <task>), is-equal(head, <form>)), and(is-unequal(name, <>), has-comments))
+          hold
+            notes/set(<{head} {name}>, join(lines, < >))
+      miss
+        turn next
+  back notes
+
+# a note by key, empty when there is none
+task note-at
+  take notes, like hash, like text, like text
+  take key, like text
+  like text
+  mark private
+
+  fork test, notes/has(key)
+    hold
+      back notes/get(key)
+  back <>
+
+# ---- the symbols ----
+
+# the entry and every module reached from it through `bear` alone
+task passed-on
+  take entry, like text
+  take bears-of
+    like task
+      take file, like text
+      like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save seen, make hash
+  seen/set(entry, true)
+  save queue, make list
+  push(queue, entry)
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save last, queue/pop()
+      walk bears-of(last)
+        take next
+        fork test, is-equal(seen/has(next), false)
+          hold
+            seen/set(next, true)
+            push(queue, next)
+  back seen
+
+# every definition in the sources, and what the entry offers. `mill-of` mills a parsed tree (the templates expanded)
+# for its file, none when it does not mill; `deck-of` names a file's deck
+task inspect-sources
+  take entry, like text
+  take sources, like list, like source
+  take bears-of
+    like task
+      take file, like text
+      like list, like text
+  take mill-of
+    like task
+      take tree, like root-node
+      take file, like text
+      like maybe, like list, like statement
+  take deck-of
+    like task
+      take file, like text
+      like text
+  like inspected
+
+  save offering, passed-on(entry, bears-of)
+  save symbols, make list
+  save offered, make list
+  save unwritten, make list
+
+  walk sources
+    take one
+    save given
+      make token-source
+        bind file, one/file
+        bind text, one/text
+    save parsed, parse(given)
+    fork test, is-equal(parsed/ok, false)
+      hold
+        turn next
+    save notes, notes-of(parsed/tree)
+    save no-templates, make hash
+    save no-enums, make hash
+    save problems, make list
+    save expanded, expand-templates(parsed/tree, no-templates, no-enums, problems)
+    sift mill-of(expanded, one/file)
+      case some
+        link program
+        save module, module-label(one/file)
+        save deck, deck-of(one/file)
+        save offers, offering/has(one/file)
+        walk program
+          take statement
+          save pushed, false
+          save private, false
+          sift statement
+            case record-type
+              link name
+              link fields
+              link variants
+              save field-list, make list
+              walk fields
+                take field
+                save shown
+                  make symbol-field
+                    bind name, field/name
+                    bind type, show-type(field/type)
+                push(field-list, shown)
+              save variant-list, make list
+              walk variants
+                take variant
+                push(variant-list, variant/name)
+              save defined
+                make form
+                  bind name, name
+                  bind module, module
+                  bind deck, deck
+                  bind fields, field-list
+                  bind variants, variant-list
+                  bind note, note-at(notes, <form {name}>)
+              push(symbols, defined)
+              save pushed, true
+              fork test, offers
+                hold
+                  push(offered, defined)
+            case function
+              link name
+              link params
+              link result
+              link method
+              save param-list, make list
+              walk params
+                take param
+                save param-type, <unknown>
+                sift param/type
+                  case some
+                    link written
+                    save param-type, show-type(written)
+                  case none
+                    save param-type, param-type
+                save shown
+                  make symbol-field
+                    bind name, param/name
+                    bind type, param-type
+                push(param-list, shown)
+              save result-text, <unit>
+              save written-result, false
+              sift result
+                case some
+                  link written
+                  save result-text, show-type(written)
+                  save written-result, true
+                case none
+                  save result-text, result-text
+              # a method is written inside its form, not at the top level, so a top-level task of its name is not its note
+              save task-note, note-at(notes, <task {name}>)
+              sift method
+                case some
+                  save task-note, <>
+                case none
+                  save task-note, task-note
+              save defined
+                make task
+                  bind name, name
+                  bind module, module
+                  bind deck, deck
+                  bind params, param-list
+                  bind result, result-text
+                  bind inferred, false
+                  bind note, task-note
+              fork test, is-equal(written-result, false)
+                hold
+                  push(unwritten, defined)
+              push(symbols, defined)
+              fork test, and(offers, is-unequal(statement-private(statement), true))
+                hold
+                  push(offered, defined)
+            miss
+              save pushed, false
+      case none
+        turn next
+
+  save counted, 0
+  walk sources
+    take one
+    fork test, offering/has(one/file)
+      hold
+        save counted, add(counted, 1)
+
+  back
+    make inspected
+      bind symbols, symbols
+      bind offered, offered
+      bind offered-modules, counted
+      bind unwritten, unwritten
+
+# `statement.private === true` on a task
+task statement-private
+  take statement, like statement
+  like boolean
+  mark private
+
+  sift statement
+    case function
+      link private
+      back is-equal(private, true)
+    miss
+      back false
+
+# ---- rendering ----
+
+# a one-line signature: `{ name: type; ... } | variant | ...` for a form, `(name: type, ...) -> result` for a task
+task signature
+  take one, like symbol
+  like text
+
+  sift one
+    case form
+      link fields
+      link variants
+      save shown, make list
+      walk fields
+        take field
+        push(shown, <{field/name}: {field/type}>)
+      save tail, <>
+      fork test, is-above(variants/length, 0)
+        hold
+          save tail, < | {join(variants, < | >)}>
+      back <\{ {join(shown, <; >)} \}{tail}>
+    case task
+      link params
+      link result
+      save shown, make list
+      walk params
+        take param
+        push(shown, <{param/name}: {param/type}>)
+      back <({join(shown, <, >)}) -\> {result}>
+
+# a list of fields as JSON at a depth of indentation, as `JSON.stringify(_, null, 2)` writes it
+task fields-json
+  take fields, like list, like symbol-field
+  take pad, like text
+  like text
+  mark private
+
+  fork test, is-equal(fields/length, 0)
+    hold
+      back <[]>
+  save items, make list
+  walk fields
+    take field
+    push(items, <{pad}    \{\n{pad}      "name": {json-quote(field/name)},\n{pad}      "type": {json-quote(field/type)}\n{pad}    \}>)
+  back <[\n{join(items, <,\n>)}\n{pad}  ]>
+
+task texts-json
+  take texts, like list, like text
+  take pad, like text
+  like text
+  mark private
+
+  fork test, is-equal(texts/length, 0)
+    hold
+      back <[]>
+  save items, make list
+  walk texts
+    take one
+    push(items, <{pad}    {json-quote(one)}>)
+  back <[\n{join(items, <,\n>)}\n{pad}  ]>
+
+# the symbols as `JSON.stringify(symbols, null, 2)` writes them
+task to-json
+  take symbols, like list, like symbol
+  like text
+
+  fork test, is-equal(symbols/length, 0)
+    hold
+      back <[]>
+  save items, make list
+  walk symbols
+    take one
+    sift one
+      case form
+        link name
+        link module
+        link deck
+        link fields
+        link variants
+        link note
+        push(items, <  \{\n    "kind": "form",\n    "name": {json-quote(name)},\n    "module": {json-quote(module)},\n    "deck": {json-quote(deck)},\n    "fields": {fields-json(fields, <  >)},\n    "variants": {texts-json(variants, <  >)},\n    "note": {json-quote(note)}\n  \}>)
+      case task
+        link name
+        link module
+        link deck
+        link params
+        link result
+        link inferred
+        link note
+        push(items, <  \{\n    "kind": "task",\n    "name": {json-quote(name)},\n    "module": {json-quote(module)},\n    "deck": {json-quote(deck)},\n    "params": {fields-json(params, <  >)},\n    "result": {json-quote(result)},\n    "inferred": {inferred},\n    "note": {json-quote(note)}\n  \}>)
+  back <[\n{join(items, <,\n>)}\n]>
+
+# the symbols as CSV, the signature and the note quoted as JSON so a comma inside is safe
+task to-csv
+  take symbols, like list, like symbol
+  like text
+
+  save rows, make list
+  push(rows, <kind,name,deck,module,signature,note>)
+  walk symbols
+    take one
+    sift one
+      case form
+        link name
+        link module
+        link deck
+        link note
+        push(rows, <form,{name},{deck},{module},{json-quote(signature(one))},{json-quote(note)}>)
+      case task
+        link name
+        link module
+        link deck
+        link note
+        push(rows, <task,{name},{deck},{module},{json-quote(signature(one))},{json-quote(note)}>)
+  back join(rows, <\n>)
+
+# a text's length in UTF-16 units, as `.length` counts it
+task unit-length
+  take value, like text
+  like number
+  mark private
+
+  save size, 0
+  walk to-runes(value)
+    take rune
+    save size, add(size, 1)
+    fork test, is-above(rune, 65535)
+      hold
+        save size, add(size, 1)
+  back size
+
+# `value.padEnd(width)`: spaces after it up to `width` UTF-16 units
+task pad-end
+  take value, like text
+  take width, like number
+  like text
+  mark private
+
+  save out, value
+  save size, unit-length(value)
+  walk test
+    hook test, is-below(size, width)
+    hook hold
+      save out, <{out} >
+      save size, add(size, 1)
+  back out
+
+task name-of
+  take one, like symbol
+  like text
+  mark private
+
+  sift one
+    case form
+      link name
+      back name
+    case task
+      link name
+      back name
+
+task deck-of-symbol
+  take one, like symbol
+  like text
+  mark private
+
+  sift one
+    case form
+      link deck
+      back deck
+    case task
+      link deck
+      back deck
+
+task module-of
+  take one, like symbol
+  like text
+  mark private
+
+  sift one
+    case form
+      link module
+      back module
+    case task
+      link module
+      back module
+
+task note-of
+  take one, like symbol
+  like text
+  mark private
+
+  sift one
+    case form
+      link note
+      back note
+    case task
+      link note
+      back note
+
+# a readable aligned table, the default terminal view: a definition's doc comment on the line under it
+task to-table
+  take symbols, like list, like symbol
+  like text
+
+  save name-width, 0
+  save deck-width, 0
+  save module-width, 0
+  walk symbols
+    take one
+    save name-width, maximum(name-width, unit-length(name-of(one)))
+    save deck-width, maximum(deck-width, unit-length(deck-of-symbol(one)))
+    save module-width, maximum(module-width, unit-length(module-of(one)))
+
+  save rows, make list
+  walk symbols
+    take one
+    save word, <task>
+    sift one
+      case form
+        save word, <form>
+      miss
+        save word, word
+    save tail, <>
+    save note, note-of(one)
+    fork test, is-unequal(note, <>)
+      hold
+        save tail, <\n      {note}>
+    push(rows, <{word}  {pad-end(name-of(one), name-width)}  {pad-end(deck-of-symbol(one), deck-width)}  {pad-end(module-of(one), module-width)}  {signature(one)}{tail}>)
+  back join(rows, <\n>)

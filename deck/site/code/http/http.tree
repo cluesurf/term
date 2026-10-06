@@ -72,7 +72,9 @@ form route
 # one positional parameter a matched handler binds: the segment `index`, the param `name`, and whether it is the
 # catch-all rest (`**` / `*`), which binds the joined remaining segments rather than a single one
 form param-spec
-  link index, like u32
+  # a position in the route's segments, a `number` like every list position: `u32` claimed a bound that nothing
+  # here can show, since a list's length has none (D12)
+  link index, like number
   link name, like text
   link rest, like boolean
 
@@ -230,7 +232,8 @@ task insert-route
   take segments
     like list
       like text
-  take index, like u32
+  # a position in `segments`, as `param-spec/index` is
+  take index, like number
   take method, like text
   take handle
     like task
@@ -379,7 +382,8 @@ task find-node
   take segments
     like list
       like text
-  take index, like u32
+  # a position in `segments`, as `param-spec/index` is
+  take index, like number
   like maybe
     like handler-data
   fork test

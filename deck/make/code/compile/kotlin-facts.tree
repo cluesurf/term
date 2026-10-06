@@ -1,0 +1,1698 @@
+# What the Kotlin emitter learns of the whole program before it writes a line: the fields some assignment writes, the
+# forms that hold a float, the tasks with a generic no parameter names, the variants whose nodes are reused, the tasks
+# written `inline`, the variant fields held as primitive arrays (with the arm locals bound to them and the generators that
+# make them), a task's own spares, and the type each `let` of a task declares.
+#
+# Ported from compile/kotlin.ts (self-hosting, 2026-10-06), where each was computed inside `emitKotlin`. kotlin.ts stays
+# the face and hands in what other modules answer (Rust's boxing, the owned fields, a node's size, the subjects taken from
+# a slot), the last two as tests it answers by identity. The walks by reflection are compile/node-children.tree's step.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-count
+  find char-code-at
+
+load ./node
+  find type
+  find expression
+  find statement
+  find variant-field
+  find match-case
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./backend-shapes
+  find collection-read
+  find escaping-params
+
+load ./backend-names
+  find names-in
+  find fill
+  find fill-call-of
+
+load ./backend-loops
+  find list-generator-at
+
+load ./lowered-members
+  find list-length-tasks
+
+load ../check/arm
+  find arm-locals
+
+load ./kotlin-names
+  find kotlin-pascal
+
+# ---- small helpers ----
+
+task type-and-span
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+
+task text-flags
+  like hash, like text, like boolean
+  mark private
+
+  back make hash
+
+task statement-handle-of
+  take node, like statement
+  like node-handle
+  mark private
+
+  back
+    make node-handle/statement-handle
+      bind node, node
+
+task expression-handle-of
+  take node, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, node
+
+task variable-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    miss
+      back <>
+
+task is-digits
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(name, at)
+      fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# an arm's `link` names, copied: the list handed to a call would be written into the node where it was left out
+task arm-binds
+  take arm, like match-case
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  back out
+
+# ---- the fields an assignment writes ----
+
+# the field names an assignment writes anywhere in the program: `save a/b/c, ...` writes every field along the path,
+# since a nested write is rebuilt from its first field
+task fields-assigned
+  take program, like list, like statement
+  like list, like text
+
+  save out, make list
+  walk block-handles(program)
+    take handle
+    assigned-into(handle, out)
+  back out
+
+task assigned-into
+  take handle, like node-handle
+  take out, like list, like text
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case assign
+          link assign-target
+          add-member-names(assign-target, out)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    assigned-into(child, out)
+
+task add-member-names
+  take target, like expression
+  take out, like list, like text
+  mark private
+
+  sift target
+    case member
+      link member-target
+      link member-name
+      add-text(out, member-name)
+      add-member-names(member-target, out)
+    miss
+      save nothing, 0
+
+# ---- the forms that hold a float ----
+
+# whether a type can hold a float: itself, through a list, a map, a generic parameter of the form, or a form that does
+task holds-float
+  take given, like maybe, like type
+  take params, like list, like text
+  take floats, like hash, like text, like boolean
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case float
+          back true
+        case array
+          link element
+          back holds-float(make(some, element), params, floats)
+        case map
+          link key-type
+          link value-type
+          back or(holds-float(make(some, key-type), params, floats), holds-float(make(some, value-type), params, floats))
+        case named
+          link named-name
+          fork test, or(or(is-equal(named-name, <float>), has-text(params, named-name)), floats/has(named-name))
+            hold
+              back true
+          walk read(args)
+            take one
+            fork test, holds-float(make(some, one), params, floats)
+              hold
+                back true
+          back false
+        miss
+          back false
+    case none
+      back false
+
+# the forms that can hold a float, to a fixpoint: each compares as a key by the key rule and as a value by IEEE. A
+# `mark shared` form is a reference and compares by identity
+task float-forms
+  take program, like list, like statement
+  like hash, like text, like boolean
+
+  save floats, text-flags()
+  save grew, true
+  walk test
+    hook test, grew
+    hook hold
+      save grew, false
+      walk program
+        take one
+        sift one
+          case record-type
+            link rt-name
+            link rt-params
+            link rt-indices
+            link rt-fields
+            link rt-variants
+            fork test, or(read(shared), floats/has(rt-name))
+              hold
+                turn next
+            save holds, false
+            walk rt-fields
+              take field
+              fork test, holds-float(make(some, field/type), rt-params, floats)
+                hold
+                  save holds, true
+            walk rt-variants
+              take variant
+              walk variant/fields
+                take field
+                fork test, holds-float(make(some, field/type), rt-params, floats)
+                  hold
+                    save holds, true
+            fork test, holds
+              hold
+                save floats/{rt-name}, true
+                save grew, true
+          miss
+            save nothing, 0
+  back floats
+
+# ---- the generics no parameter names ----
+
+# whether a type holds a `name` field equal to `wanted`, as `JSON.stringify(type).includes('"name":"g"')` read it
+task type-holds-name
+  take given, like type
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link named-name
+      fork test, is-equal(named-name, wanted)
+        hold
+          back true
+      walk read(args)
+        take one
+        fork test, type-holds-name(one, wanted)
+          hold
+            back true
+      walk read(value-args)
+        take one
+        fork test, expression-holds-name(expression-handle-of(one), wanted)
+          hold
+            back true
+      back false
+    case array
+      link element
+      back type-holds-name(element, wanted)
+    case map
+      link key-type
+      link value-type
+      back or(type-holds-name(key-type, wanted), type-holds-name(value-type, wanted))
+    case function
+      link fn-params
+      link fn-result
+      walk fn-params
+        take one
+        fork test, type-holds-name(one, wanted)
+          hold
+            back true
+      back type-holds-name(fn-result, wanted)
+    miss
+      back false
+
+task expression-holds-name
+  take handle, like node-handle
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link variable-name
+          fork test, is-equal(variable-name, wanted)
+            hold
+              back true
+        case hole
+          link hole-name
+          fork test, is-equal(hole-name, wanted)
+            hold
+              back true
+        case member
+          link member-target
+          link member-name
+          fork test, is-equal(member-name, wanted)
+            hold
+              back true
+        case record
+          link record-name
+          link record-fields
+          fork test, is-equal(record-name, wanted)
+            hold
+              back true
+          walk record-fields
+            take field
+            fork test, is-equal(field/name, wanted)
+              hold
+                back true
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            fork test, is-equal(param/name, wanted)
+              hold
+                back true
+        miss
+          save nothing, 0
+    case type-handle
+      link node
+      back type-holds-name(node, wanted)
+    miss
+      save nothing, 0
+  walk node-children(handle, make list)
+    take child
+    fork test, expression-holds-name(child, wanted)
+      hold
+        back true
+  back false
+
+# the generic tasks with a type parameter no parameter mentions (`make-sorted-map` names `v` only in its result): the
+# call alone cannot tell Kotlin what it is
+task hidden-generics
+  take program, like list, like statement
+  like hash, like text, like boolean
+
+  save out, text-flags()
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        link fn-result
+        link fn-result-width
+        link fn-generics
+        walk fn-generics
+          take generic
+          save seen, false
+          walk fn-params
+            take param
+            sift param/type
+              case some
+                link param-type
+                fork test, type-holds-name(param-type, generic/name)
+                  hold
+                    save seen, true
+              case none
+                save nothing, 0
+          fork test, not(seen)
+            hold
+              save out/{fn-name}, true
+      miss
+        save nothing, 0
+  back out
+
+# ---- the variants whose nodes are reused ----
+
+# a reused variant: its form, the form's field-less case that clears a spare's links, its fields, and the ones that hold
+# the form itself
+form reuse-variant
+  link form, like text
+  link empty, like text
+  link fields, like list, like text
+  link recursive, like list, like text
+
+# REUSE OF A NODE (compile/kotlin.ts says why it is sound): the variants of a recursive form no Rust emission ever clones,
+# in a program that runs nothing concurrently. `boxed-of` answers Rust's boxed forms, none where Rust's analysis threw
+task kotlin-reuse
+  take program, like list, like statement
+  take boxed-of
+    like task
+      like maybe, like list, like text
+  like hash, like text, like reuse-variant
+
+  save out, make hash
+  save recursive, false
+  walk program
+    take one
+    sift one
+      case record-type
+        link rt-name
+        link rt-params
+        link rt-indices
+        link rt-fields
+        link rt-variants
+        walk rt-variants
+          take variant
+          walk variant/fields
+            take field
+            sift field/type
+              case named
+                link named-name
+                fork test, is-equal(named-name, rt-name)
+                  hold
+                    save recursive, true
+              miss
+                save nothing, 0
+      miss
+        save nothing, 0
+  fork test, not(recursive)
+    hold
+      back out
+  walk program
+    take one
+    sift one
+      case native
+        back out
+      case function
+        fork test, read(async)
+          hold
+            back out
+      miss
+        save nothing, 0
+  save boxed, make list
+  sift boxed-of()
+    case some
+      link found
+      save boxed, found
+    case none
+      back out
+  walk boxed
+    take boxed-name
+    save done, false
+    walk program
+      take one
+      fork test, done
+        hold
+          turn next
+      sift one
+        case record-type
+          link rt-name
+          link rt-params
+          link rt-indices
+          link rt-fields
+          link rt-variants
+          fork test, is-unequal(rt-name, boxed-name)
+            hold
+              turn next
+          save done, true
+          fork test, is-above(rt-params/length, 0)
+            hold
+              turn next
+          save empty, <>
+          save has-empty, false
+          walk rt-variants
+            take variant
+            fork test, and(not(has-empty), is-equal(variant/fields/length, 0))
+              hold
+                save empty, variant/name
+                save has-empty, true
+          fork test, not(has-empty)
+            hold
+              turn next
+          walk rt-variants
+            take variant
+            save links, make list
+            save all-fields, make list
+            walk variant/fields
+              take field
+              push(all-fields, field/name)
+              sift field/type
+                case named
+                  link named-name
+                  fork test, is-equal(named-name, boxed-name)
+                    hold
+                      push(links, field/name)
+                miss
+                  save nothing, 0
+            fork test, is-above(links/length, 0)
+              hold
+                save reused
+                  make reuse-variant
+                    bind form, boxed-name
+                    bind empty, empty
+                    bind fields, all-fields
+                    bind recursive, links
+                save out/{variant/name}, reused
+        miss
+          save nothing, 0
+  back out
+
+# ---- the tasks written `inline` ----
+
+# whether any parameter of the task is a function
+task takes-function
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      link fn-name
+      link fn-params
+      walk fn-params
+        take param
+        sift param/type
+          case some
+            link param-type
+            sift param-type
+              case function
+                back true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      back false
+    miss
+      back false
+
+# The tasks emitted `inline fun`: each takes a function and keeps none (escapingParams), its body is at most 120 nodes
+# (`size-of` counts them as the original's reflective count did), and none reaches itself through the others, since
+# kotlinc refuses a recursive inline function
+task inline-tasks
+  take program, like list, like statement
+  take size-of
+    like task
+      take body, like list, like statement
+      like number
+  like list, like text
+
+  save names, make list
+  save bodies, make list
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, is-equal(fn-body/length, 0)
+          hold
+            turn next
+        fork test, not(takes-function(one))
+          hold
+            turn next
+        fork test, is-above(escaping-params(one)/length, 0)
+          hold
+            turn next
+        fork test, is-above(size-of(fn-body), 120)
+          hold
+            turn next
+        fork test, not(has-text(names, fn-name))
+          hold
+            push(names, fn-name)
+            push(bodies, fn-body)
+          miss
+            # a later definition of a name replaces the earlier one in place, as `Map.set` did
+            save at, 0
+            walk names
+              take known
+              fork test, is-equal(known, fn-name)
+                hold
+                  save bodies/{at}, fn-body
+              save at, add(at, 1)
+      miss
+        save nothing, 0
+  # the candidates each one names, as a callee or a value
+  save edges, make hash
+  save at, 0
+  walk names
+    take name
+    save named, make list
+    walk names-in(block-handles(get(bodies, at)))
+      take read-name
+      fork test, has-text(names, read-name)
+        hold
+          push(named, read-name)
+    save edges/{name}, named
+    save at, add(at, 1)
+  save out, make list
+  walk names
+    take start
+    save seen, make list
+    save stack, make list
+    walk edges/get(start)
+      take one
+      push(stack, one)
+    save reaches, false
+    walk test
+      hook test, and(not(reaches), is-above(stack/length, 0))
+      hook hold
+        save next, pop(stack)
+        fork test, is-equal(next, start)
+          hold
+            save reaches, true
+          miss
+            fork test, not(has-text(seen, next))
+              hold
+                push(seen, next)
+                walk edges/get(next)
+                  take one
+                  push(stack, one)
+    fork test, not(reaches)
+      hold
+        push(out, start)
+  back out
+
+# ---- the variant fields held as primitive arrays ----
+
+form variant-shape
+  link fields, like list, like variant-field
+  link generic, like boolean
+
+# an arm local bound to a variant's array field, checked once every task is walked
+form arm-entry
+  link task, like text
+  link local, like text
+  link key, like text
+  link others, like list, like text
+  link arm-names, like hash, like text, like text
+
+form arm-place
+  link task, like text
+  link local, like text
+
+form variant-array-facts
+  # `variant/field` to the kind it is held as: `Long`, `Double`, `Boolean`, or `Object` for an `Array<T>`
+  link variant-arrays, like hash, like text, like text
+  # each task's arm locals bound to such a field, to its kind
+  link arm-arrays, like hash, like text, like hash, like text, like text
+  # the `let`s of the generators whose list is written as an `Array<T>`, since its one use is such a field
+  link array-generators, like list, like statement
+  # each variant's fields, for an `Array<T>` field's element
+  link variant-field-types, like hash, like text, like list, like variant-field
+
+# the primitive array a list of this element is held as, `''` for none
+task array-kind
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back <Long>
+        case float
+          back <Double>
+        case boolean
+          back <Boolean>
+        case named
+          link named-name
+          fork test, or(is-equal(named-name, <number>), is-equal(named-name, <integer>))
+            hold
+              back <Long>
+          fork test, is-equal(named-name, <float>)
+            hold
+              back <Double>
+          back <>
+        miss
+          back <>
+    case none
+      back <>
+
+# a named type's arguments, copied: the list handed to a call would be written into the type where it was left out
+task type-args
+  take known, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  sift known
+    case named
+      walk read(args)
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+# whether a type is concrete in every spelling: no inference variable, and no generic of a task or form (`params`)
+# named without arguments, at any depth
+task concrete
+  take given, like maybe, like type
+  take params, like hash, like text, like boolean
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case variable
+          back false
+        case named
+          link named-name
+          save type-arguments, type-args(known)
+          fork test, and(params/has(named-name), is-equal(type-arguments/length, 0))
+            hold
+              back false
+          walk type-arguments
+            take one
+            fork test, not(concrete(make(some, one), params))
+              hold
+                back false
+          back true
+        case array
+          link element
+          back concrete(make(some, element), params)
+        case map
+          link key-type
+          link value-type
+          back and(concrete(make(some, key-type), params), concrete(make(some, value-type), params))
+        case function
+          link fn-params
+          link fn-result
+          fork test, not(concrete(make(some, fn-result), params))
+            hold
+              back false
+          walk fn-params
+            take one
+            fork test, not(concrete(make(some, one), params))
+              hold
+                back false
+          back true
+        miss
+          back true
+    case none
+      back false
+
+# what a fixed list of this element is held as: its primitive array, or `Object`, an `Array<T>`, for any element whose
+# type names no type variable. `''` for none
+task fixed-kind
+  take given, like maybe, like type
+  take params, like hash, like text, like boolean
+  like text
+
+  save kind, array-kind(given)
+  fork test, is-unequal(kind, <>)
+    hold
+      back kind
+  fork test, concrete(given, params)
+    hold
+      back <Object>
+  back <>
+
+# the name of a call's callee, as the original read `callee.name`
+task callee-name-of
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back name
+    case member
+      link member-target
+      link member-name
+      back member-name
+    case hole
+      back name
+    miss
+      back <>
+
+# whether every mention of `local` under these only sizes, indexes or walks it, outside any closure
+task only-array-uses
+  take handles, like list, like node-handle
+  take local, like text
+  take sizers, like list, like text
+  like boolean
+  mark private
+
+  walk handles
+    take handle
+    fork test, not(array-uses-in(handle, local, sizers))
+      hold
+        back false
+  back true
+
+task skipping
+  take key, like text
+  like list, like text
+  mark private
+
+  save out, type-and-span()
+  push(out, key)
+  back out
+
+task array-uses-in
+  take handle, like node-handle
+  take local, like text
+  take sizers, like list, like text
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case variable
+          link variable-name
+          fork test, is-equal(variable-name, local)
+            hold
+              back false
+        # a closure that reads it could hand it anywhere, later
+        case closure
+          link closure-params
+          link closure-body
+          back not(has-text(names-in(block-handles(closure-body)), local))
+        case call
+          link call-callee
+          link call-args
+          save sized, has-text(sizers, callee-name-of(call-callee))
+          save at, 0
+          walk call-args
+            take arg
+            save approved, false
+            fork test, and(sized, is-equal(at, 0))
+              hold
+                save approved, is-equal(variable-name-of(arg), local)
+            fork test, not(approved)
+              hold
+                fork test, not(array-uses-in(expression-handle-of(arg), local, sizers))
+                  hold
+                    back false
+            save at, add(at, 1)
+          back only-array-uses(node-children(handle, skipping(<args>)), local, sizers)
+        case member
+          link member-target
+          link member-name
+          # a slot by an index, a literal one (`items/1`), or a count
+          save approved, false
+          fork test, is-equal(variable-name-of(member-target), local)
+            hold
+              sift read(index)
+                case some
+                  save approved, true
+                case none
+                  save nothing, 0
+              fork test, is-digits(member-name)
+                hold
+                  save approved, true
+              sift collection-read(node)
+                case some
+                  save approved, true
+                case none
+                  save nothing, 0
+          fork test, not(approved)
+            hold
+              fork test, not(array-uses-in(expression-handle-of(member-target), local, sizers))
+                hold
+                  back false
+          back only-array-uses(node-children(handle, skipping(<target>)), local, sizers)
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          fork test, is-unequal(variable-name-of(each-iterable), local)
+            hold
+              fork test, not(array-uses-in(expression-handle-of(each-iterable), local, sizers))
+                hold
+                  back false
+          back only-array-uses(node-children(handle, skipping(<iterable>)), local, sizers)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back only-array-uses(node-children(handle, type-and-span()), local, sizers)
+
+# every name a task binds other than as an arm's field: its parameters, `let`s, walk items, closure parameters
+task other-names
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      walk fn-params
+        take param
+        add-text(out, param/name)
+      walk block-handles(fn-body)
+        take handle
+        other-names-into(handle, out)
+    miss
+      save nothing, 0
+  back out
+
+task other-names-into
+  take handle, like node-handle
+  take out, like list, like text
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          add-text(out, let-name)
+        case for-each
+          link each-item
+          add-text(out, each-item)
+          save index-name, read(index)
+          fork test, is-unequal(index-name, <>)
+            hold
+              add-text(out, index-name)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            add-text(out, param/name)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    other-names-into(child, out)
+
+# every statement list under a node, each a body some `let` may stand in
+task blocks-under
+  take handle, like node-handle
+  take out, like list, like list, like statement
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case if
+          link if-branches
+          link if-otherwise
+          walk if-branches
+            take branch
+            push(out, branch/body)
+          sift if-otherwise
+            case some
+              link other
+              push(out, other)
+            case none
+              save nothing, 0
+        case while
+          link while-cond
+          link while-body
+          push(out, while-body)
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          push(out, each-body)
+        case match
+          link match-subject
+          link match-cases
+          link match-otherwise
+          walk match-cases
+            take arm
+            push(out, arm/body)
+          sift match-otherwise
+            case some
+              link other
+              push(out, other)
+            case none
+              save nothing, 0
+        case guard
+          link guard-body
+          link guard-catch
+          push(out, guard-body)
+          sift guard-catch
+            case some
+              link caught
+              push(out, caught/body)
+            case none
+              save nothing, 0
+        case function
+          link fn-name
+          link fn-params
+          link fn-body
+          push(out, fn-body)
+        miss
+          save nothing, 0
+    case expression-handle
+      link node
+      sift node
+        case closure
+          link closure-params
+          link closure-body
+          push(out, closure-body)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    blocks-under(child, out)
+
+# the generator that makes `name` in the task, if any, found in whichever statement list declares it
+task generator-of
+  take fn, like statement
+  take body, like list, like statement
+  take name, like text
+  like maybe, like statement
+  mark private
+
+  save blocks, make list
+  push(blocks, body)
+  walk block-handles(body)
+    take handle
+    blocks-under(handle, blocks)
+  walk blocks
+    take block
+    save at, 0
+    walk block
+      take one
+      sift one
+        case let
+          link let-name
+          fork test, is-equal(let-name, name)
+            hold
+              sift list-generator-at(block, at, fn)
+                case some
+                  link found
+                  fork test, is-equal(found/list, name)
+                    hold
+                      back make(some, one)
+                case none
+                  save nothing, 0
+        miss
+          save nothing, 0
+      save at, add(at, 1)
+  back make none
+
+# how many times the task reads `name`
+task mention-count
+  take handles, like list, like node-handle
+  take name, like text
+  like number
+  mark private
+
+  save count, 0
+  walk handles
+    take handle
+    sift handle
+      case expression-handle
+        link node
+        fork test, is-equal(variable-name-of(node), name)
+          hold
+            save count, add(count, 1)
+      miss
+        save nothing, 0
+    save count, add(count, mention-count(node-children(handle, type-and-span()), name))
+  back count
+
+# a construction's value for a variant's array field, with the task it is made in
+form construction
+  link task, like statement
+  link body, like list, like statement
+  link value, like expression
+
+task constructions-into
+  take handle, like node-handle
+  take fn, like statement
+  take body, like list, like statement
+  take arrays, like hash, like text, like text
+  take out, like hash, like text, like list, like construction
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case record
+          link record-name
+          link record-fields
+          walk record-fields
+            take field
+            save key, <{record-name}/{field/name}>
+            fork test, and(arrays/has(key), is-equal(arrays/get(key), <Object>))
+              hold
+                save made
+                  make construction
+                    bind task, fn
+                    bind body, body
+                    bind value, field/value
+                fork test, not(out/has(key))
+                  hold
+                    save out/{key}, make list
+                push(out/get(key), made)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    constructions-into(child, fn, body, arrays, out)
+
+# whether a value is the empty list, as a literal or a `make list`
+task empty-list
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case array
+      link items
+      back is-equal(items/length, 0)
+    case record
+      link record-name
+      link record-fields
+      back and(is-equal(record-name, <list>), is-equal(record-fields/length, 0))
+    miss
+      back false
+
+# A variant's own list of a primitive element only ever read is held as the primitive array it is, and `Object` (an
+# `Array<T>`) where every construction makes the array directly: the variant owns it (`owned`, backend.ts's owned
+# fields) and every local an arm binds it to is only sized, indexed or walked. Decided for the program, since the field
+# has one type: a local that does anything else, or whose name the task also binds another way, leaves it a list
+task variant-arrays
+  take program, like list, like statement
+  take owned, like list, like text
+  take fills, like hash, like text, like fill
+  like variant-array-facts
+
+  save shapes, make hash
+  save field-types, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link rt-name
+        link rt-params
+        link rt-indices
+        link rt-fields
+        link rt-variants
+        walk rt-variants
+          take variant
+          save shape
+            make variant-shape
+              bind fields, variant/fields
+              bind generic, is-above(rt-params/length, 0)
+          save shapes/{variant/name}, shape
+          save field-types/{variant/name}, variant/fields
+      miss
+        save nothing, 0
+  save arrays, make hash
+  walk owned
+    take key
+    save parts, split(key, </>)
+    fork test, is-below(parts/length, 2)
+      hold
+        turn next
+    save variant-name, get(parts, 0)
+    save field-name, get(parts, 1)
+    fork test, not(shapes/has(variant-name))
+      hold
+        turn next
+    save shape, shapes/get(variant-name)
+    fork test, shape/generic
+      hold
+        turn next
+    save kind, <>
+    save found, false
+    walk shape/fields
+      take field
+      fork test, and(not(found), is-equal(field/name, field-name))
+        hold
+          save found, true
+          sift field/type
+            case array
+              link element
+              save kind, array-kind(make(some, element))
+              fork test, is-equal(kind, <>)
+                hold
+                  sift element
+                    case variable
+                      save nothing, 0
+                    miss
+                      save kind, <Object>
+            miss
+              save nothing, 0
+    fork test, is-unequal(kind, <>)
+      hold
+        save arrays/{key}, kind
+  save sizers, list-length-tasks()
+  # each arm binding such a field, checked; one failure leaves the field a list everywhere
+  save arms, make list
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save others, other-names(one)
+        save arm-names, make hash
+        walk block-handles(fn-body)
+          take handle
+          arm-entries-into(handle, fn-name, others, arm-names, shapes, arrays, sizers, arms)
+      miss
+        save nothing, 0
+  walk arms
+    take arm
+    save named-key, <>
+    fork test, arm/arm-names/has(arm/local)
+      hold
+        save named-key, arm/arm-names/get(arm/local)
+    fork test, or(has-text(arm/others, arm/local), is-unequal(named-key, arm/key))
+      hold
+        arrays/delete(arm/key)
+  save arm-arrays, make hash
+  save arms-of, make hash
+  walk arms
+    take arm
+    fork test, arrays/has(arm/key)
+      hold
+        fork test, not(arm-arrays/has(arm/task))
+          hold
+            save arm-arrays/{arm/task}, make hash
+        save locals, arm-arrays/get(arm/task)
+        save locals/{arm/local}, arrays/get(arm/key)
+        fork test, not(arms-of/has(arm/key))
+          hold
+            save arms-of/{arm/key}, make list
+        save place
+          make arm-place
+            bind task, arm/task
+            bind local, arm/local
+        push(arms-of/get(arm/key), place)
+  # an `Object` field is kept only where every construction makes the array directly: an empty list, a fill, or a
+  # generator's list that nothing but its push and this construction mentions
+  save constructions, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        walk block-handles(fn-body)
+          take handle
+          constructions-into(handle, one, fn-body, arrays, constructions)
+      miss
+        save nothing, 0
+  save generators, make list
+  save keys, make list
+  walk arrays/keys()
+    take key
+    push(keys, key)
+  walk keys
+    take key
+    fork test, is-unequal(arrays/get(key), <Object>)
+      hold
+        turn next
+    save made, make list
+    save direct, true
+    save built, make list
+    fork test, constructions/has(key)
+      hold
+        save built, constructions/get(key)
+    walk built
+      take made-at
+      fork test, not(direct)
+        hold
+          turn next
+      save value, made-at/value
+      fork test, empty-list(value)
+        hold
+          turn next
+      save filled, false
+      sift value
+        case call
+          link call-callee
+          fork test, is-unequal(variable-name-of(call-callee), <>)
+            hold
+              sift fill-call-of(value, fills)
+                case some
+                  save filled, true
+                case none
+                  save nothing, 0
+        miss
+          save nothing, 0
+      fork test, filled
+        hold
+          turn next
+      save name, variable-name-of(value)
+      fork test, is-equal(name, <>)
+        hold
+          save direct, false
+          turn next
+      sift generator-of(made-at/task, made-at/body, name)
+        case some
+          link generator
+          fork test, is-unequal(mention-count(block-handles(made-at/body), name), 2)
+            hold
+              save direct, false
+            miss
+              push(made, generator)
+        case none
+          save direct, false
+    fork test, not(direct)
+      hold
+        arrays/delete(key)
+        fork test, arms-of/has(key)
+          hold
+            walk arms-of/get(key)
+              take place
+              fork test, arm-arrays/has(place/task)
+                hold
+                  arm-arrays/get(place/task)/delete(place/local)
+        turn next
+    walk made
+      take generator
+      push(generators, generator)
+  back
+    make variant-array-facts
+      bind variant-arrays, arrays
+      bind arm-arrays, arm-arrays
+      bind array-generators, generators
+      bind variant-field-types, field-types
+
+task arm-entries-into
+  take handle, like node-handle
+  take fn-name, like text
+  take others, like list, like text
+  take arm-names, like hash, like text, like text
+  take shapes, like hash, like text, like variant-shape
+  take arrays, like hash, like text, like text
+  take sizers, like list, like text
+  take arms, like list, like arm-entry
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case match
+          link match-subject
+          link match-cases
+          walk match-cases
+            take arm
+            fork test, not(shapes/has(arm/label))
+              hold
+                turn next
+            save field-names, make list
+            walk shapes/get(arm/label)/fields
+              take field
+              push(field-names, field/name)
+            walk arm-locals(field-names, arm-binds(arm))
+              take bound
+              save key, <{arm/label}/{bound/field}>
+              save before, <>
+              save known, arm-names/has(bound/local)
+              fork test, known
+                hold
+                  save before, arm-names/get(bound/local)
+              fork test, or(not(known), is-equal(before, key))
+                hold
+                  save arm-names/{bound/local}, key
+                miss
+                  save arm-names/{bound/local}, <>
+              fork test, arrays/has(key)
+                hold
+                  fork test, not(only-array-uses(block-handles(arm/body), bound/local, sizers))
+                    hold
+                      arrays/delete(key)
+                  save entry
+                    make arm-entry
+                      bind task, fn-name
+                      bind local, bound/local
+                      bind key, key
+                      bind others, others
+                      bind arm-names, arm-names
+                  push(arms, entry)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    arm-entries-into(child, fn-name, others, arm-names, shapes, arrays, sizers, arms)
+
+# ---- the lists a record owns ----
+
+# the plain records' lists of integers the record owns (`owned`, backend.ts's owned fields), each typed `TermLongs`: a
+# form whose values cross into native code keeps the interface. Keyed `form/field`
+task field-lists
+  take program, like list, like statement
+  take owned, like list, like text
+  like hash, like text, like boolean
+
+  save out, text-flags()
+  walk owned
+    take key
+    save parts, split(key, </>)
+    fork test, is-below(parts/length, 2)
+      hold
+        turn next
+    save form-name, get(parts, 0)
+    save field-name, get(parts, 1)
+    save done, false
+    walk program
+      take one
+      fork test, done
+        hold
+          turn next
+      sift one
+        case record-type
+          link rt-name
+          link rt-params
+          link rt-indices
+          link rt-fields
+          link rt-variants
+          fork test, is-unequal(rt-name, form-name)
+            hold
+              turn next
+          save done, true
+          fork test, or(is-above(rt-variants/length, 0), read(shared))
+            hold
+              turn next
+          save matched, false
+          walk rt-fields
+            take field
+            fork test, or(matched, is-unequal(field/name, field-name))
+              hold
+                turn next
+            save matched, true
+            sift field/type
+              case array
+                link element
+                sift element
+                  case number
+                    save out/{key}, true
+                  miss
+                    save nothing, 0
+              miss
+                save nothing, 0
+        miss
+          save nothing, 0
+  back out
+
+# ---- the variant classes ----
+
+form variant-classes
+  # the Kotlin subclass for a variant label, the last form's where two name a case alike
+  link variant-class, like hash, like text, like text
+  # the same, by label and then form
+  link variant-class-of, like hash, like text, like hash, like text, like text
+  link variant-field-names, like hash, like text, like list, like text
+  # by `form/case`, since two forms may name a case alike
+  link owned-field-names, like hash, like text, like list, like text
+
+# every variant's subclass: the form's pascal name and the case's, with a `Case` suffix where that lands on a real form's
+task variant-classes-of
+  take program, like list, like statement
+  like variant-classes
+
+  save pascals, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        link rt-name
+        add-text(pascals, kotlin-pascal(rt-name))
+      miss
+        save nothing, 0
+  save classes, make hash
+  save classes-of, make hash
+  save field-names, make hash
+  save owned-names, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link rt-name
+        link rt-params
+        link rt-indices
+        link rt-fields
+        link rt-variants
+        walk rt-variants
+          take variant
+          save plain, <{kotlin-pascal(rt-name)}{kotlin-pascal(variant/name)}>
+          save cls, plain
+          fork test, has-text(pascals, plain)
+            hold
+              save cls, <{plain}Case>
+          save classes/{variant/name}, cls
+          fork test, not(classes-of/has(variant/name))
+            hold
+              save classes-of/{variant/name}, make hash
+          save by-owner, classes-of/get(variant/name)
+          save by-owner/{rt-name}, cls
+          save names, make list
+          walk variant/fields
+            take field
+            push(names, field/name)
+          save field-names/{variant/name}, names
+          save owned-key, <{rt-name}/{variant/name}>
+          save owned-names/{owned-key}, names
+      miss
+        save nothing, 0
+  back
+    make variant-classes
+      bind variant-class, classes
+      bind variant-class-of, classes-of
+      bind variant-field-names, field-names
+      bind owned-field-names, owned-names
+
+# ---- a task's own spares ----
+
+# The reused variants a task both keeps a node of (a match on a subject taken from its slot) and builds one of: their
+# spare is a local of the task. In the order the kept ones are met
+task local-spares
+  take fn, like statement
+  take reused, like hash, like text, like reuse-variant
+  take is-taken
+    like task
+      take fn, like statement
+      take node, like expression
+      like boolean
+  like list, like text
+
+  save kept, make list
+  save built, make list
+  sift fn
+    case function
+      link fn-name
+      link fn-params
+      link fn-body
+      walk block-handles(fn-body)
+        take handle
+        spares-into(handle, fn, reused, is-taken, kept, built)
+    miss
+      save nothing, 0
+  save out, make list
+  walk kept
+    take label
+    fork test, has-text(built, label)
+      hold
+        push(out, label)
+  back out
+
+task spares-into
+  take handle, like node-handle
+  take fn, like statement
+  take reused, like hash, like text, like reuse-variant
+  take is-taken
+    like task
+      take fn, like statement
+      take node, like expression
+      like boolean
+  take kept, like list, like text
+  take built, like list, like text
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case closure
+          back
+        case record
+          link record-name
+          fork test, reused/has(record-name)
+            hold
+              add-text(built, record-name)
+        miss
+          save nothing, 0
+    case statement-handle
+      link node
+      sift node
+        case match
+          link match-subject
+          link match-cases
+          fork test, is-taken(fn, match-subject)
+            hold
+              walk match-cases
+                take arm
+                fork test, reused/has(arm/label)
+                  hold
+                    add-text(kept, arm/label)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    spares-into(child, fn, reused, is-taken, kept, built)
+
+# ---- the type each `let` declares ----
+
+# each `let` of the body by name to the type it declares, a later one replacing an earlier
+task let-types
+  take body, like list, like statement
+  like hash, like text, like maybe, like type
+
+  save out, make hash
+  walk block-handles(body)
+    take handle
+    let-types-into(handle, out)
+  back out
+
+task let-types-into
+  take handle, like node-handle
+  take out, like hash, like text, like maybe, like type
+  mark private
+
+  sift handle
+    case statement-handle
+      link node
+      sift node
+        case let
+          link let-name
+          link let-init
+          link let-mutable
+          link let-span
+          link let-type
+          save out/{let-name}, let-type
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    let-types-into(child, out)

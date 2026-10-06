@@ -1,0 +1,2138 @@
+# The roll: everything a build knows about every deck, as data. Built from the checked program after the passes that know
+# the raise sets, so every task and route carries the exceptions it can raise. `term roll` prints it, `term make` writes
+# it beside the output as `host/roll.json`, and the hive wakes with it at boot. See note/term/hive/02-roll.md.
+#
+# Ported from compile/roll.ts (self-hosting, 2026-10-06), which stays as the face and says why each field is shaped as
+# it is. The decisions:
+#   - AN ENTRY IS AN OPEN RECORD: the keys an entry has depend on what it is, a merge reads them back from disk, and
+#     `show-roll` prints whatever keys an entry holds, in their order. So a value is `roll-value`, an ordered JSON value
+#     (a text, a number, a boolean, null, a list, or a list of key and value pairs), with `no-value` for a key that is
+#     there and holds `undefined`, which JSON drops and `show-roll` skips. The face converts to and from plain objects
+#   - a number is a float, as JavaScript's is: a count goes in through `to-decimal`
+#   - the raise sets come from the face (check/effects.ts is TypeScript), asked for the exceptions this port finds
+#   - the supervision walk keys its trees by the call that made each, which is node identity: the face hands in
+#     `same-node`, `===` on TypeScript, as compile/ts-emit's facts do. The walk is compile/node-children's reflective one
+#   - names sort by the host's own collation through deck/lock's `locale-compare`, as `localeCompare` did, and the
+#     raise sets and a deck's files by UTF-16 unit, as `sort()` with no comparator did
+#   - the regular expressions are written out by character. `\d` is ASCII digits, `\b` a word character meeting a
+#     non-word one or the end, and `$` the end of the text
+#   - a roll that lacks one of the built-in kinds prints it as empty where the original read `.filter` of undefined
+#     and threw. Every roll a build writes has all six
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find substring
+  find starts-with
+  find char-code-at
+  find index-of
+
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/float
+  find to-decimal
+
+load ./node
+  find statement
+  find expression
+  find statement-span
+  find dock-route
+  find dock-call
+  find field-value
+
+load ./type-text
+  find show-type
+
+load ./node-children
+  find node-children
+  find node-handle
+  find block-handles
+
+load ../check/extend
+  find exception-form
+  find is-generic-exception
+
+load ../deck/lock
+  find locale-compare
+
+load ./main-entry
+  find whitespace-code
+
+# ---- the value ----
+
+# an ordered JSON value, as the roll's entries hold them
+form roll-value
+  case no-value
+  case null-value
+  case text-value
+    link value, like text
+  case number-value
+    link value, like float
+  case flag-value
+    link value, like boolean
+  case item-values
+    link values, like list, like roll-value
+  case pair-values
+    link pairs, like list, like roll-pair
+
+form roll-pair
+  link key, like text
+  link value, like roll-value
+
+# one kind of entry in a roll, `task` or a kind a deck declares, and its entries, each a `pair-values`
+form roll-kind
+  link name, like text
+  link entries, like list, like roll-value
+
+# a deck a file belongs to: its name (`@term/base`) and its root directory
+form roll-deck
+  link name, like text
+  link root, like text
+
+# the exceptions each task can raise, and for each, the callee a raise comes through (empty where the task raises it)
+form roll-raises
+  link raises, like hash, like text, like list, like text
+  link via, like hash, like text, like hash, like text, like text
+
+task text-of-value
+  take value, like text
+  like roll-value
+
+  back
+    make text-value
+      bind value, value
+
+task number-of-value
+  take value, like float
+  like roll-value
+
+  back
+    make number-value
+      bind value, value
+
+task count-of-value
+  take value, like number
+  like roll-value
+  mark private
+
+  back number-of-value(to-decimal(value))
+
+task flag-of-value
+  take value, like boolean
+  like roll-value
+
+  back
+    make flag-value
+      bind value, value
+
+task texts-value
+  take values, like list, like text
+  like roll-value
+
+  save items, make list
+  walk values
+    take one
+    push(items, text-of-value(one))
+  back
+    make item-values
+      bind values, items
+
+task pairs-value
+  take pairs, like list, like roll-pair
+  like roll-value
+
+  back
+    make pair-values
+      bind pairs, pairs
+
+task pair-of
+  take key, like text
+  take value, like roll-value
+  like roll-pair
+
+  back
+    make roll-pair
+      bind key, key
+      bind value, value
+
+# an entry's pairs, none when it is no record
+task pairs-of
+  take entry, like roll-value
+  like list, like roll-pair
+
+  sift entry
+    case pair-values
+      link pairs
+      back pairs
+    miss
+      save none, make list
+      back none
+
+# the value under a key, none when the entry has no such key
+task value-at
+  take entry, like roll-value
+  take key, like text
+  like maybe, like roll-value
+
+  walk pairs-of(entry)
+    take pair
+    fork test, is-equal(pair/key, key)
+      hold
+        save found, pair/value
+        back make(some, found)
+  back make none
+
+# the entry with a key set: in its place when it is there, else at the end
+task with-pair
+  take entry, like roll-value
+  take key, like text
+  take value, like roll-value
+  like roll-value
+
+  save out, make list
+  save placed, false
+  walk pairs-of(entry)
+    take pair
+    fork test, is-equal(pair/key, key)
+      hold
+        push(out, pair-of(key, value))
+        save placed, true
+      miss
+        push(out, pair)
+  fork test, is-equal(placed, false)
+    hold
+      push(out, pair-of(key, value))
+  back pairs-value(out)
+
+# the entry without a key, as `delete` leaves it
+task without-pair
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+
+  sift entry
+    case pair-values
+      link pairs
+      save out, make list
+      walk pairs
+        take pair
+        fork test, is-unequal(pair/key, key)
+          hold
+            push(out, pair)
+      back pairs-value(out)
+    miss
+      back entry
+
+# a value as `String(value)` writes it
+task string-of
+  take value, like roll-value
+  like text
+
+  sift value
+    case no-value
+      back <undefined>
+    case null-value
+      back <null>
+    case text-value
+      link text
+      back text
+    case number-value
+      link number
+      back <{number}>
+    case flag-value
+      link flag
+      fork test, flag
+        hold
+          back <true>
+      back <false>
+    case item-values
+      link values
+      # `Array.prototype.join`: undefined and null are empty
+      save parts, make list
+      walk values
+        take one
+        sift one
+          case no-value
+            push(parts, <>)
+          case null-value
+            push(parts, <>)
+          miss
+            push(parts, string-of(one))
+      back join(parts, <,>)
+    case pair-values
+      back <[object Object]>
+
+# a value as `Array.prototype.join` writes an element: undefined and null are empty
+task joined-of
+  take value, like roll-value
+  like text
+
+  sift value
+    case no-value
+      back <>
+    case null-value
+      back <>
+    miss
+      back string-of(value)
+
+# a key's value as `String(entry[key])`, `undefined` when the entry has no such key
+task string-at
+  take entry, like roll-value
+  take key, like text
+  like text
+
+  sift value-at(entry, key)
+    case some
+      link found
+      back string-of(found)
+    case none
+      back <undefined>
+
+# the entries of one kind, none when the roll has no such kind
+task entries-of
+  take roll, like list, like roll-kind
+  take name, like text
+  like list, like roll-value
+
+  walk roll
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one/entries
+  save none, make list
+  back none
+
+# the index of a kind in the roll, adding it at the end, as `roll[name] ??= []` does
+task kind-index
+  take roll, like list, like roll-kind
+  take name, like text
+  like number
+
+  walk roll
+    take one
+    take index
+    fork test, is-equal(one/name, name)
+      hold
+        back index
+  save made
+    make roll-kind
+      bind name, name
+      bind entries, make list
+  push(roll, made)
+  back subtract(roll/length, 1)
+
+# an entry put under a kind, the kind added when the roll has none of that name
+task add-entry
+  take roll, like list, like roll-kind
+  take name, like text
+  take entry, like roll-value
+
+  save at, kind-index(roll, name)
+  save kind, get(roll, at)
+  push(kind/entries, entry)
+
+# the six kinds every roll starts with
+task empty-roll
+  like list, like roll-kind
+
+  save roll, make list
+  kind-index(roll, <deck>)
+  kind-index(roll, <exception>)
+  kind-index(roll, <task>)
+  kind-index(roll, <dock>)
+  kind-index(roll, <tell>)
+  kind-index(roll, <kind>)
+  back roll
+
+# ---- text ----
+
+task is-digit-code
+  take code, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), or(is-digit-code(code), is-equal(code, 95)))
+
+# the end of a run of digits from `at`, `at` itself when there is none
+task digits-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, and(is-below(end, value/length), is-digit-code(char-code-at(value, end)))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# where `__in\d+_\d+` (or, when `bare`, `__\d+__\d+`) that starts at `at` ends, or -1
+task suffix-end
+  take value, like text
+  take at, like number
+  take bare, like boolean
+  like number
+  mark private
+
+  save head, <__in>
+  save middle, <_>
+  fork test, bare
+    hold
+      save head, <__>
+      save middle, <__>
+  fork test, is-equal(starts-with(substring(value, at, value/length), head), false)
+    hold
+      back -1
+  save first, add(at, head/length)
+  save first-end, digits-end(value, first)
+  fork test, is-equal(first-end, first)
+    hold
+      back -1
+  fork test, is-equal(starts-with(substring(value, first-end, value/length), middle), false)
+    hold
+      back -1
+  save second, add(first-end, middle/length)
+  save second-end, digits-end(value, second)
+  fork test, is-equal(second-end, second)
+    hold
+      back -1
+  back second-end
+
+# every `<suffix>\b` taken out, left to right, as `replace(/.../g, '')` does
+task strip-suffixes
+  take value, like text
+  take bare, like boolean
+  like text
+  mark private
+
+  save parts, make list
+  save at, 0
+  save copied, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      save end, suffix-end(value, at, bare)
+      save bounded, false
+      fork test, is-minimum(end, 0)
+        hold
+          save bounded, true
+          fork test, is-below(end, value/length)
+            hold
+              save bounded, is-equal(is-word-code(char-code-at(value, end)), false)
+      fork test, bounded
+        hold
+          push(parts, substring(value, copied, at))
+          save copied, end
+          save at, end
+        miss
+          save at, add(at, 1)
+  push(parts, substring(value, copied, value/length))
+  back join(parts, <>)
+
+# `<suffix>$` taken off the end, the leftmost start that reaches the end, as `replace(/...$/, '')` does
+task strip-end-suffix
+  take value, like text
+  take bare, like boolean
+  like text
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      fork test, is-equal(suffix-end(value, at, bare), value/length)
+        hold
+          back substring(value, 0, at)
+      save at, add(at, 1)
+  back value
+
+# a type as written: a form two files define is split by file (`event-listener__in0_1`), which depends on what else the
+# program holds, so the roll printed one parameter's type two ways
+task type-text
+  take of, like type
+  like text
+  mark private
+
+  back strip-suffixes(strip-suffixes(show-type(of), false), true)
+
+# a task's name as written: a name split by file (`concat__in0_1`) or by arity (`add-event-listener__3__0`)
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  back strip-end-suffix(strip-end-suffix(name, false), true)
+
+# the deck a file belongs to, from its path, when nothing better is known: `/link/@scope/name/`, else `@local`
+task deck-from-path
+  take file, like text
+  like text
+
+  save from, 0
+  walk test
+    hook test, is-below(from, file/length)
+    hook hold
+      save at, index-of(file, </link/@>, from)
+      fork test, is-below(at, 0)
+        hold
+          back <@local>
+      save start, add(at, 6)
+      # `@[^/]+`
+      save scope-end, index-of(file, </>, add(start, 1))
+      fork test, and(is-above(scope-end, add(start, 1)), is-minimum(scope-end, 0))
+        hold
+          # `[^/]+\/`
+          save name-end, index-of(file, </>, add(scope-end, 1))
+          fork test, is-above(name-end, add(scope-end, 1))
+            hold
+              back substring(file, start, name-end)
+      save from, add(at, 1)
+  back <@local>
+
+# a definition's identity across builds: its file and where it starts, which no other definition shares
+task definition-of
+  take s, like statement
+  take file, like text
+  like text
+
+  save span, statement-span(s)
+  save named, file
+  sift span/file
+    case some
+      link written
+      save named, written
+    case none
+      save named, file
+  back <{named}:{add(span/start/line, 1)}:{add(span/start/column, 1)}>
+
+# texts in UTF-16 unit order, as `sort()` with no comparator orders them
+task unit-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  save a, units-of(left)
+  save b, units-of(right)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, a/length), is-below(at, b/length))
+    hook hold
+      fork test, is-below(get(a, at), get(b, at))
+        hold
+          back make less
+      fork test, is-above(get(a, at), get(b, at))
+        hold
+          back make greater
+      save at, add(at, 1)
+  fork test, is-below(a/length, b/length)
+    hold
+      back make less
+  fork test, is-above(a/length, b/length)
+    hold
+      back make greater
+  back make equal
+
+task units-of
+  take value, like text
+  like list, like number
+  mark private
+
+  save units, make list
+  walk to-runes(value)
+    take rune
+    fork test, is-above(rune, 65535)
+      hold
+        save rest, subtract(rune, 65536)
+        save low, modulo(rest, 1024)
+        push(units, add(55296, divide(subtract(rest, low), 1024)))
+        push(units, add(56320, low))
+      miss
+        push(units, rune)
+  back units
+
+task sorted-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  back sort(values, unit-order)
+
+task order-of-sign
+  take sign, like number
+  like ordering
+  mark private
+
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# ---- building ----
+
+# what a build is asked for
+form roll-options
+  link own
+    like maybe, like hash, like text, like boolean
+    need false
+  link root
+    like maybe, like text
+    need false
+  link ids, like boolean
+
+# what one roll build shares across its tasks
+form roll-context
+  link file, like text
+  link options, like roll-options
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+
+task file-of
+  take at, like roll-context
+  take s, like statement
+  like text
+  mark private
+
+  sift statement-span(s)/file
+    case some
+      link written
+      back written
+    case none
+      back at/file
+
+task is-mine
+  take at, like roll-context
+  take s, like statement
+  like boolean
+  mark private
+
+  sift at/options/own
+    case some
+      link own
+      back own/has(file-of(at, s))
+    case none
+      back true
+
+task carries-ids
+  take at, like roll-context
+  like boolean
+  mark private
+
+  sift at/options/own
+    case some
+      back true
+    case none
+      back at/options/ids
+
+# the deck a statement's file belongs to: the caller's answer, else read off the path
+task host-of
+  take at, like roll-context
+  take s, like statement
+  like text
+  mark private
+
+  save file, file-of(at, s)
+  sift at/deck-of(file)
+    case some
+      link deck
+      back deck/name
+    case none
+      back deck-from-path(file)
+
+# a site is relative to the deck that owns the file, else to the project root, else absolute, counted from one
+task site-of
+  take at, like roll-context
+  take s, like statement
+  like text
+  mark private
+
+  save f, file-of(at, s)
+  save cut, false
+  sift at/deck-of(f)
+    case some
+      link deck
+      fork test, starts-with(f, <{deck/root}/>)
+        hold
+          save f, substring(f, add(deck/root/length, 1), f/length)
+          save cut, true
+    case none
+      save cut, false
+  fork test, is-equal(cut, false)
+    hold
+      sift at/options/root
+        case some
+          link root
+          fork test, and(is-unequal(root, <>), starts-with(f, <{root}/>))
+            hold
+              save f, substring(f, add(root/length, 1), f/length)
+        case none
+          save f, f
+  save span, statement-span(s)
+  back <{f}:{add(span/start/line, 1)}:{add(span/start/column, 1)}>
+
+# `__file` when the roll carries ids
+task push-file-mark
+  take at, like roll-context
+  take pairs, like list, like roll-pair
+  take s, like statement
+  mark private
+
+  fork test, carries-ids(at)
+    hold
+      push(pairs, pair-of(<__file>, text-of-value(file-of(at, s))))
+
+# a literal's value, none for anything else
+task literal-of
+  take given, like maybe, like expression
+  like roll-value
+  mark private
+
+  sift given
+    case some
+      link value
+      sift value
+        case string
+          link text
+          back text-of-value(text)
+        case integer
+          link number
+          back count-of-value(number)
+        case float
+          link decimal
+          back number-of-value(decimal)
+        case boolean
+          link flag
+          back flag-of-value(flag)
+        miss
+          back make no-value
+    case none
+      back make no-value
+
+# the exceptions a task can raise, sorted
+task raises-of
+  take sets, like roll-raises
+  take name, like text
+  like list, like text
+  mark private
+
+  fork test, sets/raises/has(name)
+    hold
+      back sorted-texts(sets/raises/get(name))
+  save none, make list
+  back none
+
+# one call path from a task to the site that raises an exception: the callees, in order, ending at the direct raiser
+task path-of
+  take sets, like roll-raises
+  take name, like text
+  take exception, like text
+  like list, like text
+  mark private
+
+  save chain, make list
+  save at, name
+  walk test
+    hook test, is-below(chain/length, 64)
+    hook hold
+      save next, <>
+      fork test, sets/via/has(at)
+        hold
+          save from, sets/via/get(at)
+          fork test, from/has(exception)
+            hold
+              save next, from/get(exception)
+      fork test, is-equal(next, <>)
+        hold
+          halt
+      push(chain, next)
+      save at, next
+  back chain
+
+# the union of what a route's handlers raise, sorted
+task route-raises
+  take sets, like roll-raises
+  take calls, like list, like dock-call
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk calls
+    take one
+    walk raises-of(sets, one/name)
+      take raised
+      fork test, is-equal(seen/has(raised), false)
+        hold
+          seen/set(raised, true)
+          push(out, raised)
+  back sorted-texts(out)
+
+# `${prefix}/${path}` with every run of `/` made one, or the path alone without a prefix
+task route-path
+  take prefix, like text
+  take path, like text
+  like text
+  mark private
+
+  fork test, is-equal(prefix, <>)
+    hold
+      back path
+  save joined, <{prefix}/{path}>
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, joined/length)
+    hook hold
+      save one, substring(joined, at, add(at, 1))
+      save out, <{out}{one}>
+      fork test, is-equal(one, </>)
+        hold
+          walk test
+            hook test, and(is-below(add(at, 1), joined/length), is-equal(substring(joined, add(at, 1), add(at, 2)), </>))
+            hook hold
+              save at, add(at, 1)
+      save at, add(at, 1)
+  back out
+
+task walk-route
+  take at, like roll-context
+  take sets, like roll-raises
+  take roll, like list, like roll-kind
+  take s, like statement
+  take route, like dock-route
+  take prefix, like text
+  mark private
+
+  save path, route-path(prefix, route/path)
+  fork test, is-equal(route/methods/length, 0)
+    hold
+      save pairs, make list
+      push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+      push(pairs, pair-of(<kind>, text-of-value(<dock>)))
+      push(pairs, pair-of(<name>, text-of-value(path)))
+      push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+      push(pairs, pair-of(<halt>, texts-value(route-raises(sets, route/calls))))
+      push-file-mark(at, pairs, s)
+      add-entry(roll, <dock>, pairs-value(pairs))
+  walk route/methods
+    take method
+    save calls, make list
+    walk route/calls
+      take one
+      push(calls, one)
+    walk method/calls
+      take one
+      push(calls, one)
+    save pairs, make list
+    push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+    push(pairs, pair-of(<kind>, text-of-value(<dock>)))
+    push(pairs, pair-of(<name>, text-of-value(<{method/name} {path}>)))
+    push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+    push(pairs, pair-of(<halt>, texts-value(route-raises(sets, calls))))
+    push-file-mark(at, pairs, s)
+    add-entry(roll, <dock>, pairs-value(pairs))
+  walk route/children
+    take child
+    walk-route(at, sets, roll, s, child, path)
+
+# Build the roll of a checked program. `raise-sets-of` answers the raise sets for the exceptions named, `deck-of` names a
+# file's deck (none where the caller knows none), and `same-node` tells whether two nodes are one
+task build-roll
+  take program, like list, like statement
+  take file, like text
+  take options, like roll-options
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  take raise-sets-of
+    like task
+      take names, like list, like text
+      like roll-raises
+  take same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  like list, like roll-kind
+
+  save at
+    make roll-context
+      bind file, file
+      bind options, options
+      bind deck-of, deck-of
+  save ids, carries-ids(at)
+  save exception, exception-form()
+
+  save types, make hash
+  save exceptions, make list
+  save exception-set, make hash
+  walk program
+    take s
+    sift s
+      case record-type
+        link name
+        # `chain` is a `need false` list: copied where it is read, since a bound one is written `[]` into the program
+        save chain, chain-of(s)
+        types/set(name, s)
+        fork test, contains-text(chain, exception)
+          hold
+            fork test, is-equal(exception-set/has(name), false)
+              hold
+                exception-set/set(name, true)
+                push(exceptions, name)
+      miss
+        turn next
+
+  # `failure` always: a native shim raises it by construction
+  save asked, make list
+  walk exceptions
+    take one
+    push(asked, one)
+  fork test, is-equal(exception-set/has(<failure>), false)
+    hold
+      push(asked, <failure>)
+  save sets, raise-sets-of(asked)
+
+  save roll, empty-roll()
+
+  # the kinds this build declares, and every top-level constant whose value is a record of a kind's form
+  save kinds, make list
+  save kind-forms, make list
+  walk program
+    take s
+    sift s
+      case roll
+        link name
+        link like
+        push(kinds, name)
+        push(kind-forms, like)
+        kind-index(roll, name)
+        fork test, is-mine(at, s)
+          hold
+            save pairs, make list
+            push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+            push(pairs, pair-of(<kind>, text-of-value(<kind>)))
+            push(pairs, pair-of(<name>, text-of-value(name)))
+            push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+            push(pairs, pair-of(<like>, text-of-value(like)))
+            push-file-mark(at, pairs, s)
+            add-entry(roll, <kind>, pairs-value(pairs))
+      miss
+        turn next
+
+  fork test, is-above(kinds/length, 0)
+    hold
+      walk program
+        take s
+        sift s
+          case let
+            link name
+            link init
+            link mutable
+            link type
+            fork test, mutable
+              hold
+                turn next
+            save form-name, <>
+            sift init
+              case record
+                link record-name
+                save form-name, record-name
+              miss
+                sift type
+                  case some
+                    link written
+                    sift written
+                      case named
+                        link type-name
+                        link type-args
+                        save form-name, type-name
+                      miss
+                        save form-name, form-name
+                  case none
+                    save form-name, form-name
+            fork test, is-equal(form-name, <>)
+              hold
+                turn next
+            # the kind of a form: the last kind declared with it, as a Map built from the pairs keeps
+            save kind, <>
+            walk kind-forms
+              take written-form
+              take index
+              fork test, is-equal(written-form, form-name)
+                hold
+                  save kind, get(kinds, index)
+            fork test, and(is-unequal(kind, <>), is-mine(at, s))
+              hold
+                save pairs, make list
+                push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+                push(pairs, pair-of(<kind>, text-of-value(kind)))
+                push(pairs, pair-of(<name>, text-of-value(name)))
+                push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+                push(pairs, pair-of(<like>, text-of-value(form-name)))
+                push(pairs, pair-of(<ref>, text-of-value(name)))
+                push-file-mark(at, pairs, s)
+                add-entry(roll, kind, pairs-value(pairs))
+          miss
+            turn next
+
+  # decks: one entry per host seen, with how many files it contributed
+  save hosts, make list
+  save deck-files, make hash
+  walk program
+    take s
+    save host, host-of(at, s)
+    fork test, is-equal(deck-files/has(host), false)
+      hold
+        deck-files/set(host, make list)
+        push(hosts, host)
+    save files, deck-files/get(host)
+    save one-file, file-of(at, s)
+    fork test, is-equal(contains-text(files, one-file), false)
+      hold
+        push(files, one-file)
+  # a unit counts no deck: a deck's files are the build's, counted where the units' rolls meet
+  sift options/own
+    case some
+      save hosts, hosts
+    case none
+      walk sort(hosts, host-order)
+        take host
+        save files, deck-files/get(host)
+        save pairs, make list
+        push(pairs, pair-of(<host>, text-of-value(host)))
+        push(pairs, pair-of(<kind>, text-of-value(<deck>)))
+        push(pairs, pair-of(<name>, text-of-value(host)))
+        push(pairs, pair-of(<site>, text-of-value(<>)))
+        push(pairs, pair-of(<file>, count-of-value(files/length)))
+        fork test, ids
+          hold
+            push(pairs, pair-of(<__files>, texts-value(sorted-texts(files))))
+        add-entry(roll, <deck>, pairs-value(pairs))
+
+  # exceptions
+  walk program
+    take s
+    sift s
+      case record-type
+        link name
+        link props
+        link pins
+        save chain, chain-of(s)
+        fork test, or(is-equal(exception-set/has(name), false), is-equal(is-mine(at, s), false))
+          hold
+            turn next
+        save under, <>
+        save found-under, false
+        save back-at, subtract(chain/length, 1)
+        walk test
+          hook test, and(is-minimum(back-at, 0), is-equal(found-under, false))
+          hook hold
+            fork test, is-generic-exception(get(chain, back-at))
+              hold
+                save under, get(chain, back-at)
+                save found-under, true
+            save back-at, subtract(back-at, 1)
+        save links, make list
+        fork test, and(is-unequal(props, <>), types/has(props))
+          hold
+            save props-form, types/get(props)
+            sift props-form
+              case record-type
+                link fields
+                walk fields
+                  take field
+                  save need, <>
+                  fork test, is-equal(field/optional, true)
+                    hold
+                      save need, <, need false>
+                  save shown, text-of-value(<{type-text(field/type)}{need}>)
+                  save links-value, pairs-value(links)
+                  save links, pairs-of(with-pair(links-value, field/name, shown))
+              miss
+                save links, links
+        save note, make none
+        walk pins
+          take pin
+          fork test, is-equal(pin/name, <note>)
+            hold
+              save pinned, pin/value
+              save note, make(some, pinned)
+              halt
+        save like, exception
+        fork test, found-under
+          hold
+            save like, under
+          miss
+            fork test, is-above(chain/length, 0)
+              hold
+                save like, get(chain, subtract(chain/length, 1))
+        save pairs, make list
+        push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+        push(pairs, pair-of(<kind>, text-of-value(<exception>)))
+        push(pairs, pair-of(<name>, text-of-value(name)))
+        push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+        push(pairs, pair-of(<like>, text-of-value(like)))
+        push(pairs, pair-of(<chain>, texts-value(chain)))
+        push(pairs, pair-of(<note>, literal-of(note)))
+        push(pairs, pair-of(<link>, pairs-value(links)))
+        fork test, ids
+          hold
+            push(pairs, pair-of(<__def>, text-of-value(definition-of(s, file))))
+        add-entry(roll, <exception>, pairs-value(pairs))
+      miss
+        turn next
+
+  # each function by its name, so a path's last step names the definition it ends at
+  save functions-by-name, make hash
+  walk program
+    take s
+    sift s
+      case function
+        link name
+        functions-by-name/set(name, s)
+      miss
+        turn next
+
+  # tasks: every public, non-stub function, with its raise set
+  walk program
+    take s
+    sift s
+      case function
+        link name
+        link params
+        link result
+        link method
+        link stub
+        link private
+        link async
+        fork test, or(or(is-equal(stub, true), is-equal(private, true)), is-equal(is-mine(at, s), false))
+          hold
+            turn next
+        save shown-name, written-name(name)
+        sift method
+          case some
+            link owner
+            save shown-name, <{owner/form}/{owner/name}>
+          case none
+            save shown-name, shown-name
+        save takes, make list
+        walk params
+          take param
+          save take, make list
+          push(take, pair-of(<name>, text-of-value(param/name)))
+          save like, <unknown>
+          sift param/type
+            case some
+              link written
+              save like, type-text(written)
+            case none
+              save like, like
+          push(take, pair-of(<like>, text-of-value(like)))
+          fork test, is-equal(param/optional, true)
+            hold
+              push(take, pair-of(<need>, flag-of-value(false)))
+          fork test, is-equal(param/positional, true)
+            hold
+              push(take, pair-of(<slot>, flag-of-value(true)))
+          push(takes, pairs-value(take))
+        save answer, <unknown>
+        sift result
+          case some
+            link written
+            save answer, type-text(written)
+          case none
+            save answer, answer
+        save raised, raises-of(sets, name)
+        save pairs, make list
+        push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+        push(pairs, pair-of(<kind>, text-of-value(<task>)))
+        push(pairs, pair-of(<name>, text-of-value(shown-name)))
+        push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+        push(pairs, pair-of(<take>, make(item-values, takes)))
+        push(pairs, pair-of(<like>, text-of-value(answer)))
+        push(pairs, pair-of(<halt>, texts-value(raised)))
+        fork test, is-above(raised/length, 0)
+          hold
+            save paths, make list
+            walk raised
+              take one
+              save written-path, make list
+              walk path-of(sets, name, one)
+                take step
+                push(written-path, written-name(step))
+              push(paths, pair-of(one, texts-value(written-path)))
+            push(pairs, pair-of(<path>, pairs-value(paths)))
+        fork test, is-equal(async, true)
+          hold
+            push(pairs, pair-of(<async>, flag-of-value(true)))
+        fork test, ids
+          hold
+            push(pairs, pair-of(<__def>, text-of-value(definition-of(s, file))))
+            save ends, make list
+            walk raised
+              take one
+              save chain, path-of(sets, name, one)
+              fork test, is-above(chain/length, 0)
+                hold
+                  save last, get(chain, subtract(chain/length, 1))
+                  fork test, functions-by-name/has(last)
+                    hold
+                      save ends, pairs-of(with-pair(pairs-value(ends), one, text-of-value(definition-of(functions-by-name/get(last), file))))
+            push(pairs, pair-of(<__ends>, pairs-value(ends)))
+        add-entry(roll, <task>, pairs-value(pairs))
+      miss
+        turn next
+
+  # docks: each route with the union of what its handlers raise
+  walk program
+    take s
+    sift s
+      case dock
+        link route
+        fork test, is-mine(at, s)
+          hold
+            walk-route(at, sets, roll, s, route, <>)
+      miss
+        turn next
+
+  # a unit's own supervisors: each entry is told apart by the statement it came from
+  save mine-sites, make hash
+  walk program
+    take s
+    fork test, is-mine(at, s)
+      hold
+        mine-sites/set(site-of(at, s), true)
+  save supervised, make list
+  walk supervision-entries(at, program, same-node)
+    take entry
+    sift options/own
+      case some
+        fork test, mine-sites/has(string-at(entry, <site>))
+          hold
+            push(supervised, entry)
+      case none
+        push(supervised, entry)
+  save supervision-at, kind-index(roll, <supervision>)
+  save supervision-kind
+    make roll-kind
+      bind name, <supervision>
+      bind entries, supervised
+  save roll/{supervision-at}, supervision-kind
+
+  # tells
+  walk program
+    take s
+    sift s
+      case tell
+        link name
+        link note
+        link hint
+        link links
+        link alias
+        fork test, is-equal(is-mine(at, s), false)
+          hold
+            turn next
+        save pairs, make list
+        push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
+        push(pairs, pair-of(<kind>, text-of-value(<tell>)))
+        push(pairs, pair-of(<name>, text-of-value(name)))
+        push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
+        sift note
+          case some
+            link written
+            push(pairs, pair-of(<note>, text-of-value(written)))
+          case none
+            push(pairs, pair-of(<note>, make no-value))
+        fork test, is-unequal(hint, <>)
+          hold
+            push(pairs, pair-of(<hint>, text-of-value(hint)))
+        push(pairs, pair-of(<link>, texts-value(links)))
+        sift alias
+          case some
+            link written
+            fork test, is-unequal(written, <>)
+              hold
+                push(pairs, pair-of(<alias>, text-of-value(written)))
+          case none
+            save pairs, pairs
+        push-file-mark(at, pairs, s)
+        add-entry(roll, <tell>, pairs-value(pairs))
+      miss
+        turn next
+
+  back roll
+
+# a form's chain of what it is like, copied: the field is a `need false` list, and binding it in an arm writes `[]`
+# into the program where it was absent
+task chain-of
+  take s, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift s
+    case record-type
+      walk s/chain
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task contains-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+task host-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  back order-of-sign(locale-compare(left, right))
+
+# ---- supervision ----
+
+# a supervision tree a `make-supervisor` call makes, with literal limits where they were written
+form supervisor
+  link owner, like statement
+  link call, like expression
+  link name, like text
+  link strategy, like text
+  link intensity, like roll-value
+  link period, like roll-value
+  link workers, like number
+  link nested, like list, like expression
+
+# what a function body's walk gathers: the `make-supervisor` calls, in the order the walk meets them, and what each list
+# name is given by `push`
+form supervision-walk
+  mark shared
+  link found, like list, like expression
+  link pushed, like hash, like text, like list, like expression
+
+task visit-supervision
+  take walked, like supervision-walk
+  take handle, like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link node
+      sift node
+        case call
+          link callee
+          link args
+          sift callee
+            case variable
+              link name
+              fork test, is-equal(name, <make-supervisor>)
+                hold
+                  push(walked/found, node)
+            case member
+              link name
+              link target
+              fork test, is-equal(name, <push>)
+                hold
+                  sift target
+                    case variable
+                      link list-name
+                      fork test, is-equal(walked/pushed/has(list-name), false)
+                        hold
+                          walked/pushed/set(list-name, make list)
+                      save given, walked/pushed/get(list-name)
+                      walk args
+                        take one
+                        push(given, one)
+                    miss
+                      save callee, callee
+            miss
+              save callee, callee
+        miss
+          save node, node
+    miss
+      save handle, handle
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    visit-supervision(walked, child)
+
+# the argument at `at`, none past the end
+task argument-at
+  take args, like list, like expression
+  take at, like number
+  like maybe, like expression
+  mark private
+
+  fork test, is-below(at, args/length)
+    hold
+      save found, get(args, at)
+      back make(some, found)
+  back make none
+
+# the `tree` field's value of a record, none when it has none
+task tree-field
+  take fields, like list, like field-value
+  like maybe, like expression
+  mark private
+
+  walk fields
+    take field
+    fork test, is-equal(field/name, <tree>)
+      hold
+        save value, field/value
+        back make(some, value)
+  back make none
+
+task supervisor-of
+  take owner, like statement
+  take call, like expression
+  take pushed, like hash, like text, like list, like expression
+  like supervisor
+  mark private
+
+  save given-args, make list
+  sift call
+    case call
+      link args
+      save given-args, args
+    miss
+      save given-args, given-args
+  save args, given-args
+
+  save name, <(computed)>
+  sift literal-of(argument-at(args, 0))
+    case text-value
+      link text
+      save name, text
+    miss
+      save name, name
+  save strategy, <>
+  sift argument-at(args, 1)
+    case some
+      link given
+      sift given
+        case record
+          link strategy-name
+          save strategy, strategy-name
+        miss
+          save strategy, strategy
+    case none
+      save strategy, strategy
+  save intensity, make no-value
+  sift literal-of(argument-at(args, 2))
+    case number-value
+      link number
+      save intensity, number-of-value(number)
+    miss
+      save intensity, intensity
+  save period, make no-value
+  sift literal-of(argument-at(args, 3))
+    case number-value
+      link number
+      save period, number-of-value(number)
+    miss
+      save period, period
+
+  save kid-items, make list
+  sift argument-at(args, 4)
+    case some
+      link children
+      sift children
+        case variable
+          link list-name
+          fork test, pushed/has(list-name)
+            hold
+              save kid-items, pushed/get(list-name)
+        case array
+          link items
+          save kid-items, items
+        miss
+          save kid-items, kid-items
+    case none
+      save kid-items, kid-items
+  save items, kid-items
+
+  save workers, 0
+  save nested, make list
+  walk items
+    take item
+    sift item
+      case record
+        link kid-name
+        link kid-fields
+        fork test, is-equal(kid-name, <worker>)
+          hold
+            save workers, add(workers, 1)
+        fork test, is-equal(kid-name, <nested>)
+          hold
+            sift tree-field(kid-fields)
+              case some
+                link tree
+                sift tree
+                  case call
+                    link tree-callee
+                    link tree-args
+                    push(nested, tree)
+                  miss
+                    save nested, nested
+              case none
+                save nested, nested
+      miss
+        turn next
+
+  back
+    make supervisor
+      bind owner, owner
+      bind call, call
+      bind name, name
+      bind strategy, strategy
+      bind intensity, intensity
+      bind period, period
+      bind workers, workers
+      bind nested, nested
+
+# the supervisor a call made, its index, or -1
+task supervisor-index
+  take nodes, like list, like supervisor
+  take call, like expression
+  take same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  like number
+  mark private
+
+  walk nodes
+    take node
+    take index
+    fork test, same-node(node/call, call)
+      hold
+        back index
+  back -1
+
+task float-of
+  take value, like roll-value
+  like float
+  mark private
+
+  sift value
+    case number-value
+      link number
+      back number
+    miss
+      back to-decimal(0)
+
+task has-number
+  take value, like roll-value
+  like boolean
+  mark private
+
+  sift value
+    case number-value
+      back true
+    miss
+      back false
+
+# THE SUPERVISION TREES (deck/base/code/supervisor.tree): every `make-supervisor`, its strategy, its limits, its
+# children, and its WORST CASE: the workers under a supervisor can restart `intensity × Π (ancestor intensity + 1)`
+# times before the root itself stops
+task supervision-entries
+  take at, like roll-context
+  take program, like list, like statement
+  take same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  like list, like roll-value
+  mark private
+
+  save nodes, make list
+  walk program
+    take s
+    sift s
+      case function
+        link body
+        save walked
+          make supervision-walk
+            bind found, make list
+            bind pushed, make hash
+        walk block-handles(body)
+          take handle
+          visit-supervision(walked, handle)
+        # keyed by the call, as a Map is: a call met twice keeps its first place and its last answer
+        walk walked/found
+          take call
+          save made, supervisor-of(s, call, walked/pushed)
+          save known, supervisor-index(nodes, call, same-node)
+          fork test, is-minimum(known, 0)
+            hold
+              save nodes/{known}, made
+            miss
+              push(nodes, made)
+      miss
+        turn next
+
+  # each node's parent, by index, -1 for none: the last supervisor to name a child is its parent, as `child.parent =`
+  # left it
+  save parents, make list
+  walk nodes
+    take node
+    push(parents, -1)
+  walk nodes
+    take node
+    take index
+    walk node/nested
+      take inner
+      save child, supervisor-index(nodes, inner, same-node)
+      fork test, is-minimum(child, 0)
+        hold
+          save parents/{child}, index
+
+  save out, make list
+  walk nodes
+    take node
+    take index
+    save host, host-of(at, node/owner)
+    save site, site-of(at, node/owner)
+    # the worst case: intensity times each ancestor's intensity plus one, none where any is not a literal
+    save worst, make no-value
+    fork test, has-number(node/intensity)
+      hold
+        save total, float-of(node/intensity)
+        save known, true
+        save up, get(parents, index)
+        walk test
+          hook test, and(is-minimum(up, 0), known)
+          hook hold
+            save above, get(nodes, up)
+            fork test, has-number(above/intensity)
+              hold
+                save total, multiply(total, add(float-of(above/intensity), to-decimal(1)))
+                save up, get(parents, up)
+              miss
+                save known, false
+        fork test, known
+          hold
+            save worst, number-of-value(total)
+    save pairs, make list
+    push(pairs, pair-of(<host>, text-of-value(host)))
+    push(pairs, pair-of(<kind>, text-of-value(<supervision>)))
+    push(pairs, pair-of(<name>, text-of-value(node/name)))
+    push(pairs, pair-of(<site>, text-of-value(site)))
+    fork test, is-unequal(node/strategy, <>)
+      hold
+        push(pairs, pair-of(<strategy>, text-of-value(node/strategy)))
+    fork test, has-number(node/intensity)
+      hold
+        push(pairs, pair-of(<intensity>, node/intensity))
+    fork test, has-number(node/period)
+      hold
+        push(pairs, pair-of(<period>, node/period))
+    push(pairs, pair-of(<worker>, count-of-value(node/workers)))
+    save nested-names, make list
+    walk node/nested
+      take inner
+      save child, supervisor-index(nodes, inner, same-node)
+      fork test, is-minimum(child, 0)
+        hold
+          push(nested-names, get(nodes, child)/name)
+        miss
+          push(nested-names, <(computed)>)
+    push(pairs, pair-of(<nested>, texts-value(nested-names)))
+    save parent, get(parents, index)
+    fork test, is-minimum(parent, 0)
+      hold
+        push(pairs, pair-of(<under>, text-of-value(get(nodes, parent)/name)))
+    sift worst
+      case number-value
+        push(pairs, pair-of(<worst>, worst))
+      miss
+        save worst, worst
+    push(out, pairs-value(pairs))
+  back out
+
+# ---- merging ----
+
+# the merge one roll at a time, the first entry of each host, kind, name and site kept
+form roll-merger
+  mark shared
+  link out, like list, like roll-kind
+  link seen, like hash, like text, like boolean
+  # each deck's files, so its count is their union
+  link deck-names, like list, like text
+  link deck-files, like hash, like text, like hash, like text, like boolean
+
+task make-roll-merger
+  like roll-merger
+
+  back
+    make roll-merger
+      bind out, empty-roll()
+      bind seen, make hash
+      bind deck-names, make list
+      bind deck-files, make hash
+
+task merge-roll
+  take merger, like roll-merger
+  take roll, like list, like roll-kind
+
+  walk roll
+    take one
+    save at, kind-index(merger/out, one/name)
+    save kind, get(merger/out, at)
+    walk one/entries
+      take entry
+      # the site too: a name is scoped to its module, so two files' tasks of one name are two tasks
+      save key, <{string-at(entry, <host>)} {string-at(entry, <kind>)} {string-at(entry, <name>)} {string-at(entry, <site>)}>
+      fork test, is-equal(one/name, <deck>)
+        hold
+          sift value-at(entry, <__files>)
+            case some
+              link listed
+              sift listed
+                case item-values
+                  link values
+                  save deck-name, string-at(entry, <name>)
+                  fork test, is-equal(merger/deck-files/has(deck-name), false)
+                    hold
+                      merger/deck-files/set(deck-name, make hash)
+                      push(merger/deck-names, deck-name)
+                  save files, merger/deck-files/get(deck-name)
+                  walk values
+                    take file
+                    files/set(string-of(file), true)
+                miss
+                  save listed, listed
+            case none
+              save key, key
+      fork test, merger/seen/has(key)
+        hold
+          turn next
+      merger/seen/set(key, true)
+      push(kind/entries, entry)
+
+# a path written as a task's own roll wrote it, kept apart from the joined ones
+form written-path
+  link path, like roll-value
+  link ends, like roll-value
+
+# a value copied all the way down, as `structuredClone` copies
+task copy-value
+  take value, like roll-value
+  like roll-value
+  mark private
+
+  sift value
+    case item-values
+      link values
+      save items, make list
+      walk values
+        take one
+        push(items, copy-value(one))
+      back
+        make item-values
+          bind values, items
+    case pair-values
+      link pairs
+      save copied, make list
+      walk pairs
+        take pair
+        push(copied, pair-of(pair/key, copy-value(pair/value)))
+      back pairs-value(copied)
+    miss
+      back value
+
+task text-list-of
+  take value, like roll-value
+  like list, like roll-value
+  mark private
+
+  sift value
+    case item-values
+      link values
+      back values
+    miss
+      save none, make list
+      back none
+
+task entry-order
+  take left, like roll-value
+  take right, like roll-value
+  like ordering
+  mark private
+
+  save by-host, locale-compare(string-at(left, <host>), string-at(right, <host>))
+  fork test, is-unequal(by-host, 0)
+    hold
+      back order-of-sign(by-host)
+  save by-name, locale-compare(string-at(left, <name>), string-at(right, <name>))
+  fork test, is-unequal(by-name, 0)
+    hold
+      back order-of-sign(by-name)
+  back order-of-sign(locale-compare(string-at(left, <site>), string-at(right, <site>)))
+
+# The merged roll: each deck counting every file any roll saw of it, each path a unit ended at another unit's task
+# continued with that task's own, what only a merge reads gone, and each kind sorted by host, name and site
+task finish-merge
+  take merger, like roll-merger
+  like list, like roll-kind
+
+  save out, merger/out
+
+  # a deck counts every file any roll saw of it
+  save deck-at, kind-index(out, <deck>)
+  save decks, get(out, deck-at)/entries
+  save counted, make list
+  walk decks
+    take deck
+    save deck-name, string-at(deck, <name>)
+    fork test, merger/deck-files/has(deck-name)
+      hold
+        save files, merger/deck-files/get(deck-name)
+        push(counted, with-pair(deck, <file>, count-of-value(files/keys()/length)))
+      miss
+        push(counted, deck)
+  save deck-kind
+    make roll-kind
+      bind name, <deck>
+      bind entries, counted
+  save out/{deck-at}, deck-kind
+
+  # each task's paths as its own roll wrote them, read while the joined ones are written
+  save task-at, kind-index(out, <task>)
+  save tasks, get(out, task-at)/entries
+  save written, make hash
+  walk tasks
+    take task
+    sift value-at(task, <__def>)
+      case some
+        link def
+        sift def
+          case text-value
+            link def-text
+            save path, pairs-value(make list)
+            sift value-at(task, <path>)
+              case some
+                link given
+                save path, copy-value(given)
+              case none
+                save path, path
+            save ends, pairs-value(make list)
+            sift value-at(task, <__ends>)
+              case some
+                link given
+                save ends, given
+              case none
+                save ends, ends
+            save kept
+              make written-path
+                bind path, path
+                bind ends, ends
+            written/set(def-text, kept)
+          miss
+            save def, def
+      case none
+        turn next
+
+  save joined, make list
+  walk tasks
+    take task
+    save current, task
+    sift value-at(task, <__ends>)
+      case some
+        link ends
+        walk pairs-of(ends)
+          take end
+          save exception, end/key
+          save next-def, string-of(end/value)
+          # the paths as this task has them so far: an earlier exception's may have grown already
+          sift value-at(current, <path>)
+            case some
+              link paths
+              sift value-at(paths, exception)
+                case some
+                  link chain-value
+                  save chain, make list
+                  walk text-list-of(chain-value)
+                    take step
+                    push(chain, step)
+                  save grew, false
+                  save at-def, next-def
+                  walk test
+                    hook test, and(written/has(at-def), is-below(chain/length, 64))
+                    hook hold
+                      save at, written/get(at-def)
+                      save more, make list
+                      sift value-at(at/path, exception)
+                        case some
+                          link more-value
+                          save more, text-list-of(more-value)
+                        case none
+                          save more, more
+                      fork test, is-equal(more/length, 0)
+                        hold
+                          halt
+                      walk more
+                        take step
+                        push(chain, step)
+                      save grew, true
+                      save at-def, <>
+                      sift value-at(at/ends, exception)
+                        case some
+                          link following
+                          save at-def, string-of(following)
+                        case none
+                          save at-def, <>
+                  fork test, grew
+                    hold
+                      save chain-items
+                        make item-values
+                          bind values, chain
+                      save current, with-pair(current, <path>, with-pair(paths, exception, chain-items))
+                case none
+                  save chain-value, make none
+            case none
+              save current, current
+      case none
+        save current, current
+    push(joined, current)
+  save task-kind
+    make roll-kind
+      bind name, <task>
+      bind entries, joined
+  save out/{task-at}, task-kind
+
+  # what only a merge reads, gone before anything is written, and each kind sorted by host, name and site
+  save finished, make list
+  walk out
+    take one
+    save cleaned, make list
+    walk one/entries
+      take entry
+      push(cleaned, without-pair(without-pair(without-pair(entry, <__def>), <__ends>), <__files>))
+    save done
+      make roll-kind
+        bind name, one/name
+        bind entries, sort(cleaned, entry-order)
+    push(finished, done)
+  back finished
+
+# ---- showing ----
+
+# JavaScript's `trimEnd`
+task trim-end
+  take value, like text
+  like text
+  mark private
+
+  save end, value/length
+  walk test
+    hook test, and(is-above(end, 0), whitespace-code(char-code-at(value, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back substring(value, 0, end)
+
+# the roll as a tree, the way `term roll` prints it. `with-path`: under each exception, one call path per task that can
+# raise it, and under each task the path to each exception it raises
+task show-roll
+  take roll, like list, like roll-kind
+  take kind, like text
+  take with-path, like boolean
+  like text
+
+  save lines, make list
+  fork test, is-equal(kind, <>)
+    hold
+      push(lines, <roll>)
+      walk entries-of(roll, <deck>)
+        take deck
+        save deck-name, string-at(deck, <name>)
+        push(lines, <  deck {deck-name}>)
+        save shown-kinds, make list
+        push(shown-kinds, <exception>)
+        push(shown-kinds, <task>)
+        push(shown-kinds, <dock>)
+        push(shown-kinds, <tell>)
+        walk shown-kinds
+          take k
+          save count, 0
+          walk entries-of(roll, k)
+            take entry
+            sift value-at(entry, <host>)
+              case some
+                link host
+                sift host
+                  case text-value
+                    link host-text
+                    fork test, is-equal(host-text, deck-name)
+                      hold
+                        save count, add(count, 1)
+                  miss
+                    save host, host
+              case none
+                save count, count
+          fork test, is-above(count, 0)
+            hold
+              push(lines, <    {k} {count}>)
+      back join(lines, <\n>)
+
+  walk entries-of(roll, kind)
+    take entry
+    save name, string-at(entry, <name>)
+    # a tell already names the full `@deck/form`
+    fork test, starts-with(name, <@>)
+      hold
+        push(lines, <{kind} {name}>)
+      miss
+        push(lines, <{kind} {string-at(entry, <host>)}/{name}>)
+
+    walk pairs-of(entry)
+      take pair
+      save key, pair/key
+      save value, pair/value
+      fork test, or(or(is-equal(key, <host>), is-equal(key, <kind>)), is-equal(key, <name>))
+        hold
+          turn next
+      sift value
+        case no-value
+          turn next
+        miss
+          save value, value
+      # a task's paths print only when asked, as `path <exception>, <task> > <callee> > <raiser>`
+      fork test, is-equal(key, <path>)
+        hold
+          fork test, with-path
+            hold
+              sift value
+                case pair-values
+                  link pairs
+                  walk pairs
+                    take path
+                    save steps, make list
+                    push(steps, name)
+                    walk text-list-of(path/value)
+                      take step
+                      push(steps, joined-of(step))
+                    push(lines, <  path {path/key}, {join(steps, < \> >)}>)
+                case item-values
+                  # an array's keys are its indexes
+                  link values
+                  walk values
+                    take path
+                    take index
+                    save steps, make list
+                    push(steps, name)
+                    walk text-list-of(path)
+                      take step
+                      push(steps, joined-of(step))
+                    push(lines, <  path {index}, {join(steps, < \> >)}>)
+                miss
+                  save value, value
+          turn next
+      sift value
+        case item-values
+          link values
+          walk values
+            take item
+            sift item
+              case pair-values
+                link pairs
+                save parts, make list
+                walk pairs
+                  take part
+                  fork test, is-equal(part/key, <name>)
+                    hold
+                      push(parts, string-of(part/value))
+                    miss
+                      push(parts, <{part/key} {string-of(part/value)}>)
+                push(lines, <  {key} {join(parts, <, >)}>)
+              case item-values
+                # an array inside an array is an object too: its entries are its indexes
+                link inner
+                save parts, make list
+                walk inner
+                  take part
+                  take index
+                  push(parts, <{index} {string-of(part)}>)
+                push(lines, <  {key} {join(parts, <, >)}>)
+              miss
+                push(lines, <  {key} {string-of(item)}>)
+        case pair-values
+          link pairs
+          walk pairs
+            take part
+            push(lines, <  {key} {part/key}, like {string-of(part/value)}>)
+        case text-value
+          link text
+          push(lines, <  {key} \<{text}\>>)
+        miss
+          push(lines, <  {key} {string-of(value)}>)
+
+    # where an exception can come out: every task whose raise set holds it, with its call path to the raise site
+    fork test, and(with-path, is-equal(kind, <exception>))
+      hold
+        walk entries-of(roll, <task>)
+          take task
+          sift value-at(task, <path>)
+            case some
+              link paths
+              sift value-at(paths, name)
+                case some
+                  link chain
+                  save steps, make list
+                  walk text-list-of(chain)
+                    take step
+                    push(steps, joined-of(step))
+                  save tail, <>
+                  fork test, is-above(steps/length, 0)
+                    hold
+                      save tail, < \> {join(steps, < \> >)}>
+                  push(lines, <  path {string-at(task, <host>)}/{string-at(task, <name>)}{tail}>)
+                case none
+                  save chain, make none
+            case none
+              save task, task
+
+    push(lines, <>)
+
+  back trim-end(join(lines, <\n>))

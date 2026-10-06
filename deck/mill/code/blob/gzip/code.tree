@@ -22,6 +22,9 @@ load @term/base/rune
 load @term/base/bit
   find bitwise-and
 
+load @term/base/integer/unsigned
+  find to-u8
+
 load @term/base/maybe
   find maybe
   find some
@@ -288,9 +291,12 @@ task write-latin1-string
             code 0xff
         hook hold
           halt <a gzip name or comment field is latin-1, and this text holds a character outside it>
+      # through `to-u8`, which checks at run time: a code is never below 0, but `char-code-at` is a host call, so
+      # nothing here proves it, and the check above says why a code too large is refused
       call write-byte
         read writer
-        read code
+        call to-u8
+          read code
       save index
         call add
           read index
