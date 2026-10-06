@@ -2229,30 +2229,32 @@ async function main(): Promise<void> {
     })(),
     true,
   )
+  // `to-upper` is deprecated toward `text`'s `to-upper-case` since 2026-10-05, which each backend lowers to its own
+  // uppercase: no shim between
   expect(
-    'string compiles for rust (text shim)',
+    'string compiles for rust (its own to_uppercase)',
     (() => {
       const r = stringFor('rust')
 
-      return r.ok && emitRust(r.program).includes('strings::upper')
+      return r.ok && emitRust(r.program).includes('to_uppercase()')
     })(),
     true,
   )
   expect(
-    'string compiles for swift (text shim)',
+    'string compiles for swift (its own uppercased)',
     (() => {
       const r = stringFor('swift')
 
-      return r.ok && emitSwift(r.program).includes('strings.upper')
+      return r.ok && emitSwift(r.program).includes('uppercased()')
     })(),
     true,
   )
   expect(
-    'string compiles for kotlin (text shim)',
+    'string compiles for kotlin (its own uppercase)',
     (() => {
       const r = stringFor('kotlin')
 
-      return r.ok && emitKotlin(r.program).includes('strings.upper')
+      return r.ok && emitKotlin(r.program).includes('uppercase()')
     })(),
     true,
   )

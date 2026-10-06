@@ -22,6 +22,9 @@ load @term/base/hash
 load @term/base/maybe
   find maybe
 
+load @term/base/text
+  find ends-with
+
 load ../parser/diagnostic
   find span
 
@@ -116,6 +119,14 @@ form rewrite-rule
     link substituted-names, like list, like text
     link substituted, like list, like expression
     link fields-of, like hash, like text, like list, like text
+  # inside one task, a task literal handed to a slot that takes an async task, or pushed onto a list handed to a slot
+  # of async tasks, made async with its type, and the list's own types with it (check/async-slots.tree). By task
+  # name, each parameter's slot: `slots` an async task, `item-slots` a list of them. `lists` are the task's list locals
+  # both pushed a literal and handed to such a slot
+  case async-slots
+    link slots, like hash, like text, like list, like boolean
+    link item-slots, like hash, like text, like list, like boolean
+    link lists, like list, like text
 
 # a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
 bind copy-program
@@ -649,6 +660,8 @@ task rule-expression
       back resolved-trait-call(given, mask-methods, keys, tasks)
     case rename-locals
       back renamed-local(given, rule)
+    case async-slots
+      back async-slot-expression(given, slots, item-slots, lists)
     miss
       back given
 
@@ -684,6 +697,8 @@ task rule-statement
       back one
     case rename-locals
       back renamed-statement(one, rule)
+    case async-slots
+      back async-slot-statement(one, lists)
     miss
       back one
 
@@ -1498,6 +1513,253 @@ task renamed-statement
           back one
     miss
       back one
+
+# ---- async slots (check/async-slots.tree) ----
+
+# a call handing a task literal to a slot of an async task made async, a list of literals handed to a slot of async
+# tasks with its literals made async and its type with them, a push onto one of the task's lists with its literals made
+# async, and a read of such a list with its type
+task async-slot-expression
+  take given, like expression
+  take slots, like hash, like text, like list, like boolean
+  take item-slots, like hash, like text, like list, like boolean
+  take lists, like list, like text
+  like expression
+  mark private
+
+  sift given
+    case variable
+      fork test, has-text(lists, name)
+        hold
+          back with-items-async(given)
+      back given
+    case call
+      save pushed-onto, push-target(given)
+      fork test, has-text(lists, pushed-onto)
+        hold
+          save is-member, is-equal(callee/form, <member>)
+          save args-out, make list
+          walk args
+            take arg
+            take at
+            fork test, or(is-member, is-above(at, 0))
+              hold
+                push(args-out, made-async(arg))
+              miss
+                push(args-out, arg)
+          save given/args, args-out
+          back given
+      save callee-name, <>
+      sift callee
+        case variable
+          save callee-name, name
+        miss
+          back given
+      fork test, not(slots/has(callee-name))
+        hold
+          back given
+      save slot-flags, slots/get(callee-name)
+      save item-flags, item-slots/get(callee-name)
+      save args-out, make list
+      walk args
+        take arg
+        take at
+        save written, arg
+        fork test, and(flag-at(slot-flags, at), is-equal(arg/form, <closure>))
+          hold
+            save written, made-async(written)
+        fork test, flag-at(item-flags, at)
+          hold
+            save written, items-made-async(written, lists)
+        push(args-out, written)
+      save given/args, args-out
+      back given
+    miss
+      back given
+
+task flag-at
+  take values, like list, like boolean
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, values/length)
+    hold
+      back get(values, at)
+  back false
+
+# the list a call pushes onto: `works/push(task ...)`, or the method lowered to a call with the list first; `<>` for
+# any other call
+task push-target
+  take call, like expression
+  like text
+  mark private
+
+  sift call
+    case call
+      sift callee
+        case member
+          fork test, is-equal(name, <push>)
+            hold
+              sift target
+                case variable
+                  link list-name
+                  back list-name
+                miss
+                  back <>
+          back <>
+        case variable
+          fork test, or(is-equal(name, <push>), or(ends-with(name, <-push>), ends-with(name, <_push>)))
+            hold
+              walk args
+                take first
+                sift first
+                  case variable
+                    link list-name
+                    back list-name
+                  miss
+                    back <>
+          back <>
+        miss
+          back <>
+    miss
+      back <>
+
+# an argument handed to a slot of async tasks: a list of literals has its literals made async, and a list of them its
+# type, a list local of the task's its type
+task items-made-async
+  take arg, like expression
+  take lists, like list, like text
+  like expression
+  mark private
+
+  sift arg
+    case array
+      save items-out, make list
+      walk items
+        take item
+        push(items-out, made-async(item))
+      save arg/items, items-out
+      back with-items-async(arg)
+    case variable
+      fork test, has-text(lists, name)
+        hold
+          back with-items-async(arg)
+      back arg
+    miss
+      back arg
+
+# a task literal made async, its own type with it; anything else as it was
+task made-async
+  take given, like expression
+  like expression
+  mark private
+
+  sift given
+    case closure
+      save given/async, true
+      sift type
+        case some
+          link known
+          save made-type, async-function-type(known)
+          save given/type, make(some, made-type)
+        miss
+          back given
+      back given
+    miss
+      back given
+
+# an expression whose type is a list of tasks, its items made async
+task with-items-async
+  take given, like expression
+  like expression
+  mark private
+
+  save known, expression-type(given)
+  sift known
+    case some
+      link list-type
+      back with-type(given, items-async-type(list-type))
+    miss
+      back given
+
+# a let of one of the task's lists, its declared type and its value's type with their items made async
+task async-slot-statement
+  take one, like statement
+  take lists, like list, like text
+  like statement
+  mark private
+
+  sift one
+    case let
+      fork test, not(has-text(lists, name))
+        hold
+          back one
+      sift type
+        case some
+          link declared
+          save made-type, items-async-type(declared)
+          save one/type, make(some, made-type)
+        miss
+          save nothing, 0
+      save one/init, with-items-async(init)
+      back one
+    miss
+      back one
+
+# a list type whose items are tasks, its items made async (`like list, like task ...`)
+task items-async-type
+  take given, like type
+  like type
+  mark private
+
+  sift given
+    case array
+      save element-out, async-function-type(element)
+      back
+        make type/array
+          bind element, element-out
+    case named
+      fork test, and(is-equal(name, <list>), is-above(args/length, 0))
+        hold
+          save args-out, make list
+          walk args
+            take arg
+            take at
+            fork test, is-equal(at, 0)
+              hold
+                push(args-out, async-function-type(arg))
+              miss
+                push(args-out, arg)
+          save given/args, args-out
+      back given
+    miss
+      back given
+
+# a function type made async; any other type as it was
+task async-function-type
+  take given, like type
+  like type
+  mark private
+
+  sift given
+    case function
+      save written, make list
+      save has-async, false
+      walk effects
+        take effect
+        push(written, effect)
+        fork test, is-equal(effect, <async>)
+          hold
+            save has-async, true
+      fork test, has-async
+        hold
+          back given
+      push(written, <async>)
+      save given/effects, written
+      back given
+    miss
+      back given
 
 # The fields of an arm of a match over `subject`: the case of the subject's own form, keyed `<form>/<case>`, as the
 # emitter reads them, else the case of that name declared last. Two forms may name a case alike (node.tree's `type` and

@@ -1,0 +1,222 @@
+# Type seeding: turn a milled type annotation into a fresh inference type (unknowns become fresh variables, generic
+# names map to their variables, `list` / `hash` become array / map, a form gets a fresh type argument per parameter).
+# Extracted from the inference closure as a component of the modular checker. The checker keeps owning the tables
+# (shared with expression inference) and the algorithm lives here. See note/seed/plan/compilation-performance.md
+# (Tier 2).
+#
+# Ported from check/type-seed.ts (self-hosting, 2026-10-05). The original was a factory answering a closure over the
+# checker's tables; here the tables are a `seeder` record handed to `seed-type`. A form is known by its name, and an
+# annotation left out is a fresh variable the caller makes, where the closure took `undefined`.
+
+load @term/base/list
+  find list
+  find get
+
+load ../compile/node
+  find expression
+  find type
+  find unknown-type
+
+load ./substitution
+  find substitution
+  find fresh-type
+
+form seeder
+  mark shared
+  link sub, like substitution
+  # the forms the program declares, a set as a hash to `true`
+  link records, like hash, like text, like boolean
+  # each form's type parameters
+  link form-generics, like hash, like text, like list, like text
+  # opaque per-backend handle types (`dock type`), a set likewise: kept as named types so a backend resolves them to a
+  # concrete handle, rather than being inferred as a fresh generic variable
+  link opaque, like hash, like text, like boolean
+
+task seed-type
+  take seeder, like seeder
+  take given, like type
+  take generics, like hash, like text, like type
+  like type
+
+  sift given
+    case named
+      fork test, generics/has(name)
+        hold
+          back generics/get(name)
+      # copied by a walk, so the annotation's own list is only read
+      save written, make list
+      walk args
+        take arg
+        push(written, arg)
+      # `list` is the native array type: `like list<t>` is array<t>, and a BARE `like list` leaves the element a
+      # fresh inference variable filled from usage -- a native backend then emits the concrete element instead of
+      # the boxed dynamic (`SeedList<String>`, never `SeedList<Any>`). A list that genuinely mixes elements says
+      # so: `like list, like unknown`.
+      fork test, is-equal(name, <list>)
+        hold
+          save element-out, seed-at(seeder, written, 0, generics)
+          back
+            make type/array
+              bind element, element-out
+      # `hash` is the native map type, with the same rule: `like hash<k, v>` is map<k, v>, and a bare `like hash`
+      # infers its key and value from usage
+      fork test, is-equal(name, <hash>)
+        hold
+          save key-out, seed-at(seeder, written, 0, generics)
+          save value-out, seed-at(seeder, written, 1, generics)
+          back
+            make type/map
+              bind key, key-out
+              bind value, value-out
+      fork test, seeder/records/has(name)
+        hold
+          # a form: give it a fresh type argument per generic parameter (maybe -> maybe<?a>), inferred from usage. An
+          # indexed family's VALUE-INDEX arguments (`vec a n`) are carried verbatim -- they are expressions, not
+          # inference types, so they pass through untouched and keep the type value-dependent through inference.
+          save args-out, make list
+          save at, 0
+          walk params-of(seeder, name)
+            take param
+            push(args-out, seed-at(seeder, written, at, generics))
+            save at, add(at, 1)
+          save values-out, make list
+          walk value-args
+            take value-arg
+            push(values-out, value-arg)
+          fork test, is-above(values-out/length, 0)
+            hold
+              back
+                make type/named
+                  bind name, name
+                  bind args, args-out
+                  bind value-args, values-out
+          back
+            make type/named
+              bind name, name
+              bind args, args-out
+      # an opaque handle type stays named, so each backend resolves it to its concrete per-env type
+      fork test, seeder/opaque/has(name)
+        hold
+          back
+            make type/named
+              bind name, name
+      # `unknown` is the GRADUAL type: consistent with every type, in both directions. It is what a function that
+      # genuinely accepts any Term value declares (`deep-equal` narrows its args with a runtime shape test), and is
+      # distinct from `dynamic`, which is the host's `any` at the FFI boundary.
+      fork test, is-equal(name, <unknown>)
+        hold
+          back unknown-type()
+      # `type` is the UNIVERSE (the type of types): kept named, so a function may take or return one (`El : U ->
+      # type`, the decoder of a universe-as-data / induction-recursion) rather than inferring it as a fresh variable.
+      fork test, is-equal(name, <type>)
+        hold
+          back
+            make type/named
+              bind name, <type>
+      # an unrecognized name: infer it from usage rather than forcing a mismatch
+      back fresh-type(seeder/sub)
+    case array
+      save element-out, seed-type(seeder, element, generics)
+      back
+        make type/array
+          bind element, element-out
+    # a slot the source left empty (`free`): a fresh variable, filled from usage; a spelled `like unknown` stays the
+    # gradual type
+    case unknown
+      fork test, free
+        hold
+          back fresh-type(seeder/sub)
+      back given
+    case map
+      save key-out, seed-type(seeder, key, generics)
+      save value-out, seed-type(seeder, value, generics)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, seed-type(seeder, param, generics))
+      save result-out, seed-type(seeder, result, generics)
+      back function-like(given, params-out, result-out)
+    miss
+      back given
+
+# the argument at `at` seeded, or a fresh variable where none was written
+task seed-at
+  take seeder, like seeder
+  take written, like list, like type
+  take at, like number
+  take generics, like hash, like text, like type
+  like type
+  mark private
+
+  fork test, is-below(at, written/length)
+    hold
+      back seed-type(seeder, get(written, at), generics)
+  back fresh-type(seeder/sub)
+
+task params-of
+  take seeder, like seeder
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, seeder/form-generics/has(name)
+    hold
+      walk seeder/form-generics/get(name)
+        take param
+        push(out, param)
+  back out
+
+# a function type of new parameters and result, keeping the effects and parameter names of the one it replaces
+task function-like
+  take one, like type
+  take params-out, like list, like type
+  take result-out, like type
+  like type
+  mark private
+
+  sift one
+    case function
+      save effects-out, make list
+      walk effects
+        take effect
+        push(effects-out, effect)
+      save names-out, make list
+      walk param-names
+        take param-name
+        push(names-out, param-name)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      fork test, and(is-above(effects-out/length, 0), is-above(names-out/length, 0))
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+              bind param-names, names-out
+          back made
+      fork test, is-above(effects-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+      fork test, is-above(names-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind param-names, names-out
+      back made
+    miss
+      back one

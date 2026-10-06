@@ -275,11 +275,16 @@ task exact-of
       back make-big-integer(digits)
   back big-from-number(value)
 
+# `env` is the build's: on a JavaScript one (node, browser, a worker; or none given) a literal past 2^53 is not the
+# number written, so it is refused there, where natively it is held exactly and only warned of. A test of rationals
+# past i64 met it on 2026-10-05: `4611686018427387903` ran as `...904` on TypeScript, with the warning nobody reads
 task check-literals
   take program, like list, like statement
   take file, like text
+  take env, like text, fall <>
   like literal-findings
 
+  save javascript, or(is-equal(env, <>), or(is-equal(env, <node>), or(is-equal(env, <browser>), or(is-equal(env, <cloudflare>), is-equal(env, <webview>)))))
   save errors, make list
   save warnings, make list
   save past-safe, make-big-integer(<9007199254740991>)
@@ -313,10 +318,14 @@ task check-literals
         fork test, or(is-above(big-compare(exact, past-safe), 0), is-below(big-compare(exact, below-safe), 0))
           hold
             save read-as, host-parse-float(shown)
-            save found, mismatch(file, span, <{shown} is past 2^53, so TypeScript reads it as {read-as}. Rust, Swift and Kotlin hold it exactly>, <>)
-            # a warning is a warning: carried with its severity, never failing the build
-            save found/severity, make warning
-            push(warnings, found)
+            save found, mismatch(file, span, <{shown} is past 2^53, so TypeScript reads it as {read-as}. Rust, Swift and Kotlin hold it exactly>, <use `@term/base/integer/big` (`make-big-integer(\<...\>)`) for a whole number this large where it must be exact everywhere>)
+            fork test, javascript
+              hold
+                push(errors, found)
+              miss
+                # a warning is a warning: carried with its severity, never failing the build
+                save found/severity, make warning
+                push(warnings, found)
       miss
         turn next
 

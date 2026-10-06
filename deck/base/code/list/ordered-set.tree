@@ -1,23 +1,30 @@
 
-# Ordered set: unique values in insertion order, backed by the native array.
-# Membership compares structurally through the compare runtime, so the element type needs no
-# equality mask on the native backends (rust would otherwise demand PartialEq on `t`).
+# Ordered set: unique values, walked in the order they were first inserted.
+#
+# Backed by the `hash`, which keeps insertion order on every backend (note/term/optimize/meaning.md, question 1), so
+# `insert`, `has` and `remove` are O(1) and `to-list` is in insertion order. Until 2026-10-05 it was a list searched
+# from the front on every `has` and `insert`, O(n) each. A value is compared as a hash compares a key: a record by its
+# fields, a list by its items. `set` is the same structure under the set algebra's names (union, intersect); this form
+# is the one to name where the order is the point. test/stdlib/ordered-collections.ts runs it on all four backends.
 
-mark unstable
+mark stable
 
-dock load
-  load <global:compare>, name compare-runtime
+load @term/base/hash
+  find hash
 
 load @term/base/list
   find list
-  find get
 
 form ordered-set
   head t
+  # the values, as a hash's keys: `make ordered-set` is an empty set
   link items
-    like list
+    like hash
       like t
+      like boolean
+    fall make hash
 
+  # the set with `item` in it: added last when it is new, left where it is when it is already there
   task insert
     take self
     take item, like t
@@ -25,62 +32,54 @@ form ordered-set
     fork test
       hook test
         call has
-          read self
+          read self/items
           read item
       hook hold
         send back, read self
-      hook miss
-        call push
-          read self/items
-          read item
-        send back, read self
+    call set
+      read self/items
+      read item
+      true
+    send back, read self
 
   task has
     take self
     take item, like t
     like boolean
-    save count
-      call size
+    send back
+      call has
         read self/items
-    save i, code 0
-    # bounded by the count it started with, and inside the length it has now: the native comparison below may touch
-    # the items, so the walk still ends and still reads only inside them
-    walk test
-      hook test
-        call and
-          call is-below
-            read i
-            read count
-          call is-below
-            read i
-            read self/items/length
-      hook hold
-        save entry
-          call get
-            read self/items
-            read i
-        fork test
-          hook test
-            call compare-runtime/deep-equal
-              read entry
-              read item
-          hook hold
-            send back, true
-        save i
-          call add
-            read i
-            code 1
-    send back, false
+        read item
 
-  task size
+  # takes `item` out, and says whether it was there. The order of the rest is kept
+  task remove
+    take self
+    take item, like t
+    like boolean
+    send back
+      call remove
+        read self/items
+        read item
+
+  # how many values it holds
+  task length
     take self
     like number
-    send back
-      call size
-        read self/items
+    send back, read self/items/size
 
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/items/size
+        code 0
+
+  # the values in insertion order
   task to-list
     take self
     like list
       like t
-    send back, read self/items
+    send back
+      call keys
+        read self/items

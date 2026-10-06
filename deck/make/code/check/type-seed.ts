@@ -1,27 +1,32 @@
 // Type seeding: turn a milled type annotation into a fresh inference type (unknowns become fresh variables, generic
 // names map to their variables, `list` / `hash` become array / map, a form gets a fresh type argument per parameter).
-// Extracted from the inference closure as a component of the modular checker. A factory, so the checker keeps owning
-// the `records` / `formGenerics` tables (shared with expression inference) and the algorithm lives here.
+// Extracted from the inference closure as a component of the modular checker. The checker keeps owning the tables
+// (shared with expression inference), handed in as a `Seeder`, and the algorithm lives here.
 // See note/seed/plan/compilation-performance.md (Tier 2).
 
 import type { Type } from '@term/make/code/compile/node'
 import { unknownType } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
+import { freshType } from '@term/make/code/check/substitution'
 
-export type SeedType = (
-  type: Type | undefined,
-  generics: Map<string, Type>,
-) => Type
+// the checker's tables a seed reads, two of them sets as maps to `true`: the forms the program declares, each form's
+// type parameters, and the opaque per-backend handle types (`dock type`), kept as named types so a backend resolves
+// them to a concrete handle, rather than being inferred as a fresh generic variable
+export type Seeder = {
+  sub: Substitution
+  records: Map<string, boolean>
+  formGenerics: Map<string, string[]>
+  opaque: Map<string, boolean>
+}
 
-export function makeSeedType(
-  sub: Substitution,
-  records: Map<string, Map<string, Type>>,
-  formGenerics: Map<string, string[]>,
-  // opaque per-backend handle types (`dock type`): kept as named types so a backend resolves them to a concrete
-  // handle, rather than being inferred as a fresh generic variable
-  opaqueTypes = new Set<string>(),
-): SeedType {
-  const seed: SeedType = (type, generics) => {
+// an annotation as an inference type. One left out is a fresh variable, which the caller makes
+export function seedType(seeder: Seeder, type: Type, generics: Map<string, Type>): Type {
+  const { sub } = seeder
+  const records = seeder.records
+  const formGenerics = seeder.formGenerics
+  const opaqueTypes = seeder.opaque
+
+  const seed = (type: Type | undefined, generics: Map<string, Type>): Type => {
     if (!type) {
       return freshType(sub)
     }
@@ -124,5 +129,5 @@ export function makeSeedType(
     return type
   }
 
-  return seed
+  return seed(type, generics)
 }

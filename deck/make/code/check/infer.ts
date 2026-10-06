@@ -8,16 +8,18 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
-import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
+import { LOWERED_LIST_MEMBERS, LOWERED_LIST_READ, LOWERED_MAP_MEMBERS, LOWERED_MAP_READ } from '@term/make/code/compile/lowered-members'
+import { transparentAliases, unfoldAlias as unfoldAliasOf } from '@term/make/code/check/alias'
 import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
 import { freshType, newSubstitution, occursIn, resolveType, unifyTypes, unifyTypesAt } from '@term/make/code/check/substitution'
-import { instantiate } from '@term/make/code/check/signature'
+import type { Substitution } from '@term/make/code/check/substitution'
+import { instantiateTypes } from '@term/make/code/check/signature'
 import { overloadGroups } from '@term/make/code/check/overload'
-import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
-import type { Signature } from '@term/make/code/check/signature'
-import { makeSeedType } from '@term/make/code/check/type-seed'
+import { isFoldable, leanLabels, nestLeanCalls } from '@term/make/code/check/lean-nest'
+import { seedType as seedTypeOf } from '@term/make/code/check/type-seed'
+import type { Seeder } from '@term/make/code/check/type-seed'
 import { zonkGeneric as zonkGenericType } from '@term/make/code/check/zonk'
 import {
   instantiateScheme as instantiateSchemeImpl,
@@ -25,8 +27,9 @@ import {
   generalize as generalizeImpl,
   isValueExpression,
 } from '@term/make/code/check/scheme'
-import type { Scheme, Env } from '@term/make/code/check/scheme'
-import { makeExpect } from '@term/make/code/check/expect'
+import type { Scheme } from '@term/make/code/check/scheme'
+import { expectType } from '@term/make/code/check/expect'
+import { unknownSeam } from '@term/make/code/check/seam'
 import type {
   DeclaredSignature,
   Expression,
@@ -38,39 +41,70 @@ import type {
 import { booleanType, dynamicType, floatType, numberType, stringType, unitType, unknownType } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/type-text'
 
-// the members a native map and a native list answer THEMSELVES on every backend (camelCase, as a member call emits).
-// A member call of any other `hash` or `list` method dispatches to the Term method (`bindMemberMethod`)
-const NATIVE_MAP_MEMBERS = new Set(['get', 'set', 'has', 'delete', 'clear', 'keys', 'values', 'entries', 'forEach', 'size'])
-const NATIVE_LIST_MEMBERS = new Set([
-  'at',
-  'concat',
-  'entries',
-  'every',
-  'filter',
-  'find',
-  'findIndex',
-  'forEach',
-  'get',
-  'includes',
-  'indexOf',
-  'join',
-  'keys',
-  'lastIndexOf',
-  'length',
-  'map',
-  'pop',
-  'push',
-  'reduce',
-  'reverse',
-  'set',
-  'shift',
-  'slice',
-  'some',
-  'sort',
-  'splice',
-  'unshift',
-  'values',
-])
+// the type environment: a name to its scheme
+type Env = Map<string, Scheme>
+
+// A function's type signature in the checker: the firewall boundary, since callers depend on a callee's signature and
+// never its body. Instantiated per call through check/signature's `instantiateTypes`
+type Signature = {
+  // the ids of this signature's generic type variables
+  generics: Set<number>
+  // each generic variable id to its declared name (for nice generic output)
+  genericNames: Map<number, string>
+  // each generic variable id to its trait bound (`need`), if any
+  bounds: Map<number, string>
+  params: Type[]
+  result: Type
+  // the minimum call arity: trailing optional (`need false`) params may be omitted
+  minArgs: number
+  // the parameters' names, defaults and positional-only flags, aligned with `params`, so a call can name its
+  // arguments, omit one that has a `fall`, and be refused a name on a `slot`
+  names: string[]
+  fallbacks: (Expression | undefined)[]
+  positional: boolean[]
+  // which parameters are `need false`: one left out between two given ones takes its empty value, as a trailing one does
+  optional?: boolean[]
+  // HOLES: the variables a generic signature's bare forms were seeded with (`like maybe`, `like signal`), which are not
+  // among `generics`. One per signature, so every call shared it until each call was given its own (native-dom-0046)
+  holes?: Set<number>
+}
+
+type Instantiated = {
+  params: Type[]
+  result: Type
+  bounds: { variable: Type; mask: string }[]
+  minArgs: number
+  names: string[]
+  fallbacks: (Expression | undefined)[]
+  positional: boolean[]
+  optional?: boolean[]
+}
+
+// instantiate a signature, freshening its generics via `sub`. A non-generic signature is returned as-is.
+function instantiate(signature: Signature, sub: Substitution): Instantiated {
+  const rest = {
+    minArgs: signature.minArgs,
+    names: signature.names,
+    fallbacks: signature.fallbacks,
+    positional: signature.positional,
+    optional: signature.optional,
+  }
+
+  if (signature.generics.size === 0) {
+    return { params: signature.params, result: signature.result, bounds: [], ...rest }
+  }
+
+  const types = instantiateTypes([...signature.generics], [...(signature.holes ?? [])], signature.params, signature.result, sub)
+  const bounds = [...signature.bounds].map(([id, mask]) => ({ variable: types.fresh.get(id)!, mask }))
+
+  return { params: types.params, result: types.result, bounds, ...rest }
+}
+
+// the members a native map and a native list answer THEMSELVES on every backend (camelCase, as a member call emits):
+// exactly what the emitters lower (compile/lowered-members.ts). A member call of any other `hash` or `list` method
+// dispatches to the Term method (`bindMemberMethod`). This list once named seven more no native emitter lowered
+const NATIVE_MAP_MEMBERS = new Set([...LOWERED_MAP_MEMBERS, LOWERED_MAP_READ])
+const NATIVE_LIST_MEMBERS = new Set([...LOWERED_LIST_MEMBERS, LOWERED_LIST_READ])
 
 // `1st`, `2nd`, `3rd`, `4th`: a position named for a message
 function ordinal(n: number): string {
@@ -287,38 +321,24 @@ export function check(
   const transparentAlias = transparentAliases(program)
 
   // unfold a transparent alias to its base, following a chain (guarded against cycles). Unification and calls.
-  const unfoldAlias = (type: Type): Type => {
-    let current = type
-
-    const seen = new Set<string>()
-
-    while (current.kind === 'named' && !seen.has(current.name)) {
-      const base = throughAlias(current, transparentAlias)
-
-      if (!base.found) {
-        break
-      }
-
-      seen.add(current.name)
-      current = base.type
-    }
-
-    return current
-  }
+  const unfoldAlias = (type: Type): Type => unfoldAliasOf(type, transparentAlias)
 
   // unify two types. returns true on success. `unknown` (gradual) is consistent with anything. Transparent aliases are
   // unfolded to their base first. The core algorithm lives in the Substitution component.
   const unify = (a: Type, b: Type, span?: Span): boolean =>
     span ? unifyTypesAt(sub, unfoldAlias(a), unfoldAlias(b), span) : unifyTypes(sub, unfoldAlias(a), unfoldAlias(b))
 
-  // unify-or-diagnose (component: code/check/expect.ts). `getFile` reads the live current file (mutated by the run loops).
-  const expect = makeExpect({
-    unify,
-    resolve,
-    origin: sub.origin,
-    diagnostics,
-    getFile: () => currentFile,
-  })
+  // unify-or-diagnose (component: code/check/expect.ts), in the live current file (mutated by the run loops). A
+  // malformed program (a duplicate definition that already produced a diagnostic) can leave a type undefined: never
+  // crash on it, since the real error has been reported elsewhere
+  const expect = (actual: Type, wanted: Type, span: Span, what: string): void => {
+    if (actual && wanted) {
+      const found = expectType(sub, transparentAlias, actual, wanted, span, what, currentFile)
+
+      // the two unified: an `unknown` handed on to a typed place is the seam's to refuse (check/seam.ts)
+      diagnostics.push(...(found.length > 0 ? found : unknownSeam(sub, actual, wanted, span, what, currentFile)))
+    }
+  }
 
   // a declared type, with generic names mapped to their variables and unknown names left to inference
   // build an inference type from a milled annotation (component: code/check/type-seed.ts). Captures the shared
@@ -343,7 +363,15 @@ export function check(
     }
   }
 
-  const seedType = makeSeedType(sub, records, formGenerics, opaqueTypes)
+  // the tables are complete by here, so the sets are taken once
+  const seeder: Seeder = {
+    sub,
+    records: new Map([...records.keys()].map(name => [name, true])),
+    formGenerics,
+    opaque: new Map([...opaqueTypes].map(name => [name, true])),
+  }
+  const seedType = (type: Type | undefined, generics: Map<string, Type>): Type =>
+    type ? seedTypeOf(seeder, type, generics) : freshType(sub)
 
   // every `like <name>` on a signature or a field names something: a form, an enum, a primitive, a generic of its
   // own declaration, a mask, a transparent alias or an opaque native type. One that names nothing used to compile
@@ -751,9 +779,6 @@ export function check(
   // core's call sites stay natural. `Scheme` / `Env` / `isValueExpression` are imported directly.
   const instantiateScheme = (scheme: Scheme): Type =>
     instantiateSchemeImpl(scheme, sub)
-
-  const freeTypeVars = (type: Type, into: Set<number>): void =>
-    freeTypeVarsImpl(type, into, sub)
 
   const generalize = (type: Type, env: Env): number[] =>
     generalizeImpl(type, env, sub)
@@ -2746,14 +2771,18 @@ export function check(
     if (!construction) {
       nestLeanCalls(
         node,
-        name => signature?.names.includes(name) === true,
-        name =>
-          functions.has(name) ||
-          overloadGroups.has(name) ||
-          methodNames.has(name) ||
-          records.has(name) ||
-          variantEnum.has(name) ||
-          isFoldable(name),
+        leanLabels(node)
+          .filter(
+            ({ written, name }) =>
+              signature?.names.includes(written) !== true &&
+              (functions.has(name) ||
+                overloadGroups.has(name) ||
+                methodNames.has(name) ||
+                records.has(name) ||
+                variantEnum.has(name) ||
+                isFoldable(name)),
+          )
+          .map(label => label.at),
       )
     }
 
@@ -3446,10 +3475,7 @@ export function check(
         return
       }
 
-      const open = new Set<number>()
-      freeTypeVarsImpl(declared, open, sub)
-
-      if (open.size > 0) {
+      if (freeTypeVarsImpl(declared, sub).length > 0) {
         return
       }
 

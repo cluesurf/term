@@ -85,8 +85,16 @@ function statements(
 // values are found by the compiler's own parser, never a pattern, and each is the source text of its node, so it
 // means what it meant inside the comparison. Any other condition, or one whose value spans lines, raises the marker
 // alone. Each line comes back with the source line it came from.
-function guard(group: string[], numbers: number[], plain = false): { lines: string[]; from: number[] } {
+function guard(
+  group: string[],
+  numbers: number[],
+  plain = false,
+  // the part of an `and` this guard checks, which its failure names
+  part?: { at: number; of: number },
+): { lines: string[]; from: number[] } {
   const line = numbers[0]!
+  const marker = part ? `${WANT_FAILED}${line + 1} part ${part.at} of ${part.of}` : `${WANT_FAILED}${line + 1}`
+  const suffix = part ? `-${part.at}` : ''
   // the head line is `want <mode>` with the condition indented under it, or the one-line form
   // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
   // be dropped on the floor (an empty condition, so the test failed no matter what it said).
@@ -102,6 +110,33 @@ function guard(group: string[], numbers: number[], plain = false): { lines: stri
   const conditionFrom = inline ? [line] : numbers.slice(1)
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
+
+  // `want hold` over an `and`: each part checked in turn, as `want hold` of its own, naming its place in the `and`
+  const parts =
+    plain || mode !== 'hold' || part
+      ? undefined
+      : conjuncts(
+          inline
+            ? [{ text: inline, from: line }]
+            : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
+        )
+
+  if (parts) {
+    const lines: string[] = []
+    const from: number[] = []
+
+    parts.forEach((rows, at) => {
+      const checked =
+        rows.length === 1 && rows[0]!.from === line
+          ? guard([`want hold, ${rows[0]!.text}`], [line], false, { at: at + 1, of: parts.length })
+          : guard(['want hold', ...rows.map(row => `  ${row.text}`)], [line, ...rows.map(row => row.from)], false, { at: at + 1, of: parts.length })
+      lines.push(...checked.lines)
+      from.push(...checked.from)
+    })
+
+    return { lines, from }
+  }
+
   const compared = plain
     ? undefined
     : comparison(
@@ -111,8 +146,8 @@ function guard(group: string[], numbers: number[], plain = false): { lines: stri
       )
 
   if (compared) {
-    const left = `want-left-${line + 1}`
-    const right = `want-right-${line + 1}`
+    const left = `want-left-${line + 1}${suffix}`
+    const right = `want-right-${line + 1}${suffix}`
     const saved = [...saveOf(left, compared.left, line), ...saveOf(right, compared.right, line)]
     const rest = [
       '  fork test',
@@ -122,7 +157,7 @@ function guard(group: string[], numbers: number[], plain = false): { lines: stri
       `        read ${right}`,
       `    ${failOn}`,
       '      halt want-missed',
-      `        bind thing, <${WANT_FAILED}${line + 1}>`,
+      `        bind thing, <${marker}>`,
       `        bind left, read ${left}`,
       `        bind right, read ${right}`,
     ]
@@ -140,7 +175,7 @@ function guard(group: string[], numbers: number[], plain = false): { lines: stri
       '    hook test',
       ...condition,
       `    ${failOn}`,
-      `      halt <${WANT_FAILED}${line + 1}>`,
+      `      halt <${marker}>`,
     ],
     from: [line, line, ...conditionFrom, line, line],
   }
@@ -194,7 +229,10 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
   const pieces: Row[][] = []
 
   if (flat.length === 1) {
-    pieces.push(...inlineArguments(source).map(piece => [{ text: piece, from: flat[0]!.from }]))
+    // `is-equal a, b`, or `is-equal(a, b)` with its values inside its own parentheses
+    const wrapped = /^[\w-]+\((.*)\)$/.exec(source)
+    const cut = wrapped ? topLevelPieces(wrapped[1]!) : inlineArguments(source)
+    pieces.push(...cut.map(piece => [{ text: piece, from: flat[0]!.from }]))
   } else {
     for (const row of flat.slice(1)) {
       if (indentOf(row.text) === 2) {
@@ -214,6 +252,89 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
   }
 
   return { head: first === 'call' ? `call ${word}` : word, left: pieces[0]!, right: pieces[1]! }
+}
+
+// A CONDITION THAT IS AN `and` OF PARTS: each part's own rows, in order, so a failing `want` can be checked part by
+// part and name the part that did not hold, with its two values when that part is a comparison. Until 2026-10-05 a
+// `want hold, and(is-equal a, b, ...)` named its line and nothing else (guides: tests/writing). `and` stops at the
+// first part that is false, and the parts checked in order stop there too, so the meaning is the same. Written inline
+// (`and(x, y)` or `and x, y`) or stacked (`and` or `call and`, each part on the lines one level under it). Each part is
+// read again by the parser and must give back the node `and` holds, or the condition is left whole
+function conjuncts(rows: Row[]): Row[][] | undefined {
+  const base = Math.min(...rows.map(row => indentOf(row.text)))
+  const flat = rows.map(row => ({ text: row.text.slice(base), from: row.from }))
+  const source = flat.map(row => row.text).join('\n')
+  const parsed = parseTolerant({ file: 'want.tree', text: source })
+
+  if (parsed.diagnostics.length > 0 || parsed.tree.nodes.length !== 1) {
+    return undefined
+  }
+
+  const group = groupsOf(parsed.tree.nodes)[0]
+  const head = group?.nodes[0]
+  const first = head?.kind === 'name' ? renderHead(head) : undefined
+  const inner = first === 'call' ? group!.nodes[1] : undefined
+  const named = inner?.kind === 'group' && inner.nodes.length === 1 && inner.nodes[0]?.kind === 'name' ? renderHead(inner.nodes[0]) : undefined
+  const word = first === 'call' ? named : first
+  const values = group?.nodes.slice(first === 'call' ? 2 : 1) ?? []
+
+  if (word !== 'and' || values.length < 2) {
+    return undefined
+  }
+
+  const pieces: Row[][] = []
+
+  if (flat.length === 1) {
+    const text = flat[0]!.text
+    const wrapped = /^and\((.*)\)$/.exec(text)
+    const cut = wrapped ? topLevelPieces(wrapped[1]!) : inlineArguments(text)
+    pieces.push(...cut.map(piece => [{ text: piece, from: flat[0]!.from }]))
+  } else {
+    for (const row of flat.slice(1)) {
+      if (indentOf(row.text) === 2) {
+        pieces.push([{ text: row.text.slice(2), from: row.from }])
+      } else if (indentOf(row.text) > 2 && pieces.length > 0) {
+        pieces[pieces.length - 1]!.push({ text: row.text.slice(2), from: row.from })
+      } else {
+        return undefined
+      }
+    }
+  }
+
+  const stacked = flat.length > 1
+
+  if (pieces.length !== values.length || !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))) {
+    return undefined
+  }
+
+  return pieces
+}
+
+// a text cut at its top-level commas: outside parentheses, text and braces
+function topLevelPieces(text: string): string[] {
+  const tokens = tokenize({ file: 'want.tree', text })
+
+  if (tokens.diagnostics.length > 0) {
+    return []
+  }
+
+  const cuts: number[] = []
+  let depth = 0
+
+  for (const token of tokens.tokens.list) {
+    if (token.kind === 'open-paren' || token.kind === 'open-angle' || token.kind === 'open-brace') {
+      depth++
+    } else if (token.kind === 'close-paren' || token.kind === 'close-angle' || token.kind === 'close-brace') {
+      depth--
+    } else if (token.kind === 'comma' && depth === 0) {
+      cuts.push(token.span.start.column)
+    }
+  }
+
+  const ends = [...cuts, text.length]
+  const begins = [0, ...cuts.map(cut => cut + 1)]
+
+  return begins.map((begin, at) => text.slice(begin, ends[at]).trim()).filter(one => one.length > 0)
 }
 
 // `save <name>` of a value: on its line when it was written inline, else the value's own lines under it, each the
@@ -308,19 +429,28 @@ export function wantFailed(raised: unknown, source: string): string | undefined 
     return undefined
   }
 
-  const said = `line ${line + 1} did not hold: ${source.split('\n')[line]?.trim() ?? ''}`
+  // the part of an `and` that did not hold, when the `want` was one: `part 2 of 3`
+  const part = /part \d+ of \d+/.exec(markerOf(raised) ?? '')?.[0]
+  const said = `line ${line + 1} did not hold${part ? `, ${part}` : ''}: ${source.split('\n')[line]?.trim() ?? ''}`
   const link = linkOf(raised)
 
   return link && 'left' in link && 'right' in link ? `${said}, left ${shown(link.left)}, right ${shown(link.right)}` : said
 }
 
+// the marker a failing `want` raised: its `thing` when it carries the compared values, else its `note`
+function markerOf(raised: unknown): string | undefined {
+  const note = (raised as { note?: unknown } | null)?.note
+  const thing = linkOf(raised)?.thing
+
+  return typeof thing === 'string' && thing.startsWith(WANT_FAILED) ? thing : typeof note === 'string' ? note : undefined
+}
+
 // the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise. The
 // marker is the raise's `note` (`halt <want:12>`), or its `thing` when the raise carries the compared values
 export function wantLine(raised: unknown): number | undefined {
-  const note = (raised as { note?: unknown } | null)?.note
-  const thing = linkOf(raised)?.thing
-  const marker = typeof thing === 'string' && thing.startsWith(WANT_FAILED) ? thing : typeof note === 'string' ? note : undefined
-  const line = marker?.startsWith(WANT_FAILED) ? Number(marker.slice(WANT_FAILED.length)) : NaN
+  const marker = markerOf(raised)
+  // `want:12`, or `want:12 part 2 of 3` for a part of an `and`
+  const line = marker?.startsWith(WANT_FAILED) ? Number(/^\d+/.exec(marker.slice(WANT_FAILED.length))?.[0] ?? NaN) : NaN
 
   return Number.isInteger(line) && line > 0 ? line - 1 : undefined
 }

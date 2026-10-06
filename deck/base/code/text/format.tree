@@ -1,0 +1,36 @@
+# Numbers and money written as a language writes them: `format-number(1234567.891, <de-DE>, 0, 2)` is `1.234.567,89`,
+# `<hi-IN>` groups `12,34,567.89`, and `format-currency(1234.5, <EUR>, <fr-FR>)` is `1 234,50 €`. The language is a
+# BCP 47 tag, and the currency an ISO 4217 code.
+#
+# Each platform's own formatter over its own copy of Unicode's CLDR: `Intl.NumberFormat` on node and in the browser,
+# Foundation's `NumberFormatter` on Swift, and `java.text.NumberFormat` on Kotlin. Rust's standard library has no
+# locale data, so a Rust build that loads this module is refused at the load until the choice of data is made
+# (note/term/plan/decisions-2026-10.md, D7): a number formatted for the wrong locale with no word would be worse.
+# test/stdlib/text-format.ts holds Swift and Kotlin to node's answers.
+
+mark unstable
+
+load @term/base/native/{platform}/text/format
+  find platform-format-number
+  find platform-format-currency
+
+# `value` with at least `fewest` and at most `most` digits after the decimal mark, rounded half to even past them, the
+# digits grouped and the mark placed as `language` writes them
+task format-number
+  take value, like decimal
+  take language, like text
+  take fewest, like number
+  take most, like number
+  like text
+  send back
+    call platform-format-number(read(value), read(language), read(fewest), read(most))
+
+# `value` as an amount of the currency `currency` (`<EUR>`, `<JPY>`), with that currency's own number of minor digits,
+# its symbol where `language` puts it
+task format-currency
+  take value, like decimal
+  take currency, like text
+  take language, like text
+  like text
+  send back
+    call platform-format-currency(read(value), read(currency), read(language))

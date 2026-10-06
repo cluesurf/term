@@ -41,7 +41,7 @@ function main(): void {
     '/proj/code/widget/base.tree',
   ])
 
-  const exists = (p: string): boolean => files.has(p)
+  const exists = [...files]
 
   // file resolution with extension fallback
   expect(
@@ -98,7 +98,7 @@ function main(): void {
   expect(
     'no deck root',
     findDeckRoot('/other/x.tree', exists),
-    undefined,
+    '',
   )
 
   // store path layout

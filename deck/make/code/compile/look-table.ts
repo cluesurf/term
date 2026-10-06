@@ -14,11 +14,11 @@ import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/narrow'
 import {
   argName,
-  BREAKPOINT,
+  breakpointOf,
   childrenNamed,
   headName,
   renderValue,
-  STATE_ATTR,
+  stateAttributeOf,
 } from '@term/make/code/compile/look-css'
 
 export type StyleValue =
@@ -82,10 +82,10 @@ const NO_COUNTERPART: Record<string, string> = {
   cursor: 'a pointer shape, which the toolkit host does not set',
 }
 
-// variants a native host can apply: the state attributes (look-css's STATE_ATTR) and `disabled`, which every control
-// the toolkit host makes carries as an attribute
+// variants a native host can apply: the state attributes (look-css's `stateAttributeOf`) and `disabled`, which every
+// control the toolkit host makes carries as an attribute
 function stateOf(variant: string): { attribute: string; value?: string } | undefined {
-  const attr = STATE_ATTR[variant]
+  const attr = stateAttributeOf(variant)
 
   if (attr) {
     const match = /^\[([a-z-]+)=([a-z-]+)\]$/.exec(attr)
@@ -101,7 +101,7 @@ function stateOf(variant: string): { attribute: string; value?: string } | undef
 }
 
 function whyNotVariant(variant: string): string {
-  if (variant in BREAKPOINT) {
+  if (breakpointOf(variant)) {
     return 'a width breakpoint: a native window reads its size class from the device traits, not a media query'
   }
 
@@ -263,9 +263,8 @@ function rowsOf(
 // light one with `tone dark` laid over it and every class's `case dark` rows merged in
 export function compileLookTable(
   source: { file: string; text: string },
-  options?: { scheme?: 'light' | 'dark' },
+  scheme: 'light' | 'dark' = 'light',
 ): StyleTable {
-  const scheme = options?.scheme ?? 'light'
   const table: StyleTable = { target: 'toolkit', scheme, classes: [], unlowered: [] }
   const parsed = parse(source)
 

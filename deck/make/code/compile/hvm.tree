@@ -1,0 +1,397 @@
+# The HVM backend: emit the pure numeric / boolean / recursive fragment as HVM (the interaction-combinator runtime, so
+# the same program reduces in parallel and beta-optimally). A Term function becomes an HVM definition `@name = λ&p. body`
+# (parameters are auto-dup `&` so they can be used more than once on a linear substrate); arithmetic and comparison
+# lower to HVM's native operators; an `if` / value-conditional lowers to a numeric match `(λ{0: else; _: λx. then})(cond)`;
+# a call lowers to `@callee(args)`. Recursion is just a self-reference to `@name`. Forms outside this fragment (strings,
+# collections, closures stored in data, records, loops) are flagged with a SEED-UNSUPPORTED marker, exactly like the
+# WGSL backend. Run monomorphization first so a generic call resolves to a concrete definition. Pure,
+# browser-safe. Experimental: see backend-registry.tree.
+#
+# Ported from compile/hvm.ts (self-hosting, 2026-10-05). The forms it could not lower and its fresh-name counter are
+# one `mark shared` record the emitting tasks hand down.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find replace-all
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ./node
+  find binary-op
+  find expression
+  find expression-span
+  find statement
+  find statement-span
+  find to-text, name op-text
+  find unary-op
+  find value-branch
+
+load ../ir/monomorphize
+  find monomorphize
+
+load ./backend-registry
+  find experimental-banner
+
+load ./type-text
+  find integer-text
+
+# a construct the target cannot lower, where it was written: what `term make --emit hvm` (and `wgsl`) refuses, naming
+# each, before anything is written (call/code/emit.ts)
+form fragment-gap
+  link form, like text
+  link span
+    like maybe, like span
+    need false
+
+form hvm-state
+  mark shared
+  # the caller's list of gaps, handed every construct outside the fragment with its span
+  link gaps, like list, like fragment-gap
+  # forms that could not be lowered, collected so the module header can report them once (HVM has no inline block
+  # comments)
+  link unsupported, like list, like text
+  link fresh, like number
+
+# HVM identifiers are alphanumeric + underscore; kebab-case names map by replacing hyphens.
+task hvm-name
+  take text, like text
+  like text
+  mark private
+
+  back replace-all(text, <->, <_>)
+
+# a parseable placeholder so the rest of the module still reduces; the header lists what was dropped
+task mark-unsupported
+  take state, like hvm-state
+  take form, like text
+  take at, like maybe, like span
+  like text
+  mark private
+
+  save gap
+    make fragment-gap
+      bind form, form
+      bind span, at
+  push(state/gaps, gap)
+  save seen, false
+  walk state/unsupported
+    take one
+    fork test, is-equal(one, form)
+      hold
+        save seen, true
+  fork test, not(seen)
+    hold
+      push(state/unsupported, form)
+  back <0>
+
+# a binary operator as HVM writes it, `<>` where it has none. Equality is `===` in HVM; the arithmetic and ordering
+# operators match
+task hvm-op
+  take op, like binary-op
+  like text
+  mark private
+
+  sift op
+    case equal
+      back <===>
+    case unequal
+      back <>
+    miss
+      back op-text(op)
+
+task hvm-expression
+  take state, like hvm-state
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case integer
+      back integer-text(node)
+    case float
+      back <{value}>
+    case boolean
+      fork test, value
+        hold
+          back <1>
+      back <0>
+    case unit
+      back <0>
+    case null
+      back <0>
+    case variable
+      back hvm-name(name)
+    case binary
+      save written, hvm-op(op)
+      fork test, is-equal(written, <>)
+        hold
+          save shown, op-text(op)
+          back mark-unsupported(state, <binary "{shown}">, make(some, span))
+      save left-text, hvm-expression(state, left)
+      save right-text, hvm-expression(state, right)
+      back <({left-text} {written} {right-text})>
+    case unary
+      # arithmetic negation; logical not maps a 0/1 through the same match an `if` uses
+      save operand-text, hvm-expression(state, operand)
+      sift op
+        case negate
+          back <(0 - {operand-text})>
+        case not
+          back <(λ\{0: 1; _: λ_. 0\})({operand-text})>
+    case call
+      # a call to a named function -> `@callee(args)`. (Arithmetic has already been lowered to `binary`.)
+      sift callee
+        case variable
+          save parts, make list
+          walk args
+            take arg
+            push(parts, hvm-expression(state, arg))
+          save joined, join(parts, <, >)
+          save callee-name, hvm-name(name)
+          back <@{callee-name}({joined})>
+        miss
+          back mark-unsupported(state, <call (computed callee)>, make(some, span))
+    case conditional
+      back hvm-conditional(state, branches, otherwise)
+    case await
+      back hvm-expression(state, expr)
+    miss
+      save at, expression-span(node)
+      back mark-unsupported(state, node/form, make(some, at))
+
+# a chain of cond ? value branches with a final else, as nested numeric matches: `(λ{0: else; _: λx. then})(cond)`.
+# HVM matches a number: branch `0` is the false case; the `_` default (binding the value) is the true (non-zero) case.
+task hvm-conditional
+  take state, like hvm-state
+  take branches, like list, like value-branch
+  take otherwise, like maybe, like expression
+  like text
+  mark private
+
+  save rest, <0>
+  sift otherwise
+    case some
+      link fallback
+      save rest, hvm-expression(state, fallback)
+    miss
+      save rest, <0>
+  save at, subtract(branches/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save branch, get(branches, at)
+      # the `_` default binds the scrutinee (the condition's value); the branch usually ignores it, so bind it
+      # auto-dup (`&`) -- on the linear substrate that lets zero uses erase cleanly instead of leaving a dangling
+      # variable.
+      save slot, <c{state/fresh}>
+      save state/fresh, add(state/fresh, 1)
+      save value-text, hvm-expression(state, branch/value)
+      save cond-text, hvm-expression(state, branch/cond)
+      save rest, <(λ\{0: {rest}; _: λ&{slot}. {value-text}\})({cond-text})>
+      save at, subtract(at, 1)
+  back rest
+
+# a function body in the pure fragment is a single returned value, or an `if` whose branches return. Anything else
+# (loops, in-place mutation, multi-statement let chains) is outside this target's fragment.
+task hvm-body
+  take state, like hvm-state
+  take statements, like list, like statement
+  like text
+  mark private
+
+  fork test, is-equal(statements/length, 1)
+    hold
+      save only, get(statements, 0)
+      sift only
+        case return
+          sift value
+            case some
+              link returned
+              back hvm-expression(state, returned)
+            miss
+              back <0>
+        case if
+          save written, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, branch/cond
+                bind value, returned-value(state, branch/body)
+            push(written, made)
+          save fallback, make none
+          sift otherwise
+            case some
+              link given
+              save chosen, returned-value(state, given)
+              save fallback, make(some, chosen)
+            miss
+              save fallback, make none
+          back hvm-conditional(state, written, fallback)
+        case expression
+          back hvm-expression(state, expr)
+        miss
+          save nothing, 0
+  back mark-unsupported(state, <multi-statement body>, first-span(statements))
+
+# the single expression a branch body returns (the pure fragment), or a placeholder
+task returned-value
+  take state, like hvm-state
+  take statements, like list, like statement
+  like expression
+  mark private
+
+  fork test, is-equal(statements/length, 1)
+    hold
+      save only, get(statements, 0)
+      sift only
+        case return
+          sift value
+            case some
+              link returned
+              back returned
+            miss
+              save nothing, 0
+        case if
+          # a nested if in a branch: wrap it back into a conditional expression so the expression emitter handles it
+          # uniformly
+          save written, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, branch/cond
+                bind value, returned-value(state, branch/body)
+            push(written, made)
+          sift otherwise
+            case some
+              link given
+              save chosen, returned-value(state, given)
+              back
+                make expression/conditional
+                  bind branches, written
+                  bind otherwise, make(some, chosen)
+                  bind span, span
+            miss
+              back
+                make expression/conditional
+                  bind branches, written
+                  bind span, span
+        miss
+          save nothing, 0
+  save at, nowhere()
+  fork test, is-above(statements/length, 0)
+    hold
+      save at, statement-span(get(statements, 0))
+  # a branch that is not one returned value is outside the fragment too: it was a silent 0, never named
+  mark-unsupported(state, <multi-statement branch>, first-span(statements))
+  back
+    make expression/integer
+      bind value, 0
+      bind span, at
+
+# the first statement's span, none for an empty block
+task first-span
+  take statements, like list, like statement
+  like maybe, like span
+  mark private
+
+  walk statements
+    take first
+    save at, statement-span(first)
+    back make(some, at)
+  back make none
+
+task nowhere
+  like span
+  mark private
+
+  save start
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, start
+      bind end, start
+
+task hvm-definition
+  take state, like hvm-state
+  take fn, like statement
+  like text
+  mark private
+
+  sift fn
+    case function
+      # each parameter is an auto-dup lambda so the body may use it any number of times on the linear substrate
+      save parts, make list
+      walk params
+        take param
+        save param-name, hvm-name(param/name)
+        push(parts, <λ&{param-name}.>)
+      save lambdas, join(parts, < >)
+      save value, hvm-body(state, body)
+      save fn-name, hvm-name(name)
+      fork test, is-equal(lambdas, <>)
+        hold
+          back <@{fn-name} = {value}>
+      back <@{fn-name} = {lambdas} {value}>
+    miss
+      back <>
+
+# `gaps`, when given, is handed every construct outside the fragment with its span. Without it the emitter writes a
+# marked placeholder and lists them in the header, as it always did
+task emit-hvm
+  take input, like list, like statement
+  take gaps
+    like list, like fragment-gap
+    fall make list
+  like text
+
+  # HVM has no type parameters: specialize every generic function at its concrete call types first, so a generic
+  # call resolves to a real monomorphic definition rather than being skipped.
+  save program, monomorphize(input)
+  save state
+    make hvm-state
+      bind gaps, gaps
+      bind unsupported, make list
+      bind fresh, 0
+  save definitions, make list
+  walk program
+    take one
+    sift one
+      case function
+        push(definitions, hvm-definition(state, one))
+      # declarations with no runtime value in this fragment; skip silently (they carry no HVM definition)
+      case record-type
+        turn next
+      case mask
+        turn next
+      case instance
+        turn next
+      case native
+        turn next
+      case bind
+        turn next
+      case view
+        turn next
+      miss
+        save at, statement-span(one)
+        mark-unsupported(state, one/form, make(some, at))
+  save header, <>
+  fork test, is-above(state/unsupported/length, 0)
+    hold
+      save listed, join(state/unsupported, <, >)
+      save header, <// SEED-UNSUPPORTED on HVM (outside the numeric/recursive fragment): {listed}\n>
+  save banner, experimental-banner(<hvm>, <//>)
+  save body, join(definitions, <\n\n>)
+  back <{banner}{header}{body}\n>

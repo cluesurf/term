@@ -1,39 +1,54 @@
-# Common string operations over the text type. The clean uniform interface; the per-env native implementation is selected at build time and hidden. node and browser call the host String methods directly; the compiled targets call a thin text shim over their platform string API.
+# Text operations `text` does not have: `repeat`, `slice`, `concat` and `to-text`. The per-env native implementation is
+# selected at build time and hidden: node and the browser call the host String methods, the compiled targets a thin
+# shim over their platform's string API.
+#
+# Seven tasks here repeated `text`'s under other names (guides: library/text, 2026-10-05). Each is now `mark
+# deprecated`, says which of `text`'s to call, and calls it, so a call from another file warns and still does the same
+# thing. NOTE `replace` here replaces EVERY occurrence, which is `text`'s `replace-all`; `text`'s own `replace` replaces
+# the first. They go at the next minor, once the repository's calls are moved (note/term/plan/backends-complete.md).
 
 mark unstable
 
 load @term/base/native/{platform}/text/string
-  find string-upper
-  find string-lower
-  find string-trim
   find string-repeat
-  find string-contains
-  find string-starts-with
-  find string-ends-with
-  find string-replace
   find string-slice
   find string-concat
   find string-to-text
 
+load @term/base/text
+  find to-upper-case, name text-to-upper-case
+  find to-lower-case, name text-to-lower-case
+  find trim, name text-trim
+  find contains, name text-contains
+  find starts-with, name text-starts-with
+  find ends-with, name text-ends-with
+  find replace-all, name text-replace-all
+
+# use `to-upper-case` from @term/base/text
 task to-upper
   take input, like text
   like text
+  mark deprecated
   send back
-    call string-upper
+    call text-to-upper-case
       read input
 
+# use `to-lower-case` from @term/base/text
 task to-lower
   take input, like text
   like text
+  mark deprecated
   send back
-    call string-lower
+    call text-to-lower-case
       read input
 
+# use `trim` from @term/base/text
 task trim
   take input, like text
   like text
+  mark deprecated
   send back
-    call string-trim
+    call text-trim
       read input
 
 task repeat
@@ -45,40 +60,48 @@ task repeat
       read input
       read count
 
+# use `contains` from @term/base/text
 task contains
   take input, like text
   take part, like text
   like boolean
+  mark deprecated
   send back
-    call string-contains
+    call text-contains
       read input
       read part
 
+# use `starts-with` from @term/base/text
 task starts-with
   take input, like text
   take prefix, like text
   like boolean
+  mark deprecated
   send back
-    call string-starts-with
+    call text-starts-with
       read input
       read prefix
 
+# use `ends-with` from @term/base/text
 task ends-with
   take input, like text
   take suffix, like text
   like boolean
+  mark deprecated
   send back
-    call string-ends-with
+    call text-ends-with
       read input
       read suffix
 
+# use `replace-all` from @term/base/text: this replaces every occurrence, and `text`'s `replace` only the first
 task replace
   take input, like text
   take from, like text
   take to, like text
   like text
+  mark deprecated
   send back
-    call string-replace
+    call text-replace-all
       read input
       read from
       read to

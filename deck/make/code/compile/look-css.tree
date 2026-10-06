@@ -1,0 +1,1451 @@
+# The look CSS backend: a static-output compiler that turns the `look` DSL into a plain stylesheet at build time
+# (Tailwind-style, zero runtime). It is the CSS counterpart of view-lower: where views lower to backend functions, look
+# rules lower to a stylesheet text. CSS is not a normal compile target (TS / Rust / Kotlin / Swift), so it gets its own
+# static-output pass rather than going through the term IR.
+#
+# The canonical grammar lives in the self-hosted mill at `deck/mill/code/look` (mine + mint) with AST forms at
+# `@term/base/code/look`. This pass walks the parse tree the way the mill's reader did during the self-hosting
+# transition. The parse tree wraps each argument as a child group whose head is its name, so `have color, red` is a
+# group `[name have, group[name color], group[name red]]`.
+#
+# Two DSL generations coexist and both compile:
+#
+#   OLD (raw selectors + `text` values):
+#     face flex / have display, text <flex>
+#     base <html, body> / have font-size, text <17px>
+#     tone dark / have color-x, text <#fff>
+#
+#   NEW (structured selectors + bare / list / function / tint values), documented in book/language/css.md:
+#     base font-face / have src / have url, </a.otf>
+#     base style / find html / find body / have color, tint rgb, 63, 63, 70
+#     base media / have width / have min, 640px / base style ...
+#     base container / face card ...
+#     tone base  (explicit default scope for :root)
+#
+# The value renderer accepts both `text <x>` (old) and bare / `<x>` / `tint ...` / list / function (new), so a sheet
+# can migrate rule by rule.
+#
+# Ported from compile/look-css.ts (self-hosting, 2026-10-05). Its lookup tables are tasks answering `<>` for a name
+# they do not hold (`breakpoint-of`, `state-attribute-of`), where the original exported objects a caller tested with
+# `in`, and the JIT's used classes are a list with a flag saying whether to keep to them.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find char-at
+  find char-count
+  find contains
+  find ends-with
+  find starts-with
+  find substring
+  find to-lower-case
+  find trim
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic
+  find diagnostic-input
+  find span
+  find position
+
+load ../parser/tree
+  find node
+  find parse
+  find root-node
+
+load ../parser/token
+  find token-source
+
+# ── tree accessors ──
+
+# flatten a name / text node's chunks to a text; read the numeric value of an integer / decimal node
+task node-text
+  take given, like node
+  like text
+  mark private
+
+  sift given
+    case name
+      back chunks-of(parts)
+    case text
+      back chunks-of(parts)
+    case integer
+      back <{value}>
+    case decimal
+      back <{value}>
+    miss
+      back <>
+
+task chunks-of
+  take parts, like list, like node
+  like text
+  mark private
+
+  save out, <>
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        turn next
+  back out
+
+# a group's head word (its first child name)
+task head-name
+  take group, like node
+  like text
+
+  sift group
+    case group
+      walk nodes
+        take first
+        sift first
+          case name
+            back node-text(first)
+          miss
+            back <>
+      back <>
+    miss
+      back <>
+
+# the arguments + nested children of a group (everything after the head)
+task rest-of
+  take group, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift group
+    case group
+      walk nodes
+        take one
+        take at
+        fork test, is-above(at, 0)
+          hold
+            push(out, one)
+    miss
+      back out
+  back out
+
+task is-group
+  take given, like node
+  like boolean
+  mark private
+
+  back is-equal(given/kind, <group>)
+
+# the child groups of a group whose head is `head` (e.g. every `have` under a `face`)
+task children-named
+  take group, like node
+  take head, like text
+  like list, like node
+
+  save out, make list
+  walk rest-of(group)
+    take one
+    fork test, and(is-group(one), is-equal(head-name(one), head))
+      hold
+        push(out, one)
+  back out
+
+task rest-at
+  take group, like node
+  take index, like number
+  like list, like node
+  mark private
+
+  save out, make list
+  save all, rest-of(group)
+  fork test, is-below(index, all/length)
+    hold
+      push(out, get(all, index))
+  back out
+
+# the name of the i-th argument: the i-th rest is a group wrapping a name (`color` in `have color, ...`)
+task arg-name
+  take group, like node
+  take index, like number
+  like text
+
+  walk rest-at(group, index)
+    take arg
+    fork test, is-group(arg)
+      hold
+        back head-name(arg)
+    back node-text(arg)
+  back <>
+
+# the literal text of the i-th argument: an arg group's first child, or a bare text / value node
+task arg-text
+  take group, like node
+  take index, like number
+  like text
+  mark private
+
+  walk rest-at(group, index)
+    take arg
+    sift arg
+      case group
+        # `text <x>` wrapper, or a bare value group `[name x]`
+        fork test, is-equal(head-name(arg), <text>)
+          hold
+            walk rest-at(arg, 0)
+              take inner
+              back node-text(inner)
+            back <>
+        walk nodes
+          take first
+          back node-text(first)
+        back <>
+      miss
+        back node-text(arg)
+  back <>
+
+# ── value rendering (bare / <x> / text <x> / tint / list / function) ──
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# CSS properties whose value list is comma-separated; everything else joins with spaces
+task is-comma-list
+  take property, like text
+  like boolean
+  mark private
+
+  save listed, make list
+  push(listed, <font-family>)
+  push(listed, <font>)
+  push(listed, <transition>)
+  push(listed, <transition-property>)
+  push(listed, <animation>)
+  push(listed, <grid-template-areas>)
+  push(listed, <will-change>)
+  push(listed, <cursor>)
+  push(listed, <voice-family>)
+  push(listed, <mask>)
+  push(listed, <background>)
+  push(listed, <box-shadow>)
+  back has-text(listed, property)
+
+# color spaces whose components are space-separated in modern CSS (vs the legacy comma form)
+task is-space-color
+  take space, like text
+  like boolean
+  mark private
+
+  back or(is-equal(space, <oklch>), or(is-equal(space, <oklab>), or(is-equal(space, <lab>), or(is-equal(space, <lch>), or(is-equal(space, <color>), is-equal(space, <hwb>))))))
+
+task first-text
+  take parts, like list, like node
+  like text
+  mark private
+
+  walk parts
+    take first
+    fork test, is-group(first)
+      hold
+        back head-name(first)
+    back node-text(first)
+  back <>
+
+task rendered-after
+  take parts, like list, like node
+  take from, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  walk parts
+    take part
+    take at
+    fork test, is-minimum(at, from)
+      hold
+        push(out, render-value-node(part))
+  back out
+
+# `tint <space>, ...components` -> a CSS color. The space is the tint group's first child; the components follow.
+task render-tint
+  take group, like node
+  like text
+  mark private
+
+  save parts, rest-of(group)
+  save space, first-text(parts)
+  save comps, rendered-after(parts, 1)
+  fork test, is-equal(space, <hex>)
+    hold
+      fork test, is-above(comps/length, 0)
+        hold
+          back <#{get(comps, 0)}>
+      back <#>
+  fork test, is-space-color(space)
+    hold
+      back <{space}({join(comps, < >)})>
+  back <{space}({join(comps, <, >)})>
+
+# a nested `have <fn>, <arg>...` inside a value -> `fn(arg)`. `url` / `format` args are quoted.
+task render-function
+  take group, like node
+  like text
+  mark private
+
+  save fn, arg-name(group, 0)
+  save args, rendered-after(rest-of(group), 1)
+  fork test, or(is-equal(fn, <url>), is-equal(fn, <format>))
+    hold
+      save quoted, make list
+      walk args
+        take arg
+        push(quoted, <"{arg}">)
+      back <{fn}({join(quoted, <, >)})>
+  back <{fn}({join(args, <, >)})>
+
+# axis shorthands for `have transform` children: `have y, 8px` -> `translateY(8px)`; `<>` for any other name
+task transform-function
+  take axis, like text
+  like text
+  mark private
+
+  fork test, is-equal(axis, <x>)
+    hold
+      back <translateX>
+  fork test, is-equal(axis, <y>)
+    hold
+      back <translateY>
+  fork test, is-equal(axis, <z>)
+    hold
+      back <translateZ>
+  fork test, or(is-equal(axis, <scale>), or(is-equal(axis, <rotate>), is-equal(axis, <skew>)))
+    hold
+      back axis
+  back <>
+
+# render one value node: a leaf, a `text <x>` wrapper, a `tint ...`, a function, or a bare value group
+task render-value-node
+  take given, like node
+  like text
+  mark private
+
+  fork test, not(is-group(given))
+    hold
+      back node-text(given)
+  save head, head-name(given)
+  fork test, is-equal(head, <tint>)
+    hold
+      back render-tint(given)
+  fork test, is-equal(head, <have>)
+    hold
+      back render-function(given)
+  # old syntax `text <x>`: unwrap
+  fork test, is-equal(head, <text>)
+    hold
+      back join(rendered-after(rest-of(given), 0), < >)
+  save axis-function, transform-function(head)
+  fork test, is-unequal(axis-function, <>)
+    hold
+      back <{axis-function}({join(rendered-after(rest-of(given), 0), <, >)})>
+  # a bare value group `[name 17px]` or a multi-token value `[name 2n, ...]`
+  save more, join(rendered-after(rest-of(given), 0), < >)
+  fork test, is-equal(more, <>)
+    hold
+      back head
+  back <{head} {more}>
+
+# render the full value of a `have <property>, ...` declaration
+task render-value
+  take have, like node
+  like text
+
+  save property, arg-name(have, 0)
+  save values, make list
+  walk rest-of(have)
+    take one
+    take at
+    fork test, is-above(at, 0)
+      hold
+        push(values, one)
+  fork test, is-equal(values/length, 0)
+    hold
+      back <>
+  # `have transform` with axis children: `have y, 8px` -> `translateY(8px)`
+  fork test, is-equal(property, <transform>)
+    hold
+      save parts, make list
+      walk values
+        take v
+        fork test, and(is-group(v), is-equal(head-name(v), <have>))
+          hold
+            save axis, arg-name(v, 0)
+            save named, transform-function(axis)
+            fork test, is-equal(named, <>)
+              hold
+                save named, axis
+            push(parts, <{named}({arg-text(v, 1)})>)
+          miss
+            push(parts, render-value-node(v))
+      back join(parts, < >)
+  # a sequence of `have <fn>` children (e.g. `src: url(...) format(...)`)
+  fork test, and(is-above(values/length, 1), all-have(values))
+    hold
+      save parts, make list
+      walk values
+        take v
+        push(parts, render-function(v))
+      back join(parts, < >)
+  fork test, is-equal(values/length, 1)
+    hold
+      back render-value-node(get(values, 0))
+  # a list of simple values: comma- or space-joined by the property
+  save rendered, rendered-after(values, 0)
+  fork test, is-comma-list(property)
+    hold
+      back join(rendered, <, >)
+  back join(rendered, < >)
+
+task all-have
+  take values, like list, like node
+  like boolean
+  mark private
+
+  walk values
+    take v
+    fork test, not(and(is-group(v), is-equal(head-name(v), <have>)))
+      hold
+        back false
+  back true
+
+# the CSS declarations from a group's direct `have <property>, <value>` children
+task declarations
+  take group, like node
+  like text
+  mark private
+
+  save out, make list
+  walk children-named(group, <have>)
+    take one
+    save property, arg-name(one, 0)
+    save value, render-value(one)
+    fork test, is-unequal(property, <>)
+      hold
+        push(out, <  {property}: {value};>)
+  back join(out, <\n>)
+
+# ── selectors (`find` / `link` trees) ──
+
+# the `link` combinators, keyed by the `like` argument; absent `like` is a descendant
+task combinator-of
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(name, <child>)
+    hold
+      back < \> >
+  fork test, is-equal(name, <next>)
+    hold
+      back < + >
+  fork test, is-equal(name, <after>)
+    hold
+      back < ~ >
+  back < >
+
+# attribute-operator qualifiers nested under a bare `have <attr>` (start -> `^=`, etc.)
+task attribute-operator
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(name, <start>)
+    hold
+      back <^=>
+  fork test, is-equal(name, <end>)
+    hold
+      back <$=>
+  fork test, is-equal(name, <has>)
+    hold
+      back <*=>
+  fork test, is-equal(name, <word>)
+    hold
+      back <~=>
+  back <=>
+
+# one element's qualifiers (everything after its tag): id / class / attr / state / position / part / :has / :where /
+# :not. Several `have state` collapse to `:is(...)`.
+task qualifiers
+  take element, like node
+  like text
+  mark private
+
+  save out, make list
+  save states, make list
+  save part, <>
+  walk rest-of(element)
+    take one
+    fork test, not(is-group(one))
+      hold
+        turn next
+    save head, head-name(one)
+    fork test, is-equal(head, <have>)
+      hold
+        save key, arg-name(one, 0)
+        save value, arg-text(one, 1)
+        fork test, is-equal(key, <id>)
+          hold
+            push(out, <#{value}>)
+            turn next
+        fork test, is-equal(key, <class>)
+          hold
+            push(out, <.{value}>)
+            turn next
+        fork test, is-equal(key, <state>)
+          hold
+            push(states, <:{value}>)
+            turn next
+        fork test, is-equal(key, <position>)
+          hold
+            push(out, <:nth-child({value})>)
+            turn next
+        fork test, is-equal(key, <part>)
+          hold
+            save part, <::{value}>
+            turn next
+        fork test, is-equal(key, <match>)
+          hold
+            push(out, <:has({inner-selector(one)})>)
+            turn next
+        fork test, is-equal(key, <constraint>)
+          hold
+            push(out, <:where({class-list(one)})>)
+            turn next
+        # an attribute: `have <attr>, <value>` or `have <attr>` + nested operator (start / end / ...)
+        save op-found, false
+        save op-name, <>
+        save op-value, <>
+        walk rest-of(one)
+          take inner
+          fork test, and(not(op-found), and(is-group(inner), is-equal(head-name(inner), <have>)))
+            hold
+              save op-found, true
+              save op-name, arg-name(inner, 0)
+              save op-value, arg-text(inner, 1)
+        fork test, op-found
+          hold
+            push(out, <[{key}{attribute-operator(op-name)}"{op-value}"]>)
+            turn next
+        fork test, is-unequal(value, <>)
+          hold
+            push(out, <[{key}="{value}"]>)
+            turn next
+        push(out, <[{key}]>)
+        turn next
+    fork test, is-equal(head, <lack>)
+      hold
+        save key, arg-name(one, 0)
+        save value, arg-text(one, 1)
+        fork test, is-equal(key, <field>)
+          hold
+            push(out, <:not([{value}])>)
+          miss
+            push(out, <:not([{key}="{value}"])>)
+  save state-selector, join(states, <>)
+  fork test, is-above(states/length, 1)
+    hold
+      save state-selector, <:is({join(states, <, >)})>
+  back <{join(out, <>)}{state-selector}{part}>
+
+# the `.a, .b` class list inside a `have constraint` (:where) block
+task class-list
+  take group, like node
+  like text
+  mark private
+
+  save out, make list
+  walk children-named(group, <have>)
+    take one
+    fork test, is-equal(arg-name(one, 0), <class>)
+      hold
+        push(out, <.{arg-text(one, 1)}>)
+  back join(out, <, >)
+
+# the inner selector of a `have match` (:has) block: a nested find + link chain
+task inner-selector
+  take match-group, like node
+  like text
+  mark private
+
+  walk children-named(match-group, <find>)
+    take first
+    back element-selector(first)
+  back <>
+
+# one element (tag + qualifiers) and its nested `link` chain
+task element-selector
+  take one, like node
+  like text
+  mark private
+
+  save tag, arg-name(one, 0)
+  save quals, qualifiers(one)
+  # `any` is `*`, but drop the `*` when a qualifier already anchors the selector (`.landing-h1`, not `*.landing-h1`)
+  save tag-text, tag
+  fork test, is-equal(tag, <any>)
+    hold
+      save tag-text, <*>
+      fork test, is-unequal(quals, <>)
+        hold
+          save tag-text, <>
+  save links, <>
+  walk children-named(one, <link>)
+    take link
+    save combinator, < >
+    walk children-named(link, <like>)
+      take like-group
+      save combinator, combinator-of(arg-name(like-group, 0))
+      halt
+    save links, <{links}{combinator}{element-selector(link)}>
+  back <{tag-text}{quals}{links}>
+
+# the full selector of a `base style`: each top-level `find` is one selector-list entry
+task selector-of
+  take group, like node
+  like text
+  mark private
+
+  save out, make list
+  walk children-named(group, <find>)
+    take one
+    push(out, element-selector(one))
+  back join(out, <,\n>)
+
+# ── at-rule + block emitters ──
+
+# the responsive breakpoint min-widths (Tailwind defaults) used by `face` `case` variants, `<>` for no breakpoint
+task breakpoint-of
+  take variant, like text
+  like text
+
+  fork test, is-equal(variant, <sm>)
+    hold
+      back <640px>
+  fork test, is-equal(variant, <md>)
+    hold
+      back <768px>
+  fork test, is-equal(variant, <lg>)
+    hold
+      back <1024px>
+  fork test, is-equal(variant, <xl>)
+    hold
+      back <1280px>
+  fork test, is-equal(variant, <2xl>)
+    hold
+      back <1536px>
+  back <>
+
+# data/aria state variants -> the attribute selector they target on the class, `<>` for none
+task state-attribute-of
+  take variant, like text
+  like text
+
+  fork test, is-equal(variant, <open>)
+    hold
+      back <[data-state=open]>
+  fork test, is-equal(variant, <closed>)
+    hold
+      back <[data-state=closed]>
+  fork test, is-equal(variant, <checked>)
+    hold
+      back <[data-state=checked]>
+  fork test, is-equal(variant, <unchecked>)
+    hold
+      back <[data-state=unchecked]>
+  fork test, is-equal(variant, <active>)
+    hold
+      back <[data-state=active]>
+  fork test, is-equal(variant, <inactive>)
+    hold
+      back <[data-state=inactive]>
+  fork test, is-equal(variant, <selected>)
+    hold
+      back <[aria-selected=true]>
+  fork test, is-equal(variant, <expanded>)
+    hold
+      back <[aria-expanded=true]>
+  back <>
+
+# escape a utility class name for a CSS selector: `:` `/` `.` are legal in a class attribute (Tailwind uses them, e.g.
+# `w-1/2`, `hover:bg-x`) but must be backslash-escaped in the selector
+task escape-class
+  take name, like text
+  like text
+  mark private
+
+  save out, <>
+  save count, char-count(name)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(name, at)
+      fork test, or(is-equal(c, <:>), or(is-equal(c, </>), is-equal(c, <.>)))
+        hold
+          save out, <{out}\\{c}>
+        miss
+          save out, <{out}{c}>
+      save at, add(at, 1)
+  back out
+
+# one utility class (`face <name>`) and a rule per `case <variant>` child
+task emit-face
+  take group, like node
+  like text
+  mark private
+
+  save name, arg-name(group, 0)
+  fork test, is-equal(name, <>)
+    hold
+      back <>
+  save css, <.{escape-class(name)}>
+  save rules, make list
+  save base, declarations(group)
+  fork test, is-unequal(base, <>)
+    hold
+      push(rules, <{css} \{\n{base}\n\}>)
+  walk children-named(group, <case>)
+    take one
+    save variant, arg-name(one, 0)
+    save body, declarations(one)
+    fork test, is-equal(body, <>)
+      hold
+        turn next
+    save breakpoint, breakpoint-of(variant)
+    fork test, is-unequal(breakpoint, <>)
+      hold
+        push(rules, <@media (min-width: {breakpoint}) \{\n{css} \{\n{body}\n\}\n\}>)
+        turn next
+    fork test, is-equal(variant, <dark>)
+      hold
+        push(rules, <.dark {css} \{\n{body}\n\}>)
+        turn next
+    save attribute, state-attribute-of(variant)
+    fork test, is-unequal(attribute, <>)
+      hold
+        push(rules, <{css}{attribute} \{\n{body}\n\}>)
+        turn next
+    fork test, starts-with(variant, <group->)
+      hold
+        push(rules, <.group:{substring(variant, 6, char-count(variant))} {css} \{\n{body}\n\}>)
+        turn next
+    fork test, starts-with(variant, <peer->)
+      hold
+        push(rules, <.peer:{substring(variant, 5, char-count(variant))} ~ {css} \{\n{body}\n\}>)
+        turn next
+    push(rules, <{css}:{variant} \{\n{body}\n\}>)
+  back join(rules, <\n\n>)
+
+# theme tokens: `tone base` -> :root, `tone dark` -> .dark. (Bare `tone` still means :root.)
+task emit-tone
+  take group, like node
+  like text
+  mark private
+
+  save scope, arg-name(group, 0)
+  save selector-text, <:root>
+  fork test, is-equal(scope, <dark>)
+    hold
+      save selector-text, <.dark>
+  save out, make list
+  walk children-named(group, <have>)
+    take one
+    save token, arg-name(one, 0)
+    save value, render-value(one)
+    fork test, is-unequal(token, <>)
+      hold
+        push(out, <  --{token}: {value};>)
+  fork test, is-equal(out/length, 0)
+    hold
+      back <>
+  back <{selector-text} \{\n{join(out, <\n>)}\n\}>
+
+# `base font-face` -> @font-face
+task emit-font-face
+  take group, like node
+  like text
+  mark private
+
+  save body, declarations(group)
+  fork test, is-equal(body, <>)
+    hold
+      back <>
+  back <@font-face \{\n{body}\n\}>
+
+# `base style` -> a selector rule. The selector is a find/link tree; the declarations are the direct `have`s.
+task emit-style
+  take group, like node
+  like text
+  mark private
+
+  save sel, selector-of(group)
+  save body, declarations(group)
+  fork test, or(is-equal(sel, <>), is-equal(body, <>))
+    hold
+      back <>
+  back <{sel} \{\n{body}\n\}>
+
+# media/container feature conditions from `have` children: `have width` + min/max -> `(min-width: ...)`, a scalar
+# `have <feature>, <value>` -> `(feature: value)`, `have type` -> a media type, `lack type` -> `not <type>`,
+# `have preference` -> `(prefers-<k>: v)`, `have any`/`have all` -> boolean groups.
+task conditions
+  take group, like node
+  take is-container, like boolean
+  like text
+  mark private
+
+  save parts, make list
+  walk rest-of(group)
+    take one
+    fork test, not(is-group(one))
+      hold
+        turn next
+    save head, head-name(one)
+    fork test, is-equal(head, <lack>)
+      hold
+        fork test, is-equal(arg-name(one, 0), <type>)
+          hold
+            push(parts, <not {arg-text(one, 1)}>)
+        turn next
+    fork test, is-unequal(head, <have>)
+      hold
+        turn next
+    save key, arg-name(one, 0)
+    save scalar, arg-text(one, 1)
+    fork test, is-equal(key, <type>)
+      hold
+        push(parts, scalar)
+        turn next
+    # the container name is emitted before the condition list, not here
+    fork test, and(is-equal(key, <name>), is-container)
+      hold
+        turn next
+    fork test, or(is-equal(key, <width>), is-equal(key, <height>))
+      hold
+        walk children-named(one, <have>)
+          take bound
+          save which, arg-name(bound, 0)
+          save px, arg-text(bound, 1)
+          fork test, is-equal(which, <min>)
+            hold
+              push(parts, <(min-{key}: {px})>)
+          fork test, is-equal(which, <max>)
+            hold
+              push(parts, <(max-{key}: {px})>)
+        turn next
+    fork test, is-equal(key, <preference>)
+      hold
+        walk children-named(one, <have>)
+          take pref
+          push(parts, <(prefers-{arg-name(pref, 0)}: {arg-text(pref, 1)})>)
+        turn next
+    fork test, and(is-equal(key, <style>), is-container)
+      hold
+        walk children-named(one, <bind>)
+          take bound
+          push(parts, <style(--{arg-name(bound, 0)}: {arg-text(bound, 1)})>)
+        turn next
+    fork test, or(is-equal(key, <all>), is-equal(key, <any>))
+      hold
+        push(parts, boolean-group(one, key))
+        turn next
+    fork test, is-unequal(scalar, <>)
+      hold
+        push(parts, <({key}: {scalar})>)
+  back join(parts, < and >)
+
+# `have all` / `have any` as a parenthesized group of its conditions
+task boolean-group
+  take one, like node
+  take key, like text
+  like text
+  mark private
+
+  save joiner, < or >
+  fork test, is-equal(key, <all>)
+    hold
+      save joiner, < and >
+  save inner, make list
+  walk children-named(one, <have>)
+    take sub
+    save written, condition-one(sub)
+    fork test, is-unequal(written, <>)
+      hold
+        push(inner, written)
+  back <({join(inner, joiner)})>
+
+# one nested boolean-group condition (`have hover, <hover>` -> `(hover: hover)`, or a nested `have all`/`have any`)
+task condition-one
+  take one, like node
+  like text
+  mark private
+
+  save key, arg-name(one, 0)
+  fork test, or(is-equal(key, <all>), is-equal(key, <any>))
+    hold
+      back boolean-group(one, key)
+  back <({key}: {arg-text(one, 1)})>
+
+# `base media` / `base container` -> an @media / @container block wrapping its nested rules
+task emit-query
+  take group, like node
+  take is-container, like boolean
+  like text
+  mark private
+
+  save query, conditions(group, is-container)
+  save inner, nested-rules(group)
+  fork test, is-equal(inner, <>)
+    hold
+      back <>
+  fork test, is-container
+    hold
+      save prefix, <>
+      walk children-named(group, <have>)
+        take one
+        fork test, is-equal(arg-name(one, 0), <name>)
+          hold
+            save container-name, arg-text(one, 1)
+            fork test, is-unequal(container-name, <>)
+              hold
+                save prefix, <{container-name} >
+            halt
+      back <@container {prefix}{query} \{\n{inner}\n\}>
+  back <@media {query} \{\n{inner}\n\}>
+
+# `base layers` -> `@layer a, b, c;`
+task emit-layers
+  take group, like node
+  like text
+  mark private
+
+  save names, make list
+  walk rest-of(group)
+    take one
+    save written, render-value-node(one)
+    fork test, is-unequal(written, <>)
+      hold
+        push(names, written)
+  fork test, is-equal(names/length, 0)
+    hold
+      back <>
+  back <@layer {join(names, <, >)};>
+
+# the first `name` child's argument, `<>` for none
+task first-name-child
+  take group, like node
+  like text
+  mark private
+
+  walk children-named(group, <name>)
+    take one
+    back arg-text(one, 0)
+  back <>
+
+# `base layer, name <x>` -> `@layer x { ... }`
+task emit-layer
+  take group, like node
+  like text
+  mark private
+
+  save name, first-name-child(group)
+  save inner, nested-rules(group)
+  fork test, or(is-equal(name, <>), is-equal(inner, <>))
+    hold
+      back <>
+  back <@layer {name} \{\n{inner}\n\}>
+
+# `base keyframes, name <x>` -> `@keyframes x { <stop> { ... } }` from its `case` children
+task emit-keyframes
+  take group, like node
+  like text
+  mark private
+
+  save name, first-name-child(group)
+  fork test, is-equal(name, <>)
+    hold
+      back <>
+  save stops, make list
+  walk children-named(group, <case>)
+    take stop
+    save at, arg-name(stop, 0)
+    fork test, is-equal(at, <>)
+      hold
+        save at, arg-text(stop, 0)
+    save body, declarations(stop)
+    fork test, and(is-unequal(at, <>), is-unequal(body, <>))
+      hold
+        push(stops, <{at} \{\n{body}\n\}>)
+  fork test, is-equal(stops/length, 0)
+    hold
+      back <>
+  back <@keyframes {name} \{\n{join(stops, <\n>)}\n\}>
+
+# the rules nested inside an at-rule block (media / container / layer): `base style` / `face` / further at-rules
+task nested-rules
+  take group, like node
+  like text
+  mark private
+
+  save out, make list
+  walk rest-of(group)
+    take one
+    fork test, not(is-group(one))
+      hold
+        turn next
+    save rendered, emit-base(one)
+    fork test, is-unequal(rendered, <>)
+      hold
+        push(out, rendered)
+  back join(out, <\n\n>)
+
+# any `base ...` block by its second token, and a `face` nested inside an at-rule. Falls back to the OLD raw-selector
+# form (`base <html, body>` with a text-literal selector, optionally wrapping nested `base` at-rules) for backward
+# compatibility with sheets that have not migrated.
+task emit-base
+  take group, like node
+  like text
+  mark private
+
+  save head, head-name(group)
+  fork test, is-equal(head, <face>)
+    hold
+      back emit-face(group)
+  fork test, is-equal(head, <tone>)
+    hold
+      back emit-tone(group)
+  fork test, is-unequal(head, <base>)
+    hold
+      back <>
+  save which, arg-name(group, 0)
+  fork test, is-equal(which, <font-face>)
+    hold
+      back emit-font-face(group)
+  fork test, is-equal(which, <style>)
+    hold
+      back emit-style(group)
+  fork test, is-equal(which, <media>)
+    hold
+      back emit-query(group, false)
+  fork test, is-equal(which, <container>)
+    hold
+      back emit-query(group, true)
+  fork test, is-equal(which, <layers>)
+    hold
+      back emit-layers(group)
+  fork test, is-equal(which, <layer>)
+    hold
+      back emit-layer(group)
+  fork test, is-equal(which, <keyframes>)
+    hold
+      back emit-keyframes(group)
+  back emit-base-raw(group)
+
+# OLD raw-selector rule: `base <html, body>` -> `html, body { ... }`, with nested `base <@media ...>` at-rule wrappers.
+# The selector is a verbatim text literal. Kept so pre-migration sheets (clue.surf/home2) still compile.
+task emit-base-raw
+  take group, like node
+  like text
+  mark private
+
+  save sel, arg-text(group, 0)
+  fork test, is-equal(sel, <>)
+    hold
+      back <>
+  save nested, make list
+  walk children-named(group, <base>)
+    take one
+    save written, emit-base-raw(one)
+    fork test, is-unequal(written, <>)
+      hold
+        push(nested, written)
+  fork test, is-above(nested/length, 0)
+    hold
+      back <{sel} \{\n{join(nested, <\n>)}\n\}>
+  save body, declarations(group)
+  fork test, is-equal(body, <>)
+    hold
+      back <>
+  back <{sel} \{\n{body}\n\}>
+
+# ── entry ──
+
+# the groups at a root
+task root-groups
+  take root, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift root
+    case root
+      walk nodes
+        take one
+        fork test, is-group(one)
+          hold
+            push(out, one)
+  back out
+
+# compile a `.tree` look sheet into a CSS stylesheet. With `restricted`, this is the Tailwind JIT: emit only the `face`
+# rules whose class name is in `only` (matched by FULL name). Every non-`face` block (`base ...`, `tone`) is always
+# emitted (the resets, fonts, theme tokens, and at-rules the utilities rely on).
+task compile-look-css
+  take source, like token-source
+  take only
+    like list, like text
+    fall make list
+  take restricted, like boolean, fall false
+  like text
+
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back <>
+  save blocks, make list
+  walk root-groups(parsed/tree)
+    take group
+    save name, head-name(group)
+    fork test, is-equal(name, <face>)
+      hold
+        fork test, and(restricted, not(has-text(only, arg-name(group, 0))))
+          hold
+            turn next
+        save written, emit-face(group)
+        fork test, is-unequal(written, <>)
+          hold
+            push(blocks, written)
+        turn next
+    fork test, is-equal(name, <tone>)
+      hold
+        save written, emit-tone(group)
+        fork test, is-unequal(written, <>)
+          hold
+            push(blocks, written)
+        turn next
+    fork test, is-equal(name, <base>)
+      hold
+        save written, emit-base(group)
+        fork test, is-unequal(written, <>)
+          hold
+            push(blocks, written)
+  back <{join(blocks, <\n\n>)}\n>
+
+# ── refusals ──
+
+# the color spaces a `tint` may name, and how many components each takes, `none` where it is no color space. A tint
+# the browser cannot read was written through as it stood until 2026-10-04 (`rgb(24, 24)`, `#fafazz`, `rbg(1, 2, 3)`),
+# and a rule with a bad value is dropped by the browser without a word, so the build refuses it instead (guides:
+# applications/web/styles)
+form tint-arity
+  link known, like boolean
+  link least, like number
+  link most, like number
+
+task arity-of
+  take space, like text
+  like tint-arity
+  mark private
+
+  save least, 3
+  save most, 3
+  save known, true
+  fork test, or(is-equal(space, <rgb>), or(is-equal(space, <rgba>), or(is-equal(space, <hsl>), is-equal(space, <hsla>))))
+    hold
+      save most, 4
+    miss
+      fork test, is-equal(space, <color>)
+        hold
+          save least, 4
+          save most, 4
+        miss
+          fork test, not(or(is-equal(space, <hwb>), or(is-equal(space, <lab>), or(is-equal(space, <lch>), or(is-equal(space, <oklab>), is-equal(space, <oklch>))))))
+            hold
+              save known, false
+  back
+    make tint-arity
+      bind known, known
+      bind least, least
+      bind most, most
+
+# whether a text is digits with an optional fraction (`255`, `12.5`), and so a plain number
+task is-plain-number
+  take value, like text
+  like boolean
+  mark private
+
+  save count, char-count(value)
+  fork test, is-equal(count, 0)
+    hold
+      back false
+  save at, 0
+  save seen-point, false
+  save digits-after, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(value, at)
+      fork test, is-equal(c, <.>)
+        hold
+          fork test, or(seen-point, is-equal(at, 0))
+            hold
+              back false
+          save seen-point, true
+        miss
+          fork test, not(contains(<0123456789>, c))
+            hold
+              back false
+          fork test, seen-point
+            hold
+              save digits-after, add(digits-after, 1)
+      save at, add(at, 1)
+  fork test, and(seen-point, is-equal(digits-after, 0))
+    hold
+      back false
+  back true
+
+# whether a plain number's value is above `limit`, read off its digits so no length of them overflows
+task number-above
+  take value, like text
+  take limit, like number
+  like boolean
+  mark private
+
+  save whole, value
+  save fraction, <>
+  save point, -1
+  save count, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, and(is-below(point, 0), is-equal(char-at(value, at), <.>))
+        hold
+          save point, at
+      save at, add(at, 1)
+  fork test, is-minimum(point, 0)
+    hold
+      save whole, substring(value, 0, point)
+      save fraction, substring(value, add(point, 1), count)
+  # the whole part without its leading zeros
+  save start, 0
+  walk test
+    hook test, and(is-below(start, subtract(char-count(whole), 1)), is-equal(char-at(whole, start), <0>))
+    hook hold
+      save start, add(start, 1)
+  save digits, substring(whole, start, char-count(whole))
+  fork test, is-above(char-count(digits), 15)
+    hold
+      back true
+  save number, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, char-count(digits))
+    hook hold
+      save number, add(multiply(number, 10), index-in-digits(char-at(digits, i)))
+      save i, add(i, 1)
+  fork test, is-above(number, limit)
+    hold
+      back true
+  fork test, is-below(number, limit)
+    hold
+      back false
+  # exactly the limit: above only with a fraction that is not all zeros
+  save j, 0
+  walk test
+    hook test, is-below(j, char-count(fraction))
+    hook hold
+      fork test, is-unequal(char-at(fraction, j), <0>)
+        hold
+          back true
+      save j, add(j, 1)
+  back false
+
+task index-in-digits
+  take c, like text
+  like number
+  mark private
+
+  save digits, <0123456789>
+  save i, 0
+  walk test
+    hook test, is-below(i, 10)
+    hook hold
+      fork test, is-equal(char-at(digits, i), c)
+        hold
+          back i
+      save i, add(i, 1)
+  back 0
+
+# whether a text is 3, 4, 6 or 8 hex digits, either case
+task is-hex-color
+  take digits, like text
+  like boolean
+  mark private
+
+  save count, char-count(digits)
+  fork test, not(or(is-equal(count, 3), or(is-equal(count, 4), or(is-equal(count, 6), is-equal(count, 8)))))
+    hold
+      back false
+  save lowered, to-lower-case(digits)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, not(contains(<0123456789abcdef>, char-at(lowered, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# why one `tint` is not a CSS color, or `<>` when it is
+task tint-problem
+  take group, like node
+  like text
+  mark private
+
+  save parts, rest-of(group)
+  save space, first-text(parts)
+  save comps, rendered-after(parts, 1)
+  fork test, is-equal(space, <hex>)
+    hold
+      fork test, and(is-equal(comps/length, 1), is-hex-color(get(comps, 0)))
+        hold
+          back <>
+      back <`tint hex` takes 3, 4, 6 or 8 hex digits, and this gives `{join(comps, <, >)}`>
+  save arity, arity-of(space)
+  fork test, not(arity/known)
+    hold
+      back <`{space}` is not a color space. A tint is one of hex, rgb, rgba, hsl, hsla, hwb, lab, lch, oklab, oklch, color>
+  fork test, or(is-below(comps/length, arity/least), is-above(comps/length, arity/most))
+    hold
+      save wanted, <{arity/least} or {arity/most}>
+      fork test, is-equal(arity/least, arity/most)
+        hold
+          save wanted, <{arity/least}>
+      back <`tint {space}` takes {wanted} values, and this gives {comps/length}>
+  fork test, or(is-equal(space, <rgb>), is-equal(space, <rgba>))
+    hold
+      walk comps
+        take c
+        take index
+        fork test, is-above(index, 2)
+          hold
+            halt
+        fork test, ends-with(c, <%>)
+          hold
+            save inner, substring(c, 0, subtract(char-count(c), 1))
+            fork test, is-plain-number(inner)
+              hold
+                fork test, number-above(inner, 100)
+                  hold
+                    back <an `rgb` channel is 0 to 255, or a percent, and this gives {c}>
+                turn next
+        fork test, or(not(is-plain-number(c)), number-above(c, 255))
+          hold
+            back <an `rgb` channel is 0 to 255, or a percent, and this gives {c}>
+  back <>
+
+# where a group starts: its head word's token
+task group-span
+  take group, like node
+  take file, like text
+  like span
+  mark private
+
+  sift group
+    case group
+      walk nodes
+        take head
+        sift head
+          case name
+            walk parts
+              take part
+              sift part
+                case chunk
+                  link chunk-text
+                  link chunk-span
+                  back
+                    make span
+                      bind file, make(some, file)
+                      bind start, chunk-span/start
+                      bind end, chunk-span/end
+                miss
+                  turn next
+          miss
+            halt
+        halt
+    miss
+      save nothing, 0
+  save start
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind file, make(some, file)
+      bind start, start
+      bind end, start
+
+# what stops a sheet compiling: a parse error, or a `tint` that is not a CSS color. `compile` refuses the sheet with
+# these, so `term make` and `term boot` say so rather than writing a rule the browser drops
+task check-look
+  take source, like token-source
+  like list, like diagnostic
+
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back parsed/diagnostics
+  save found, make list
+  walk root-groups(parsed/tree)
+    take group
+    visit-tints(group, source/file, found)
+  back found
+
+task visit-tints
+  take one, like node
+  take file, like text
+  take found, like list, like diagnostic
+  mark private
+
+  sift one
+    case group
+      fork test, is-equal(head-name(one), <tint>)
+        hold
+          save problem, tint-problem(one)
+          fork test, is-unequal(problem, <>)
+            hold
+              save input
+                make diagnostic-input
+                  bind file, file
+                  bind span, group-span(one, file)
+                  bind message, make(some, problem)
+              save kind, make look-tint
+              push(found, diagnose(kind, input))
+          back
+      walk nodes
+        take inner
+        visit-tints(inner, file, found)
+    miss
+      back

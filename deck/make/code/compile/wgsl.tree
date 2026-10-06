@@ -1,0 +1,394 @@
+# The GPU backend: emit the numeric functional + imperative fragment as WGSL (the WebGPU shading language). WGSL is
+# the data-parallel target: structured, C-like, monomorphic (run monomorphization first), and numeric (no strings,
+# no closures). Numbers map to i32, booleans to bool. See note/research/vibe/computation/plans/07-codegen.md.
+# Pure, browser-safe.
+#
+# Ported from compile/wgsl.ts (self-hosting, 2026-10-05). The marker for a form outside the fragment is written here
+# as compile/backend.ts writes it, word for word.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+  find replace-all
+  find trim
+
+load ./node
+  find assign-op
+  find expression
+  find expression-span
+  find statement
+  find statement-span
+  find to-text, name op-text
+  find type
+  find value-branch
+
+load ../ir/monomorphize
+  find monomorphize
+
+load ./backend-registry
+  find experimental-banner
+
+load ./type-text
+  find integer-text
+
+load ./hvm
+  find fragment-gap
+
+load ../parser/diagnostic
+  find span
+
+# a construct the target cannot lower, where it was written (compile/hvm.tree)
+form wgsl-state
+  mark shared
+  # the caller's list of gaps, handed every construct outside the GPU fragment with its span
+  link gaps, like list, like fragment-gap
+
+# a gap recorded, then marked in the text as before
+task gap
+  take state, like wgsl-state
+  take form, like text
+  take at, like span
+  take text, like text
+  like text
+  mark private
+
+  save found
+    make fragment-gap
+      bind form, form
+      bind span, make(some, at)
+  push(state/gaps, found)
+  back text
+
+task snake
+  take name, like text
+  like text
+  mark private
+
+  back replace-all(name, <->, <_>)
+
+# A target that cannot express a form emits this marker instead of silently dropping or miscompiling the construct
+# (compile/backend.ts `unsupported`)
+task unsupported-marker
+  take form, like text
+  take comment, like text
+  like text
+  mark private
+
+  back <{comment} SEED-UNSUPPORTED on WGSL: "{form}" is outside this target's fragment>
+
+task span-of
+  take node, like statement
+  like span
+  mark private
+
+  back statement-span(node)
+
+task wgsl-type
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case boolean
+          back <bool>
+        case array
+          save inner, wgsl-type(make(some, element))
+          back <array\<{inner}\>>
+        case float
+          back <f32>
+        miss
+          back <i32>
+    miss
+      back <i32>
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}  >
+      save at, add(at, 1)
+  back out
+
+# an f32 literal needs a decimal point so it is a float, not an i32: a whole value is written with `.0`. Whole is read
+# off the value's own text: `1e+21` and above are whole, and anything else is whole when it has no point, no exponent
+# and is a number at all
+task float-text
+  take value, like float
+  like text
+  mark private
+
+  save shown, <{value}>
+  save whole, contains(shown, <e+>)
+  fork test, and(not(contains(shown, <.>)), and(not(contains(shown, <e>)), and(not(contains(shown, <N>)), not(contains(shown, <I>)))))
+    hold
+      save whole, true
+  fork test, whole
+    hold
+      back <{shown}.0>
+  back shown
+
+task wgsl-expression
+  take state, like wgsl-state
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case integer
+      back integer-text(node)
+    case float
+      back float-text(value)
+    case boolean
+      fork test, value
+        hold
+          back <true>
+      back <false>
+    case variable
+      back snake(name)
+    case hole
+      back snake(name)
+    case unary
+      save word, unary-text(op)
+      save inner, wgsl-expression(state, operand)
+      back <{word}{inner}>
+    case binary
+      save left-text, wgsl-expression(state, left)
+      save right-text, wgsl-expression(state, right)
+      save word, op-text(op)
+      back <({left-text} {word} {right-text})>
+    case call
+      save callee-text, wgsl-expression(state, callee)
+      save parts, make list
+      walk args
+        take arg
+        push(parts, wgsl-expression(state, arg))
+      save joined, join(parts, <, >)
+      back <{callee-text}({joined})>
+    case array
+      save parts, make list
+      walk items
+        take item
+        push(parts, wgsl-expression(state, item))
+      save joined, join(parts, <, >)
+      back <array({joined})>
+    case conditional
+      # a value-position conditional lowers to a chain of `select(falseValue, trueValue, condition)`
+      save rest, <0>
+      sift otherwise
+        case some
+          link fallback
+          save rest, wgsl-expression(state, fallback)
+        miss
+          save rest, <0>
+      save at, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(at, 0)
+        hook hold
+          save branch, get(branches, at)
+          save value-text, wgsl-expression(state, branch/value)
+          save cond-text, wgsl-expression(state, branch/cond)
+          save rest, <select({rest}, {value-text}, {cond-text})>
+          save at, subtract(at, 1)
+      back rest
+    # strings, maps, records, closures, and host awaits are outside the data-parallel GPU fragment (no heap, no
+    # dynamic dispatch). They surface as a marked poison value, never silently miscompiled to 0.
+    miss
+      save marker, trim(unsupported-marker(node/form, <>))
+      back gap(state, node/form, expression-span(node), <0 /* {marker} */>)
+
+task unary-text
+  take op, like unary-op
+  like text
+  mark private
+
+  sift op
+    case negate
+      back <->
+    case not
+      back <!>
+
+task assign-text
+  take op, like assign-op
+  like text
+  mark private
+
+  back op-text(op)
+
+task wgsl-block
+  take state, like wgsl-state
+  take body, like list, like statement
+  take depth, like number
+  like text
+  mark private
+
+  save lines, make list
+  walk body
+    take one
+    save line, <{pad(depth)}{wgsl-statement(state, one, depth)}>
+    fork test, is-unequal(line, <>)
+      hold
+        push(lines, line)
+  back join(lines, <\n>)
+
+task wgsl-statement
+  take state, like wgsl-state
+  take node, like statement
+  take depth, like number
+  like text
+  mark private
+
+  save indent, pad(depth)
+  sift node
+    case let
+      save word, <let>
+      fork test, mutable
+        hold
+          save word, <var>
+      save local, snake(name)
+      save value, wgsl-expression(state, init)
+      back <{word} {local} = {value};>
+    case assign
+      save target-text, wgsl-expression(state, target)
+      save value-text, wgsl-expression(state, read(value))
+      save word, assign-text(op)
+      fork test, is-equal(word, <=>)
+        hold
+          back <{target-text} = {value-text};>
+      back <{target-text} {word} {value-text};>
+    case expression
+      save value, wgsl-expression(state, expr)
+      back <{value};>
+    case return
+      sift value
+        case some
+          link returned
+          save value-text, wgsl-expression(state, returned)
+          back <return {value-text};>
+        miss
+          back <return;>
+    case while
+      save cond-text, wgsl-expression(state, cond)
+      save inner, wgsl-block(state, body, add(depth, 1))
+      back <while ({cond-text}) \{\n{inner}\n{indent}\}>
+    case guard
+      # shaders cannot raise, so a guard is its body
+      save inner, wgsl-block(state, body, add(depth, 1))
+      back <\{\n{inner}\n{indent}\}>
+    case if
+      save out, <>
+      walk branches
+        take branch
+        take index
+        save cond-text, wgsl-expression(state, branch/cond)
+        save inner, wgsl-block(state, branch/body, add(depth, 1))
+        save joiner, <>
+        fork test, is-above(index, 0)
+          hold
+            save joiner, < else >
+        save out, <{out}{joiner}if ({cond-text}) \{\n{inner}\n{indent}\}>
+      sift otherwise
+        case some
+          link fallback
+          save inner, wgsl-block(state, fallback, add(depth, 1))
+          save out, <{out} else \{\n{inner}\n{indent}\}>
+        miss
+          save nothing, 0
+      back out
+    case break
+      back <break;>
+    case continue
+      back <continue;>
+    case exit
+      back gap(state, <exit>, span-of(node), unsupported-marker(<exit>, <//>))
+    case debug
+      back gap(state, <debug>, span-of(node), unsupported-marker(<debug>, <//>))
+    # WGSL has no iterator protocol; a ranged `for` over an array index is the data-parallel form. Emit a marker until
+    # the front-end lowers `for-each` to an indexed loop.
+    case for-each
+      back gap(state, <for-each>, span-of(node), unsupported-marker(<for-each>, <//>))
+    case hold
+      back <// hold: verified at compile time>
+    # exceptions, pattern match on tagged records, and nested definitions are outside the GPU fragment
+    case throw
+      back gap(state, <throw>, span-of(node), unsupported-marker(<throw>, <//>))
+    case match
+      back gap(state, <match>, span-of(node), unsupported-marker(<match>, <//>))
+    case function
+      back gap(state, <function>, span-of(node), unsupported-marker(<function>, <//>))
+    case record-type
+      back gap(state, <record-type>, span-of(node), unsupported-marker(<record-type>, <//>))
+    case mask
+      back gap(state, <mask>, span-of(node), unsupported-marker(<mask>, <//>))
+    case instance
+      back gap(state, <instance>, span-of(node), unsupported-marker(<instance>, <//>))
+    case native
+      back gap(state, <native>, span-of(node), unsupported-marker(<native>, <//>))
+    # view / routing DSLs are lowered by the dedicated zone compiler, not this backend
+    miss
+      back <>
+
+# `gaps`, when given, is handed every construct outside the GPU fragment with its span, which `term make --emit wgsl`
+# refuses on (call/code/emit.ts). Without it the emitter writes the marked poison value it always did
+task emit-wgsl
+  take input, like list, like statement
+  take gaps
+    like list, like fragment-gap
+    fall make list
+  like text
+
+  # WGSL is monomorphic: specialize generic functions at their concrete call types and drop the generic originals
+  # first, so a generic call resolves to a real function instead of being skipped.
+  save program, monomorphize(input)
+  save state
+    make wgsl-state
+      bind gaps, gaps
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        # WGSL is monomorphic: run monomorphization first
+        fork test, is-above(generics/length, 0)
+          hold
+            turn next
+        save parts, make list
+        walk params
+          take param
+          save param-name, snake(param/name)
+          save param-type, wgsl-type(param/type)
+          push(parts, <{param-name}: {param-type}>)
+        save joined, join(parts, <, >)
+        save returns, <>
+        sift result
+          case some
+            link known
+            fork test, is-unequal(known/kind, <unit>)
+              hold
+                save shown, wgsl-type(result)
+                save returns, < -\> {shown}>
+          miss
+            save returns, <>
+        save fn-name, snake(name)
+        save inner, wgsl-block(state, body, 1)
+        push(out, <fn {fn-name}({joined}){returns} \{\n{inner}\n\}>)
+      miss
+        turn next
+  save banner, experimental-banner(<wgsl>, <//>)
+  save body, join(out, <\n\n>)
+  back <{banner}{body}\n>

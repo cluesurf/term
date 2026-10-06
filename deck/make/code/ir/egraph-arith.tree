@@ -1,0 +1,297 @@
+# Bridge the compiler's arithmetic expressions through the e-graph optimizer (ir/egraph.tree) for the rewrites a
+# greedy peephole pass cannot reach: constant reassociation (`(x + 3) + 4` -> `x + 7`, `(x * 2) * 4` -> `x * 8`),
+# commutative folding (`(3 + x) + 4` -> `x + 7`), and `x - x` -> 0. Equality saturation considers every rewrite order
+# at once, so it finds these regardless of how the constants are scattered.
+#
+# Only the unambiguously sound integer fragment is bridged: pure `+` / `-` / `*` over plain variables and
+# safe-integer literals. Three deliberate exclusions keep it sound:
+#   - division is never fed in, because the e-graph's `(a*b)/b -> a` rule is unsound under division-by-zero and
+#     overflow (it would turn a trapping program into a non-trapping one);
+#   - leaves are only variables and integer literals -- a call / member / float / bigint makes the whole subtree fall
+#     back to the greedy result untouched, so no effectful or imprecise value is ever reordered or folded;
+#   - a folded constant that leaves the safe-integer range aborts the rewrite, so a rounded (wrong) literal is never
+#     emitted.
+# The e-graph form is taken only when it is strictly smaller than the original, so an irreducible expression is
+# returned byte-for-byte unchanged (no commutative churn).
+#
+# Ported from ir/egraph-arith.ts (self-hosting, 2026-10-05).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find binary-op
+  find expression
+  find expression-span
+
+load ./egraph
+  find expr
+  find optimize
+
+host safe-limit, 9007199254740991
+
+task is-safe
+  take value, like number
+  like boolean
+  mark private
+
+  back and(is-maximum(value, safe-limit), is-minimum(value, subtract(0, safe-limit)))
+
+task is-arith
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift op
+    case plus
+      back true
+    case minus
+      back true
+    case times
+      back true
+    miss
+      back false
+
+# A canonical structural key for a pure access path: a variable or a member chain over one (`p.x`, `a.b.c`). Equal
+# keys mean the two expressions read the same place, so they share an e-class -- this is what lets `p.x - p.x` cancel.
+# `<>` for anything containing a call or other effectful / non-path node, so such a value is never used as a leaf
+# (never reordered or cancelled).
+task path-key
+  take node, like expression
+  like text
+  mark private
+
+  sift node
+    case variable
+      back <v:{name}>
+    case member
+      save target-key, path-key(target)
+      fork test, is-equal(target-key, <>)
+        hold
+          back <>
+      back <{target-key}.{name}#{nick}>
+    miss
+      back <>
+
+# an expression as the e-graph's, recording each leaf's original node so it can be restored with its span, binding
+# and type intact. None the moment the subtree leaves the sound integer fragment.
+task to-expr
+  take node, like expression
+  take leaves, like hash, like text, like expression
+  like maybe, like expr
+  mark private
+
+  sift node
+    case integer
+      # a literal past the safe range (it carries `digits`) would fold wrong in number arithmetic
+      fork test, or(is-unequal(digits, <>), not(is-safe(value)))
+        hold
+          back make none
+      save made
+        make expr/int
+          bind value, value
+      back make(some, made)
+    case binary
+      fork test, not(is-arith(op))
+        hold
+          back make none
+      save left-out, to-expr(left, leaves)
+      sift left-out
+        case some
+          link left-expr
+          save right-out, to-expr(right, leaves)
+          sift right-out
+            case some
+              link right-expr
+              save made
+                make expr/op
+                  bind op, to-op-text(op)
+                  bind left, left-expr
+                  bind right, right-expr
+              back make(some, made)
+            miss
+              back make none
+        miss
+          back make none
+    # a pure, integer-typed leaf: a variable or a member chain over one. The integer-type guard keeps it sound --
+    # float arithmetic is non-associative ((f + 0.1) + 0.2 != f + 0.3) and `f - f` is NaN when f is Inf/NaN, so
+    # reassociating or cancelling a non-integer leaf is wrong. Bail on float, unknown, dynamic, or a missing type. A
+    # call or other effectful node has no path key, so it is never admitted.
+    case variable
+      back leaf(node, leaves)
+    case member
+      back leaf(node, leaves)
+    miss
+      back make none
+
+task leaf
+  take node, like expression
+  take leaves, like hash, like text, like expression
+  like maybe, like expr
+  mark private
+
+  fork test, not(is-number-typed(node))
+    hold
+      back make none
+  save key, path-key(node)
+  fork test, is-equal(key, <>)
+    hold
+      back make none
+  fork test, not(leaves/has(key))
+    hold
+      save leaves/{key}, node
+  save made
+    make expr/var
+      bind name, key
+  back make(some, made)
+
+task is-number-typed
+  take node, like expression
+  like boolean
+  mark private
+
+  save known, expression-type-of(node)
+  sift known
+    case some
+      link given
+      back is-equal(given/kind, <number>)
+    miss
+      back false
+
+task expression-type-of
+  take node, like expression
+  like maybe, like type
+  mark private
+
+  sift node
+    case variable
+      back type
+    case member
+      back type
+    miss
+      back make none
+
+task to-op-text
+  take op, like binary-op
+  like text
+  mark private
+
+  sift op
+    case plus
+      back <+>
+    case minus
+      back <->
+    miss
+      back <*>
+
+task from-op-text
+  take op, like text
+  like binary-op
+  mark private
+
+  fork test, is-equal(op, <+>)
+    hold
+      back make plus
+  fork test, is-equal(op, <->)
+    hold
+      back make minus
+  back make times
+
+# an expression rebuilt from the optimized one, or none if a folded constant left the safe-integer range, so a
+# rounded literal is never emitted. Every op produced is one of `+` / `-` / `*`, the only ones fed in
+task from-expr
+  take given, like expr
+  take leaves, like hash, like text, like expression
+  take at, like span
+  like maybe, like expression
+  mark private
+
+  sift given
+    case int
+      fork test, not(is-safe(value))
+        hold
+          back make none
+      save made
+        make expression/integer
+          bind value, value
+          bind span, at
+      back make(some, made)
+    case var
+      # reuse the exact original node recorded when the leaf was admitted (keeps its binding / type / nick / span).
+      # The leaf is pure, so sharing the node is safe. If it is somehow absent, the rewrite bails rather than
+      # fabricating a wrong node.
+      fork test, leaves/has(name)
+        hold
+          save found, leaves/get(name)
+          back make(some, found)
+      back make none
+    case op
+      save left-out, from-expr(left, leaves, at)
+      sift left-out
+        case some
+          link left-node
+          save right-out, from-expr(right, leaves, at)
+          sift right-out
+            case some
+              link right-node
+              save made
+                make expression/binary
+                  bind op, from-op-text(op)
+                  bind left, left-node
+                  bind right, right-node
+                  bind span, at
+              back make(some, made)
+            miss
+              back make none
+        miss
+          back make none
+
+# node count, to make sure the e-graph form genuinely shrinks the expression before it is taken
+task node-count
+  take node, like expression
+  like number
+  mark private
+
+  sift node
+    case binary
+      back add(1, add(node-count(left), node-count(right)))
+    miss
+      back 1
+
+# optimize an arithmetic expression via the e-graph, or answer it unchanged when it is outside the sound fragment or
+# the e-graph finds nothing smaller
+task egraph-arith
+  take node, like expression
+  like expression
+
+  sift node
+    case binary
+      fork test, not(is-arith(op))
+        hold
+          back node
+    miss
+      back node
+  save leaves, make hash
+  save admitted, to-expr(node, leaves)
+  sift admitted
+    case some
+      link given
+      save rebuilt, from-expr(optimize(given), leaves, expression-span(node))
+      sift rebuilt
+        case some
+          link smaller
+          fork test, is-below(node-count(smaller), node-count(node))
+            hold
+              back smaller
+          back node
+        miss
+          back node
+    miss
+      back node

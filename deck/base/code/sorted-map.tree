@@ -1,14 +1,29 @@
 # A map kept in key order, and a set kept in order, by a comparator: `ordering/from-numbers`, `ordering/from-texts` (code
-# point order) or any task that returns an ordering. Pure Term over two parallel lists, so it walks in the same order on
-# every backend. A lookup is a binary search; an insert or a removal moves the later entries along, so this suits maps
-# that are read far more than they are written. `hash` is the map to reach for when order does not matter.
+# point order) or any task that returns an ordering. `hash` is the map to reach for when order does not matter.
+#
+# A B-TREE, written in Term, so it is the same tree on every backend: lookup, `put`, `drop`, `least` and `greatest` are
+# O(log n) with up to 31 keys to a node, `length` is O(1), and a walk is in key order. Until 2026-10-05 it was two
+# parallel lists, so a `put` or a `drop` moved every later entry, O(n). A native ordered map cannot stand in for it:
+# Rust's `BTreeMap` and Java's `TreeMap` order by the key type or a fixed comparator, and the order here is a Term task
+# chosen at run time (note/term/plan/decisions-2026-10.md, D8).
+#
+# The nodes live in an ARENA of shared lists, each node an index: its keys, their values, and its children's indexes,
+# none for a leaf. So no recursive form is ever released one node per frame (Swift released a long recursive one that
+# way and stopped, 2026-10-05), and every copy of a map is the same map, as a hash is. Insert splits a full node on the
+# way down and delete fills a thin one on the way down (Cormen et al., chapter 18), so each is one pass from the root
+# and nothing recurses. A node a merge frees is reused before the arena grows.
+#
+# Held on every backend by test/stdlib/sorted-map.ts, against a plain sorted list under random puts and drops.
 
 mark stable
 
 load @term/base/list
   find list
-  find size
   find get
+  find set
+  find push
+  find pop
+  find slice
 
 load @term/base/maybe
   find maybe
@@ -20,219 +35,662 @@ load @term/base/ordering
   find ordering
   find is-less
   find is-equal
+  find is-greater
+
+# the least a node other than the root holds is DEGREE - 1 keys, and the most 2 * DEGREE - 1
+host degree, 16
 
 form sorted-map
   head k
   head v
-  link keys
+
+  # node `n`'s keys, their values, and its children's indexes (empty for a leaf)
+  link node-keys
     like list
-      like k
-  link values
+      like list
+        like k
+    fall make list
+  link node-values
     like list
-      like v
+      like list
+        like v
+    fall make list
+  link node-kids
+    like list
+      like list
+        like number
+    fall make list
+  # nodes a merge freed, reused before a new one is made
+  link spare
+    like list
+      like number
+    fall make list
+  # the root's index, -1 while the map is empty, then how many entries it holds
+  link state
+    like list
+      like number
+    fall make(list, -1, 0)
   link compare
     like task
       take left, like k
       take right, like k
       like ordering
 
-  # the first position whose key does not come before `key`
+  # a node with nothing in it, its index
+  task new-node
+    take self
+    like number
+    mark private
+    save free, read self/spare/length
+    fork test
+      hook test
+        call is-above(read(free), code(0))
+      hook hold
+        save at, call pop(read(self/spare))
+        call set(read(self/node-keys), read(at), make list)
+        call set(read(self/node-values), read(at), make list)
+        call set(read(self/node-kids), read(at), make list)
+        send back, read at
+    call push(read(self/node-keys), make list)
+    call push(read(self/node-values), make list)
+    call push(read(self/node-kids), make list)
+    send back
+      call subtract(read(self/node-keys/length), code(1))
+
+  task keys-of
+    take self
+    take node, like number
+    like list
+      like k
+    mark private
+    send back, call get(read(self/node-keys), read(node))
+
+  task values-of
+    take self
+    take node, like number
+    like list
+      like v
+    mark private
+    send back, call get(read(self/node-values), read(node))
+
+  task kids-of
+    take self
+    take node, like number
+    like list
+      like number
+    mark private
+    send back, call get(read(self/node-kids), read(node))
+
+  task key-count
+    take self
+    take node, like number
+    like number
+    mark private
+    save keys, call keys-of(read(self), read(node))
+    send back, read keys/length
+
+  task kid-count
+    take self
+    take node, like number
+    like number
+    mark private
+    save kids, call kids-of(read(self), read(node))
+    send back, read kids/length
+
+  # a key and its value put into a node at `at`, the later ones moved along
+  task insert-entry
+    take self
+    take node, like number
+    take at, like number
+    take key, like k
+    take value, like v
+    like void
+    mark private
+    save keys, call keys-of(read(self), read(node))
+    save values, call values-of(read(self), read(node))
+    call keys/splice(read(at), code(0), read(key))
+    call values/splice(read(at), code(0), read(value))
+
+  # the key and value at `at` taken out of a node
+  task remove-entry
+    take self
+    take node, like number
+    take at, like number
+    like void
+    mark private
+    save keys, call keys-of(read(self), read(node))
+    save values, call values-of(read(self), read(node))
+    call keys/splice(read(at), code(1))
+    call values/splice(read(at), code(1))
+
+  task insert-kid
+    take self
+    take node, like number
+    take at, like number
+    take kid, like number
+    like void
+    mark private
+    save kids, call kids-of(read(self), read(node))
+    call kids/splice(read(at), code(0), read(kid))
+
+  task remove-kid
+    take self
+    take node, like number
+    take at, like number
+    like void
+    mark private
+    save kids, call kids-of(read(self), read(node))
+    call kids/splice(read(at), code(1))
+
+  task is-leaf
+    take self
+    take node, like number
+    like boolean
+    mark private
+    send back
+      call is-equal(kid-count(read(self), read(node)), code(0))
+
+  # the first place in a node's keys whose key does not come before `key`: a binary search
   task place
     take self
+    take node, like number
     take key, like k
     like number
-    must
-      call is-minimum
-        read back
-        code 0
+    mark private
+    save keys, call keys-of(read(self), read(node))
     save low, code 0
-    save high
-      call size
-        read self/keys
-    # the span falls in both branches, each ending its own turn. `compare` may reach the keys, so their own length
-    # is tested on every turn as well as `high`
+    save high, read keys/length
     walk test
-      must
-        call is-minimum
-          read low
-          code 0
-      must
-        call is-maximum
-          read low
-          read high
-      down
-        call subtract
-          read high
-          read low
       hook test
-        call and
-          call is-below
-            read low
-            read high
-          call is-maximum
-            read high
-            read self/keys/length
-      hook step
+        call is-below(read(low), read(high))
+      hook hold
         save middle
           call add
             read low
-            call divide
-              call subtract
-                read high
-                read low
-              code 2
+            call divide(subtract(read(high), read(low)), code(2))
         fork test
           hook test
-            call is-less
-              call self/compare
-                call get
-                  read self/keys
-                  read middle
-                read key
+            call is-less(self/compare(get(read(keys), read(middle)), read(key)))
           hook hold
-            save low
-              call add
-                read middle
-                code 1
-            turn next
+            save low, call add(read(middle), code(1))
           hook miss
             save high, read middle
-            turn next
     send back, read low
 
-  # whether the key at `at` is `key`
+  # whether a node's key at `at` is `key`
   task holds-at
     take self
+    take node, like number
     take at, like number
     take key, like k
     like boolean
+    mark private
+    save keys, call keys-of(read(self), read(node))
     fork test
       hook test
-        call and
-          call is-minimum
-            read at
-            code 0
-          call is-below
-            read at
-            read self/keys/length
+        call is-below(read(at), read(keys/length))
       hook hold
         send back
-          call is-equal
-            call self/compare
-              call get
-                read self/keys
-                read at
-              read key
+          call is-equal(self/compare(get(read(keys), read(at)), read(key)))
     send back, false
 
+  # split the full child at `at` of `parent` in two around its middle key, which moves up into `parent`
+  task split-child
+    take self
+    take parent, like number
+    take at, like number
+    like void
+    mark private
+    save full, call get(kids-of(read(self), read(parent)), read(at))
+    save half, call new-node(read(self))
+    save keys, call keys-of(read(self), read(full))
+    save values, call values-of(read(self), read(full))
+    save kids, call kids-of(read(self), read(full))
+    save middle, call subtract(read(degree), code(1))
+    save lifted-key, call get(read(keys), read(middle))
+    save lifted-value, call get(read(values), read(middle))
+    call set(read(self/node-keys), read(half), slice(read(keys), read(degree), read(keys/length)))
+    call set(read(self/node-values), read(half), slice(read(values), read(degree), read(values/length)))
+    fork test
+      hook test
+        call is-above(read(kids/length), code(0))
+      hook hold
+        call set(read(self/node-kids), read(half), slice(read(kids), read(degree), read(kids/length)))
+        call set(read(self/node-kids), read(full), slice(read(kids), code(0), read(degree)))
+    call set(read(self/node-keys), read(full), slice(read(keys), code(0), read(middle)))
+    call set(read(self/node-values), read(full), slice(read(values), code(0), read(middle)))
+    call insert-entry(read(self), read(parent), read(at), read(lifted-key), read(lifted-value))
+    call insert-kid(read(self), read(parent), add(read(at), code(1)), read(half))
+
+  # put `value` at `key`: replaced where the key is already, added in order where it is not
   task put
     take self
     take key, like k
     take value, like v
     like sorted-map
-    save at
-      call place
-        read self
-        read key
+    save root, call get(read(self/state), code(0))
     fork test
       hook test
-        call holds-at
-          read self
-          read at
-          read key
+        call is-below(read(root), code(0))
       hook hold
-        # the keys and the values are two lists; one built by hand may be the shorter, and is never read past
+        save root, call new-node(read(self))
+        call set(read(self/state), code(0), read(root))
+    # a full root splits first, under a new root, so the tree grows at the top and every leaf stays at one depth
+    fork test
+      hook test
+        call is-equal(key-count(read(self), read(root)), subtract(multiply(code(2), read(degree)), code(1)))
+      hook hold
+        save grown, call new-node(read(self))
+        call push(kids-of(read(self), read(grown)), read(root))
+        call split-child(read(self), read(grown), code(0))
+        call set(read(self/state), code(0), read(grown))
+        save root, read grown
+    save node, read root
+    walk test
+      hook test
+        true
+      hook hold
+        save at, call place(read(self), read(node), read(key))
         fork test
           hook test
-            call is-below
-              read at
-              read self/values/length
+            call holds-at(read(self), read(node), read(at), read(key))
           hook hold
-            call self/values/set
-              read at
-              read value
-      hook miss
-        call self/keys/splice
-          read at
-          code 0
-          read key
-        call self/values/splice
-          read at
-          code 0
-          read value
+            call set(values-of(read(self), read(node)), read(at), read(value))
+            send back, read self
+        fork test
+          hook test
+            call is-leaf(read(self), read(node))
+          hook hold
+            call insert-entry(read(self), read(node), read(at), read(key), read(value))
+            call set(read(self/state), code(1), add(get(read(self/state), code(1)), code(1)))
+            send back, read self
+        save child, call get(kids-of(read(self), read(node)), read(at))
+        fork test
+          hook test
+            call is-equal(key-count(read(self), read(child)), subtract(multiply(code(2), read(degree)), code(1)))
+          hook hold
+            call split-child(read(self), read(node), read(at))
+            save lifted, call self/compare(read(key), get(keys-of(read(self), read(node)), read(at)))
+            fork test
+              hook test
+                call is-equal(read(lifted))
+              hook hold
+                call set(values-of(read(self), read(node)), read(at), read(value))
+                send back, read self
+            fork test
+              hook test
+                call is-greater(read(lifted))
+              hook hold
+                save at, call add(read(at), code(1))
+            save child, call get(kids-of(read(self), read(node)), read(at))
+        save node, read child
     send back, read self
+
+  # the node and place holding `key`, or a node of -1
+  task find-at
+    take self
+    take key, like k
+    like list
+      like number
+    mark private
+    save node, call get(read(self/state), code(0))
+    walk test
+      hook test
+        call is-minimum(read(node), code(0))
+      hook hold
+        save at, call place(read(self), read(node), read(key))
+        fork test
+          hook test
+            call holds-at(read(self), read(node), read(at), read(key))
+          hook hold
+            send back, make(list, read(node), read(at))
+        fork test
+          hook test
+            call is-leaf(read(self), read(node))
+          hook hold
+            send back, make(list, -1, 0)
+        save node, call get(kids-of(read(self), read(node)), read(at))
+    send back, make(list, -1, 0)
 
   task lookup
     take self
     take key, like k
     like maybe
       head v
-    save at
-      call place
-        read self
-        read key
+    save found, call find-at(read(self), read(key))
+    save node, call get(read(found), code(0))
     fork test
       hook test
-        call and
-          call holds-at
-            read self
-            read at
-            read key
-          call is-below
-            read at
-            read self/values/length
+        call is-below(read(node), code(0))
       hook hold
-        send back
-          make some
-            bind value
-              call get
-                read self/values
-                read at
-    send back, make none
+        send back, make none
+    send back
+      make some
+        bind value
+          call get(values-of(read(self), read(node)), get(read(found), code(1)))
 
   task holds
     take self
     take key, like k
     like boolean
     send back
-      call holds-at
-        read self
-        call place
-          read self
-          read key
-        read key
+      call is-minimum(get(find-at(read(self), read(key)), code(0)), code(0))
+
+  # make the child at `at` of `node` hold at least DEGREE keys, before a delete goes into it: a key borrowed from a
+  # sibling that can spare one, or the child merged with a sibling and the key between them. The child's index
+  # afterwards, which a merge with the left sibling moves one place left
+  task fill
+    take self
+    take node, like number
+    take at, like number
+    like number
+    mark private
+    save kids, call kids-of(read(self), read(node))
+    save child, call get(read(kids), read(at))
+    # from the left sibling, through the parent: its last key goes up, the parent's key comes down in front
+    fork test
+      hook test
+        call and
+          call is-above(read(at), code(0))
+          call is-minimum(key-count(read(self), get(read(kids), subtract(read(at), code(1)))), read(degree))
+      hook hold
+        save left, call get(read(kids), subtract(read(at), code(1)))
+        save left-keys, call keys-of(read(self), read(left))
+        save left-values, call values-of(read(self), read(left))
+        save between, call subtract(read(at), code(1))
+        call insert-entry(read(self), read(child), code(0), get(keys-of(read(self), read(node)), read(between)), get(values-of(read(self), read(node)), read(between)))
+        call set(keys-of(read(self), read(node)), read(between), get(read(left-keys), subtract(read(left-keys/length), code(1))))
+        call set(values-of(read(self), read(node)), read(between), get(read(left-values), subtract(read(left-values/length), code(1))))
+        call pop(read(left-keys))
+        call pop(read(left-values))
+        fork test
+          hook test
+            call not(is-leaf(read(self), read(left)))
+          hook hold
+            call insert-kid(read(self), read(child), code(0), pop(kids-of(read(self), read(left))))
+        send back, read at
+    # from the right sibling, the same the other way
+    fork test
+      hook test
+        call and
+          call is-below(read(at), subtract(read(kids/length), code(1)))
+          call is-minimum(key-count(read(self), get(read(kids), add(read(at), code(1)))), read(degree))
+      hook hold
+        save right, call get(read(kids), add(read(at), code(1)))
+        save right-keys, call keys-of(read(self), read(right))
+        save right-values, call values-of(read(self), read(right))
+        call push(keys-of(read(self), read(child)), get(keys-of(read(self), read(node)), read(at)))
+        call push(values-of(read(self), read(child)), get(values-of(read(self), read(node)), read(at)))
+        call set(keys-of(read(self), read(node)), read(at), get(read(right-keys), code(0)))
+        call set(values-of(read(self), read(node)), read(at), get(read(right-values), code(0)))
+        call right-keys/splice(code(0), code(1))
+        call right-values/splice(code(0), code(1))
+        fork test
+          hook test
+            call not(is-leaf(read(self), read(right)))
+          hook hold
+            call push(kids-of(read(self), read(child)), get(kids-of(read(self), read(right)), code(0)))
+            call remove-kid(read(self), read(right), code(0))
+        send back, read at
+    # neither can spare one: merge with the right sibling, or with the left when this is the last child
+    fork test
+      hook test
+        call is-below(read(at), subtract(read(kids/length), code(1)))
+      hook hold
+        call merge(read(self), read(node), read(at))
+        send back, read at
+    call merge(read(self), read(node), subtract(read(at), code(1)))
+    send back, call subtract(read(at), code(1))
+
+  # the child at `at` of `node`, its key at `at`, and the child after it become one node, in the first child's place
+  task merge
+    take self
+    take node, like number
+    take at, like number
+    like void
+    mark private
+    save left, call get(kids-of(read(self), read(node)), read(at))
+    save right, call get(kids-of(read(self), read(node)), add(read(at), code(1)))
+    call push(keys-of(read(self), read(left)), get(keys-of(read(self), read(node)), read(at)))
+    call push(values-of(read(self), read(left)), get(values-of(read(self), read(node)), read(at)))
+    save moved-keys, call keys-of(read(self), read(right))
+    save moved-values, call values-of(read(self), read(right))
+    save moved-kids, call kids-of(read(self), read(right))
+    walk moved-keys
+      take one
+      call push(keys-of(read(self), read(left)), read(one))
+    walk moved-values
+      take one
+      call push(values-of(read(self), read(left)), read(one))
+    walk moved-kids
+      take one
+      call push(kids-of(read(self), read(left)), read(one))
+    call remove-entry(read(self), read(node), read(at))
+    call remove-kid(read(self), read(node), add(read(at), code(1)))
+    call push(read(self/spare), read(right))
 
   # remove the key and its value, returning whether it was there
   task drop
     take self
     take key, like k
     like boolean
-    save at
-      call place
-        read self
-        read key
+    save root, call get(read(self/state), code(0))
     fork test
       hook test
-        call holds-at
-          read self
-          read at
-          read key
+        call is-below(read(root), code(0))
       hook hold
-        call self/keys/splice
-          read at
-          code 1
-        call self/values/splice
-          read at
-          code 1
-        send back, true
-    send back, false
+        send back, false
+    save node, read root
+    save target, read key
+    save dropped, false
+    walk test
+      hook test
+        true
+      hook hold
+        save at, call place(read(self), read(node), read(target))
+        save here, call holds-at(read(self), read(node), read(at), read(target))
+        fork test
+          hook test
+            call and(read(here), is-leaf(read(self), read(node)))
+          hook hold
+            call remove-entry(read(self), read(node), read(at))
+            save dropped, true
+            halt
+        fork test
+          hook test
+            call and(not(read(here)), is-leaf(read(self), read(node)))
+          hook hold
+            halt
+        fork test
+          hook test
+            read here
+          hook hold
+            # an inner node: the key is swapped for its neighbor in a child that can spare one, and the neighbor is
+            # what is then deleted, from that child. With neither child able to spare a key, the two merge around it
+            save before, call get(kids-of(read(self), read(node)), read(at))
+            save after, call get(kids-of(read(self), read(node)), add(read(at), code(1)))
+            fork test
+              hook test
+                call is-minimum(key-count(read(self), read(before)), read(degree))
+              hook hold
+                save last, read before
+                walk test
+                  hook test
+                    call not(is-leaf(read(self), read(last)))
+                  hook hold
+                    save last-kids, call kids-of(read(self), read(last))
+                    save last, call get(read(last-kids), subtract(read(last-kids/length), code(1)))
+                save last-keys, call keys-of(read(self), read(last))
+                save last-values, call values-of(read(self), read(last))
+                save target, call get(read(last-keys), subtract(read(last-keys/length), code(1)))
+                call set(keys-of(read(self), read(node)), read(at), read(target))
+                call set(values-of(read(self), read(node)), read(at), get(read(last-values), subtract(read(last-values/length), code(1))))
+                save node, read before
+                turn next
+            fork test
+              hook test
+                call is-minimum(key-count(read(self), read(after)), read(degree))
+              hook hold
+                save first, read after
+                walk test
+                  hook test
+                    call not(is-leaf(read(self), read(first)))
+                  hook hold
+                    save first, call get(kids-of(read(self), read(first)), code(0))
+                save target, call get(keys-of(read(self), read(first)), code(0))
+                call set(keys-of(read(self), read(node)), read(at), read(target))
+                call set(values-of(read(self), read(node)), read(at), get(values-of(read(self), read(first)), code(0)))
+                save node, read after
+                turn next
+            call merge(read(self), read(node), read(at))
+            save node, read before
+            turn next
+        # not here, and an inner node: the child it would be in is made to hold DEGREE keys first, so a key can leave it
+        save child-at, read at
+        fork test
+          hook test
+            call is-below(key-count(read(self), get(kids-of(read(self), read(node)), read(at))), read(degree))
+          hook hold
+            save child-at, call fill(read(self), read(node), read(at))
+        save node, call get(kids-of(read(self), read(node)), read(child-at))
+    # a root a merge emptied gives way to its one child, and an empty leaf root leaves the map empty
+    save root, call get(read(self/state), code(0))
+    fork test
+      hook test
+        call is-equal(key-count(read(self), read(root)), code(0))
+      hook hold
+        fork test
+          hook test
+            call is-leaf(read(self), read(root))
+          hook hold
+            call push(read(self/spare), read(root))
+            call set(read(self/state), code(0), -1)
+          hook miss
+            call push(read(self/spare), read(root))
+            call set(read(self/state), code(0), get(kids-of(read(self), read(root)), code(0)))
+    fork test
+      hook test
+        read dropped
+      hook hold
+        call set(read(self/state), code(1), subtract(get(read(self/state), code(1)), code(1)))
+    send back, read dropped
 
+  # how many entries it holds
+  task length
+    take self
+    like number
+    send back, call get(read(self/state), code(1))
+
+  # how many entries it holds: the older name of `length`
   task count
     take self
     like number
+    send back, call get(read(self/state), code(1))
+
+  task is-empty
+    take self
+    like boolean
     send back
-      call size
-        read self/keys
+      call is-equal(get(read(self/state), code(1)), code(0))
+
+  # where every entry is, in key order, as `node, place` pairs one after another: an in-order walk with a stack of nodes
+  # and places, never a recursion
+  task in-order
+    take self
+    like list
+      like number
+    mark private
+    save out, make list
+    save root, call get(read(self/state), code(0))
+    fork test
+      hook test
+        call is-below(read(root), code(0))
+      hook hold
+        send back, read out
+    save nodes, make list
+    save places, make list
+    save down, read root
+    walk test
+      hook test
+        true
+      hook hold
+        call push(read(nodes), read(down))
+        call push(read(places), code(0))
+        fork test
+          hook test
+            call is-leaf(read(self), read(down))
+          hook hold
+            halt
+        save down, call get(kids-of(read(self), read(down)), code(0))
+    walk test
+      hook test
+        call is-above(read(nodes/length), code(0))
+      hook hold
+        save top, call subtract(read(nodes/length), code(1))
+        save node, call get(read(nodes), read(top))
+        save at, call get(read(places), read(top))
+        fork test
+          hook test
+            call is-below(read(at), key-count(read(self), read(node)))
+          hook hold
+            call push(read(out), read(node))
+            call push(read(out), read(at))
+            call set(read(places), read(top), add(read(at), code(1)))
+            fork test
+              hook test
+                call not(is-leaf(read(self), read(node)))
+              hook hold
+                save down, call get(kids-of(read(self), read(node)), add(read(at), code(1)))
+                walk test
+                  hook test
+                    true
+                  hook hold
+                    call push(read(nodes), read(down))
+                    call push(read(places), code(0))
+                    fork test
+                      hook test
+                        call is-leaf(read(self), read(down))
+                      hook hold
+                        halt
+                    save down, call get(kids-of(read(self), read(down)), code(0))
+          hook miss
+            call pop(read(nodes))
+            call pop(read(places))
+    send back, read out
+
+  # the keys in order
+  task keys
+    take self
+    like list
+      like k
+    save out, make list
+    save where, call in-order(read(self))
+    save at, code 0
+    walk test
+      hook test
+        call is-below(add(read(at), code(1)), read(where/length))
+      hook hold
+        save node-keys, call keys-of(read(self), get(read(where), read(at)))
+        call push(read(out), get(read(node-keys), get(read(where), add(read(at), code(1)))))
+        save at, call add(read(at), code(2))
+    send back, read out
+
+  # the values in their keys' order
+  task values
+    take self
+    like list
+      like v
+    save out, make list
+    save where, call in-order(read(self))
+    save at, code 0
+    walk test
+      hook test
+        call is-below(add(read(at), code(1)), read(where/length))
+      hook hold
+        save node-values, call values-of(read(self), get(read(where), read(at)))
+        call push(read(out), get(read(node-values), get(read(where), add(read(at), code(1)))))
+        save at, call add(read(at), code(2))
+    send back, read out
 
   # every entry as a pair of key and value, in key order
   task entries
@@ -241,73 +699,63 @@ form sorted-map
       like pair
         head k
         head v
-    save out
-      make list
+    save out, make list
+    save where, call in-order(read(self))
     save at, code 0
-    walk list, read self/keys
-      hook next
-        take site, name key
-        fork test
-          hook test
-            call is-below
-              read at
-              read self/values/length
-          hook hold
-            call out/push
-              make pair
-                bind first, read key
-                bind second
-                  call get
-                    read self/values
-                    read at
-        save at
-          call add
-            read at
-            code 1
+    walk test
+      hook test
+        call is-below(add(read(at), code(1)), read(where/length))
+      hook hold
+        save node, call get(read(where), read(at))
+        save place, call get(read(where), add(read(at), code(1)))
+        call out/push
+          make pair
+            bind first, call get(keys-of(read(self), read(node)), read(place))
+            bind second, call get(values-of(read(self), read(node)), read(place))
+        save at, call add(read(at), code(2))
     send back, read out
 
-  # the entry with the least key, or none when empty
+  # the least key, or none when empty
   task least
     take self
     like maybe
       head k
+    save node, call get(read(self/state), code(0))
     fork test
       hook test
-        call is-equal
-          call size
-            read self/keys
-          code 0
+        call is-below(read(node), code(0))
       hook hold
         send back, make none
+    walk test
+      hook test
+        call not(is-leaf(read(self), read(node)))
+      hook hold
+        save node, call get(kids-of(read(self), read(node)), code(0))
     send back
       make some
-        bind value
-          call get
-            read self/keys
-            code 0
+        bind value, call get(keys-of(read(self), read(node)), code(0))
 
-  # the entry with the greatest key, or none when empty
+  # the greatest key, or none when empty
   task greatest
     take self
     like maybe
       head k
+    save node, call get(read(self/state), code(0))
     fork test
       hook test
-        call is-equal
-          call size
-            read self/keys
-          code 0
+        call is-below(read(node), code(0))
       hook hold
         send back, make none
+    walk test
+      hook test
+        call not(is-leaf(read(self), read(node)))
+      hook hold
+        save kids, call kids-of(read(self), read(node))
+        save node, call get(read(kids), subtract(read(kids/length), code(1)))
+    save keys, call keys-of(read(self), read(node))
     send back
       make some
-        bind value
-          call get
-            read self/keys
-            call subtract
-              call size
-                read self/keys
-              code 1
+        bind value, call get(read(keys), subtract(read(keys/length), code(1)))
 
 # an empty map ordered by `compare`
 task make-sorted-map
@@ -323,8 +771,4 @@ task make-sorted-map
     head v
   send back
     make sorted-map
-      bind keys
-        make list
-      bind values
-        make list
       bind compare, read compare

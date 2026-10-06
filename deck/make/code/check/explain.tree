@@ -1,0 +1,459 @@
+# WHAT A FAILED THEOREM WAS ASKED, AND WHETHER IT IS FALSE. A rule that is not proven used to say only that its goal
+# "does not follow from what is known here", which cannot tell a false law from a true one the provers did not reach.
+# This prints the goal and the hypotheses as the reader wrote them, and searches small values of the rule's marks for
+# one where every hypothesis holds and the goal does not. Found, the law is FALSE, and the values say why: the
+# counterexample Dafny's verifier gives, and the goal and facts Lean's infoview shows, in the build's own message.
+#
+# The search only evaluates. It cannot prove anything and it cannot forge a proof: a value it finds is checked by
+# arithmetic on the rule as written, and none found means nothing. It runs only after a goal is NOT proven.
+#
+# Ported from check/explain.ts (self-hosting, 2026-10-05). `counterexample` answers whether it found one beside the
+# values, where the original answered the values or undefined.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find last-index-of
+  find substring
+  find char-count
+
+load ../compile/node
+  find binary-op
+  find expression
+  find to-text, name op-text
+  find unary-op
+
+# a mark the search gives values to: `natural` ones start at 0
+form search-name
+  link name, like text
+  link natural, like boolean
+
+# a task the search may run: one whose whole body is `back <expression>` of its parameters (`double`, `square`)
+form small-task
+  link params, like list, like text
+  link body, like expression
+
+form counterexample-found
+  link found, like boolean
+  link at, like hash, like text, like number
+
+# an expression's value at an assignment of its variables: a whole number, a truth, or nothing where it reads anything
+# else (a call of a task it may not run, a field, a division that does not come out whole)
+form known
+  case whole
+    link number, like number
+  case truth
+    link flag, like boolean
+  case unread
+
+task whole-of
+  take n, like number
+  like known
+  mark private
+
+  back make(whole, n)
+
+task truth-of
+  take flag, like boolean
+  like known
+  mark private
+
+  back make(truth, flag)
+
+# calls nested deeper than this are not followed, so a recursive task cannot hold the search
+host call-depth, 32
+
+# the word an operator is printed as
+task op-word
+  take op, like binary-op
+  like text
+  mark private
+
+  sift op
+    case both
+      back <and>
+    case either
+      back <or>
+    miss
+      back op-text(op)
+
+# binding strength, so a printed expression needs no more parentheses than its meaning does
+task strength
+  take op, like binary-op
+  like number
+  mark private
+
+  sift op
+    case either
+      back 1
+    case both
+      back 2
+    case plus
+      back 4
+    case minus
+      back 4
+    case times
+      back 5
+    case divide
+      back 5
+    case remainder
+      back 5
+    miss
+      back 3
+
+# an expression in ordinary infix, the way a reader would write it on paper
+task print-expression
+  take e, like expression
+  take outer, like number, fall 0
+  like text
+
+  sift e
+    case variable
+      back name
+    case integer
+      back <{value}>
+    case unary
+      save inner, print-expression(operand, 6)
+      sift op
+        case not
+          back <not {inner}>
+        miss
+          save word, unary-text(op)
+          back <{word}{inner}>
+    case binary
+      save bound, strength(op)
+      save left-text, print-expression(left, bound)
+      save right-text, print-expression(right, add(bound, 1))
+      save word, op-word(op)
+      save text, <{left-text} {word} {right-text}>
+      fork test, is-below(bound, outer)
+        hold
+          back <({text})>
+      back text
+    case call
+      save callee-text, print-expression(callee, 7)
+      save parts, make list
+      walk args
+        take arg
+        push(parts, print-expression(arg, 0))
+      save joined, join(parts, <, >)
+      back <{callee-text}({joined})>
+    case member
+      save target-text, print-expression(target, 7)
+      back <{target-text}/{name}>
+    case record
+      # `zero`, `succ(prior: n)`: the case as written, its fields by name
+      save written, after-split(name)
+      fork test, is-equal(fields/length, 0)
+        hold
+          back written
+      save parts, make list
+      walk fields
+        take field
+        save value-text, print-expression(field/value, 0)
+        push(parts, <{field/name}: {value-text}>)
+      save joined, join(parts, <, >)
+      back <{written}({joined})>
+    miss
+      back <…>
+
+task unary-text
+  take op, like unary-op
+  like text
+  mark private
+
+  sift op
+    case negate
+      back <->
+    case not
+      back <!>
+
+# a name after the last `__` a module split gave it
+task after-split
+  take name, like text
+  like text
+  mark private
+
+  save at, last-index-of(name, <__>)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  back substring(name, add(at, 2), char-count(name))
+
+task evaluate
+  take e, like expression
+  take at, like hash, like text, like number
+  take tasks, like hash, like text, like small-task
+  take depth, like number
+  like known
+  mark private
+
+  sift e
+    case call
+      save callee-name, <>
+      sift callee
+        case variable
+          save callee-name, name
+        miss
+          back make unread
+      fork test, or(not(tasks/has(callee-name)), is-minimum(depth, call-depth))
+        hold
+          back make unread
+      save task, tasks/get(callee-name)
+      fork test, is-unequal(task/params/length, args/length)
+        hold
+          back make unread
+      save inner, make hash
+      walk args
+        take arg
+        take index
+        save v, evaluate(arg, at, tasks, depth)
+        sift v
+          case whole
+            save param-name, get(task/params, index)
+            save inner/{param-name}, number
+          miss
+            back make unread
+      back evaluate(task/body, inner, tasks, add(depth, 1))
+    case variable
+      fork test, at/has(name)
+        hold
+          save found, at/get(name)
+          back make(whole, found)
+      back make unread
+    case integer
+      back make(whole, value)
+    case unary
+      save v, evaluate(operand, at, tasks, depth)
+      sift op
+        case not
+          sift v
+            case truth
+              back truth-of(not(flag))
+            miss
+              back make unread
+        case negate
+          sift v
+            case whole
+              back whole-of(subtract(0, number))
+            miss
+              back make unread
+    case binary
+      save l, evaluate(left, at, tasks, depth)
+      save r, evaluate(right, at, tasks, depth)
+      sift op
+        case both
+          back joined-truth(l, r, true)
+        case either
+          back joined-truth(l, r, false)
+        miss
+          back arithmetic(op, l, r)
+    miss
+      back make unread
+
+# `and` (`both` true) or `or` of two truths, nothing where either is not one
+task joined-truth
+  take l, like known
+  take r, like known
+  take both, like boolean
+  like known
+  mark private
+
+  sift l
+    case truth
+      link left-flag
+      sift r
+        case truth
+          link right-flag
+          fork test, both
+            hold
+              back truth-of(and(left-flag, right-flag))
+          back truth-of(or(left-flag, right-flag))
+        miss
+          back make unread
+    miss
+      back make unread
+
+task arithmetic
+  take op, like binary-op
+  take l, like known
+  take r, like known
+  like known
+  mark private
+
+  sift l
+    case whole
+      link a
+      sift r
+        case whole
+          link b
+          sift op
+            case plus
+              back whole-of(add(a, b))
+            case minus
+              back whole-of(subtract(a, b))
+            case times
+              back whole-of(multiply(a, b))
+            case divide
+              fork test, is-equal(b, 0)
+                hold
+                  back make unread
+              fork test, is-unequal(modulo(a, b), 0)
+                hold
+                  back make unread
+              back whole-of(divide(a, b))
+            case below
+              back truth-of(is-below(a, b))
+            case at-most
+              back truth-of(is-maximum(a, b))
+            case above
+              back truth-of(is-above(a, b))
+            case at-least
+              back truth-of(is-minimum(a, b))
+            case equal
+              back truth-of(is-equal(a, b))
+            case unequal
+              back truth-of(is-unequal(a, b))
+            miss
+              back make unread
+        miss
+          back make unread
+    miss
+      back make unread
+
+# values of `names` where every hypothesis holds and the goal does not. Small integers first, nearest zero first, so
+# the values printed are the plainest ones that show the law false. `natural` names start at 0
+task counterexample
+  take names, like list, like search-name
+  # the tasks the rule's statement may call, each run as written
+  take hypotheses, like list, like expression
+  take goal, like expression
+  take tasks, like hash, like text, like small-task
+  like counterexample-found
+
+  save none-found
+    make counterexample-found
+      bind found, false
+      bind at, make hash
+  fork test, or(is-equal(names/length, 0), is-above(names/length, 6))
+    hold
+      back none-found
+  save reach, 2
+  fork test, is-maximum(names/length, 3)
+    hold
+      save reach, 4
+  fork test, is-equal(names/length, 4)
+    hold
+      save reach, 3
+  save ranges, make list
+  walk names
+    take one
+    push(ranges, range-of(one/natural, reach))
+  save at, make hash
+  back search(names, ranges, 0, at, hypotheses, goal, tasks)
+
+task range-of
+  take natural, like boolean
+  take reach, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, 0)
+  save k, 1
+  walk test
+    hook test, is-maximum(k, reach)
+    hook hold
+      push(out, k)
+      fork test, not(natural)
+        hold
+          push(out, subtract(0, k))
+      save k, add(k, 1)
+  back out
+
+task search
+  take names, like list, like search-name
+  take ranges, like list, like list, like number
+  take i, like number
+  take at, like hash, like text, like number
+  take hypotheses, like list, like expression
+  take goal, like expression
+  take tasks, like hash, like text, like small-task
+  like counterexample-found
+  mark private
+
+  save none-found
+    make counterexample-found
+      bind found, false
+      bind at, make hash
+  fork test, is-equal(i, names/length)
+    hold
+      fork test, and(all-true(hypotheses, at, tasks), is-false(goal, at, tasks))
+        hold
+          save copied, make hash
+          walk names
+            take one
+            save mark-name, one/name
+            save copied/{mark-name}, at/get(mark-name)
+          back
+            make counterexample-found
+              bind found, true
+              bind at, copied
+      back none-found
+  save mark-name, get(names, i)/name
+  walk get(ranges, i)
+    take value
+    save at/{mark-name}, value
+    save deeper, search(names, ranges, add(i, 1), at, hypotheses, goal, tasks)
+    fork test, deeper/found
+      hold
+        back deeper
+  back none-found
+
+task all-true
+  take hypotheses, like list, like expression
+  take at, like hash, like text, like number
+  take tasks, like hash, like text, like small-task
+  like boolean
+  mark private
+
+  walk hypotheses
+    take hypothesis
+    save v, evaluate(hypothesis, at, tasks, 0)
+    sift v
+      case truth
+        fork test, not(flag)
+          hold
+            back false
+      miss
+        back false
+  back true
+
+task is-false
+  take goal, like expression
+  take at, like hash, like text, like number
+  take tasks, like hash, like text, like small-task
+  like boolean
+  mark private
+
+  save v, evaluate(goal, at, tasks, 0)
+  sift v
+    case truth
+      back not(flag)
+    miss
+      back false
+
+# `a = 1, b = 2`
+task print-assignment
+  take at, like hash, like text, like number
+  like text
+
+  save parts, make list
+  walk at/keys()
+    take mark-name
+    save value, at/get(mark-name)
+    push(parts, <{mark-name} = {value}>)
+  back join(parts, <, >)

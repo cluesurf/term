@@ -74,7 +74,8 @@ function listTypes(body: Statement[], name: string): (Type | undefined)[] {
   return found
 }
 
-export function asyncSlots(program: Program): void {
+// the program is handed back, as check/async-slots.tree hands back the one it rewrote
+export function asyncSlots(program: Program): Program {
   const tasks = new Map<string, Fn>(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
 
   for (const fn of tasks.values()) {
@@ -167,4 +168,6 @@ export function asyncSlots(program: Program): void {
       })
     }
   }
+
+  return program
 }

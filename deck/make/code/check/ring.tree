@@ -1,0 +1,1176 @@
+# A commutative-ring equality decision procedure. It normalizes a polynomial expression (integer literals, variables,
+# and +, -, *) into a canonical sum of monomials, and decides L == R by checking that L - R is the zero polynomial.
+# A zero polynomial is identically zero over any commutative ring, so this proves a NONLINEAR algebraic identity for
+# ALL values of its variables -- the multiplicative norm (the Brahmagupta-Fibonacci identity), the four-square
+# identity, the doubling identities -- which the linear prover (degree one only) and the kernel's postulated
+# arithmetic cannot. It is sound and decidable. It handles only +, -, * over the integers; anything else (division,
+# a function call, a non-integer literal) makes it decline (answer false), leaving the goal to the other provers.
+#
+# Ported from check/ring.ts (self-hosting, 2026-10-05). The parsed monomials the original cached in module state are
+# a `mark shared` record each procedure makes and hands down. A coefficient that leaves the safe integers raises
+# `excess`, as Term's own checked arithmetic does, and each exported procedure turns it into "declined".
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/base/text/number
+  find parse-integer
+  find number-mismatch
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load @term/base/exception
+  find excess
+
+load ../compile/node
+  find expression
+  find field-value
+  find type
+  find with-type
+
+# a variable and its power in a monomial
+form power-of
+  link variable, like text
+  link power, like number
+
+# parsed monomial keys: a polynomial multiply re-touches the same keys O(n^2) times, and parsing a key (`a^2*b`) into
+# its (variable, power) pairs is pure text work, so memoizing it removes the dominant cost of the big norm identities
+# (the octonion eight-square has thousands of monomial products)
+form ring-cache
+  mark shared
+  link entries, like hash, like text, like list, like power-of
+
+# a polynomial: each monomial (a canonical key over its variables, `<>` for the constant) to a nonzero integer
+# coefficient, or none where the expression falls outside the +/-/* integer fragment
+form poly-found
+  link found, like boolean
+  link terms, like hash, like text, like number
+
+host safe-limit, 9007199254740991
+
+task new-cache
+  like ring-cache
+  mark private
+
+  back
+    make ring-cache
+      bind entries, make hash
+
+# EXACTNESS. Coefficients are integers exact only within the safe range. Past it a sum or a product rounds, and two
+# different polynomials could compare equal: `x * 9007199254740993 == x * 9007199254740992` was proven. So every
+# literal and every coefficient a step produces must be a safe integer, and one that is not raises `excess`, which each
+# exported procedure turns into "declined" (false). Declining is always sound.
+task exact
+  take n, like number
+  like number
+  mark private
+
+  fork test, or(is-above(n, safe-limit), is-below(n, subtract(0, safe-limit)))
+    hold
+      halt excess
+        bind thing, <a coefficient left the safe integer range>
+  back n
+
+# a sum of two safe coefficients, raising `excess` before it could leave the safe range, so no step overflows first
+task safe-add
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, or(and(is-above(b, 0), is-above(a, subtract(safe-limit, b))), and(is-below(b, 0), is-below(a, subtract(subtract(0, safe-limit), b))))
+    hold
+      halt excess
+        bind thing, <a coefficient left the safe integer range>
+  back add(a, b)
+
+# a product of two safe coefficients, likewise: |a * b| leaves the range exactly when |b| exceeds the whole part of
+# the limit over |a|
+task safe-multiply
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-equal(a, 0)
+    hold
+      back 0
+  save size-a, a
+  fork test, is-below(a, 0)
+    hold
+      save size-a, subtract(0, a)
+  save size-b, b
+  fork test, is-below(b, 0)
+    hold
+      save size-b, subtract(0, b)
+  fork test, is-above(size-b, divide(safe-limit, size-a))
+    hold
+      halt excess
+        bind thing, <a coefficient left the safe integer range>
+  back multiply(a, b)
+
+# the canonical key for a monomial given its variable powers (sorted, so a*b and b*a agree)
+task mono-key
+  take powers, like hash, like text, like number
+  like text
+  mark private
+
+  save names, sorted-texts(powers/keys())
+  save parts, make list
+  walk names
+    take v
+    save p, powers/get(v)
+    fork test, is-equal(p, 1)
+      hold
+        push(parts, v)
+    fork test, is-above(p, 1)
+      hold
+        push(parts, <{v}^{p}>)
+  back join(parts, <*>)
+
+# texts in ascending order, an insertion sort over the few variables of a monomial
+task sorted-texts
+  take given, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk given
+    take one
+    save placed, false
+    save next, make list
+    walk out
+      take present
+      fork test, and(not(placed), is-below-text(one, present))
+        hold
+          push(next, one)
+          save placed, true
+      push(next, present)
+    fork test, not(placed)
+      hold
+        push(next, one)
+    save out, next
+  back out
+
+task is-below-text
+  take a, like text
+  take b, like text
+  like boolean
+  mark private
+
+  back is-below(a/compare(b), 0)
+
+task mono-entries
+  take cache, like ring-cache
+  take key, like text
+  like list, like power-of
+  mark private
+
+  fork test, cache/entries/has(key)
+    hold
+      back cache/entries/get(key)
+  save out, make list
+  fork test, is-unequal(key, <>)
+    hold
+      walk split(key, <*>)
+        take factor
+        save pieces, split(factor, <^>)
+        save power, 1
+        fork test, is-above(pieces/length, 1)
+          hold
+            save power, parse-integer(get(pieces, 1))
+        save entry
+          make power-of
+            bind variable, get(pieces, 0)
+            bind power, power
+        push(out, entry)
+  save cache/entries/{key}, out
+  back out
+
+# the variable powers of a monomial key, a fresh hash each call
+task mono-powers
+  take cache, like ring-cache
+  take key, like text
+  like hash, like text, like number
+  mark private
+
+  save powers, make hash
+  walk mono-entries(cache, key)
+    take entry
+    save v, entry/variable
+    save powers/{v}, add(get-or-default(powers, v, 0), entry/power)
+  back powers
+
+task add-into
+  take poly, like hash, like text, like number
+  take key, like text
+  take coeff, like number
+  like hash, like text, like number
+  mark private
+
+  save next, safe-add(get-or-default(poly, key, 0), coeff)
+  fork test, is-equal(next, 0)
+    hold
+      poly/remove(key)
+    miss
+      save poly/{key}, next
+  back poly
+
+# whether a polynomial has no terms: zero
+task is-zero-poly
+  take poly, like hash, like text, like number
+  like boolean
+  mark private
+
+  walk poly/keys()
+    take one
+    back false
+  back true
+
+task copy-poly
+  take a, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take k
+    save out/{k}, a/get(k)
+  back out
+
+task add-poly
+  take a, like hash, like text, like number
+  take b, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, copy-poly(a)
+  walk b/keys()
+    take k
+    save out, add-into(out, k, b/get(k))
+  back out
+
+task scale-poly
+  take a, like hash, like text, like number
+  take k, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take m
+    save out/{m}, safe-multiply(a/get(m), k)
+  back out
+
+task mul-poly
+  take cache, like ring-cache
+  take a, like hash, like text, like number
+  take b, like hash, like text, like number
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take ma
+    save ca, a/get(ma)
+    walk b/keys()
+      take mb
+      save cb, b/get(mb)
+      save powers, mono-powers(cache, ma)
+      walk mono-entries(cache, mb)
+        take entry
+        save v, entry/variable
+        save powers/{v}, add(get-or-default(powers, v, 0), entry/power)
+      save out, add-into(out, mono-key(powers), safe-multiply(ca, cb))
+  back out
+
+task no-poly
+  like poly-found
+  mark private
+
+  back
+    make poly-found
+      bind found, false
+      bind terms, make hash
+
+task poly-of
+  take terms, like hash, like text, like number
+  like poly-found
+  mark private
+
+  back
+    make poly-found
+      bind found, true
+      bind terms, terms
+
+task to-poly
+  take cache, like ring-cache
+  take e, like expression
+  like poly-found
+  mark private
+
+  sift e
+    case integer
+      # a literal beyond the safe range carries its digits, and its `value` is rounded: decline it rather than read a
+      # different number
+      fork test, or(is-unequal(digits, <>), or(is-above(value, safe-limit), is-below(value, subtract(0, safe-limit))))
+        hold
+          back no-poly()
+      # keep the invariant that a polynomial never stores a zero coefficient: the literal 0 is the empty polynomial,
+      # the same normal form a multiply or an add produces. Otherwise `0` would normalize to {'': 0} (size 1) while
+      # `0 * 0` normalizes to {} (size 0), and ring-equal(0, 0 * 0) would wrongly fail (it compares by size)
+      save terms, make hash
+      save constant-key, <>
+      fork test, is-unequal(value, 0)
+        hold
+          save terms/{constant-key}, value
+      back poly-of(terms)
+    case variable
+      save terms, make hash
+      save terms/{name}, 1
+      back poly-of(terms)
+    case binary
+      save l, to-poly(cache, left)
+      save r, to-poly(cache, right)
+      fork test, or(not(l/found), not(r/found))
+        hold
+          back no-poly()
+      sift op
+        case plus
+          back poly-of(add-poly(l/terms, r/terms))
+        case minus
+          back poly-of(add-poly(l/terms, scale-poly(r/terms, -1)))
+        case times
+          back poly-of(mul-poly(cache, l/terms, r/terms))
+        miss
+          back no-poly()
+    miss
+      back no-poly()
+
+# decide L == R as a commutative-ring identity: true iff L - R normalizes to the zero polynomial. False means either
+# they are not an identity or they fall outside the +/-/* integer fragment, in which case the goal is left to the
+# other provers.
+task ring-equal
+  take left, like expression
+  take right, like expression
+  like boolean
+
+  mark unsafe
+    save cache, new-cache()
+    back ring-equal-exact(cache, left, right)
+  halt take
+    take error
+    sift error
+      case excess
+        back false
+      case number-mismatch
+        back false
+  back false
+
+task ring-equal-exact
+  take cache, like ring-cache
+  take left, like expression
+  take right, like expression
+  like boolean
+  mark private
+
+  # TWO CONSTRUCTIONS OF ONE FORM are equal exactly when their fields are, so a law about a matrix (`times(times(m,
+  # n), p) == times(m, times(n, p))`) is the ring identities of its entries, once the tasks are unfolded to
+  # constructions
+  fork test, and(is-record(left), is-record(right))
+    hold
+      back records-equal(cache, left, right)
+  save l, to-poly(cache, left)
+  save r, to-poly(cache, right)
+  fork test, or(not(l/found), not(r/found))
+    hold
+      back false
+  back is-zero-poly(add-poly(l/terms, scale-poly(r/terms, -1)))
+
+task is-record
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case record
+      back true
+    miss
+      back false
+
+task record-name
+  take e, like expression
+  like text
+  mark private
+
+  sift e
+    case record
+      back name
+    miss
+      back <>
+
+task positional-count
+  take e, like expression
+  like number
+  mark private
+
+  sift e
+    case record
+      back positional/length
+    miss
+      back 0
+
+task record-fields
+  take e, like expression
+  like list, like field-value
+  mark private
+
+  save out, make list
+  sift e
+    case record
+      walk fields
+        take field
+        push(out, field)
+    miss
+      back out
+  back out
+
+task records-equal
+  take cache, like ring-cache
+  take left, like expression
+  take right, like expression
+  like boolean
+  mark private
+
+  fork test, is-unequal(record-name(left), record-name(right))
+    hold
+      back false
+  fork test, or(is-above(positional-count(left), 0), is-above(positional-count(right), 0))
+    hold
+      back false
+  save left-fields, record-fields(left)
+  save right-fields, record-fields(right)
+  fork test, is-unequal(left-fields/length, right-fields/length)
+    hold
+      back false
+  walk left-fields
+    take f
+    save matched, false
+    walk right-fields
+      take g
+      fork test, and(not(matched), is-equal(g/name, f/name))
+        hold
+          save matched, true
+          fork test, not(ring-equal-exact(cache, f/value, g/value))
+            hold
+              back false
+    fork test, not(matched)
+      hold
+        back false
+  back true
+
+# ---- an equation from equations: substitution, then ideal membership ----
+
+# an equation between two expressions
+form equation
+  link left, like expression
+  link right, like expression
+
+task mentions
+  take e, like expression
+  take name, like text
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      link variable-name
+      back is-equal(variable-name, name)
+    case binary
+      back or(mentions(left, name), mentions(right, name))
+    case unary
+      back mentions(operand, name)
+    miss
+      back false
+
+task replaced
+  take e, like expression
+  take name, like text
+  take value, like expression
+  like expression
+  mark private
+
+  sift e
+    case variable
+      link variable-name
+      fork test, is-equal(variable-name, name)
+        hold
+          back value
+      back e
+    # built anew, so the expressions handed in are left as they were
+    case binary
+      save left-out, replaced(left, name, value)
+      save right-out, replaced(right, name, value)
+      save made
+        make expression/binary
+          bind op, op
+          bind left, left-out
+          bind right, right-out
+          bind span, span
+      back typed-like(made, type)
+    case unary
+      save operand-out, replaced(operand, name, value)
+      save made
+        make expression/unary
+          bind op, op
+          bind operand, operand-out
+          bind span, span
+      back typed-like(made, type)
+    miss
+      back e
+
+# an expression given the type of the one it replaces, where that one had one
+task typed-like
+  take made, like expression
+  take known, like maybe, like type
+  like expression
+  mark private
+
+  sift known
+    case some
+      link given
+      back with-type(made, given)
+    miss
+      back made
+
+task defines
+  take side, like expression
+  take other, like expression
+  take atoms, like list, like text
+  like boolean
+  mark private
+
+  sift side
+    case variable
+      back and(has-text(atoms, name), not(mentions(other, name)))
+    miss
+      back false
+
+task variable-name-of
+  take e, like expression
+  like text
+  mark private
+
+  sift e
+    case variable
+      back name
+    miss
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# L == R from EQUATIONS, by algebra rather than search. An equation with one side a lone ATOM (a variable in `atoms`)
+# that the other side does not mention, `t1 == t0 + 3`, is substituted away everywhere first, and whatever is left is
+# reduced modulo the remaining equations (`ring-equal-modulo`). Two callers share it: the hold checker, whose atoms are
+# calls (check/holds.ts `ringFromEquations`), and the kernel closing an induction case, whose atoms are terms it cannot
+# compute (check/elaborate.ts `ringCase`). Sound: each substitution replaces an atom by what an equation says it is
+task ring-equal-by-equations
+  take left, like expression
+  take right, like expression
+  take equations, like list, like equation
+  take atoms, like list, like text
+  like boolean
+
+  save rest, make list
+  walk equations
+    take one
+    push(rest, one)
+  save l, left
+  save r, right
+  save round, 0
+  walk test
+    hook test, is-below(round, equations/length)
+    hook hold
+      save at, -1
+      walk rest
+        take one
+        take index
+        fork test, and(is-below(at, 0), or(defines(one/left, one/right, atoms), defines(one/right, one/left, atoms)))
+          hold
+            save at, index
+      fork test, is-below(at, 0)
+        hold
+          halt
+      save chosen, get(rest, at)
+      save name, variable-name-of(chosen/right)
+      save value, chosen/left
+      fork test, defines(chosen/left, chosen/right, atoms)
+        hold
+          save name, variable-name-of(chosen/left)
+          save value, chosen/right
+      save next, make list
+      walk rest
+        take one
+        take index
+        fork test, is-unequal(index, at)
+          hold
+            save moved
+              make equation
+                bind left, replaced(one/left, name, value)
+                bind right, replaced(one/right, name, value)
+            push(next, moved)
+      save rest, next
+      save l, replaced(l, name, value)
+      save r, replaced(r, name, value)
+      save round, add(round, 1)
+  fork test, ring-equal(l, r)
+    hold
+      back true
+  back and(is-above(rest/length, 0), ring-equal-modulo(l, r, rest))
+
+# ---- ideal membership: prove L == R MODULO polynomial hypotheses (congruence over the ring) ----
+
+# total degree of a monomial key
+task total-degree
+  take cache, like ring-cache
+  take key, like text
+  like number
+  mark private
+
+  save degree, 0
+  walk mono-entries(cache, key)
+    take entry
+    save degree, add(degree, entry/power)
+  back degree
+
+# a degree-lexicographic order on monomials: higher total degree is "larger" (comes first); ties broken lexically. A
+# negative result means `a` is larger than `b`. Fixed and total, so reduction always picks a well-defined leading term.
+task mono-compare
+  take cache, like ring-cache
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  save da, total-degree(cache, a)
+  save db, total-degree(cache, b)
+  fork test, is-unequal(da, db)
+    hold
+      back subtract(db, da)
+  back a/compare(b)
+
+# the leading monomial of a polynomial under the degree-lex order, `none` if the polynomial is zero
+form lead-found
+  link found, like boolean
+  link monomial, like text
+
+task lead-monomial
+  take cache, like ring-cache
+  take poly, like hash, like text, like number
+  like lead-found
+  mark private
+
+  save found, false
+  save lead, <>
+  walk poly/keys()
+    take m
+    fork test, or(not(found), is-below(mono-compare(cache, m, lead), 0))
+      hold
+        save found, true
+        save lead, m
+  back
+    make lead-found
+      bind found, found
+      bind monomial, lead
+
+form quotient-found
+  link found, like boolean
+  link key, like text
+
+# divide monomial `dividend` by monomial `divisor`: the quotient key, or not found if the divisor's powers do not all
+# fit inside the dividend (so the division is not exact within the monomial monoid)
+task mono-divide
+  take cache, like ring-cache
+  take dividend, like text
+  take divisor, like text
+  like quotient-found
+  mark private
+
+  save out, mono-powers(cache, dividend)
+  save missing
+    make quotient-found
+      bind found, false
+      bind key, <>
+  walk mono-entries(cache, divisor)
+    take entry
+    save v, entry/variable
+    save have, get-or-default(out, v, 0)
+    fork test, is-below(have, entry/power)
+      hold
+        back missing
+    fork test, is-equal(have, entry/power)
+      hold
+        out/remove(v)
+      miss
+        save out/{v}, subtract(have, entry/power)
+  back
+    make quotient-found
+      bind found, true
+      bind key, mono-key(out)
+
+form generator
+  link lead, like text
+  link lead-coeff, like number
+  link poly, like hash, like text, like number
+
+# decide L == R MODULO a set of equational hypotheses, each a polynomial identity `hl_i == hr_i`. Sound over the
+# integers (an integral domain): reduce the difference `d = L - R` by the hypothesis polynomials `g_i = hl_i - hr_i`,
+# each step replacing `d` with `leadCoeff(g)*d - c*(m/lead(g))*g` to kill a monomial `m` of `d`. Because every `g_i`
+# is zero under its hypothesis and `leadCoeff` is a nonzero integer, `d` reduces to the zero polynomial iff `L - R` is
+# zero modulo the hypotheses, hence `L == R`. Termination: each step removes the LARGEST reducible monomial and only
+# introduces strictly smaller ones, so the largest reducible monomial strictly decreases in the well-founded
+# degree-lex order (a step limit is a backstop). This is the algebraic case of congruence under hypotheses: it closes
+# conditional identities (e.g. rational well-definedness, where `a*d = a'*b` forces a cross-multiplied sum identity).
+task ring-equal-modulo
+  take left, like expression
+  take right, like expression
+  take hypotheses, like list, like equation
+  like boolean
+
+  mark unsafe
+    save cache, new-cache()
+    back ring-equal-modulo-exact(cache, left, right, hypotheses)
+  halt take
+    take error
+    sift error
+      case excess
+        back false
+      case number-mismatch
+        back false
+  back false
+
+task ring-equal-modulo-exact
+  take cache, like ring-cache
+  take left, like expression
+  take right, like expression
+  take hypotheses, like list, like equation
+  like boolean
+  mark private
+
+  save l, to-poly(cache, left)
+  save r, to-poly(cache, right)
+  fork test, or(not(l/found), not(r/found))
+    hold
+      back false
+  save difference, add-poly(l/terms, scale-poly(r/terms, -1))
+  fork test, is-zero-poly(difference)
+    hold
+      back true
+  save generators, make list
+  walk hypotheses
+    take hypothesis
+    save a, to-poly(cache, hypothesis/left)
+    save b, to-poly(cache, hypothesis/right)
+    fork test, or(not(a/found), not(b/found))
+      hold
+        turn next
+    save g, add-poly(a/terms, scale-poly(b/terms, -1))
+    save lead, lead-monomial(cache, g)
+    fork test, lead/found
+      hold
+        save made
+          make generator
+            bind lead, lead/monomial
+            bind lead-coeff, g/get(lead/monomial)
+            bind poly, g
+        push(generators, made)
+  fork test, is-equal(generators/length, 0)
+    hold
+      back false
+
+  save steps, 0
+  walk test
+    hook test, and(not(is-zero-poly(difference)), is-below(steps, 10000))
+    hook hold
+      # the largest monomial of `difference` that some generator's lead divides, with that generator and the quotient
+      save target-found, false
+      save target-m, <>
+      save target-g, 0
+      save target-q, <>
+      walk difference/keys()
+        take m
+        save matched, false
+        walk generators
+          take g
+          take index
+          fork test, not(matched)
+            hold
+              save q, mono-divide(cache, m, g/lead)
+              fork test, q/found
+                hold
+                  save matched, true
+                  fork test, or(not(target-found), is-below(mono-compare(cache, m, target-m), 0))
+                    hold
+                      save target-found, true
+                      save target-m, m
+                      save target-g, index
+                      save target-q, q/key
+      fork test, not(target-found)
+        hold
+          # normal form reached, and it is not zero
+          back false
+      save c, difference/get(target-m)
+      save chosen, get(generators, target-g)
+      save quotient, make hash
+      save quotient/{target-q}, 1
+      save difference, add-poly(scale-poly(difference, chosen/lead-coeff), scale-poly(mul-poly(cache, quotient, chosen/poly), subtract(0, c)))
+      save steps, add(steps, 1)
+  back is-zero-poly(difference)
+
+# is a polynomial MANIFESTLY non-negative: a non-negative constant plus a sum of square monomials (every variable
+# power even, with a non-negative coefficient)? Sound: such a polynomial is at least zero for all integer values,
+# since each term is a non-negative coefficient times a perfect square. Incomplete (it does not search for a general
+# sum-of-squares decomposition, so it misses e.g. a*a - 2*a*b + b*b = (a-b)^2), but it is decidable and covers "every
+# square is non-negative" and sums of squares.
+task poly-non-negative
+  take cache, like ring-cache
+  take d, like hash, like text, like number
+  like boolean
+  mark private
+
+  walk d/keys()
+    take mono
+    fork test, is-below(d/get(mono), 0)
+      hold
+        back false
+    walk mono-entries(cache, mono)
+      take entry
+      fork test, is-unequal(modulo(entry/power, 2), 0)
+        hold
+          back false
+  back true
+
+# ---- exact rationals (big integers), so the sum-of-squares test below is sound, never a floating-point guess ----
+
+form rat
+  link n, like big-integer
+  link d, like big-integer
+
+task big-zero
+  like big-integer
+  mark private
+
+  back big-from-number(0)
+
+task big-abs
+  take a, like big-integer
+  like big-integer
+  mark private
+
+  fork test, is-below(big-compare(a, big-zero()), 0)
+    hold
+      back a/negate()
+  back a
+
+task bgcd
+  take x, like big-integer
+  take y, like big-integer
+  like big-integer
+  mark private
+
+  save a, big-abs(x)
+  save b, big-abs(y)
+  walk test
+    hook test, is-unequal(big-compare(b, big-zero()), 0)
+    hook hold
+      save next, a/remainder(b)
+      save a, b
+      save b, next
+  back a
+
+task rat-of
+  take n, like big-integer
+  take d, like big-integer
+  like rat
+  mark private
+
+  save top, n
+  save bottom, d
+  fork test, is-below(big-compare(bottom, big-zero()), 0)
+    hold
+      save top, top/negate()
+      save bottom, bottom/negate()
+  save g, bgcd(top, bottom)
+  fork test, is-equal(big-compare(g, big-zero()), 0)
+    hold
+      save g, big-from-number(1)
+  back
+    make rat
+      bind n, top/divide(g)
+      bind d, bottom/divide(g)
+
+task rat-whole
+  take n, like number
+  like rat
+  mark private
+
+  back rat-of(big-from-number(n), big-from-number(1))
+
+task rat-add
+  take a, like rat
+  take b, like rat
+  like rat
+  mark private
+
+  back rat-of(big-add(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task rat-sub
+  take a, like rat
+  take b, like rat
+  like rat
+  mark private
+
+  back rat-of(big-subtract(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task rat-mul
+  take a, like rat
+  take b, like rat
+  like rat
+  mark private
+
+  back rat-of(big-multiply(a/n, b/n), big-multiply(a/d, b/d))
+
+task rat-div
+  take a, like rat
+  take b, like rat
+  like rat
+  mark private
+
+  back rat-of(big-multiply(a/n, b/d), big-multiply(a/d, b/n))
+
+task rat-negative
+  take r, like rat
+  like boolean
+  mark private
+
+  back is-below(big-compare(r/n, big-zero()), 0)
+
+task rat-zero
+  take r, like rat
+  like boolean
+  mark private
+
+  back is-equal(big-compare(r/n, big-zero()), 0)
+
+# decide whether a symmetric rational matrix (flat, `size` by `size`) is positive semidefinite, by LDL congruence
+# (symmetric Gaussian elimination). Sound: a negative pivot exposes a 1-D direction of negative value; a zero pivot
+# with any nonzero in its remaining row exposes a 2x2 indefinite minor. All pivots non-negative (zero pivots having zero
+# rows) means the matrix is congruent to a non-negative diagonal, hence PSD.
+task symmetric-positive-semidefinite
+  take m, like list, like rat
+  take size, like number
+  like boolean
+  mark private
+
+  save i, 0
+  walk test
+    hook test, is-below(i, size)
+    hook hold
+      save pivot, get(m, add(multiply(i, size), i))
+      fork test, rat-negative(pivot)
+        hold
+          back false
+      fork test, rat-zero(pivot)
+        hold
+          save j, add(i, 1)
+          walk test
+            hook test, is-below(j, size)
+            hook hold
+              fork test, not(rat-zero(get(m, add(multiply(i, size), j))))
+                hold
+                  back false
+              save j, add(j, 1)
+        miss
+          save j, add(i, 1)
+          walk test
+            hook test, is-below(j, size)
+            hook hold
+              save factor, rat-div(get(m, add(multiply(i, size), j)), pivot)
+              save k, j
+              walk test
+                hook test, is-below(k, size)
+                hook hold
+                  save value, rat-sub(get(m, add(multiply(j, size), k)), rat-mul(factor, get(m, add(multiply(i, size), k))))
+                  set(m, add(multiply(j, size), k), value)
+                  set(m, add(multiply(k, size), j), value)
+                  save k, add(k, 1)
+              save j, add(j, 1)
+      save i, add(i, 1)
+  back true
+
+# decide whether a polynomial of total degree at most two is non-negative for ALL real (hence integer) values, by
+# testing that its Gram matrix over the variables {1, x1, .., xk} is positive semidefinite. A PSD Gram matrix means
+# the polynomial is a sum of squares of linear forms, which is non-negative everywhere. This proves a*a - 2*a*b + b*b
+# >= 0 (the (a - b)^2 the manifest test misses), n*n - 2*n + 1 >= 0, and every other quadratic inequality. Declines
+# (answers false) on any monomial of total degree above two, leaving such goals to the manifest test.
+task quadratic-form-non-negative
+  take cache, like ring-cache
+  take d, like hash, like text, like number
+  like boolean
+  mark private
+
+  save vars, make list
+  # first pass: register variables and reject any total degree above two
+  walk d/keys()
+    take mono
+    save degree, 0
+    walk mono-entries(cache, mono)
+      take entry
+      save degree, add(degree, entry/power)
+      save vars, registered(vars, entry/variable)
+    fork test, is-above(degree, 2)
+      hold
+        back false
+
+  # slot 0 is the constant 1
+  save size, add(vars/length, 1)
+  save m, make list
+  save cell-count, multiply(size, size)
+  save filled, 0
+  walk test
+    hook test, is-below(filled, cell-count)
+    hook hold
+      push(m, rat-whole(0))
+      save filled, add(filled, 1)
+
+  walk d/keys()
+    take mono
+    save coeff, d/get(mono)
+    save powers, mono-entries(cache, mono)
+    fork test, is-equal(powers/length, 0)
+      hold
+        # constant term
+        put(m, size, 0, 0, rat-whole(coeff))
+        turn next
+    fork test, is-equal(powers/length, 1)
+      hold
+        save only, get(powers, 0)
+        save at, add(index-in(vars, only/variable), 1)
+        fork test, is-equal(only/power, 1)
+          hold
+            # linear term: coeff/2 off the constant row
+            put(m, size, 0, at, half(coeff))
+          miss
+            # square term x_i^2: the i-th diagonal
+            put(m, size, at, at, rat-whole(coeff))
+        turn next
+    # a cross term x_i x_j (both powers 1): coeff/2 in the symmetric off-diagonal
+    save i, add(index-in(vars, get(powers, 0)/variable), 1)
+    save j, add(index-in(vars, get(powers, 1)/variable), 1)
+    put(m, size, i, j, half(coeff))
+
+  back symmetric-positive-semidefinite(m, size)
+
+task registered
+  take vars, like list, like text
+  take v, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(vars, v))
+    hold
+      push(vars, v)
+  back vars
+
+task index-in
+  take vars, like list, like text
+  take v, like text
+  like number
+  mark private
+
+  walk vars
+    take one
+    take at
+    fork test, is-equal(one, v)
+      hold
+        back at
+  back -1
+
+task half
+  take c, like number
+  like rat
+  mark private
+
+  back rat-of(big-from-number(c), big-from-number(2))
+
+task put
+  take m, like list, like rat
+  take size, like number
+  take a, like number
+  take b, like number
+  take value, like rat
+  mark private
+
+  save ab, add(multiply(a, size), b)
+  set(m, ab, rat-add(get(m, ab), value))
+  fork test, is-unequal(a, b)
+    hold
+      save ba, add(multiply(b, size), a)
+      set(m, ba, rat-add(get(m, ba), value))
+
+# decide `left >= right` for ALL values by showing left - right is non-negative everywhere: either manifestly (a sum
+# of square monomials plus a non-negative constant, which also covers high even powers like x^4), or as a quadratic
+# form whose Gram matrix is positive semidefinite (which covers (a - b)^2 and every quadratic inequality). Proves
+# "n*n >= 0", "a*a + b*b >= 2*a*b", and the like, which the linear prover (degree one) cannot. False when neither holds
+# or the goal falls outside the +/-/* integer fragment.
+task non-negative-difference
+  take left, like expression
+  take right, like expression
+  like boolean
+
+  mark unsafe
+    save cache, new-cache()
+    save l, to-poly(cache, left)
+    save r, to-poly(cache, right)
+    fork test, or(not(l/found), not(r/found))
+      hold
+        back false
+    save diff, add-poly(l/terms, scale-poly(r/terms, -1))
+    back or(poly-non-negative(cache, diff), quadratic-form-non-negative(cache, diff))
+  halt take
+    take error
+    sift error
+      case excess
+        back false
+      case number-mismatch
+        back false
+  back false

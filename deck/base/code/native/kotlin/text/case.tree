@@ -1,0 +1,15 @@
+# Casing by language on Kotlin: the JVM's own, which follows Unicode's SpecialCasing (text/case.tree)
+
+bind platform-upper-case-in
+  take value, like text
+  take language, like text
+  like text
+  case kotlin
+    text <$value.uppercase(java.util.Locale.forLanguageTag($language))>
+
+bind platform-lower-case-in
+  take value, like text
+  take language, like text
+  like text
+  case kotlin
+    text <$value.lowercase(java.util.Locale.forLanguageTag($language))>

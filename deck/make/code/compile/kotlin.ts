@@ -70,6 +70,12 @@ function rawCamel(name: string): string {
 function camel(name: string): string {
   const spelled = rawCamel(name)
 
+  // `main` is the program's start: a Term `task main` beside the main `--build` adds was a conflicting overload. It is
+  // `main_` in every position, as compile/native-main.ts `entrySpelling` spells the entry (test/call/make-env.ts)
+  if (spelled === 'main') {
+    return 'main_'
+  }
+
   return KOTLIN_KEYWORDS.has(spelled) ? `\`${spelled}\`` : spelled
 }
 

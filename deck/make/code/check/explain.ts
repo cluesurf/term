@@ -162,17 +162,18 @@ function evaluate(e: Expression, at: Map<string, number>, tasks: Map<string, Sma
   }
 }
 
-// values of `names` where every hypothesis holds and the goal does not, or undefined. Small integers first, nearest
-// zero first, so the values printed are the plainest ones that show the law false. `natural` names start at 0
+// values of `names` where every hypothesis holds and the goal does not, and whether there are any. Small integers
+// first, nearest zero first, so the values printed are the plainest ones that show the law false. `natural` names
+// start at 0
 export function counterexample(
   names: { name: string; natural: boolean }[],
   hypotheses: Expression[],
   goal: Expression,
   // the tasks the rule's statement may call, each run as written
-  tasks: Map<string, SmallTask> = new Map(),
-): Map<string, number> | undefined {
+  tasks: Map<string, SmallTask>,
+): { found: boolean; at: Map<string, number> } {
   if (names.length === 0 || names.length > 6) {
-    return undefined
+    return { found: false, at: new Map() }
   }
 
   const reach = names.length <= 3 ? 4 : names.length === 4 ? 3 : 2
@@ -215,7 +216,7 @@ export function counterexample(
 
   search(0)
 
-  return found
+  return found ? { found: true, at: found } : { found: false, at: new Map() }
 }
 
 // `a = 1, b = 2`

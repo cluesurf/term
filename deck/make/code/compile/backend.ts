@@ -7,6 +7,7 @@ import type {
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
+import { LOWERED_LIST_MEMBERS, LOWERED_MAP_MEMBERS } from '@term/make/code/compile/lowered-members'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -37,39 +38,9 @@ export type CollectionOp = {
   kind: 'map' | 'array'
 }
 
-const MAP_METHODS = new Set([
-  'has',
-  'get',
-  'set',
-  'delete',
-  'keys',
-  'values',
-])
-
-const ARRAY_METHODS = new Set([
-  'push',
-  'pop',
-  'at',
-  'get',
-  'set',
-  'includes',
-  'indexOf',
-  'lastIndexOf',
-  'concat',
-  'slice',
-  'toReversed',
-  'join',
-  'map',
-  'filter',
-  'some',
-  'every',
-  'reduce',
-  'findIndex',
-  'flat',
-  'shift',
-  'unshift',
-  'splice',
-])
+// the members every emitter lowers, the one table the checker reads too (compile/lowered-members.ts)
+const MAP_METHODS = LOWERED_MAP_MEMBERS
+const ARRAY_METHODS = LOWERED_LIST_MEMBERS
 
 // the extra trait the element type needs for an array op that goes beyond `Clone`: equality (`includes` / `indexOf`)
 // or string rendering (`join`). A backend reads this to constrain the element generic of a method that uses the op.

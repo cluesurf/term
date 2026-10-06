@@ -1,0 +1,21 @@
+# Numbers and money by language on Swift: Foundation's `NumberFormatter`, over the CLDR the system carries
+# (text/format.tree). Rounding half to even, as `Intl.NumberFormat` is asked to round on node
+
+bind platform-format-number
+  take value, like decimal
+  take language, like text
+  take fewest, like number
+  take most, like number
+  like text
+  case swift
+    load <Foundation>
+    text <\{ () -\> String in let f = NumberFormatter(); f.locale = Locale(identifier: $language); f.numberStyle = .decimal; f.minimumFractionDigits = $fewest; f.maximumFractionDigits = $most; f.roundingMode = .halfEven; return f.string(from: NSNumber(value: $value)) ?? "" \}()>
+
+bind platform-format-currency
+  take value, like decimal
+  take currency, like text
+  take language, like text
+  like text
+  case swift
+    load <Foundation>
+    text <\{ () -\> String in let f = NumberFormatter(); f.locale = Locale(identifier: $language); f.numberStyle = .currency; f.currencyCode = $currency; f.roundingMode = .halfEven; return f.string(from: NSNumber(value: $value)) ?? "" \}()>

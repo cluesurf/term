@@ -9,10 +9,17 @@ mark stable
 load @term/base/integer/big
   find big-integer
   find make-big-integer
+  find big-from-number
   find big-add
   find big-subtract
   find big-multiply
   find big-compare
+  find big-divide
+  find big-remainder
+  find big-negate
+
+load @term/base/exception
+  find defect
 
 load @term/base/text/string
   find repeat
@@ -182,6 +189,160 @@ form big-decimal
         call at-scale
           read other
           read common
+
+# free-function arithmetic, for other modules to call without colliding with the number intrinsics: a method `add` on
+# a decimal shares its bare name with `add` of two numbers, which wins (big.tree's `big-add` is the same answer to the
+# same collision, note/term/plan/decisions-2026-10.md, D5)
+task decimal-add
+  take a, like big-decimal
+  take b, like big-decimal
+  like big-decimal
+  send back, a/add(b)
+
+task decimal-subtract
+  take a, like big-decimal
+  take b, like big-decimal
+  like big-decimal
+  send back, a/subtract(b)
+
+task decimal-multiply
+  take a, like big-decimal
+  take b, like big-decimal
+  like big-decimal
+  send back, a/multiply(b)
+
+# -1, 0, or 1 as `a` is less than, equal to, or greater than `b`
+task decimal-compare
+  take a, like big-decimal
+  take b, like big-decimal
+  like number
+  send back, a/compare(b)
+
+# How a result with more digits than it keeps is rounded, the seven modes of IEEE 754-2008 and Java's `BigDecimal`:
+# to the nearer, ties to the even digit (banker's rounding, the default), ties away from zero, or ties toward zero; or
+# always away from zero, toward zero, toward positive infinity, toward negative infinity
+form rounding
+  mark text
+  case half-even
+  case half-up
+  case half-down
+  case up
+  case down
+  case ceiling
+  case floor
+
+# `n / d` rounded to a whole number by `mode`, from the quotient truncated toward zero and its remainder. The quotient
+# moves one step away from zero when the mode says so: always for `up`, never for `down`, by the exact result's sign for
+# `ceiling` and `floor`, and by twice the remainder against the divisor for the three `half` modes, the even quotient
+# keeping a tie for `half-even`
+task rounded-quotient
+  take n, like big-integer
+  take d, like big-integer
+  take mode, like rounding
+  like big-integer
+  mark private
+  save zero, big-from-number(0)
+  save quotient, big-divide(n, d)
+  save rest, big-remainder(n, d)
+  fork test
+    hook test
+      call is-equal(big-compare(rest, zero), code(0))
+    hook hold
+      send back, read quotient
+  # the exact result's sign, from the operands' (the quotient may be zero)
+  save negative
+    call is-unequal(is-below(big-compare(n, zero), code(0)), is-below(big-compare(d, zero), code(0)))
+  save size, read rest
+  fork test
+    hook test
+      call is-below(big-compare(rest, zero), code(0))
+    hook hold
+      save size, big-negate(rest)
+  save whole, read d
+  fork test
+    hook test
+      call is-below(big-compare(d, zero), code(0))
+    hook hold
+      save whole, big-negate(d)
+  # -1 below half, 0 exactly half, 1 above
+  save half, big-compare(big-multiply(size, big-from-number(2)), whole)
+  save odd
+    call is-unequal(big-compare(big-remainder(quotient, big-from-number(2)), zero), code(0))
+  save away, false
+  sift mode
+    case up
+      save away, true
+    case down
+      save away, false
+    case ceiling
+      save away, not(negative)
+    case floor
+      save away, read negative
+    case half-up
+      save away, is-minimum(half, code(0))
+    case half-down
+      save away, is-above(half, code(0))
+    case half-even
+      save away, or(is-above(half, code(0)), and(is-equal(half, code(0)), odd))
+  fork test
+    hook test
+      read away
+    hook hold
+      fork test
+        hook test
+          read negative
+        hook hold
+          send back, big-subtract(quotient, big-from-number(1))
+      send back, big-add(quotient, big-from-number(1))
+  send back, read quotient
+
+# `a / b` with exactly `scale` digits after the point, rounded by `mode`. A division by zero raises `defect`
+task decimal-divide
+  take a, like big-decimal
+  take b, like big-decimal
+  take scale, like number
+  take mode, like rounding
+  like big-decimal
+  fork test
+    hook test
+      call is-equal(big-compare(b/mantissa, big-from-number(0)), code(0))
+    hook hold
+      halt defect
+        bind thing, <a decimal division by zero>
+  # a / b = (ma / 10^sa) / (mb / 10^sb), so its mantissa at `scale` digits is ma * 10^(sb + scale) over mb * 10^sa
+  save shift, call subtract(add(b/scale, scale), a/scale)
+  save numerator, read a/mantissa
+  save denominator, read b/mantissa
+  fork test
+    hook test
+      call is-minimum(read(shift), code(0))
+    hook hold
+      save numerator, big-multiply(a/mantissa, power-of-ten(shift))
+    hook miss
+      save denominator, big-multiply(b/mantissa, power-of-ten(subtract(0, shift)))
+  send back
+    make big-decimal
+      bind mantissa, rounded-quotient(numerator, denominator, mode)
+      bind scale, read scale
+
+# `value` with exactly `scale` digits after the point: padded with zeros, or rounded by `mode`
+task decimal-round
+  take value, like big-decimal
+  take scale, like number
+  take mode, like rounding
+  like big-decimal
+  fork test
+    hook test
+      call is-minimum(read(scale), read(value/scale))
+    hook hold
+      send back
+        make big-decimal
+          bind mantissa, at-scale(value, scale)
+          bind scale, read scale
+  send back
+    make big-decimal
+      bind mantissa, rounded-quotient(value/mantissa, power-of-ten(subtract(value/scale, scale)), mode)
+      bind scale, read scale
 
 # parse a decimal from its text (12.34, -0.5, 1000)
 task make-big-decimal

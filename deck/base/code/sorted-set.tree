@@ -1,0 +1,98 @@
+# A set kept in order by a comparator: `ordering/from-numbers`, `ordering/from-texts` (code point order) or any task
+# that returns an ordering. The sorted map's B-tree with nothing but its keys meant, so `insert`, `has`, `remove`, `least`
+# and `greatest` are O(log n), `length` is O(1), and `to-list` is in order. Each key carries one `true` beside it: a
+# word an entry, where a second copy of the tree with no values would be a second B-tree to keep right.
+# `set` is the set to reach for when order does not matter. test/stdlib/sorted-set.ts runs it on all four backends.
+
+mark stable
+
+load @term/base/sorted-map
+  find sorted-map
+  find make-sorted-map
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+form sorted-set
+  head k
+  link entries, like sorted-map k boolean
+
+  # the set with `item` in it. `insert`, as `set` and `ordered-set` name it: `add` is arithmetic's
+  task insert
+    take self
+    take item, like k
+    like sorted-set k
+    call put(read(self/entries), read(item), true)
+    send back, read self
+
+  task has
+    take self
+    take item, like k
+    like boolean
+    send back
+      call holds(read(self/entries), read(item))
+
+  # takes `item` out, and says whether it was there
+  task remove
+    take self
+    take item, like k
+    like boolean
+    send back
+      call drop(read(self/entries), read(item))
+
+  # how many values it holds
+  task length
+    take self
+    like number
+    send back
+      call length(read(self/entries))
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-empty(read(self/entries))
+
+  # the values in order
+  task to-list
+    take self
+    like list
+      like k
+    send back
+      call keys(read(self/entries))
+
+  # the least value, or none when empty
+  task least
+    take self
+    like maybe
+      head k
+    send back
+      call least(read(self/entries))
+
+  # the greatest value, or none when empty
+  task greatest
+    take self
+    like maybe
+      head k
+    send back
+      call greatest(read(self/entries))
+
+# an empty set ordered by `compare`
+task make-sorted-set
+  head k
+  take compare
+    like task
+      take left, like k
+      take right, like k
+      like ordering
+  like sorted-set k
+  send back
+    make sorted-set
+      bind entries
+        call make-sorted-map(read(compare))

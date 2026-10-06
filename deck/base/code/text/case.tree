@@ -1,0 +1,31 @@
+# Casing by language: `upper-case-in(<istanbul>, <tr>)` is `İSTANBUL`, where the language-blind `to-upper-case` gives
+# `ISTANBUL`. The language is a BCP 47 tag (`<tr>`, `<tr-TR>`, `<lt>`), and only its first part counts.
+#
+# Unicode's SpecialCasing has three languages whose casing differs from the default: Turkish and Azerbaijani (a dotted
+# and a dotless i, `i`/`İ` and `ı`/`I`) and Lithuanian (a dot kept above a lower `i` that carries another accent). Every
+# other tag cases as `to-upper-case` and `to-lower-case` do. JavaScript, Swift and Kotlin each case by the platform's own
+# (`toLocaleUpperCase`, `uppercased(with:)`, `uppercase(Locale)`), which follow SpecialCasing. Rust's standard library
+# cases without a language, so its case is the three languages' rules written in Term (native/rust/text/case.tree), and
+# test/stdlib/text-case.ts holds every backend to node's answers.
+
+mark stable
+
+load @term/base/native/{platform}/text/case
+  find platform-upper-case-in
+  find platform-lower-case-in
+
+# `value` upper-cased as the language `language` writes it
+task upper-case-in
+  take value, like text
+  take language, like text
+  like text
+  send back
+    call platform-upper-case-in(read(value), read(language))
+
+# `value` lower-cased as the language `language` writes it
+task lower-case-in
+  take value, like text
+  take language, like text
+  like text
+  send back
+    call platform-lower-case-in(read(value), read(language))

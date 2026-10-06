@@ -1,0 +1,248 @@
+# A task written in place becomes ASYNC where it is handed to a slot that takes an async task: an argument whose
+# parameter is `like task / mark async`, or an item pushed onto a list that is then handed to a parameter whose items
+# are such tasks (`gather(works)`). A task that is not async may always stand where an async one is asked for, and on
+# TypeScript nothing more is needed, since awaiting a value that is already there gives it back. Natively the two are
+# different types, a function against one answering a future or a coroutine, and `spawn` and `gather` handed the
+# work they were written for (`task work / like text / back <hello>`) did not build on Rust, Swift or Kotlin once
+# their `work` was async (test/compile/roundtrip.ts, the job programs, 2026-10-05). Marking the literal async makes it
+# the function its slot takes on every backend, with nothing else about it changed.
+#
+# Runs after type checking, before `resolve-async`, which then treats the literal as the async closure it now is.
+#
+# Ported from check/async-slots.ts (self-hosting, 2026-10-05). The original wrote each literal and type where it
+# stood, deep in the expressions it walked; under D1 that is a write nobody hands back. So a first, read-only pass
+# finds each task's list locals that are both pushed a literal and handed to a slot of async tasks, and the
+# `async-slots` rule of compile/node-rewrite.tree rewrites the task's body: literal arguments, pushes onto those lists,
+# and their declarations and reads, each handed back. Only the last task of a name is read, as a map keyed by name
+# kept it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find ends-with
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+
+load ../compile/node-walk
+  find expressions-in
+
+load ../compile/node-rewrite
+  find rewrite-program
+  find rewrite-rule
+
+task async-slots
+  take program, like list, like statement
+  like list, like statement
+
+  # by task name: where its last definition stands, and each parameter's slot, an async task or a list of them
+  save last-at, make hash
+  save slots, make hash
+  save item-slots, make hash
+  walk program
+    take one
+    take at
+    sift one
+      case function
+        save last-at/{name}, at
+        save slot-flags, make list
+        save item-flags, make list
+        walk params
+          take param
+          push(slot-flags, is-async-task(param/type))
+          push(item-flags, is-async-task(item-of(param/type)))
+        save slots/{name}, slot-flags
+        save item-slots/{name}, item-flags
+      miss
+        turn next
+
+  save out, make list
+  walk program
+    take one
+    take at
+    sift one
+      case function
+        fork test, is-unequal(last-at/get(name), at)
+          hold
+            push(out, one)
+            turn next
+        save lists, lists-of(body, item-slots)
+        save rule
+          make async-slots
+            bind slots, slots
+            bind item-slots, item-slots
+            bind lists, lists
+        save one/body, rewrite-program(body, rule)
+        push(out, one)
+      miss
+        push(out, one)
+  back out
+
+# the list locals of a task both pushed a task literal and handed to a slot of async tasks
+task lists-of
+  take body, like list, like statement
+  take item-slots, like hash, like text, like list, like boolean
+  like list, like text
+  mark private
+
+  save pushed, make list
+  save handed, make list
+  walk expressions-in(body)
+    take one
+    sift one
+      case call
+        save list-name, pushed-onto(one)
+        fork test, and(is-unequal(list-name, <>), pushes-literal(one))
+          hold
+            push(pushed, list-name)
+        save callee-name, <>
+        sift callee
+          case variable
+            save callee-name, name
+          miss
+            turn next
+        fork test, not(item-slots/has(callee-name))
+          hold
+            turn next
+        save flags, item-slots/get(callee-name)
+        walk args
+          take arg
+          take at
+          fork test, and(is-below(at, flags/length), get(flags, at))
+            hold
+              sift arg
+                case variable
+                  push(handed, name)
+                miss
+                  turn next
+      miss
+        turn next
+  save out, make list
+  walk pushed
+    take name
+    fork test, and(has-text(handed, name), not(has-text(out, name)))
+      hold
+        push(out, name)
+  back out
+
+# the list a call pushes onto: `works/push(task ...)`, or the method lowered to a call with the list first; `<>` for
+# any other call
+task pushed-onto
+  take call, like expression
+  like text
+  mark private
+
+  sift call
+    case call
+      sift callee
+        case member
+          fork test, is-equal(name, <push>)
+            hold
+              back variable-name(target)
+          back <>
+        case variable
+          fork test, or(is-equal(name, <push>), or(ends-with(name, <-push>), ends-with(name, <_push>)))
+            hold
+              walk args
+                take first
+                back variable-name(first)
+          back <>
+        miss
+          back <>
+    miss
+      back <>
+
+# does a push hand the list a task literal: any argument of a member push, any after the list of a lowered one
+task pushes-literal
+  take call, like expression
+  like boolean
+  mark private
+
+  sift call
+    case call
+      save member-call, is-equal(callee/form, <member>)
+      walk args
+        take arg
+        take at
+        fork test, and(or(member-call, is-above(at, 0)), is-equal(arg/form, <closure>))
+          hold
+            back true
+      back false
+    miss
+      back false
+
+task variable-name
+  take given, like expression
+  like text
+  mark private
+
+  sift given
+    case variable
+      back name
+    miss
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task is-async-task
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case function
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                back true
+          back false
+        miss
+          back false
+    miss
+      back false
+
+# the item type of a list type, as declared (`like list, like task ...`)
+task item-of
+  take given, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back make(some, element)
+        case named
+          fork test, is-equal(name, <list>)
+            hold
+              walk args
+                take first
+                back make(some, first)
+          back make none
+        miss
+          back make none
+    miss
+      back make none

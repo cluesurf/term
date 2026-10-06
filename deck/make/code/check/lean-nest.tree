@@ -1,0 +1,521 @@
+# A lean label that names no parameter is a nested call (note/term/lean.md, "position first, then the name").
+#
+# Under lean a child of a call whose head is a plain name is read by the mill as a LABEL, its children built as an
+# array, because the mill cannot know the callee's parameters. The resolver and the checker can. A head that names
+# a parameter of the callee is that parameter. A head that names something callable in scope (a task, a method, a
+# form, a variant) is a nested call or construction of it, written positionally:
+#
+#   back join(join(root, <.base>), home)
+#
+# is `join(join(root, ".base"), home)`, not a call to `join` with a parameter called `join`. Until 2026-10-02 only
+# the first half existed, and `pnpm term:lean-equal` found 21 of the CLI's 29 .tree files failing on the second
+# (self-hosting-0013). The data DSL lean was built on never nests a call inside a call.
+#
+# This module is the one rewrite both phases share: `check/resolve.ts` applies it first, where the scope is known,
+# so the nested callee resolves (and an imported one counts as used); `check/infer.ts` applies it again for a head
+# the resolver cannot see as callable, a form or a variant, which only the checker's tables hold.
+#
+# Ported from check/lean-nest.ts (self-hosting, 2026-10-05). The original asked two predicates of the caller's scope;
+# here `lean-labels` answers the labels that could be nested and the caller answers which of them to nest, asking
+# its scope in the same order, and `nest-lean-calls` rewrites those, writing the call it is handed (D1).
+
+load @term/base/list
+  find list
+  find get
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find binary-op
+  find expression
+  find expression-span
+  find unary-op
+
+load ../compile/surface
+  find binary-builtin-op
+  find is-binary-builtin
+
+# a label of a lean call that may be a nested call: its argument's place, the name it was written with, and the name
+# it calls (the imported name where the written one is an import alias)
+form lean-label
+  link at, like number
+  link written, like text
+  link name, like text
+
+# The builtins a bare head folds to an operator, the way the mill folds them (`foldBuiltin` in compile/mint-bridge):
+# `subtract a, b` is `a - b`, never a call to a task named `subtract`. A nested one rebuilt here has to fold the
+# same way or it reaches the checker as a call to nothing. `not` is the unary one: without it `bits/push(not(x))`, a
+# label under a callee with no parameters on record, was refused as a property naming nothing
+# (deck/test/code/abstraction-refinement.tree, 2026-10-05, test/check/lean-not-argument.ts)
+task is-foldable
+  take name, like text
+  like boolean
+
+  back or(is-binary-builtin(name), or(is-equal(name, <increment>), or(is-equal(name, <decrement>), is-equal(name, <not>))))
+
+# the labels of a lean call a nested call could stand for, in argument order: a label written over an array of
+# values, with a name. The caller keeps those that name no parameter of the callee and name something callable
+task lean-labels
+  take node, like expression
+  like list, like lean-label
+
+  save out, make list
+  sift node
+    case call
+      fork test, not(any-lean(node))
+        hold
+          back out
+      save written-names, texts-of-names(node)
+      save aliases, texts-of-aliases(node)
+      save flags, flags-of(node)
+      walk args
+        take arg
+        take at
+        save written, text-at(written-names, at)
+        save imported, text-at(aliases, at)
+        save called, imported
+        fork test, is-equal(called, <>)
+          hold
+            save called, written
+        fork test, and(flag-at(flags, at), and(is-unequal(written, <>), and(is-unequal(called, <>), is-equal(arg/form, <array>))))
+          hold
+            save label
+              make lean-label
+                bind at, at
+                bind written, written
+                bind name, called
+            push(out, label)
+    miss
+      back out
+  back out
+
+# Rewrite the lean labels at `chosen` into positional nested calls, writing them into the call. Answers how many it
+# rewrote. The nested call's own property-shaped arguments become labels again, so its own arrangement decides them by
+# ITS signature, which is what makes the rule recursive.
+task nest-lean-calls
+  take node, like expression
+  take chosen, like list, like number
+  like number
+
+  sift node
+    case call
+      fork test, not(any-lean(node))
+        hold
+          back 0
+      # `''` is no label and no alias (compile/node.tree, `names`)
+      save names-out, texts-of-names(node)
+      fork test, is-equal(names-out/length, 0)
+        hold
+          walk args
+            take arg
+            push(names-out, <>)
+      save flags-out, flags-of(node)
+      save aliases-out, texts-of-aliases(node)
+      save args-out, make list
+      save rewritten, 0
+      walk args
+        take arg
+        take at
+        fork test, not(has-number(chosen, at))
+          hold
+            push(args-out, arg)
+            turn next
+        save written, text-at(names-out, at)
+        save imported, text-at(aliases-out, at)
+        save called, imported
+        fork test, is-equal(called, <>)
+          hold
+            save called, written
+        fork test, is-above(aliases-out/length, at)
+          hold
+            set(aliases-out, at, <>)
+        set(names-out, at, <>)
+        set(flags-out, at, false)
+        save rewritten, add(rewritten, 1)
+        push(args-out, nested(arg, called, written, imported))
+      save node/args, args-out
+      save node/names, names-out
+      save node/lean-names, flags-out
+      fork test, is-above(aliases-out/length, 0)
+        hold
+          save node/lean-aliases, aliases-out
+      back rewritten
+    miss
+      back 0
+
+# the label's array as a nested call of `called`, or the operator it folds to
+task nested
+  take arg, like expression
+  take called, like text
+  take written, like text
+  take imported, like text
+  like expression
+  mark private
+
+  save items, items-of(arg)
+  save at, expression-span(arg)
+  save folded, fold(called, items, at)
+  fork test, is-unequal(folded/form, <array>)
+    hold
+      back folded
+  save inner-names, make list
+  save inner-aliases, make list
+  save inner-args, make list
+  walk items
+    take item
+    save label-name, label-name-of(item)
+    push(inner-names, label-name)
+    push(inner-aliases, label-imported-of(item))
+    fork test, is-equal(label-name, <>)
+      hold
+        push(inner-args, item)
+      miss
+        push(inner-args, label-value-of(item))
+  save callee-alias, <>
+  fork test, is-unequal(imported, <>)
+    hold
+      save callee-alias, written
+  save callee, variable-at(called, at, callee-alias)
+  back nested-call(callee, inner-args, at, inner-names, inner-aliases)
+
+task nested-call
+  take callee, like expression
+  take args, like list, like expression
+  take at, like span
+  take inner-names, like list, like text
+  take inner-aliases, like list, like text
+  like expression
+  mark private
+
+  save any-name, any-text(inner-names)
+  save any-alias, any-text(inner-aliases)
+  save flags, make list
+  walk inner-names
+    take one
+    push(flags, is-unequal(one, <>))
+  fork test, and(any-name, any-alias)
+    hold
+      back
+        make expression/call
+          bind callee, callee
+          bind args, args
+          bind span, at
+          bind lean, true
+          bind names, inner-names
+          bind lean-names, flags
+          bind lean-aliases, inner-aliases
+  fork test, any-name
+    hold
+      back
+        make expression/call
+          bind callee, callee
+          bind args, args
+          bind span, at
+          bind lean, true
+          bind names, inner-names
+          bind lean-names, flags
+  fork test, any-alias
+    hold
+      back
+        make expression/call
+          bind callee, callee
+          bind args, args
+          bind span, at
+          bind lean, true
+          bind lean-aliases, inner-aliases
+  back
+    make expression/call
+      bind callee, callee
+      bind args, args
+      bind span, at
+      bind lean, true
+
+task variable-at
+  take name, like text
+  take at, like span
+  take alias, like text
+  like expression
+  mark private
+
+  fork test, is-equal(alias, <>)
+    hold
+      back
+        make expression/variable
+          bind name, name
+          bind span, at
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+      bind alias, alias
+
+# the operator a builtin head folds to, or the array as it was where it folds to none
+task fold
+  take name, like text
+  take args, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  fork test, and(is-binary-builtin(name), is-equal(args/length, 2))
+    hold
+      back
+        make expression/binary
+          bind op, binary-builtin-op(name)
+          bind left, get(args, 0)
+          bind right, get(args, 1)
+          bind span, at
+  fork test, and(or(is-equal(name, <increment>), is-equal(name, <decrement>)), is-equal(args/length, 1))
+    hold
+      save op, make plus
+      fork test, is-equal(name, <decrement>)
+        hold
+          save op, make minus
+      save one
+        make expression/integer
+          bind value, 1
+          bind span, at
+      back
+        make expression/binary
+          bind op, op
+          bind left, get(args, 0)
+          bind right, one
+          bind span, at
+  fork test, and(is-equal(name, <not>), is-equal(args/length, 1))
+    hold
+      save op, make not
+      back
+        make expression/unary
+          bind op, op
+          bind operand, get(args, 0)
+          bind span, at
+  back
+    make expression/array
+      bind items, args
+      bind span, at
+
+# An argument that was itself written as a property head (`key <x>`), which the mill built as a one-word lean call,
+# read back as the label it was: its name, `<>` where it is no such label. A call that already carries labels of its
+# own is a real nested call and stays.
+#
+# One ambiguity is accepted and written down: an EXPLICIT `call key` inside a lean call, where `key` is also a
+# parameter of the call it sits in, reads as that parameter. `bind key, ...` is the long form that forces it.
+# The label is the name the call was WRITTEN with: a callee renamed from an import alias (`rope-text` to `to-string`)
+# reads back as its alias, and the imported name is kept, so the nested call keeps its `lean-aliases`
+# (`trim(rope-text(value))` inside `parse-float(...)` named nothing once a second module defined `to-string`, the
+# engine port, 2026-10-04)
+task label-name-of
+  take item, like expression
+  like text
+  mark private
+
+  sift item
+    case call
+      fork test, not(lean)
+        hold
+          back <>
+      fork test, any-text(texts-of-names(item))
+        hold
+          back <>
+      sift callee
+        case variable
+          fork test, contains-slash(name)
+            hold
+              back <>
+          fork test, is-unequal(alias, <>)
+            hold
+              back alias
+          back name
+        miss
+          back <>
+    miss
+      back <>
+
+# the imported name a label was written as an alias of, `<>` where it was not
+task label-imported-of
+  take item, like expression
+  like text
+  mark private
+
+  fork test, is-equal(label-name-of(item), <>)
+    hold
+      back <>
+  sift item
+    case call
+      sift callee
+        case variable
+          fork test, is-unequal(alias, <>)
+            hold
+              back name
+          back <>
+        miss
+          back <>
+    miss
+      back <>
+
+# a label's values, as the array the mill would have built under it
+task label-value-of
+  take item, like expression
+  like expression
+  mark private
+
+  sift item
+    case call
+      save values, make list
+      walk args
+        take value
+        push(values, value)
+      back
+        make expression/array
+          bind items, values
+          bind span, span
+    miss
+      back item
+
+task contains-slash
+  take name, like text
+  like boolean
+  mark private
+
+  walk split-chars(name)
+    take c
+    fork test, is-equal(c, </>)
+      hold
+        back true
+  back false
+
+task split-chars
+  take value, like text
+  like list, like text
+  mark private
+
+  back value/split(<>)
+
+task items-of
+  take arg, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  sift arg
+    case array
+      walk items
+        take item
+        push(out, item)
+    miss
+      back out
+  back out
+
+# does the call carry a lean label at all
+task any-lean
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      fork test, not(lean)
+        hold
+          back false
+      walk lean-names
+        take flag
+        fork test, flag
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# a call's `names`, `lean-aliases` and `lean-names`, each copied by a walk, so the call's own lists are only read
+task texts-of-names
+  take node, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk names
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task texts-of-aliases
+  take node, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk lean-aliases
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task flags-of
+  take node, like expression
+  like list, like boolean
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk lean-names
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+task text-at
+  take values, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, values/length)
+    hold
+      back get(values, at)
+  back <>
+
+task flag-at
+  take values, like list, like boolean
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, values/length)
+    hold
+      back get(values, at)
+  back false
+
+task any-text
+  take values, like list, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-unequal(one, <>)
+      hold
+        back true
+  back false
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false

@@ -111,7 +111,11 @@ const SAFE = 2n ** 53n - 1n
 const I64_MAX = 2n ** 63n - 1n
 const I64_MIN = -(2n ** 63n)
 
-export function checkLiterals(program: Program, file: string): { errors: Diagnostic[]; warnings: Diagnostic[] } {
+// `env` is the build's: on a JavaScript one (node, browser, a worker) a literal past 2^53 is not the number written, so
+// it is refused there, where natively it is held exactly and only warned of. A test of rationals past i64 met it on
+// 2026-10-05: `4611686018427387903` ran as `...904` on TypeScript, with the warning nobody reads
+export function checkLiterals(program: Program, file: string, env?: string): { errors: Diagnostic[]; warnings: Diagnostic[] } {
+  const javascript = env === undefined || env === 'node' || env === 'browser' || env === 'cloudflare' || env === 'webview'
   const errors: Diagnostic[] = []
   const warnings: Diagnostic[] = []
 
@@ -155,11 +159,12 @@ export function checkLiterals(program: Program, file: string): { errors: Diagnos
           }),
         )
       } else if (value > SAFE || value < -SAFE) {
-        warnings.push(
+        ;(javascript ? errors : warnings).push(
           diagnose('type-mismatch', {
             file,
             span,
             message: `${value} is past 2^53, so TypeScript reads it as ${Number(value)}. Rust, Swift and Kotlin hold it exactly`,
+            hint: 'use `@term/base/integer/big` (`make-big-integer(<...>)`) for a whole number this large where it must be exact everywhere',
           }),
         )
       }

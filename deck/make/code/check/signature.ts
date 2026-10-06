@@ -1,67 +1,34 @@
-// A function's type signature in the checker, plus instantiation. Extracted from the inference closure as the second
-// atomic component of the modular checker. A signature is the firewall boundary: callers depend on a callee's
-// signature, never its body. `instantiate` freshens a signature's generic variables (Hindley-Milner let-polymorphism)
-// against a substitution, so a generic function can be called at different types. See note/seed/plan/compilation-performance.md (Tier 2).
+// A function's signature instantiated: its generic variables freshened against a substitution (Hindley-Milner
+// let-polymorphism), so a generic function can be called at different types. A signature is the firewall boundary:
+// callers depend on a callee's signature, never its body. See note/seed/plan/compilation-performance.md (Tier 2).
+//
+// The checker's signature record holds sets and the parameters' defaults, and stays the checker's (check/infer.ts
+// `Signature`, `instantiate`); this is the part that does the work, the shape check/signature.tree has: handed the
+// generic and hole ids as lists, it answers the new types with each generic's fresh variable, from which the checker
+// reads the bounds.
 
-import type { Expression, Type } from '@term/make/code/compile/node'
+import type { Type } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
 import { freshType, resolveType } from '@term/make/code/check/substitution'
 
-export type Signature = {
-  // the ids of this signature's generic type variables
-  generics: Set<number>
-  // each generic variable id to its declared name (for nice generic output)
-  genericNames: Map<number, string>
-  // each generic variable id to its trait bound (`need`), if any
-  bounds: Map<number, string>
+export type InstantiatedTypes = {
   params: Type[]
   result: Type
-  // the minimum call arity: trailing optional (`need false`) params may be omitted
-  minArgs: number
-  // the parameters' names, defaults and positional-only flags, aligned with `params`, so a call can name its
-  // arguments, omit one that has a `fall`, and be refused a name on a `slot`
-  names: string[]
-  fallbacks: (Expression | undefined)[]
-  positional: boolean[]
-  // which parameters are `need false`: one left out between two given ones takes its empty value, as a trailing one does
-  optional?: boolean[]
-  // HOLES: the variables a generic signature's bare forms were seeded with (`like maybe`, `like signal`), which are not
-  // among `generics`. One per signature, so every call shared it until each call was given its own (native-dom-0046)
-  holes?: Set<number>
+  // the fresh variable each generic (and each hole met) was given, by the variable it replaces
+  fresh: Map<number, Type>
 }
 
-export type Instantiated = {
-  params: Type[]
-  result: Type
-  bounds: { variable: Type; mask: string }[]
-  minArgs: number
-  names: string[]
-  fallbacks: (Expression | undefined)[]
-  positional: boolean[]
-  optional?: boolean[]
-}
-
-// instantiate a signature, freshening its generics via `sub`. A non-generic signature is returned as-is.
-export function instantiate(
-  signature: Signature,
+export function instantiateTypes(
+  generics: number[],
+  holes: number[],
+  params: Type[],
+  result: Type,
   sub: Substitution,
-): Instantiated {
-  if (signature.generics.size === 0) {
-    return {
-      params: signature.params,
-      result: signature.result,
-      bounds: [],
-      minArgs: signature.minArgs,
-      names: signature.names,
-      fallbacks: signature.fallbacks,
-      positional: signature.positional,
-      optional: signature.optional,
-    }
-  }
-
+): InstantiatedTypes {
   const map = new Map<number, Type>()
+  const holeSet = new Set(holes)
 
-  for (const id of signature.generics) {
+  for (const id of generics) {
     map.set(id, freshType(sub))
   }
 
@@ -76,8 +43,8 @@ export function instantiate(
     // linked to a declared generic, it takes that generic's fresh copy; still free, because no body has been checked
     // yet (a module-level `host` is checked before every function), it takes a fresh variable of this call's own.
     // Shared, the first call to bind it decided it for the whole program (native-dom-0044, 0046)
-    if (type.kind === 'variable' && signature.holes?.has(type.id)) {
-      const r = resolveType(sub,type)
+    if (type.kind === 'variable' && holeSet.has(type.id)) {
+      const r = resolveType(sub, type)
 
       if (r.kind === 'variable') {
         if (map.has(r.id)) {
@@ -93,7 +60,7 @@ export function instantiate(
       return subst(r)
     }
 
-    const r = resolveType(sub,type)
+    const r = resolveType(sub, type)
 
     if (r.kind === 'variable') {
       return map.get(r.id) ?? r
@@ -116,26 +83,15 @@ export function instantiate(
       }
     }
 
-    if (r.kind === 'named' && r.args) {
+    // a named type with arguments is built anew from its name and freshened arguments; one with none is kept as it
+    // stands, its value arguments with it. Until the port it was rebuilt whenever `args` was present, so an empty
+    // `args` dropped the value arguments, and a Term `need false` list cannot be told present and empty from absent
+    if (r.kind === 'named' && r.args?.length) {
       return { kind: 'named', name: r.name, args: r.args.map(subst) }
     }
 
     return r
   }
 
-  const bounds = [...signature.bounds].map(([id, mask]) => ({
-    variable: map.get(id)!,
-    mask,
-  }))
-
-  return {
-    params: signature.params.map(subst),
-    result: subst(signature.result),
-    bounds,
-    minArgs: signature.minArgs,
-    names: signature.names,
-    fallbacks: signature.fallbacks,
-    positional: signature.positional,
-    optional: signature.optional,
-  }
+  return { params: params.map(subst), result: subst(result), fresh: map }
 }

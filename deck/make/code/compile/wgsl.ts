@@ -16,6 +16,8 @@ import {
 import { monomorphize } from '@term/make/code/ir/monomorphize'
 import { experimentalBanner } from '@term/make/code/compile/backend-registry'
 import { integerText } from '@term/make/code/compile/type-text'
+import type { Span } from '@term/make/code/parser/diagnostic'
+import type { FragmentGap } from '@term/make/code/compile/hvm'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')
@@ -52,11 +54,19 @@ const OP: Record<string, string> = {
   '%': '%',
 }
 
-export function emitWgsl(input: Program): string {
+// `gaps`, when given, is handed every construct outside the GPU fragment with its span, which `term make --emit wgsl`
+// refuses on (call/code/emit.ts). Without it the emitter writes the marked poison value it always did
+export function emitWgsl(input: Program, gaps?: FragmentGap[]): string {
   // WGSL is monomorphic: specialize generic functions at their concrete call types and drop the generic originals
   // first, so a generic call resolves to a real function instead of being skipped.
   const program = monomorphize(input)
   const pad = (d: number) => '  '.repeat(d)
+  // a gap recorded, then marked in the text as before
+  const gap = (form: string, span: Span | undefined, text: string): string => {
+    gaps?.push({ form, ...(span ? { span } : {}) })
+
+    return text
+  }
 
   const expr = (node: Expression): string => {
     switch (node.form) {
@@ -91,7 +101,7 @@ export function emitWgsl(input: Program): string {
       case 'member':
       case 'await':
       case 'closure':
-        return `0 /* ${unsupported('WGSL', node.form, '').trim()} */`
+        return gap(node.form, node.span, `0 /* ${unsupported('WGSL', node.form, '').trim()} */`)
 
       case 'conditional': {
         // a value-position conditional lowers to a chain of `select(falseValue, trueValue, condition)`
@@ -160,11 +170,11 @@ export function emitWgsl(input: Program): string {
         return 'continue;'
       case 'exit':
       case 'debug':
-        return unsupported('WGSL', node.form, '//')
+        return gap(node.form, node.span, unsupported('WGSL', node.form, '//'))
       case 'for-each':
         // WGSL has no iterator protocol; a ranged `for` over an array index is the data-parallel form. Emit a marker
         // until the front-end lowers `for-each` to an indexed loop.
-        return unsupported('WGSL', 'for-each', '//')
+        return gap('for-each', node.span, unsupported('WGSL', 'for-each', '//'))
       case 'hold':
         return '// hold: verified at compile time'
       // exceptions, pattern match on tagged records, and nested definitions are outside the GPU fragment
@@ -175,7 +185,7 @@ export function emitWgsl(input: Program): string {
       case 'mask':
       case 'instance':
       case 'native':
-        return unsupported('WGSL', node.form, '//')
+        return gap(node.form, node.span, unsupported('WGSL', node.form, '//'))
       case 'bind':
       case 'view':
       case 'dock':

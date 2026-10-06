@@ -10,6 +10,11 @@ load @term/base/text
 load @term/base/text/unicode
   find rune-to-text
 
+# a whole number past 2^53 can only arrive from the host as a double: written as one, made whole, since a literal that
+# large is refused on TypeScript, where it is not the number written (check/literals.ts, 2026-10-05)
+load @term/base/float
+  find to-number
+
 load ../../code/work/item/standard
   find make-standard
 
@@ -101,7 +106,7 @@ test <half a kilobyte under a megabyte is 1.0 MB, never 1000 kB>
 
 test <a size past the exact range is held to it, in the last unit>
   want hold, is-equal(said-size(9007199254740991), <9.0 PB>)
-  want hold, is-equal(said-size(5000000000000000000), <9.0 PB>)
+  want hold, is-equal(said-size(to-number(5000000000000000000.0)), <9.0 PB>)
 
 test <a number and its unit are joined by a no-break space, and a duration's unit is attached (D44)>
   save glue, rune-to-text(160)
@@ -253,5 +258,5 @@ test <a source wider than 12 cells is cut in the middle>
   want hold, is-equal(truncate-middle(<exactly-12ch>, 12, room), <exactly-12ch>)
 
 test <a number past the exact range is clamped, never thrown on>
-  want hold, is-equal(make-whole(9007199254740999), 9007199254740991)
+  want hold, is-equal(make-whole(to-number(9007199254741000.0)), 9007199254740991)
   want hold, is-equal(said-duration(9007199254740991), <2,501,999,792h 59m>)

@@ -1,0 +1,15 @@
+# Casing by language in the browser: the platform's own, which follows Unicode's SpecialCasing (text/case.tree)
+
+bind platform-upper-case-in
+  take value, like text
+  take language, like text
+  like text
+  case browser
+    text <$value.toLocaleUpperCase($language)>
+
+bind platform-lower-case-in
+  take value, like text
+  take language, like text
+  like text
+  case browser
+    text <$value.toLocaleLowerCase($language)>

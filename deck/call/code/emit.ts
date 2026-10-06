@@ -9,9 +9,10 @@
 //   swift    one `.swift` file for `swiftc`
 //   kotlin   one `.kt` file for `kotlinc`, every import hoisted to the top
 //
-// No `main` is added: the caller decides what the entry point does. The entry's own tasks are the roots, so each is
-// kept even when nothing calls it, and the native emitters mangle their names (`run-all` is `run_all` on Rust and
-// `runAll` on Swift and Kotlin).
+// No `main` is added to the source: the caller decides what the entry point does. `--build` adds the main and builds
+// it, and `--run` runs it (call/code/native-build.ts). The entry's own tasks are the roots, so each is kept even when
+// nothing calls it, and the native emitters mangle their names (`run-all` is `run_all` on Rust and `runAll` on Swift and
+// Kotlin).
 //
 // The program is DATA, on stdout (or the `--out` file); the run around it is the human view on stderr, through the
 // terminal output library (code/output.ts).
@@ -39,6 +40,13 @@ import { renderDiagnostic } from '@term/call/code/report'
 import { checkBindTargets } from '@term/make/code/check/binds'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { closeRun, count, field, location, openRun, printData, report, reportProblems, showPath } from '@term/call/code/output'
+import { buildNative, buildThroughRust, runBuilt } from '@term/call/code/native-build'
+import type { ThroughRust } from '@term/call/code/native-build'
+import { tmpdir } from 'os'
+import { emitHvm } from '@term/make/code/compile/hvm'
+import type { FragmentGap } from '@term/make/code/compile/hvm'
+import { emitWgsl } from '@term/make/code/compile/wgsl'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 
 // the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (call/code/browser/)
 export { EMIT_TARGETS, isEmitTarget }
@@ -129,19 +137,205 @@ export function emitProgram(input: {
   }
 }
 
+// THE FRAGMENT TARGETS: WGSL (a GPU shader) and HVM (the interaction-combinator runtime) lower a numeric, recursive
+// part of the language, not every program. A construct outside it is REFUSED, naming the construct and where it is,
+// before anything is written: until 2026-10-05 neither had a command, and their emitters wrote a `SEED-UNSUPPORTED`
+// marker into the output in its place. Each emitter reports its own gaps (compile/hvm.ts, compile/wgsl.ts), so what the
+// command refuses is exactly what the emitter could not lower
+export const FRAGMENT_TARGETS = ['wgsl', 'hvm'] as const
+export type FragmentTarget = (typeof FRAGMENT_TARGETS)[number]
+
+const FRAGMENT: Record<FragmentTarget, { name: string; holds: string }> = {
+  wgsl: { name: 'WGSL', holds: 'numbers, booleans, arithmetic, branches and loops over them, and calls' },
+  hvm: { name: 'HVM', holds: 'numbers, booleans, arithmetic, branches and recursion, each task one returned value' },
+}
+
+export function emitFragment(input: { root: string; file: string; target: FragmentTarget }):
+  | { ok: true; source: string }
+  | { ok: false; errors: string[]; problems?: { diagnostic: Diagnostic; text?: string }[] } {
+  const file = path.resolve(input.root, input.file)
+
+  if (!existsSync(file)) {
+    return { ok: false, errors: [`no such file: ${input.file}`] }
+  }
+
+  const text = readFileSync(file, 'utf8')
+  const installRoot = findProjectRoot(path.dirname(fileURLToPath(import.meta.url)))
+  const result = compile(
+    { file, text },
+    { resolve: projectResolver(input.root, 'node', installRoot), env: 'node', deckOf: projectDeckOf(), roleOf: projectRoleOf(input.root), leanOf: projectLeanOf(input.root) },
+  )
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      errors: result.diagnostics.map(diagnostic => renderDiagnostic(diagnostic, diagnostic.file === file ? text : undefined)),
+      problems: result.diagnostics.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })),
+    }
+  }
+
+  const gaps: FragmentGap[] = []
+  const source = input.target === 'wgsl' ? emitWgsl(result.program, gaps) : emitHvm(result.program, gaps)
+
+  if (gaps.length === 0) {
+    return { ok: true, source }
+  }
+
+  const { name, holds } = FRAGMENT[input.target]
+  // one refusal per construct and place
+  const seen = new Set<string>()
+  const refusals = gaps.flatMap(gap => {
+    const key = `${gap.form}@${gap.span?.start.line}:${gap.span?.start.column}`
+
+    if (seen.has(key)) {
+      return []
+    }
+
+    seen.add(key)
+
+    return [
+      diagnose('not-implemented', {
+        file: gap.span?.file ?? file,
+        span: gap.span ?? { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
+        message: `${gap.form} is outside what ${name} lowers: ${holds}`,
+        hint: `keep the part that runs on ${name} to that fragment, or emit this program for node, rust, swift or kotlin`,
+      }),
+    ]
+  })
+
+  return {
+    ok: false,
+    errors: refusals.map(diagnostic => renderDiagnostic(diagnostic, diagnostic.file === file ? text : undefined)),
+    problems: refusals.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })),
+  }
+}
+
 export function callEmit(input: {
   root: string
   file?: string
   target: string
   out?: string
   units?: boolean
+  // build it with its toolchain, and run it (call/code/native-build.ts)
+  build?: boolean
+  run?: boolean
+  // the task the program starts at, when not `run`, `boot` or `main`
+  main?: string
 }): void {
   // the project folder is the subject (section 3); the program and the backend are what this run is about, as facts
   openRun({ verb: 'make', root: input.root, facts: ['--emit', input.target, ...(input.file ? [input.file] : [])] })
 
+  // a fragment target: the program's source for WGSL or HVM, or a refusal naming each construct outside the fragment
+  if ((FRAGMENT_TARGETS as readonly string[]).includes(input.target)) {
+    const target = input.target as FragmentTarget
+
+    if (!input.file || input.build || input.run || input.units) {
+      report({ glyph: 'failed', kind: 'problem', subject: input.file ? `--${input.build ? 'build' : input.run ? 'run' : 'units'} is for node, rust, swift and kotlin: ${target} is emitted as source` : 'There is no file to emit' })
+      process.exit(closeRun({ verdict: 'Nothing emitted', next: `term make --emit ${target} <file.tree> [--out <path>]`, failure: 'usage' }))
+    }
+
+    const started = Date.now()
+    const emitted = emitFragment({ root: input.root, file: input.file, target })
+
+    if (!emitted.ok) {
+      if (emitted.problems) {
+        reportProblems(emitted.problems, input.root)
+      } else {
+        for (const error of emitted.errors) {
+          report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: error.charAt(0).toUpperCase() + error.slice(1) })
+        }
+      }
+
+      process.exit(closeRun({ verdict: 'Refused, nothing written', counts: [count(emitted.errors.length, 'errors', 'error')] }))
+    }
+
+    const source = emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`
+
+    if (!input.out) {
+      printData(source)
+      report({ glyph: 'done', verb: 'emit', subject: target, duration: Date.now() - started, bytes: Buffer.byteLength(source), facts: ['stdout'] })
+      closeRun({ verdict: `Emitted ${target}` })
+
+      return
+    }
+
+    const out = path.resolve(input.root, input.out)
+    mkdirSync(path.dirname(out), { recursive: true })
+    writeFileSync(out, source)
+    report({ glyph: 'done', verb: 'emit', subject: target, duration: Date.now() - started, bytes: Buffer.byteLength(source), fields: [location(showPath(out, input.root))] })
+    closeRun({ verdict: `Emitted ${target}` })
+
+    return
+  }
+
+  // LLVM IR and WebAssembly, through the program's Rust (call/code/native-build.ts `buildThroughRust`)
+  if (input.target === 'llvm' || input.target === 'wasm') {
+    const target: ThroughRust = input.target
+
+    if (!input.file) {
+      report({ glyph: 'failed', kind: 'problem', subject: 'There is no file to emit' })
+      process.exit(closeRun({ verdict: 'Nothing emitted', next: `term make --emit ${target} <file.tree> [--run]`, failure: 'usage' }))
+    }
+
+    const started = Date.now()
+    const emitted = emitProgram({ root: input.root, file: input.file, target: 'rust' })
+
+    if (!emitted.ok) {
+      if (emitted.problems) {
+        reportProblems(emitted.problems, input.root)
+      } else {
+        for (const error of emitted.errors) {
+          report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: error.charAt(0).toUpperCase() + error.slice(1) })
+        }
+      }
+
+      process.exit(closeRun({ verdict: 'Refused, nothing written', counts: [count(emitted.errors.length, 'errors', 'error')] }))
+    }
+
+    const name = path.basename(input.file, '.tree')
+    // the IR alone goes to stdout, or `--out`; anything built goes in a folder
+    const irOnly = target === 'llvm' && !input.build && !input.run
+    const folder = irOnly ? path.join(tmpdir(), `term-llvm-${process.pid}`) : path.resolve(input.root, input.out ?? path.join('host', target))
+    const built = buildThroughRust({ source: emitted.source, target, folder, name, build: !irOnly, ...(input.main ? { entry: input.main } : {}) })
+
+    if (!built.ok) {
+      report({ glyph: 'failed', kind: 'problem', verb: 'build', subject: built.reason.split('\n')[0]!, ...(built.reason.includes('\n') ? { quote: built.reason.split('\n').slice(1, 30) } : {}) })
+      process.exit(closeRun({ verdict: `Not built for ${target}`, failure: 'failure' }))
+    }
+
+    if (irOnly) {
+      const ir = readFileSync(built.artifact, 'utf8')
+
+      if (input.out) {
+        const out = path.resolve(input.root, input.out)
+        mkdirSync(path.dirname(out), { recursive: true })
+        writeFileSync(out, ir)
+        report({ glyph: 'done', verb: 'emit', subject: 'llvm', duration: Date.now() - started, bytes: Buffer.byteLength(ir), fields: [location(showPath(out, input.root))] })
+      } else {
+        printData(ir)
+        report({ glyph: 'done', verb: 'emit', subject: 'llvm', duration: Date.now() - started, bytes: Buffer.byteLength(ir), facts: ['stdout'] })
+      }
+
+      closeRun({ verdict: 'Emitted llvm' })
+
+      return
+    }
+
+    report({ glyph: 'done', verb: 'build', subject: target, duration: Date.now() - started, fields: [location(showPath(built.artifact, input.root))] })
+
+    if (!input.run) {
+      closeRun({ verdict: `Built ${target}`, next: built.command.map(one => (one.includes(' ') ? JSON.stringify(one) : one)).join(' ') })
+
+      return
+    }
+
+    closeRun({ verdict: `Built ${target}, running` })
+    process.exit(runBuilt(built.command))
+  }
+
   // wrong usage, exit 2 (section 18)
   if (!isEmitTarget(input.target)) {
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no target named ${input.target}`, fields: [field('targets', EMIT_TARGETS.join(', '))] })
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no target named ${input.target}`, fields: [field('targets', [...EMIT_TARGETS, ...FRAGMENT_TARGETS, 'llvm', 'wasm'].join(', '))] })
     process.exit(closeRun({ verdict: 'Nothing emitted', failure: 'usage' }))
   }
 
@@ -208,6 +402,30 @@ export function callEmit(input: {
   }
 
   const source = emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`
+
+  // `--build` and `--run`: the program with its main, built by its toolchain into `--out` (a folder, host/<target>/
+  // by default), and run (call/code/native-build.ts)
+  if (input.build || input.run) {
+    const folder = path.resolve(input.root, input.out ?? path.join('host', input.target))
+    const name = path.basename(input.file, '.tree')
+    const built = buildNative({ source, target: input.target, folder, name, ...(input.main ? { entry: input.main } : {}) })
+
+    if (!built.ok) {
+      report({ glyph: 'failed', kind: 'problem', verb: 'build', subject: built.reason.split('\n')[0]!, ...(built.reason.includes('\n') ? { quote: built.reason.split('\n').slice(1, 30) } : {}) })
+      process.exit(closeRun({ verdict: `Not built for ${input.target}`, failure: 'failure' }))
+    }
+
+    report({ glyph: 'done', verb: 'build', subject: input.target, duration: Date.now() - started, fields: [location(showPath(built.artifact, input.root))] })
+
+    if (!input.run) {
+      closeRun({ verdict: `Built ${input.target}`, next: built.command.map(one => (one.includes(' ') ? JSON.stringify(one) : one)).join(' ') })
+
+      return
+    }
+
+    closeRun({ verdict: `Built ${input.target}, running` })
+    process.exit(runBuilt(built.command))
+  }
 
   // the program is the answer the user asked for: data, on stdout, as it is
   if (!input.out) {

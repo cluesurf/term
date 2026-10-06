@@ -40,7 +40,8 @@ test <keys come back in order whatever order they went in>
   want hold
     call is-equal
       call join
-        read m/keys
+        call keys
+          read m
         text <,>
       text <apple,mango,pear,𝄞>
 
@@ -120,7 +121,8 @@ test <drop removes and reports>
           false
       call is-equal
         call join
-          read m/values
+          call values
+            read m
           text <,>
         text <four>
 

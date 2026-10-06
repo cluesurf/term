@@ -223,6 +223,47 @@ test <double of zero is zero>
   ok('and the two values its comparison held, written over lines in longhand', /line 17 did not hold: want hold,\s+left 0, right 1/.test(run.out), run.out)
 }
 
+// ---- tests/writing: a `want` over `and(...)` names the part that did not hold, and that part's two values ----
+{
+  const tests = mkdtempSync(join(tmpdir(), 'term-want-and-'))
+  mkdirSync(join(tests, 'test'))
+  writeFileSync(join(tests, 'deck.tree'), 'deck @probe/want-and\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+  writeFileSync(
+    join(tests, 'test/double.tree'),
+    `task double
+  take n, like number
+  like number
+  send back
+    call multiply
+      read n
+      code 2
+
+test <every double holds>
+  want hold, and(is-equal(double(1), 2), is-equal(double(2), 5), is-above(double(3), 0))
+
+test <every double holds, written stacked>
+  want hold
+    call and
+      call is-equal
+        call double
+          code 4
+        code 9
+      call is-above
+        call double
+          code 1
+        code 0
+`,
+  )
+
+  const run = term(tests, 'test')
+
+  // the report wraps a long line, so it is read with its runs of space as one
+  const flat = run.out.replace(/\s+/g, ' ')
+
+  ok('a failing `and` names its line and the part of it that did not hold, with that part\'s two values', /line 10 did not hold, part 2 of 3: want hold, and\(.*?\), left 4, right 5/.test(flat), run.out)
+  ok('and the same for a stacked `call and`, at its first part', /line 13 did not hold, part 1 of 2: want hold, left 8, right 9/.test(flat), run.out)
+}
+
 // ---- parsers/grammars: a grammar builds and rolls as its reader, and a miss says where and what ----
 {
   const grammar = mkdtempSync(join(tmpdir(), 'term-grammar-'))

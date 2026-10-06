@@ -1,0 +1,510 @@
+# View component codegen: compile a `view` to a fine-grained reactive component on the runtime in reactive.ts.
+# State becomes signals, hook bodies become handlers that read with `()` and write with the setter. This is the
+# Solid-model structure (run-once setup, signals), emitted as clean TypeScript. See
+# note/research/vibe/computation/plans/15-components.md. Browser-safe (answers a text).
+#
+# Ported from view/compile.ts (self-hosting, 2026-10-05). The result is one record, `ok` beside the TypeScript and the
+# diagnostics, where the original's union held one or the other.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find char-code-at
+  find substring
+  find to-upper-case
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ../parser/tree
+  find node
+  find parse
+  find root-node
+
+load ../parser/token
+  find token-source
+
+form view-result
+  link ok, like boolean
+  link typescript, like text
+  link diagnostics, like list, like diagnostic
+
+form state-entry
+  link name, like text
+  link init, like text
+
+form handler
+  link event, like text
+  link body, like list, like text
+
+task binary-of
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(name, <add>)
+    hold
+      back <+>
+  fork test, is-equal(name, <subtract>)
+    hold
+      back <->
+  fork test, is-equal(name, <multiply>)
+    hold
+      back <*>
+  fork test, is-equal(name, <divide>)
+    hold
+      back </>
+  fork test, is-equal(name, <modulo>)
+    hold
+      back <%>
+  fork test, is-equal(name, <is-above>)
+    hold
+      back <\>>
+  fork test, is-equal(name, <is-below>)
+    hold
+      back <\<>
+  fork test, is-equal(name, <is-equal>)
+    hold
+      back <===>
+  fork test, is-equal(name, <is-unequal>)
+    hold
+      back <!==>
+  back <>
+
+task name-text
+  take name, like node
+  like text
+  mark private
+
+  save out, <>
+  sift name
+    case name
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save out, <{out}{chunk-text}>
+          miss
+            turn next
+    miss
+      back out
+  back out
+
+# a group's first word, `<>` when it has none
+task head-of
+  take given, like node
+  like text
+  mark private
+
+  sift given
+    case group
+      walk nodes
+        take first
+        sift first
+          case name
+            back name-text(first)
+          miss
+            back <>
+      back <>
+    miss
+      back <>
+
+task rest-of
+  take given, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift given
+    case group
+      walk nodes
+        take one
+        take at
+        fork test, is-above(at, 0)
+          hold
+            push(out, one)
+    miss
+      back out
+  back out
+
+task to-camel
+  take name, like text
+  like text
+  mark private
+
+  save out, <>
+  save count, char-count(name)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(name, at)
+      fork test, and(or(is-equal(c, <->), is-equal(c, <_>)), is-below(add(at, 1), count))
+        hold
+          save next, to-upper-case(char-at(name, add(at, 1)))
+          save out, <{out}{next}>
+          save at, add(at, 2)
+        miss
+          save out, <{out}{c}>
+          save at, add(at, 1)
+  back out
+
+task to-pascal
+  take name, like text
+  like text
+  mark private
+
+  save c, to-camel(name)
+  fork test, is-equal(char-count(c), 0)
+    hold
+      back c
+  save first, to-upper-case(char-at(c, 0))
+  back <{first}{substring(c, 1, char-count(c))}>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a text as a JSON string literal: quoted, with `"`, `\` and the control characters escaped as JSON writes them
+task json-quote
+  take value, like text
+  like text
+  mark private
+
+  save out, <">
+  save count, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(value, at)
+      save code, char-code-at(c, 0)
+      fork test, is-equal(c, <">)
+        hold
+          save out, <{out}\\">
+        miss
+          fork test, is-equal(c, <\\>)
+            hold
+              save out, <{out}\\\\>
+            miss
+              fork test, is-equal(code, 8)
+                hold
+                  save out, <{out}\\b>
+                miss
+                  fork test, is-equal(code, 12)
+                    hold
+                      save out, <{out}\\f>
+                    miss
+                      fork test, is-equal(code, 10)
+                        hold
+                          save out, <{out}\\n>
+                        miss
+                          fork test, is-equal(code, 13)
+                            hold
+                              save out, <{out}\\r>
+                            miss
+                              fork test, is-equal(code, 9)
+                                hold
+                                  save out, <{out}\\t>
+                                miss
+                                  fork test, is-below(code, 32)
+                                    hold
+                                      save out, <{out}{control-escape(code)}>
+                                    miss
+                                      save out, <{out}{c}>
+      save at, add(at, 1)
+  back <{out}">
+
+task control-escape
+  take code, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  save high, char-at(digits, divide(code, 16))
+  save low, char-at(digits, modulo(code, 16))
+  back <\\u00{high}{low}>
+
+task compile-zone
+  take source, like token-source
+  like view-result
+
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back
+        make view-result
+          bind ok, false
+          bind typescript, <>
+          bind diagnostics, parsed/diagnostics
+  save failed
+    make view-result
+      bind ok, false
+      bind typescript, <>
+      bind diagnostics, make list
+  save roots, root-nodes(parsed/tree)
+  save zone-at, -1
+  walk roots
+    take one
+    take index
+    fork test, and(is-below(zone-at, 0), is-equal(head-of(one), <view>))
+      hold
+        save zone-at, index
+  fork test, is-below(zone-at, 0)
+    hold
+      back failed
+
+  save parts, rest-of(get(roots, zone-at))
+  save name, <zone>
+  fork test, is-above(parts/length, 0)
+    hold
+      save first, get(parts, 0)
+      fork test, is-equal(first/kind, <group>)
+        hold
+          save name, head-of(first)
+
+  # collect state declarations and the set of state names (so reads append `()`)
+  save state, make list
+  save state-names, make list
+  walk parts
+    take one
+    take at
+    fork test, or(is-equal(at, 0), is-unequal(head-of(one), <state>))
+      hold
+        turn next
+    save inner, rest-of(one)
+    fork test, is-equal(inner/length, 0)
+      hold
+        turn next
+    save state-name, head-of(get(inner, 0))
+    fork test, is-equal(state-name, <>)
+      hold
+        turn next
+    push(state-names, state-name)
+    save init-text, expression-of-at(inner, 1, state-names)
+    save entry
+      make state-entry
+        bind name, state-name
+        bind init, init-text
+    push(state, entry)
+
+  # collect hook handlers
+  save handlers, make list
+  walk parts
+    take one
+    take at
+    fork test, or(is-equal(at, 0), is-unequal(head-of(one), <hook>))
+      hold
+        turn next
+    save inner, rest-of(one)
+    fork test, is-equal(inner/length, 0)
+      hold
+        turn next
+    save event, head-of(get(inner, 0))
+    fork test, is-equal(event, <>)
+      hold
+        turn next
+    save body, make list
+    walk inner
+      take statement
+      take index
+      fork test, is-above(index, 0)
+        hold
+          push(body, statement-text(statement, state-names))
+    save made
+      make handler
+        bind event, event
+        bind body, body
+    push(handlers, made)
+
+  back
+    make view-result
+      bind ok, true
+      bind typescript, emit-zone(name, state, handlers)
+      bind diagnostics, make list
+
+# the nodes at a root
+task root-nodes
+  take root, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift root
+    case root
+      walk nodes
+        take one
+        push(out, one)
+  back out
+
+task expression-of-at
+  take nodes, like list, like node
+  take at, like number
+  take state-names, like list, like text
+  like text
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      back expression-text(get(nodes, at), state-names)
+  back <undefined>
+
+task expression-text
+  take given, like node
+  take state-names, like list, like text
+  like text
+  mark private
+
+  sift given
+    case integer
+      back <{value}>
+    case decimal
+      back <{value}>
+    case text
+      back json-quote(chunks-of(parts))
+    case group
+      save keyword, head-of(given)
+      save args, rest-of(given)
+      # `code <literal>` is the literal wrapper (the former `mark`, renamed in the mark->code migration). Unwrap to
+      # its value.
+      fork test, or(is-equal(keyword, <code>), is-equal(keyword, <mark>))
+        hold
+          back expression-of-at(args, 0, state-names)
+      fork test, or(is-equal(keyword, <loan>), or(is-equal(keyword, <read>), is-equal(keyword, <move>)))
+        hold
+          save v, <>
+          fork test, is-above(args/length, 0)
+            hold
+              save v, head-of(get(args, 0))
+          fork test, has-text(state-names, v)
+            hold
+              back <{to-camel(v)}()>
+          back to-camel(v)
+      fork test, is-equal(keyword, <call>)
+        hold
+          save fn, <>
+          fork test, is-above(args/length, 0)
+            hold
+              save fn, head-of(get(args, 0))
+          save call-args, make list
+          walk args
+            take arg
+            take index
+            fork test, is-above(index, 0)
+              hold
+                push(call-args, expression-text(arg, state-names))
+          save op, binary-of(fn)
+          fork test, and(is-unequal(op, <>), is-equal(call-args/length, 2))
+            hold
+              back <{get(call-args, 0)} {op} {get(call-args, 1)}>
+          fork test, and(is-equal(fn, <decrement>), is-equal(call-args/length, 1))
+            hold
+              back <{get(call-args, 0)} - 1>
+          fork test, and(is-equal(fn, <increment>), is-equal(call-args/length, 1))
+            hold
+              back <{get(call-args, 0)} + 1>
+          save joined, join(call-args, <, >)
+          back <{to-camel(fn)}({joined})>
+      # a bare name: a variable or state read
+      fork test, and(is-unequal(keyword, <>), is-equal(args/length, 0))
+        hold
+          fork test, has-text(state-names, keyword)
+            hold
+              back <{to-camel(keyword)}()>
+          back to-camel(keyword)
+      back <undefined>
+    miss
+      back <undefined>
+
+task chunks-of
+  take parts, like list, like node
+  like text
+  mark private
+
+  save out, <>
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        turn next
+  back out
+
+task statement-text
+  take given, like node
+  take state-names, like list, like text
+  like text
+  mark private
+
+  sift given
+    case group
+      fork test, is-equal(head-of(given), <save>)
+        hold
+          save args, rest-of(given)
+          save target, <>
+          fork test, is-above(args/length, 0)
+            hold
+              save target, head-of(get(args, 0))
+          save value, expression-of-at(args, 1, state-names)
+          fork test, and(is-unequal(target, <>), has-text(state-names, target))
+            hold
+              back <set{to-pascal(target)}({value})>
+          fork test, is-equal(target, <>)
+            hold
+              save target, <x>
+          back <let {to-camel(target)} = {value}>
+      back expression-text(given, state-names)
+    miss
+      back expression-text(given, state-names)
+
+task emit-zone
+  take name, like text
+  take state, like list, like state-entry
+  take handlers, like list, like handler
+  like text
+  mark private
+
+  save lines, make list
+  push(lines, <import \{ signal \} from '@term/make/code/view/reactive'>)
+  push(lines, <>)
+  push(lines, <export function {to-camel(name)}() \{>)
+  walk state
+    take entry
+    push(lines, <  const [{to-camel(entry/name)}, set{to-pascal(entry/name)}] = signal({entry/init})>)
+  walk handlers
+    take one
+    push(lines, <  function on{to-pascal(one/event)}() \{>)
+    walk one/body
+      take line
+      push(lines, <    {line}>)
+    push(lines, <  \}>)
+  save returned, make list
+  walk state
+    take entry
+    push(returned, to-camel(entry/name))
+  walk handlers
+    take one
+    push(returned, <on{to-pascal(one/event)}>)
+  push(lines, <  return \{ {join(returned, <, >)} \}>)
+  push(lines, <\}>)
+  back <{join(lines, <\n>)}\n>

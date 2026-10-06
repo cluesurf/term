@@ -1,0 +1,290 @@
+# Casing by language on Rust, whose standard library cases without one: Unicode's SpecialCasing rules for the three
+# languages that have them (text/case.tree), then the default casing. Held to node's `toLocaleUpperCase` and
+# `toLocaleLowerCase` by test/stdlib/text-case.ts.
+#
+# Turkish and Azerbaijani: `i` upper-cases to `İ`, `İ` lower-cases to `i`, `I` to `ı`, and `I` followed by a combining
+# dot above (U+0307) lower-cases to `i`, the dot dropped. Lithuanian: a lower `i`, `j` or `į` keeps an explicit dot when
+# another accent stands above it (`I`, `J`, `Į` before one, and `Ì`, `Í`, `Ĩ`), and upper-casing drops a dot above that
+# follows a soft-dotted letter.
+#
+# "Above" is combining class 230, and the rules let a mark of another class stand between. The classes are read for the
+# combining diacritical marks, U+0300 to U+036F, which hold every mark these rules meet in these languages' text. A mark
+# outside that block is taken as class 0, which ends the context: the one place this can differ from ICU.
+
+load @term/base/text
+  find to-upper-case
+  find to-lower-case
+  find split
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/list
+  find list
+  find get
+  find push
+
+# the language part of a tag, lower-cased: `tr` of `tr-TR`
+task language-of
+  take tag, like text
+  like text
+  mark private
+  save parts, call split(to-lower-case(read(tag)), text(<->))
+  send back, call get(read(parts), code(0))
+
+# a combining mark of class 230, above
+task is-above-mark
+  take rune, like number
+  like boolean
+  mark private
+  send back
+    call or
+      call and(is-minimum(read(rune), code(768)), is-maximum(read(rune), code(788)))
+      call or
+        call and(is-minimum(read(rune), code(829)), is-maximum(read(rune), code(836)))
+        call or
+          call is-equal(read(rune), code(838))
+          call or
+            call and(is-minimum(read(rune), code(842)), is-maximum(read(rune), code(844)))
+            call or
+              call and(is-minimum(read(rune), code(848)), is-maximum(read(rune), code(850)))
+              call or
+                call is-equal(read(rune), code(855))
+                call or
+                  call is-equal(read(rune), code(859))
+                  call and(is-minimum(read(rune), code(867)), is-maximum(read(rune), code(879)))
+
+# a combining mark of a class neither 0 nor 230: one that may stand between a letter and the mark the rules look for
+task is-other-mark
+  take rune, like number
+  like boolean
+  mark private
+  send back
+    call and
+      call and(is-minimum(read(rune), code(768)), is-maximum(read(rune), code(879)))
+      call and
+        call not(is-above-mark(read(rune)))
+        # U+034F, the combining grapheme joiner, is class 0
+        call is-unequal(read(rune), code(847))
+
+# whether a mark of class 230 follows `at`, past marks of other classes only: SpecialCasing's More_Above
+task more-above
+  take runes, like list, like number
+  take at, like number
+  like boolean
+  mark private
+  save next, call add(read(at), code(1))
+  walk test
+    hook test
+      call is-below(read(next), read(runes/length))
+    hook hold
+      save rune, call get(read(runes), read(next))
+      fork test
+        hook test
+          call is-above-mark(read(rune))
+        hook hold
+          send back, true
+      fork test
+        hook test
+          call not(is-other-mark(read(rune)))
+        hook hold
+          send back, false
+      save next, call add(read(next), code(1))
+  send back, false
+
+# the place of a dot above (U+0307) that follows `at` past marks of other classes only, or -1
+task dot-above-after
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+  save next, call add(read(at), code(1))
+  walk test
+    hook test
+      call is-below(read(next), read(runes/length))
+    hook hold
+      save rune, call get(read(runes), read(next))
+      fork test
+        hook test
+          call is-equal(read(rune), code(775))
+        hook hold
+          send back, read next
+      fork test
+        hook test
+          call not(is-other-mark(read(rune)))
+        hook hold
+          send back, -1
+      save next, call add(read(next), code(1))
+  send back, -1
+
+# Unicode's Soft_Dotted letters, whose dot a following dot above repeats
+task is-soft-dotted
+  take rune, like number
+  like boolean
+  mark private
+  save dotted, make(list, 105, 106, 303, 585, 616, 669, 690, 1011, 1110, 1112, 7522, 7574, 7588, 7592, 7725, 7883, 8305, 8520, 8521, 11388, 119842, 119843, 119894, 119895, 119946, 119947, 119998, 119999, 120050, 120051, 120102, 120103, 120154, 120155, 120206, 120207, 120258, 120259, 120310, 120311, 120362, 120363, 120414, 120415, 120466, 120467, 122650, 122956, 122957, 122984)
+  walk dotted
+    take one
+    fork test
+      hook test
+        call is-equal(read(one), read(rune))
+      hook hold
+        send back, true
+  send back, false
+
+task platform-upper-case-in
+  take value, like text
+  take language, like text
+  like text
+  save tongue, call language-of(read(language))
+  fork test
+    hook test
+      call or(is-equal(read(tongue), text(<tr>)), is-equal(read(tongue), text(<az>)))
+    hook hold
+      save runes, call to-runes(read(value))
+      save out, make list
+      walk runes
+        take rune
+        fork test
+          hook test
+            call is-equal(read(rune), code(105))
+          hook hold
+            call push(read(out), code(304))
+          hook miss
+            call push(read(out), read(rune))
+      send back, call to-upper-case(from-runes(read(out)))
+  fork test
+    hook test
+      call is-equal(read(tongue), text(<lt>))
+    hook hold
+      save runes, call to-runes(read(value))
+      save out, make list
+      save soft, false
+      walk runes
+        take rune
+        fork test
+          hook test
+            call and(read(soft), is-equal(read(rune), code(775)))
+          hook hold
+            turn next
+        fork test
+          hook test
+            call is-soft-dotted(read(rune))
+          hook hold
+            save soft, true
+          hook miss
+            fork test
+              hook test
+                call not(is-other-mark(read(rune)))
+              hook hold
+                save soft, false
+        call push(read(out), read(rune))
+      send back, call to-upper-case(from-runes(read(out)))
+  send back, call to-upper-case(read(value))
+
+task platform-lower-case-in
+  take value, like text
+  take language, like text
+  like text
+  save tongue, call language-of(read(language))
+  save runes, call to-runes(read(value))
+  save out, make list
+  fork test
+    hook test
+      call or(is-equal(read(tongue), text(<tr>)), is-equal(read(tongue), text(<az>)))
+    hook hold
+      save skip, -1
+      save at, code 0
+      walk test
+        hook test
+          call is-below(read(at), read(runes/length))
+        hook hold
+          save rune, call get(read(runes), read(at))
+          fork test
+            hook test
+              call is-equal(read(at), read(skip))
+            hook miss
+              fork test
+                hook test
+                  call is-equal(read(rune), code(304))
+                hook hold
+                  call push(read(out), code(105))
+                hook miss
+                  fork test
+                    hook test
+                      call is-equal(read(rune), code(73))
+                    hook hold
+                      save dot, call dot-above-after(read(runes), read(at))
+                      fork test
+                        hook test
+                          call is-minimum(read(dot), code(0))
+                        hook hold
+                          call push(read(out), code(105))
+                          save skip, read dot
+                        hook miss
+                          call push(read(out), code(305))
+                    hook miss
+                      call push(read(out), read(rune))
+          save at, call add(read(at), code(1))
+      send back, call to-lower-case(from-runes(read(out)))
+  fork test
+    hook test
+      call is-equal(read(tongue), text(<lt>))
+    hook hold
+      save at, code 0
+      walk test
+        hook test
+          call is-below(read(at), read(runes/length))
+        hook hold
+          save rune, call get(read(runes), read(at))
+          save above, call more-above(read(runes), read(at))
+          fork test
+            hook test
+              call and(is-equal(read(rune), code(73)), read(above))
+            hook hold
+              call push(read(out), code(105))
+              call push(read(out), code(775))
+            hook miss
+              fork test
+                hook test
+                  call and(is-equal(read(rune), code(74)), read(above))
+                hook hold
+                  call push(read(out), code(106))
+                  call push(read(out), code(775))
+                hook miss
+                  fork test
+                    hook test
+                      call and(is-equal(read(rune), code(302)), read(above))
+                    hook hold
+                      call push(read(out), code(303))
+                      call push(read(out), code(775))
+                    hook miss
+                      fork test
+                        hook test
+                          call is-equal(read(rune), code(204))
+                        hook hold
+                          call push(read(out), code(105))
+                          call push(read(out), code(775))
+                          call push(read(out), code(768))
+                        hook miss
+                          fork test
+                            hook test
+                              call is-equal(read(rune), code(205))
+                            hook hold
+                              call push(read(out), code(105))
+                              call push(read(out), code(775))
+                              call push(read(out), code(769))
+                            hook miss
+                              fork test
+                                hook test
+                                  call is-equal(read(rune), code(296))
+                                hook hold
+                                  call push(read(out), code(105))
+                                  call push(read(out), code(775))
+                                  call push(read(out), code(771))
+                                hook miss
+                                  call push(read(out), read(rune))
+          save at, call add(read(at), code(1))
+      send back, call to-lower-case(from-runes(read(out)))
+  send back, call to-lower-case(read(value))

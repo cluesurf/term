@@ -43,6 +43,7 @@ import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
 import { checkTypeNames } from '@term/make/code/check/type-names'
 import { checkLiterals } from '@term/make/code/check/literals'
+import { checkLoweredMembers } from '@term/make/code/check/lowered'
 import { checkPatterns } from '@term/make/code/check/patterns'
 import { checkConstants } from '@term/make/code/check/constants'
 import { checkBindTargets } from '@term/make/code/check/binds'
@@ -320,7 +321,7 @@ export function compile(
       typescript: '',
       css: compileLookCss(source),
       style: styleTableText(compileLookTable(source)),
-      styleDark: styleTableText(compileLookTable(source, { scheme: 'dark' })),
+      styleDark: styleTableText(compileLookTable(source, 'dark')),
       warnings: [],
     }
   }
@@ -800,8 +801,9 @@ export function compileProgram(
     return { ok: false, diagnostics: typeNameDiagnostics }
   }
 
-  // every number literal is one the backends can hold, and one past 2^53 says what TypeScript reads (check/literals.ts)
-  const literals = checkLiterals(program, file)
+  // every number literal is one the backends can hold, and one past 2^53 is refused on a JavaScript build, where it is
+  // not the number written, and warned of on a native one (check/literals.ts)
+  const literals = checkLiterals(program, file, env ?? 'node')
 
   if (literals.errors.length) {
     return { ok: false, diagnostics: literals.errors }
@@ -1026,7 +1028,7 @@ export function compileProgram(
   // note/seed/compiler/async-inference.md.
   // a task written in place where an async task is taken is async itself, so each backend builds the function its slot
   // takes (check/async-slots.ts)
-  asyncSlots(program)
+  program = asyncSlots(program)
   program = resolveAsync(program)
 
   // the roll alone, for an entry already known to build: everything below only refuses or warns
@@ -1364,6 +1366,14 @@ export function compileProgram(
   const loweredTs = hasTraitGenerics
     ? lowerViews(tsOptimized)
     : loweredProgram
+
+  // a member call on a list or a map that no native backend lowers, refused on Rust, Swift and Kotlin before anything is
+  // emitted, where it used to be written as a host call for the toolchain to refuse (check/lowered.ts)
+  const unlowered = checkLoweredMembers(loweredProgram, file, env)
+
+  if (unlowered.length) {
+    return { ok: false, diagnostics: unlowered }
+  }
 
   const result = {
     ok: true as const,

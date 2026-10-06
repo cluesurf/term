@@ -13,7 +13,7 @@ import type {
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
-import { nestLeanCalls } from '@term/make/code/check/lean-nest'
+import { leanLabels, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { isHtmlTag } from '@term/make/code/compile/view-lower'
 import { typeKey } from '@term/make/code/compile/type-text'
 
@@ -832,11 +832,7 @@ function nestLeanLabels(program: Program): void {
       // so its properties (draw-under) name nothing", on the native gate only, which merges the modules (2026-10-05)
       if (!defs && !bound.has(callee)) {
         if (!constructions.has(callee)) {
-          nestLeanCalls(
-            call,
-            () => false,
-            name => definitions.has(name) || bound.has(name) || local.has(name),
-          )
+          nestLabels(call, () => false, name => definitions.has(name) || bound.has(name) || local.has(name))
         }
 
         return
@@ -844,23 +840,30 @@ function nestLeanLabels(program: Program): void {
 
       const params = new Set([...(defs ?? []).flatMap(d => d.params.map(p => p.name)), ...(bound.get(callee) ?? [])])
 
-      nestLeanCalls(
-        call,
-        name => params.has(name),
-        name => definitions.has(name) || bound.has(name) || local.has(name),
-      )
+      nestLabels(call, name => params.has(name), name => definitions.has(name) || bound.has(name) || local.has(name))
     })
 
     // and a METHOD call (`below/divide(big-of(2))`), whose parameters are not known here: a label naming a task is a
     // call of it, as the resolver reads one. Left to the resolver it met the renamed task and named nothing
     eachMethodCall(top, call =>
-      nestLeanCalls(
-        call,
-        () => false,
-        name => definitions.has(name) || bound.has(name) || local.has(name),
-      ),
+      nestLabels(call, () => false, name => definitions.has(name) || bound.has(name) || local.has(name)),
     )
   }
+}
+
+// nest the lean labels that name no parameter and name something callable (check/lean-nest.ts), asked in argument
+// order
+function nestLabels(
+  call: Extract<Expression, { form: 'call' }>,
+  isParameter: (name: string) => boolean,
+  isCallable: (name: string) => boolean,
+): number {
+  return nestLeanCalls(
+    call,
+    leanLabels(call)
+      .filter(label => !isParameter(label.written) && isCallable(label.name))
+      .map(label => label.at),
+  )
 }
 
 // every call whose callee is a member path (`x/method(...)`) anywhere under a node

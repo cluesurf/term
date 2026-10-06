@@ -108,7 +108,7 @@ export function resolveMillImport(
 ): string | undefined {
   const named = packageRest(path)
 
-  if (named) {
+  if (named.found) {
     return named.pkg === '@term/mill'
       ? resolvePackagePath({ dir: dirname(millRoot), rest: named.rest }).file
       : undefined

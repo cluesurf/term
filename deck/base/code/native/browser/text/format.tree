@@ -1,0 +1,19 @@
+# Numbers and money by language in the browser: `Intl.NumberFormat`, over the CLDR the browser carries
+# (text/format.tree)
+
+bind platform-format-number
+  take value, like decimal
+  take language, like text
+  take fewest, like number
+  take most, like number
+  like text
+  case browser
+    text <new Intl.NumberFormat($language, \{ minimumFractionDigits: $fewest, maximumFractionDigits: $most, roundingMode: "halfEven" \}).format($value)>
+
+bind platform-format-currency
+  take value, like decimal
+  take currency, like text
+  take language, like text
+  like text
+  case browser
+    text <new Intl.NumberFormat($language, \{ style: "currency", currency: $currency, roundingMode: "halfEven" \}).format($value)>

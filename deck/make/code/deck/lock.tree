@@ -1,0 +1,313 @@
+# The lockfile: the deterministic, resolved dependency graph. It is written in tree syntax, so we parse it with our own
+# parser and serialize it back deterministically (stable ordering), guaranteeing reproducible installs.
+# See note/research/vibe/computation/plans/16-package-manager.md. Browser-safe.
+#
+# Ported from deck/lock.ts (self-hosting, 2026-10-05). The original ordered names by `localeCompare`, which no Term
+# text comparison is, so the order is the host's own through `locale-compare`: JavaScript's on node and the browser,
+# the platform collation on Swift and Kotlin, and code points on Rust, which has none. Package names are lowercase
+# scoped kebab, on which code points and the root collation agree but for `_` against `-`.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find ends-with
+  find substring
+  find char-count
+
+load ../parser/tree
+  find node
+  find parse
+  find root-node
+
+load ../parser/token
+  find token-source
+
+form lock-request
+  link name, like text
+  link range, like text
+  link locked, like text
+
+form lock-dependency
+  link name, like text
+  link version, like text
+
+form lock-link
+  link ref, like text
+  link hash, like text
+  link deps, like list, like lock-dependency
+
+form lockfile
+  link base, like text
+  link requests, like list, like lock-request
+  link links, like list, like lock-link
+
+# -1, 0 or 1 as `a` sorts before, with or after `b` in the host's locale order
+bind locale-compare
+  take a, like text
+  take b, like text
+  like number
+  case node
+    text <$a.localeCompare($b)>
+  case browser
+    text <$a.localeCompare($b)>
+  case rust
+    text <match $a.as_str().cmp($b.as_str()) \{ std::cmp::Ordering::Less =\> -1i64, std::cmp::Ordering::Equal =\> 0i64, std::cmp::Ordering::Greater =\> 1i64 \}>
+  case swift
+    text <Int64($a.localizedCompare($b).rawValue)>
+  case kotlin
+    text <java.text.Collator.getInstance().compare($a, $b).toLong()>
+
+task order-of
+  take sign, like number
+  like ordering
+  mark private
+
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+task request-order
+  take left, like lock-request
+  take right, like lock-request
+  like ordering
+  mark private
+
+  back order-of(locale-compare(left/name, right/name))
+
+task link-order
+  take left, like lock-link
+  take right, like lock-link
+  like ordering
+  mark private
+
+  back order-of(locale-compare(left/ref, right/ref))
+
+task dependency-order
+  take left, like lock-dependency
+  take right, like lock-dependency
+  like ordering
+  mark private
+
+  back order-of(locale-compare(left/name, right/name))
+
+task name-text
+  take name, like node
+  like text
+  mark private
+
+  save out, <>
+  sift name
+    case name
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save out, <{out}{chunk-text}>
+          miss
+            turn next
+    miss
+      back out
+  back out
+
+task head-name
+  take group, like node
+  like text
+  mark private
+
+  sift group
+    case group
+      walk nodes
+        take first
+        sift first
+          case name
+            back name-text(first)
+          miss
+            back <>
+      back <>
+    miss
+      back <>
+
+task rest-of
+  take group, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift group
+    case group
+      walk nodes
+        take one
+        take at
+        fork test, is-above(at, 0)
+          hold
+            push(out, one)
+    miss
+      back out
+  back out
+
+# the first argument of a group as a plain value (text chunk or name)
+task value-of
+  take group, like node
+  like text
+  mark private
+
+  save args, rest-of(group)
+  fork test, is-equal(args/length, 0)
+    hold
+      back <>
+  save arg, get(args, 0)
+  sift arg
+    case text
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            save out, <{out}{chunk-text}>
+          miss
+            turn next
+      back out
+    case name
+      back name-text(arg)
+    case group
+      back head-name(arg)
+    miss
+      back <>
+
+# a child group by head keyword, and whether there is one
+task child-value
+  take group, like node
+  take keyword, like text
+  take otherwise, like text
+  like text
+  mark private
+
+  walk rest-of(group)
+    take one
+    fork test, and(is-equal(one/kind, <group>), is-equal(head-name(one), keyword))
+      hold
+        back value-of(one)
+  back otherwise
+
+task parse-lockfile
+  take text, like text
+  like lockfile
+
+  save requests, make list
+  save links, make list
+  save base, <>
+  save result, parse(lock-source(text))
+  fork test, not(result/ok)
+    hold
+      back
+        make lockfile
+          bind base, base
+          bind requests, requests
+          bind links, links
+  walk root-groups(result/tree)
+    take group
+    save keyword, head-name(group)
+    fork test, is-equal(keyword, <base>)
+      hold
+        save base, value-of(group)
+    fork test, is-equal(keyword, <load>)
+      hold
+        save request
+          make lock-request
+            bind name, value-of(group)
+            bind range, child-value(group, <mark>, <*>)
+            bind locked, child-value(group, <lock>, <>)
+        push(requests, request)
+    fork test, is-equal(keyword, <link>)
+      hold
+        save deps, make list
+        walk rest-of(group)
+          take one
+          fork test, and(is-equal(one/kind, <group>), is-equal(head-name(one), <load>))
+            hold
+              save dep
+                make lock-dependency
+                  bind name, value-of(one)
+                  bind version, child-value(one, <mark>, <>)
+              push(deps, dep)
+        save made
+          make lock-link
+            bind ref, value-of(group)
+            bind hash, child-value(group, <hash>, <>)
+            bind deps, deps
+        push(links, made)
+  back
+    make lockfile
+      bind base, base
+      bind requests, requests
+      bind links, links
+
+task lock-source
+  take text, like text
+  like token-source
+  mark private
+
+  back
+    make token-source
+      bind file, <deck.lock.tree>
+      bind text, text
+
+# the groups at a root
+task root-groups
+  take root, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift root
+    case root
+      walk nodes
+        take one
+        fork test, is-equal(one/kind, <group>)
+          hold
+            push(out, one)
+  back out
+
+task serialize-lockfile
+  take lock, like lockfile
+  like text
+
+  save lines, make list
+  push(lines, <base \<{lock/base}\>>)
+  push(lines, <>)
+  # deterministic ordering: requests by name, links by ref, deps by name
+  walk sort(lock/requests, request-order)
+    take request
+    push(lines, <load {request/name}>)
+    push(lines, <  mark \<{request/range}\>>)
+    push(lines, <  lock \<{request/locked}\>>)
+    push(lines, <>)
+  walk sort(lock/links, link-order)
+    take one
+    push(lines, <link \<{one/ref}\>>)
+    push(lines, <  hash \<{one/hash}\>>)
+    walk sort(one/deps, dependency-order)
+      take dep
+      push(lines, <  load {dep/name}>)
+      push(lines, <    mark \<{dep/version}\>>)
+    push(lines, <>)
+  save out, join(lines, <\n>)
+  # trailing newlines folded to one
+  walk test
+    hook test, ends-with(out, <\n>)
+    hook hold
+      save out, substring(out, 0, subtract(char-count(out), 1))
+  back <{out}\n>

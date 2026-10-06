@@ -8,14 +8,17 @@
 // file.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { emitRust } from '@term/make/code/compile/rust'
+import { cratesNamed, nativeMain } from '@term/make/code/compile/native-main'
 import type { Resolver } from '@term/make/code/compile/load'
 
 export type Backend = 'typescript' | 'rust' | 'swift' | 'kotlin'
@@ -72,6 +75,22 @@ function toolchain(args: string[]): string | undefined {
   }
 }
 
+// the stdlib's crates (deck/base/code/native/rust/Cargo.toml) the source names, each as its manifest line
+function cratesOf(source: string): string[] {
+  return cratesNamed(source, readRuntime(join(dirname(fileURLToPath(import.meta.url)), '../../../deck/base/code/native/rust/Cargo.toml')) ?? '')
+}
+
+// `cargo build` in a project, answering its errors when it fails
+function cargoBuild(project: string, target: string): string | undefined {
+  try {
+    execFileSync('cargo', ['build', '--quiet'], { cwd: project, stdio: 'pipe', env: { ...process.env, CARGO_TARGET_DIR: target } })
+
+    return undefined
+  } catch (error) {
+    return errorsOf(error)
+  }
+}
+
 // compile `program` for `backend` and build it, answering the command that runs its `run` task and prints what it
 // returned
 export function buildOn({ backend, program, resolve, dir, name }: Program): Built {
@@ -103,13 +122,32 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
     return { form: 'built', command: [process.execPath, '--import', 'tsx', `${stem}.ts`] }
   }
 
+  // the main is the one `term make --emit X --build` writes (compile/native-main.ts): the entry driven as its signature
+  // asks, on a thread with a large stack
   if (backend === 'rust') {
     const rust = emitRust(result.program)
-    // an asynchronous `run` is driven to its answer by the program's executor, and a raising one ends with its raise
-    const signature = /(async )?fn run\(\)( -> std::result::Result)?/.exec(rust)
-    const called = signature?.[1] ? '__term_block_on(run())' : 'run()'
-    const answered = signature?.[2] ? `${called}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : called
-    writeFileSync(`${stem}.rs`, [nativePrelude(result.program, env, readRuntime, rust), rust, `fn main() { print!("{}", ${answered}); }`, ''].join('\n'))
+    const source = [nativePrelude(result.program, env, readRuntime, rust), rust, nativeMain('rust', rust), ''].join('\n')
+    const crates = cratesOf(source)
+
+    // a program that names a crate of the stdlib's (`num_bigint::`, `regex::`) builds as a cargo project with those
+    // crates alone, every such project sharing one target directory so a crate compiles once
+    if (crates.length > 0) {
+      if (!have('cargo')) {
+        return { form: 'skipped', reason: `cargo not installed, and the program names ${crates.join(', ')}` }
+      }
+
+      const project = join(dir, `${name}-rust-cargo`)
+      const binary = `term-${name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
+      mkdirSync(join(project, 'src'), { recursive: true })
+      writeFileSync(join(project, 'Cargo.toml'), `[package]\nname = "${binary}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${crates.join('\n')}\n`)
+      writeFileSync(join(project, 'src', 'main.rs'), source)
+      const target = join(tmpdir(), 'seed-rust-runtime', 'target')
+      const failed = cargoBuild(project, target)
+
+      return fail(failed, [join(target, 'debug', binary)])
+    }
+
+    writeFileSync(`${stem}.rs`, source)
 
     // edition 2021: rustc's default is 2015, which has no `async`, and the fire-and-forget executor is async blocks
     return fail(toolchain(['rustc', '--edition', '2021', '-A', 'warnings', '-o', stem, `${stem}.rs`]), [stem])
@@ -117,18 +155,13 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
 
   if (backend === 'swift') {
     const swift = emitSwift(result.program)
-    // an asynchronous `run` is awaited at the top level, which a program's main file may do
-    const signature = /func run\(\)( async)?( throws)?/.exec(swift)
-    const called = `${signature?.[2] ? 'try ' : ''}${signature?.[1] ? 'await ' : ''}run()`
-    writeFileSync(`${stem}.swift`, ['import Foundation', nativePrelude(result.program, env, readRuntime, swift), swift, `print(${called}, terminator: "")`, ''].join('\n'))
+    writeFileSync(`${stem}.swift`, ['import Foundation', nativePrelude(result.program, env, readRuntime, swift), swift, nativeMain('swift', swift), ''].join('\n'))
 
     return fail(toolchain(['swiftc', '-o', stem, `${stem}.swift`]), [stem])
   }
 
   const kotlin = emitKotlin(result.program)
-  // a suspending `run` is driven to its answer on the program's event loop (`termLoop`)
-  const called = /suspend fun run\(\)/.test(kotlin) ? 'termLoop.block { run() }' : 'run()'
-  writeFileSync(`${stem}.kt`, `${hoistKotlinImports([nativePrelude(result.program, env, readRuntime, kotlin), kotlin, `fun main() { print(${called}) }`].join('\n'))}\n`)
+  writeFileSync(`${stem}.kt`, `${hoistKotlinImports([nativePrelude(result.program, env, readRuntime, kotlin), kotlin, nativeMain('kotlin', kotlin)].join('\n'))}\n`)
 
   return fail(toolchain(['kotlinc', `${stem}.kt`, '-include-runtime', '-nowarn', '-d', `${stem}.jar`]), ['java', '-jar', `${stem}.jar`])
 }

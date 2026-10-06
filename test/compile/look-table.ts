@@ -27,7 +27,7 @@ const THEME = path.join(TERM, 'deck/face/code/style/theme.tree')
 const theme = { file: THEME, text: readFileSync(THEME, 'utf8') }
 
 const light = compileLookTable(theme)
-const dark = compileLookTable(theme, { scheme: 'dark' })
+const dark = compileLookTable(theme, 'dark')
 
 // every `face` the sheet declares is a class of the table, in order
 const declared = [...theme.text.matchAll(/^face ([a-z-]+)$/gm)].map(match => match[1])
@@ -132,7 +132,7 @@ ok('what does lower still lowers beside them', rows(odd, 'odd') === 'height: 4px
 const TAILWIND = path.join(TERM, 'deck/face/code/style/tailwind.tree')
 const tailwindText = readFileSync(TAILWIND, 'utf8')
 const tailwind = compileLookTable({ file: TAILWIND, text: tailwindText })
-const tailwindDark = compileLookTable({ file: TAILWIND, text: tailwindText }, { scheme: 'dark' })
+const tailwindDark = compileLookTable({ file: TAILWIND, text: tailwindText }, 'dark')
 const namedAt = new Set([...tailwind.unlowered, ...tailwindDark.unlowered].map(miss => miss.at))
 // a `dark:` class holds only a `case dark`, so it is empty in the light table by design and must hold rows in the dark
 const darkRows = new Set(tailwindDark.classes.filter(c => c.rows.length > 0).map(c => c.name))

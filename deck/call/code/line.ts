@@ -730,7 +730,7 @@ const cli = yargs(hideBin(process.argv))
         .option('emit', {
           type: 'string',
           description:
-            'Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin: runtime prelude plus emitted code. A check error refuses',
+            'Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin (runtime prelude plus emitted code), or for wgsl or hvm (a numeric part of the language: anything outside it is refused, by name and place), or llvm (IR) or wasm (WASI), through the Rust. A check error refuses',
         })
         .option('out', {
           type: 'string',
@@ -740,6 +740,24 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           description:
             'With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed',
+        })
+        .option('env', {
+          type: 'string',
+          description:
+            'Every program of the project (a file with a `run`, `boot` or `main` task taking nothing) for rust, swift, kotlin or node, one file each under host/<env>/. One that does not build is reported and the rest written',
+        })
+        .option('build', {
+          type: 'boolean',
+          description:
+            'With --emit: add the main that calls the program and build it with its toolchain, into --out <folder> (default host/<target>). With --env: build every program, beside its source',
+        })
+        .option('run', {
+          type: 'boolean',
+          description: 'With --emit: build it, then run it, its output and exit code passed through',
+        })
+        .option('main', {
+          type: 'string',
+          description: 'With --build or --run: the task the program starts at (default run, else boot, else main)',
         })
         .option('ride', {
           type: 'boolean',
@@ -818,7 +836,19 @@ const cli = yargs(hideBin(process.argv))
           target: argv.emit,
           out: argv.out,
           units: argv.units,
+          build: argv.build,
+          run: argv.run,
+          main: argv.main,
         })
+
+        return
+      }
+
+      // every program of the project for one backend (call/code/make-native.ts)
+      if (argv.env !== undefined) {
+        const { callMakeNative } = await import('@term/call/code/make-native')
+
+        callMakeNative({ root, env: argv.env, build: argv.build })
 
         return
       }

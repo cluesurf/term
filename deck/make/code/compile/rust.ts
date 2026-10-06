@@ -79,6 +79,10 @@ const RUST_RESERVED = new Set([
   'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return', 'static', 'struct', 'super', 'trait',
   'true', 'type', 'unsafe', 'use', 'where', 'while', 'async', 'await', 'abstract', 'become', 'box', 'do', 'final',
   'macro', 'override', 'priv', 'typeof', 'unsized', 'virtual', 'yield', 'try', 'gen',
+  // not a keyword, and reserved alike: a binary's `fn main` is its start, and a Term `task main` answering text was
+  // an invalid one (E0277), or a second beside the main `--build` adds (E0428). compile/native-main.ts `entrySpelling`
+  // spells the entry the same way. Found by test/call/make-env.ts, 2026-10-05
+  'main',
 ])
 
 // `self` is fine in Rust as a name only in methods; as a free identifier rename it. Names snake_case.

@@ -1,0 +1,19 @@
+# Numbers and money by language on Kotlin: `java.text.NumberFormat`, over the CLDR the JVM carries (text/format.tree).
+# Rounding half to even, as `Intl.NumberFormat` is asked to round on node
+
+bind platform-format-number
+  take value, like decimal
+  take language, like text
+  take fewest, like number
+  take most, like number
+  like text
+  case kotlin
+    text <java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag($language)).apply \{ minimumFractionDigits = ($fewest).toInt(); maximumFractionDigits = ($most).toInt(); roundingMode = java.math.RoundingMode.HALF_EVEN \}.format($value)>
+
+bind platform-format-currency
+  take value, like decimal
+  take currency, like text
+  take language, like text
+  like text
+  case kotlin
+    text <java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag($language)).apply \{ currency = java.util.Currency.getInstance($currency); roundingMode = java.math.RoundingMode.HALF_EVEN \}.format($value)>

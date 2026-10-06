@@ -378,7 +378,7 @@ function selector(group: GroupNode): string {
 // ── at-rule + block emitters ──────────────────────────────────────────────────
 
 // the responsive breakpoint min-widths (Tailwind defaults) used by `face` `case` variants
-export const BREAKPOINT: Record<string, string> = {
+const BREAKPOINT: Record<string, string> = {
   sm: '640px',
   md: '768px',
   lg: '1024px',
@@ -387,7 +387,7 @@ export const BREAKPOINT: Record<string, string> = {
 }
 
 // data/aria state variants -> the attribute selector they target on the class
-export const STATE_ATTR: Record<string, string> = {
+const STATE_ATTR: Record<string, string> = {
   open: '[data-state=open]',
   closed: '[data-state=closed]',
   checked: '[data-state=checked]',
@@ -396,6 +396,16 @@ export const STATE_ATTR: Record<string, string> = {
   inactive: '[data-state=inactive]',
   selected: '[aria-selected=true]',
   expanded: '[aria-expanded=true]',
+}
+
+// a variant's breakpoint min-width, '' where it is no breakpoint, and its state attribute selector, '' where it is no
+// state: the tables as look-css.tree answers them, by own name only
+export function breakpointOf(variant: string): string {
+  return Object.hasOwn(BREAKPOINT, variant) ? BREAKPOINT[variant]! : ''
+}
+
+export function stateAttributeOf(variant: string): string {
+  return Object.hasOwn(STATE_ATTR, variant) ? STATE_ATTR[variant]! : ''
 }
 
 // escape a utility class name for a CSS selector: `:` `/` `.` are legal in a class attribute (Tailwind uses them, e.g.
@@ -428,13 +438,13 @@ function emitFace(group: GroupNode): string {
       continue
     }
 
-    if (variant in BREAKPOINT) {
+    if (breakpointOf(variant)) {
       rules.push(
         `@media (min-width: ${BREAKPOINT[variant]}) {\n${css} {\n${body}\n}\n}`,
       )
     } else if (variant === 'dark') {
       rules.push(`.dark ${css} {\n${body}\n}`)
-    } else if (variant in STATE_ATTR) {
+    } else if (stateAttributeOf(variant)) {
       rules.push(`${css}${STATE_ATTR[variant]} {\n${body}\n}`)
     } else if (variant.startsWith('group-')) {
       rules.push(`.group:${variant.slice(6)} ${css} {\n${body}\n}`)
@@ -696,15 +706,16 @@ function emitBaseRaw(group: GroupNode): string {
 
 // ── entry ─────────────────────────────────────────────────────────────────────
 
-// compile a `.tree` look sheet into a CSS stylesheet. With `only`, this is the Tailwind JIT: emit only the `face` rules
-// whose class name is in the used set (matched by FULL name). Every non-`face` block (`base ...`, `tone`) is always
-// emitted (the resets, fonts, theme tokens, and at-rules the utilities rely on).
+// compile a `.tree` look sheet into a CSS stylesheet. With `restricted`, this is the Tailwind JIT: emit only the
+// `face` rules whose class name is in `only` (matched by FULL name). Every non-`face` block (`base ...`, `tone`) is
+// always emitted (the resets, fonts, theme tokens, and at-rules the utilities rely on).
 export function compileLookCss(
   source: {
     file: string
     text: string
   },
-  options?: { only?: Set<string> },
+  used: string[] = [],
+  restricted = false,
 ): string {
   const parsed = parse(source)
 
@@ -712,7 +723,7 @@ export function compileLookCss(
     return ''
   }
 
-  const only = options?.only
+  const only = restricted ? new Set(used) : undefined
   const blocks: string[] = []
 
   for (const group of groupsOf(parsed.tree.nodes)) {

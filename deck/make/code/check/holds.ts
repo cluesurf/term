@@ -2609,7 +2609,11 @@ function ringFromEquations(goal: Expression, statements: Expression[], available
   const left = atomized(goal.left)
   const right = atomized(goal.right)
 
-  return left !== undefined && right !== undefined && ringEqualByEquations(left, right, equations, atoms)
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    ringEqualByEquations(left, right, equations.map(([l, r]) => ({ left: l, right: r })), [...atoms])
+  )
 }
 
 function universalGoal(expr: Expression, available: Inequality[], seeds: Expression[] = []): boolean {
@@ -3592,12 +3596,12 @@ function explainRule(
     return { asked, ...(hint ? { hint } : {}) }
   }
 
-  const at = counterexample(names, hypotheses, goal, smallTasks)
+  const search = counterexample(names, hypotheses, goal, smallTasks)
 
-  return at
+  return search.found
     ? {
         asked,
-        false: `this rule is FALSE: at ${printAssignment(at)} ${hypotheses.length > 0 ? 'every hypothesis holds and the goal does not' : 'the goal does not hold'}${asked}`,
+        false: `this rule is FALSE: at ${printAssignment(search.at)} ${hypotheses.length > 0 ? 'every hypothesis holds and the goal does not' : 'the goal does not hold'}${asked}`,
       }
     : { asked }
 }

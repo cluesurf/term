@@ -771,8 +771,6 @@ task bag-size
   like number
   save b
     make bag
-      bind items
-        make list
   call insert
     read b
     code 5
@@ -780,7 +778,7 @@ task bag-size
     read b
     code 5
   send back
-    call get-size
+    call length
       read b
 `
 
@@ -791,8 +789,6 @@ task oset-size
   like number
   save s
     make ordered-set
-      bind items
-        make list
   save s
     call insert
       read s
@@ -806,7 +802,7 @@ task oset-size
       read s
       code 2
   send back
-    call size
+    call length
       read s
 `
 

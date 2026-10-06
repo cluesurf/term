@@ -51,7 +51,7 @@ const dir = runDir('term-toolkit-view-')
 // native-dom-0008: face's own theme, compiled to the style table the app hands its host, light scheme
 const THEME = join(ROOT, 'deck/face/code/style/theme.tree')
 const STYLE_TABLE = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }))
-const STYLE_TABLE_DARK = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }, { scheme: 'dark' }))
+const STYLE_TABLE_DARK = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }, 'dark'))
 
 // what the platform must draw for it, read back off the views: the panel's fill, edge, corners and the text color its
 // children inherit, the overlay's opacity closed then open, a label's font, a fill set inline that the class's row does

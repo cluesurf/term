@@ -477,7 +477,7 @@ hook make
   # With --emit: the program to emit, with its whole import closure
   take file
     like text
-  # Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin: runtime prelude plus emitted code. A check error refuses
+  # Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin (runtime prelude plus emitted code), or for wgsl or hvm (a numeric part of the language: anything outside it is refused, by name and place), or llvm (IR) or wasm (WASI), through the Rust. A check error refuses
   take emit
     like text
   # With --emit: the file to write (default standard output)
@@ -486,6 +486,18 @@ hook make
   # With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed
   take units
     like boolean
+  # Every program of the project (a file with a `run`, `boot` or `main` task taking nothing) for rust, swift, kotlin or node, one file each under host/<env>/. One that does not build is reported and the rest written
+  take env
+    like text
+  # With --emit: add the main that calls the program and build it with its toolchain, into --out <folder> (default host/<target>). With --env: build every program, beside its source
+  take build
+    like boolean
+  # With --emit: build it, then run it, its output and exit code passed through
+  take run
+    like boolean
+  # With --build or --run: the task the program starts at (default run, else boot, else main)
+  take main
+    like text
   task make
 
 # Type-check a file and report diagnostics (the verifier)

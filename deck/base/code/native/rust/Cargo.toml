@@ -30,6 +30,9 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
+# integer/big's arithmetic, and so decimal, float/128, float/big and integer/128 on Rust. It was named by their binds
+# and missing here until 2026-10-05, so no Rust build of them could get it
+num-bigint = "0.4"
 
 # the asynchronous filesystem and HTTP server stack
 hyper = { version = "1", features = ["server", "client", "http1", "http2"] }

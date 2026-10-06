@@ -47,7 +47,7 @@ ok(
 
 // inside the range, identities still prove
 ok('(2^20 + 1)^2 x == (2^40 + 2^21 + 1) x', ringEqual(times(times(x, int(1048577)), int(1048577)), times(x, int(1099513724929))))
-ok('modulo hypotheses still declines past the range', !ringEqualModulo(times(x, int(9007199254740993n)), times(x, int(9007199254740992n)), [[x, int(1)]]))
+ok('modulo hypotheses still declines past the range', !ringEqualModulo(times(x, int(9007199254740993n)), times(x, int(9007199254740992n)), [{ left: x, right: int(1) }]))
 ok('non-negativity declines past the range', !nonNegativeDifference(times(times(x, x), int(9007199254740993n)), int(0)))
 ok('non-negativity still proves inside it', nonNegativeDifference(times(times(x, x), int(9007199254740991)), int(0)))
 

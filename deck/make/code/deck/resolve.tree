@@ -1,0 +1,395 @@
+# Resolution for the `load` term. `load` is a mill (it mints a load record); this module resolves that record's target
+# to a concrete module: a local file, a package in the store, or a host-native module. It is the semantic step the
+# elaboration resolver runs for import holes (see note/research/vibe/computation/plans/16-package-manager.md and
+# 11-elaboration.md). Browser-safe: no host APIs. The files that exist are handed in, so it is testable and usable in
+# the sandbox.
+#
+# Ported from deck/resolve.ts (self-hosting, 2026-10-05). The original was handed a file-existence check; this is
+# handed the paths that exist. `package-rest` answers whether the path is a package path beside its parts, and
+# `base-refusal` answers `<>` where the `base` agrees, where the original answered undefined.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find contains
+  find starts-with
+  find ends-with
+  find split
+  find substring
+  find char-count
+  find last-index-of
+  find index-of
+
+form load-kind
+  mark text
+  case relative
+  case absolute
+  case package
+  case native
+  case glob
+
+form resolution
+  mark tag, name kind
+  case file
+    link path, like text
+  case package
+    link host, like text
+    link name, like text
+    link subpath
+      like text
+      need false
+  case native
+    link module, like text
+  case glob
+    link pattern, like text
+    link base, like text
+  case missing
+    link target, like text
+
+form package-parts
+  link host, like text
+  link name, like text
+  link subpath
+    like text
+    need false
+
+form package-path
+  link found, like boolean
+  link pkg, like text
+  link rest, like text
+
+# ---- posix-style path helpers (browser-safe, no node path) ----
+
+task dirname
+  take path, like text
+  like text
+  mark private
+
+  save at, last-index-of(path, </>)
+  fork test, is-equal(at, 0)
+    hold
+      back </>
+  fork test, is-below(at, 0)
+    hold
+      back <.>
+  back substring(path, 0, at)
+
+task join-path
+  take base, like text
+  take rest, like text
+  like text
+  mark private
+
+  save out, make list
+  walk split(<{base}/{rest}>, </>)
+    take part
+    fork test, or(is-equal(part, <>), is-equal(part, <.>))
+      hold
+        turn next
+    fork test, is-equal(part, <..>)
+      hold
+        fork test, and(is-above(out/length, 0), is-unequal(get(out, subtract(out/length, 1)), <..>))
+          hold
+            out/pop()
+          miss
+            push(out, <..>)
+        turn next
+    push(out, part)
+  save prefix, <>
+  fork test, starts-with(base, </>)
+    hold
+      save prefix, </>
+  back <{prefix}{join(out, </>)}>
+
+# ---- classification ----
+
+task classify-load
+  take target, like text
+  take native, like boolean, fall false
+  like load-kind
+
+  fork test, native
+    hold
+      back make native
+  fork test, contains(target, <*>)
+    hold
+      back make glob
+  fork test, or(starts-with(target, <./>), starts-with(target, <../>))
+    hold
+      back make relative
+  fork test, starts-with(target, </>)
+    hold
+      back make absolute
+  # @host/deck or a bare name
+  back make package
+
+# the candidate files to try for a path with no extension, in order
+task file-candidates
+  take path, like text
+  like list, like text
+
+  save out, make list
+  fork test, ends-with(path, <.tree>)
+    hold
+      push(out, path)
+      back out
+  push(out, <{path}.tree>)
+  push(out, <{path}/base.tree>)
+  push(out, <{path}/note.tree>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# resolve a relative or absolute file path, trying the extension fallbacks
+task resolve-file
+  take target, like text
+  take from-file, like text
+  take existing, like list, like text
+  like resolution
+
+  save base, target
+  fork test, not(starts-with(target, </>))
+    hold
+      save base, join-path(dirname(from-file), target)
+  walk file-candidates(base)
+    take candidate
+    fork test, has-text(existing, candidate)
+      hold
+        back
+          make resolution/file
+            bind path, candidate
+  back
+    make resolution/missing
+      bind target, target
+
+# parse a package target: @host/name, or @host/name/sub/path
+task parse-package
+  take target, like text
+  like package-parts
+
+  save parts, split(target, </>)
+  save host, <>
+  save first, 0
+  fork test, starts-with(target, <@>)
+    hold
+      save parts, split(substring(target, 1, char-count(target)), </>)
+      save host, part-at(parts, 0)
+      save first, 1
+  save name, part-at(parts, first)
+  fork test, is-above(parts/length, add(first, 1))
+    hold
+      save tail, make list
+      walk parts
+        take part
+        take at
+        fork test, is-above(at, first)
+          hold
+            push(tail, part)
+      back
+        make package-parts
+          bind host, host
+          bind name, name
+          bind subpath, join(tail, </>)
+  back
+    make package-parts
+      bind host, host
+      bind name, name
+
+task part-at
+  take parts, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, parts/length)
+    hold
+      back get(parts, at)
+  back <>
+
+# the path a package import names INSIDE its package: `@scope/name/a/b` -> `a/b`, `@scope/name` -> ''. Not found for
+# anything that is not a package path (`@` and a scope, a `/` and a name, each without a `/`). Browser-safe, so the
+# mill reader can check a `base` with it.
+task package-rest
+  take import-path, like text
+  like package-path
+
+  save missing
+    make package-path
+      bind found, false
+      bind pkg, <>
+      bind rest, <>
+  fork test, not(starts-with(import-path, <@>))
+    hold
+      back missing
+  save parts, split(import-path, </>)
+  fork test, is-below(parts/length, 2)
+    hold
+      back missing
+  save scope, get(parts, 0)
+  save name, get(parts, 1)
+  fork test, or(is-below(char-count(scope), 2), is-equal(char-count(name), 0))
+    hold
+      back missing
+  save rest, <>
+  fork test, is-above(parts/length, 2)
+    hold
+      save tail, make list
+      walk parts
+        take part
+        take at
+        fork test, is-above(at, 1)
+          hold
+            push(tail, part)
+      save rest, join(tail, </>)
+  back
+    make package-path
+      bind found, true
+      bind pkg, <{scope}/{name}>
+      bind rest, rest
+
+# the refusal a `base <dir>` under a load earns, or `<>` when it agrees with the path: it forces the PACKAGE root, and
+# must name the path's first segment (note/term/plan/manifest-mark-and-code-root.md). One sentence, wherever it
+# surfaces: the resolver refuses with it and the reader reports it at the `load`.
+task base-refusal
+  take import-path, like text
+  take base, like text
+  like text
+
+  save rest, <>
+  fork test, starts-with(import-path, <@/>)
+    hold
+      save rest, substring(import-path, 2, char-count(import-path))
+    miss
+      save named, package-rest(import-path)
+      fork test, not(named/found)
+        hold
+          back <`base {base}` names a folder of a package, and `{import-path}` is not a package path>
+      save rest, named/rest
+  save first, part-at(split(rest, </>), 0)
+  fork test, is-equal(first, base)
+    hold
+      back <>
+  save shown, first
+  fork test, is-equal(shown, <>)
+    hold
+      save shown, <(nothing)>
+  back <`base {base}` must name the path's first segment, and `{import-path}` starts with `{shown}`>
+
+# walk up from a file to find the enclosing deck root (the directory holding deck.tree), `<>` when there is none
+task find-deck-root
+  take from-file, like text
+  take existing, like list, like text
+  like text
+
+  save dir, dirname(from-file)
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      fork test, has-text(existing, <{dir}/deck.tree>)
+        hold
+          back dir
+      save parent, dirname(dir)
+      fork test, or(is-equal(parent, dir), is-equal(parent, <.>))
+        hold
+          save going, false
+        miss
+          save dir, parent
+  back <>
+
+# the global content-addressed store path for a package version
+task store-path
+  take home, like text
+  take host, like text
+  take deck, like text
+  take version, like text
+  like text
+
+  back <{home}/.base/@term/code/deck/link/{host}/{deck}/{version}>
+
+# the content-addressed file path in the shared tree store
+task tree-path
+  take home, like text
+  take hash, like text
+  like text
+
+  back <{home}/.base/@term/code/deck/tree/{substring(hash, 0, 2)}/{hash}>
+
+# a native module's name without the angle brackets it was written in
+task bare-module
+  take target, like text
+  like text
+  mark private
+
+  save out, target
+  fork test, starts-with(out, <\<>)
+    hold
+      save out, substring(out, 1, char-count(out))
+  fork test, ends-with(out, <\>>)
+    hold
+      save out, substring(out, 0, subtract(char-count(out), 1))
+  back out
+
+# whether a package target names a subpath at all, even an empty one (`@a/b/`): a segment past the name
+task has-subpath
+  take target, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(target, <@>)
+    hold
+      back is-above(split(substring(target, 1, char-count(target)), </>)/length, 2)
+  back is-above(split(target, </>)/length, 1)
+
+# the unified entry: resolve any load target
+task resolve-load
+  take target, like text
+  take from-file, like text
+  take existing, like list, like text
+  take native, like boolean, fall false
+  like resolution
+
+  save kind, classify-load(target, native)
+  sift kind
+    case native
+      save bare, bare-module(target)
+      back
+        make resolution/native
+          bind module, bare
+    case glob
+      save base, dirname(from-file)
+      back
+        make resolution/glob
+          bind pattern, target
+          bind base, base
+    case relative
+      back resolve-file(target, from-file, existing)
+    case absolute
+      back resolve-file(target, from-file, existing)
+    case package
+      save parts, parse-package(target)
+      fork test, not(has-subpath(target))
+        hold
+          back
+            make resolution/package
+              bind host, parts/host
+              bind name, parts/name
+      back
+        make resolution/package
+          bind host, parts/host
+          bind name, parts/name
+          bind subpath, parts/subpath

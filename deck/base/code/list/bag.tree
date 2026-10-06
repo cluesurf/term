@@ -1,41 +1,103 @@
 
-# Bag: a multiset. The same value may appear many times and insertion order is kept. Backed by a list, so each
-# method delegates to the native array operation.
+# Bag: a multiset. A value may be in it many times, and the bag says how many.
+#
+# Each distinct value's count in a `hash`, with the total kept beside it, so `insert`, `remove`, `count-of`,
+# `contains` and `length` are each O(1), as Python's Counter and Guava's HashMultiset are. Until 2026-10-05 it was a
+# list: `contains` searched it from the front, and there was no `remove` and no count of one value. `to-list` gives
+# each value as many times as it is held, the values in the order each was FIRST inserted, every copy of one value
+# together: a bag does not keep the order of the copies, which is what makes it a bag and not a list.
+# test/stdlib/ordered-collections.ts runs it on all four backends.
 
-mark unstable
+mark stable
+
+load @term/base/hash
+  find hash
+
+load @term/base/list
+  find list
 
 form bag
   head t
 
-  link items
-    like list
+  # each value's count, and the count of them all: `make bag` is an empty bag. The total is a list of one number, not
+  # a number, because a form is a value: a field written through `self` is the callee's copy, and `insert(b, 5)`
+  # left `b`'s total where it was while its counts, a hash, moved. A list, like the hash, is shared by every copy of
+  # the bag, so the two cannot disagree
+  link counts
+    like hash
       like t
+      like number
+    fall make hash
+  link total
+    like list, like number
+    fall make(list, 0)
 
-  task make
-    like bag
-    send back
-      make bag
-        bind items
-          make list
-
+  # one more copy of `item`. The bag is changed in place and handed back, as `set`'s `insert` is
   task insert
-    take self, flex true
+    take self
     take item, like t
-    like void
-    call self/items/push
+    like bag t
+    call set
+      read self/counts
       read item
+      call add
+        call count-of
+          read self
+          read item
+        code 1
+    save self/total/0
+      call add
+        read self/total/0
+        code 1
+    send back, read self
 
-  task get-size
+  # one copy of `item` fewer, and whether there was one to take
+  task remove
     take self
-    like number
-    send back, read self/items/length
-
-  task is-empty
-    take self
+    take item, like t
     like boolean
+    save held
+      call count-of
+        read self
+        read item
+    fork test
+      hook test
+        call is-equal
+          read held
+          code 0
+      hook hold
+        send back, false
+    fork test
+      hook test
+        call is-equal
+          read held
+          code 1
+      hook hold
+        call remove
+          read self/counts
+          read item
+      hook miss
+        call set
+          read self/counts
+          read item
+          call subtract
+            read held
+            code 1
+    save self/total/0
+      call subtract
+        read self/total/0
+        code 1
+    send back, true
+
+  # how many copies of `item` it holds, 0 when none
+  task count-of
+    take self
+    take item, like t
+    like number
     send back
-      call is-equal
-        read self/items/length
+      call get-or-default
+        read self/counts
+        read item
         code 0
 
   task contains
@@ -43,10 +105,57 @@ form bag
     take item, like t
     like boolean
     send back
-      call self/items/includes
+      call has
+        read self/counts
         read item
 
+  # how many copies it holds in all
+  task length
+    take self
+    like number
+    send back, read self/total/0
+
+  # how many different values it holds
+  task distinct
+    take self
+    like number
+    send back, read self/counts/size
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/total/0
+        code 0
+
+  # every copy, each value's copies together, the values in first-insertion order
   task to-list
     take self
     like list
-    send back, read self/items
+      like t
+    save out, make list
+    save values
+      call keys
+        read self/counts
+    walk values
+      take value
+      save copies
+        call count-of
+          read self
+          read value
+      save done, code 0
+      walk test
+        hook test
+          call is-below
+            read done
+            read copies
+        hook hold
+          call push
+            read out
+            read value
+          save done
+            call add
+              read done
+              code 1
+    send back, read out

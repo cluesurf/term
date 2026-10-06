@@ -1,0 +1,17 @@
+# Casing by language on Swift: Foundation's own, which follows Unicode's SpecialCasing (text/case.tree)
+
+bind platform-upper-case-in
+  take value, like text
+  take language, like text
+  like text
+  case swift
+    load <Foundation>
+    text <$value.uppercased(with: Locale(identifier: $language))>
+
+bind platform-lower-case-in
+  take value, like text
+  take language, like text
+  like text
+  case swift
+    load <Foundation>
+    text <$value.lowercased(with: Locale(identifier: $language))>

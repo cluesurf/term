@@ -317,3 +317,36 @@ task big-compare
     call bignum-compare
       read a/dock
       read b/dock
+
+# the quotient truncated toward zero, on every backend (BigInt, num-bigint, BigInteger, termbig)
+task big-divide
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call bignum-divide
+          read a/dock
+          read b/dock
+
+# the remainder of `big-divide`, with the sign of `a`
+task big-remainder
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call bignum-remainder
+          read a/dock
+          read b/dock
+
+task big-negate
+  take value, like big-integer
+  like big-integer
+  send back
+    make big-integer
+      bind dock
+        call bignum-negate
+          read value/dock

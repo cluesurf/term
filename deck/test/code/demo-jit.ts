@@ -79,7 +79,8 @@ async function main(): Promise<void> {
   const full = compileLookCss({ file: 'c.tree', text: CATALOG })
   const jit = compileLookCss(
     { file: 'c.tree', text: CATALOG },
-    { only: new Set(used.classes) },
+    [...used.classes],
+    true,
   )
   ok('JIT is smaller than the full catalog', jit.length < full.length)
   ok('JIT keeps a used base rule', jit.includes('.flex {'))

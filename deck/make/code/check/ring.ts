@@ -237,11 +237,14 @@ function ringEqualExact(
 // reduced modulo the remaining equations (`ringEqualModulo`). Two callers share it: the hold checker, whose atoms are
 // calls (check/holds.ts `ringFromEquations`), and the kernel closing an induction case, whose atoms are terms it cannot
 // compute (check/elaborate.ts `ringCase`). Sound: each substitution replaces an atom by what an equation says it is
+// an equation between two expressions
+export type Equation = { left: Expression; right: Expression }
+
 export function ringEqualByEquations(
   left: Expression,
   right: Expression,
-  equations: [Expression, Expression][],
-  atoms: ReadonlySet<string>,
+  equations: Equation[],
+  atoms: string[],
 ): boolean {
   const mentions = (e: Expression, name: string): boolean =>
     e.form === 'variable'
@@ -262,23 +265,23 @@ export function ringEqualByEquations(
           : e
 
   const defines = (side: Expression, other: Expression): boolean =>
-    side.form === 'variable' && atoms.has(side.name) && !mentions(other, side.name)
+    side.form === 'variable' && atoms.includes(side.name) && !mentions(other, side.name)
 
   let rest = [...equations]
   let l = left
   let r = right
 
   for (let round = 0; round < equations.length; round++) {
-    const at = rest.findIndex(([a, b]) => defines(a, b) || defines(b, a))
+    const at = rest.findIndex(({ left: a, right: b }) => defines(a, b) || defines(b, a))
 
     if (at < 0) {
       break
     }
 
-    const [a, b] = rest[at]!
+    const { left: a, right: b } = rest[at]!
     const [name, value] = defines(a, b) ? [(a as { name: string }).name, b] : [(b as { name: string }).name, a]
 
-    rest = rest.filter((_, i) => i !== at).map(([x, y]) => [replaced(x, name, value), replaced(y, name, value)])
+    rest = rest.filter((_, i) => i !== at).map(({ left: x, right: y }) => ({ left: replaced(x, name, value), right: replaced(y, name, value) }))
     l = replaced(l, name, value)
     r = replaced(r, name, value)
   }
@@ -360,7 +363,7 @@ export const ringEqualModulo = declining(ringEqualModuloExact)
 function ringEqualModuloExact(
   left: Expression,
   right: Expression,
-  hypotheses: [Expression, Expression][],
+  hypotheses: Equation[],
 ): boolean {
   const l = toPoly(left)
   const r = toPoly(right)
@@ -377,7 +380,7 @@ function ringEqualModuloExact(
 
   const generators: { lead: string; leadCoeff: number; poly: Poly }[] = []
 
-  for (const [hl, hr] of hypotheses) {
+  for (const { left: hl, right: hr } of hypotheses) {
     const a = toPoly(hl)
     const b = toPoly(hr)
 

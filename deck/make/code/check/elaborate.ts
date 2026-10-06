@@ -4843,9 +4843,9 @@ export function elaborateReport(
     const { read, atoms } = arithmeticReader(level, rules)
 
     try {
-      const equations = hypotheses.map(([l, r]): [Expression, Expression] => [read(l), read(r)])
+      const equations = hypotheses.map(([l, r]) => ({ left: read(l), right: read(r) }))
 
-      return ringEqualByEquations(read(left), read(right), equations, atoms)
+      return ringEqualByEquations(read(left), read(right), equations, [...atoms])
     } catch {
       return false
     }
@@ -6503,7 +6503,7 @@ export function elaborateReport(
 
           if (
             assumptions.length > 0 &&
-            ringEqualModulo(claim.left, claim.right, assumptions)
+            ringEqualModulo(claim.left, claim.right, assumptions.map(([left, right]) => ({ left, right })))
           ) {
             return true
           }
@@ -6797,12 +6797,7 @@ export function elaborateReport(
       ringEqualModulo(
         ringLeft,
         ringRight,
-        assumptions.map(
-          ([l, r]): [Expression, Expression] => [
-            unfoldDefinitions(l, program),
-            unfoldDefinitions(r, program),
-          ],
-        ),
+        assumptions.map(([l, r]) => ({ left: unfoldDefinitions(l, program), right: unfoldDefinitions(r, program) })),
       )
     ) {
       discharged.push(statement.span)
@@ -7092,12 +7087,7 @@ export function elaborateReport(
               ringEqualModulo(
                 unfoldedLeft,
                 unfoldedRight,
-                assumptions.map(
-                  ([l, r]): [Expression, Expression] => [
-                    unfoldDefinitions(l, program),
-                    unfoldDefinitions(r, program),
-                  ],
-                ),
+                assumptions.map(([l, r]) => ({ left: unfoldDefinitions(l, program), right: unfoldDefinitions(r, program) })),
               )))
         ) {
           discharged.push(statement.span)

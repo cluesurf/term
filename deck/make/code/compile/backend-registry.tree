@@ -60,7 +60,7 @@ host backends
       bind stability, <experimental>
       bind limitations
         make list
-          <The pure fragment is lowered: numbers, booleans, arithmetic / comparison, named-function calls, recursion, and value conditionals (an `if` becomes a numeric match). Strings, collections, records, stored closures, and loops are not yet lowered and are flagged with a SEED-UNSUPPORTED marker.>
+          <The pure fragment is lowered: numbers, booleans, arithmetic / comparison, named-function calls, recursion, and value conditionals (an `if` becomes a numeric match). Strings, collections, records, stored closures, and loops are not lowered: `term make --emit hvm` refuses a program that holds one, naming it and its line.>
 
 # every registered backend, in order. A task rather than the `host` itself, because a `host` constant is private to
 # its emitted module, and TypeScript can reach a port only through its tasks and forms

@@ -855,7 +855,7 @@ export function projectResolver(
 
     const named = packageRest(importPath)
 
-    if (!named) {
+    if (!named.found) {
       return undefined
     }
 

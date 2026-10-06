@@ -260,3 +260,51 @@ task function-like
       back made
     miss
       back one
+
+# a type with its transparent aliases unfolded to their base, following a chain, each alias once (guarded against a
+# cycle): what the checker unifies and calls (check/infer.ts `unfoldAlias`, check/expect.tree)
+task unfold-alias
+  take given, like type
+  take aliases, like hash, like text, like type-alias
+  like type
+
+  save current, given
+  save seen, make list
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save going, false
+      save through, through-alias(current, aliases)
+      save current-name, named-of(current)
+      fork test, and(through/found, not(has-name(seen, current-name)))
+        hold
+          push(seen, current-name)
+          save current, through/type
+          save going, true
+  back current
+
+# a named type's name, or `<>`
+task named-of
+  take given, like type
+  like text
+  mark private
+
+  sift given
+    case named
+      back name
+    miss
+      back <>
+
+task has-name
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false

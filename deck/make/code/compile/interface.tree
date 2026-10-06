@@ -1,0 +1,220 @@
+# The public INTERFACE (signature) of a module, and a fingerprint of it. This is the firewall for incremental
+# type-checking: a module's dependents depend on its interface, NOT its implementation, so a body-only edit (which
+# leaves the interface unchanged) must not force dependents to re-check. Comparing `interface-hash` before/after an
+# edit is the early-cutoff signal (the same role TypeScript's emitted `.d.ts` plays, and rustc/salsa's signature
+# query).
+#
+# The interface is everything a CONSUMER of the module can observe: public function signatures (name + parameter
+# types + result + generics, but NOT the body), record-type shapes, traits, instances, and native/bind signatures.
+# Private definitions and all function bodies are deliberately excluded - they are the implementation behind the
+# firewall.
+#
+# Pure and deterministic (sorted), so the fingerprint is stable across runs.
+#
+# Ported from compile/interface.ts (self-hosting, 2026-10-05). It sorts by code point (`ordering/from-texts`), where the
+# original's `sort()` ordered UTF-16 units; the two agree on every text below U+D800 and so on every signature.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load ./node
+  find statement
+  find type
+
+load ../term/hash
+  find hash-text
+
+# a stable, structural text for a type (no spans, no inference ids that vary)
+task type-key
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back known-type-key(known)
+    miss
+      back <?>
+
+task known-type-key
+  take known, like type
+  like text
+  mark private
+
+  sift known
+    case array
+      save inner, known-type-key(element)
+      back <[{inner}]>
+    case map
+      save key-text, known-type-key(key)
+      save value-text, known-type-key(value)
+      back <\{{key-text}:{value-text}\}>
+    case named
+      save parts, make list
+      walk args
+        take arg
+        push(parts, known-type-key(arg))
+      fork test, is-equal(parts/length, 0)
+        hold
+          back name
+      save joined, join(parts, <,>)
+      back <{name}\<{joined}\>>
+    case function
+      save parts, make list
+      walk params
+        take param
+        push(parts, known-type-key(param))
+      save joined, join(parts, <,>)
+      save result-text, known-type-key(result)
+      back <({joined})-\>{result-text}>
+    # an unresolved inference variable: its numeric id is not stable, so collapse to a placeholder. A surfaced
+    # interface should be concrete; if a variable leaks in it is conservatively treated as "any variable".
+    case variable
+      back <var>
+    miss
+      back known/kind
+
+# the signature line for one public definition, or `<>` if it is private / not part of the surface (function bodies
+# never appear here)
+task signature-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      fork test, private
+        hold
+          back <>
+      save param-parts, make list
+      walk params
+        take param
+        save shown, type-key(param/type)
+        push(param-parts, <{param/name}:{shown}>)
+      save generic-parts, make list
+      walk generics
+        take generic
+        save bound, <>
+        fork test, is-unequal(generic/need, <>)
+          hold
+            save bound, <:{generic/need}>
+        push(generic-parts, <{generic/name}{bound}>)
+      save params-text, join(param-parts, <,>)
+      save generics-text, join(generic-parts, <,>)
+      save result-text, type-key(result)
+      save async-text, <>
+      fork test, async
+        hold
+          save async-text, < async>
+      back <fn {name}\<{generics-text}\>({params-text})-\>{result-text}{async-text}>
+    case record-type
+      save field-parts, make list
+      walk fields
+        take field
+        save shown, known-type-key(field/type)
+        push(field-parts, <{field/name}:{shown}>)
+      save variant-parts, make list
+      walk variants
+        take variant
+        save inner, make list
+        walk variant/fields
+          take field
+          save shown, known-type-key(field/type)
+          push(inner, <{field/name}:{shown}>)
+        save inner-text, join(inner, <,>)
+        push(variant-parts, <{variant/name}({inner-text})>)
+      save fields-text, join(field-parts, <,>)
+      save variants-text, join(variant-parts, <|>)
+      save params-text, join(params, <,>)
+      save variants-suffix, <>
+      fork test, is-unequal(variants-text, <>)
+        hold
+          save variants-suffix, < ={variants-text}>
+      save alias-suffix, <>
+      sift alias
+        case some
+          link aliased
+          save shown, known-type-key(aliased)
+          save alias-suffix, < alias {shown}>
+        miss
+          save alias-suffix, <>
+      back <type {name}\<{params-text}\> \{{fields-text}\}{variants-suffix}{alias-suffix}>
+    case mask
+      save sorted-methods, sorted(methods)
+      save methods-text, join(sorted-methods, <,>)
+      back <mask {name} \{{methods-text}\}>
+    case instance
+      save sorted-methods, sorted(methods)
+      save methods-text, join(sorted-methods, <,>)
+      back <instance {mask} for {target} \{{methods-text}\}>
+    case bind
+      save param-parts, make list
+      walk params
+        take param
+        save shown, type-key(param/type)
+        push(param-parts, <{param/name}:{shown}>)
+      save params-text, join(param-parts, <,>)
+      save result-text, type-key(result)
+      back <bind {name}({params-text})-\>{result-text}>
+    case native
+      save kind-text, <>
+      sift kind
+        case some
+          link given
+          save kind-text, <:{native-kind-text(given)}>
+        miss
+          save kind-text, <>
+      back <native {alias}={module}{kind-text}>
+    # expressions, lets, etc. are not module surface
+    miss
+      back <>
+
+task native-kind-text
+  take given, like native-kind
+  like text
+  mark private
+
+  sift given
+    case module
+      back <module>
+    case type
+      back <type>
+
+task sorted
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  back sort(values, from-texts)
+
+# Every public signature in a program, sorted (the module's observable interface).
+task module-interface
+  take program, like list, like statement
+  like list, like text
+
+  save sigs, make list
+  walk program
+    take one
+    save sig, signature-of(one)
+    fork test, is-unequal(sig, <>)
+      hold
+        push(sigs, sig)
+  back sorted(sigs)
+
+# A content fingerprint of a module's public interface. Unchanged across any edit that does not alter the surface (a
+# function body rewrite, a private helper change, a comment) - which is exactly when dependents can be reused.
+task interface-hash
+  take program, like list, like statement
+  like text
+
+  back hash-text(join(module-interface(program), <\n>))

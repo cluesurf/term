@@ -1,0 +1,830 @@
+# The look STYLE TABLE: the native counterpart of look-css (native-dom-0008). A native host has no CSS engine and
+# should not get one, so a `look` sheet compiles instead to a table: for each `face` class, the typed properties it
+# sets, every `var(--token)` resolved at build time against the sheet's `tone` blocks, every length in points and every
+# color in hex. A host applies a class by looking up its row and never parses a selector or a token.
+#
+# What a host cannot honor is NAMED in the table's `unlowered` list with the reason, never dropped: a pseudo-class
+# (`focus-visible`, `hover`), a breakpoint, a `group-` or `peer-` variant, an animation, a shadow, or a value form the
+# table does not read (`em`, `%`, `rgb()`). The restriction is the one React Native's StyleSheet makes: a class and a
+# state attribute, nothing that needs a selector engine.
+#
+# The sheet is read with the compiler's parser and look-css's accessors, so there is still one reader of `look`.
+#
+# Ported from compile/look-table.ts (self-hosting, 2026-10-05). A value that does not lower answers why, where the
+# original threw the reason and caught it, and a number is read as JavaScript's `Number` reads it, through the host
+# (`host-number`). The scheme is a parameter where it was an option.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find char-at
+  find char-count
+  find contains
+  find index-of
+  find starts-with
+  find substring
+  find to-lower-case
+  find trim
+
+load ../parser/tree
+  find node
+  find parse
+  find root-node
+
+load ../parser/token
+  find token-source
+
+load ./look-css
+  find arg-name
+  find breakpoint-of
+  find children-named
+  find head-name
+  find render-value
+  find state-attribute-of
+
+form style-value
+  mark tag, name kind
+  case length
+    link points, like decimal
+  # padding's one to four sides, in CSS order (top, right, bottom, left once expanded)
+  case sides
+    link points, like list, like decimal
+  case color
+    link hex, like text
+  case number
+    link value, like decimal
+  case keyword
+    link text, like text
+  case border
+    link points, like decimal
+    link style, like text
+    link hex, like text
+
+form style-row
+  link property, like text
+  link value, like style-value
+
+# a state row applies while the node carries `attribute` (with `value`, when one is given)
+form style-state
+  link attribute, like text
+  link value
+    like text
+    need false
+  link rows, like list, like style-row
+
+form style-class
+  link name, like text
+  link rows, like list, like style-row
+  link states, like list, like style-state
+
+# `at` is the class (or `base <kind>`), and `variant` the `case` it was under, when it was under one. Kept apart
+# because a class name may itself hold a colon (tailwind's `sm:p-0`)
+form unlowered
+  link at, like text
+  link variant
+    like text
+    need false
+  link what, like text
+  link why, like text
+
+form style-table
+  link target, like text
+  link scheme, like text
+  link classes, like list, like style-class
+  link unlowered, like list, like unlowered
+
+# a value read, or why it was not
+form read-value
+  link ok, like boolean
+  link value, like style-value
+  link why, like text
+
+form read-text
+  link ok, like boolean
+  link text, like text
+  link why, like text
+
+form read-number
+  link ok, like boolean
+  link number, like decimal
+  link why, like text
+
+host rem, 16.0
+
+# a text as JavaScript's `Number` reads it: NaN where it is no number
+bind host-number
+  take value, like text
+  like decimal
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <$value.trim().parse::\<f64\>().unwrap_or(f64::NAN)>
+  case swift
+    text <(Double($value.trimmingCharacters(in: .whitespaces)) ?? Double.nan)>
+  case kotlin
+    text <($value.trim().toDoubleOrNull() ?: Double.NaN)>
+
+# what the toolkit host lowers, by the kind of value each property takes, `<>` for a property outside this table
+task property-kind
+  take property, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(property, <display>), or(is-equal(property, <flex-direction>), or(is-equal(property, <align-items>), is-equal(property, <justify-content>))))
+    hold
+      back <keyword>
+  fork test, or(is-equal(property, <gap>), or(is-equal(property, <width>), or(is-equal(property, <height>), or(is-equal(property, <border-width>), or(is-equal(property, <border-radius>), is-equal(property, <font-size>))))))
+    hold
+      back <length>
+  fork test, is-equal(property, <padding>)
+    hold
+      back <sides>
+  fork test, or(is-equal(property, <flex-grow>), or(is-equal(property, <opacity>), is-equal(property, <font-weight>)))
+    hold
+      back <number>
+  fork test, or(is-equal(property, <background>), or(is-equal(property, <background-color>), or(is-equal(property, <color>), is-equal(property, <border-color>))))
+    hold
+      back <color>
+  fork test, is-equal(property, <border>)
+    hold
+      back <border>
+  back <>
+
+# properties with no native counterpart, and why, so the reason travels with the name
+task no-counterpart
+  take property, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(property, <transition>), is-equal(property, <animation>))
+    hold
+      back <an animation, which the table does not carry: a native host animates a state change itself>
+  fork test, is-equal(property, <box-shadow>)
+    hold
+      back <a shadow, which the toolkit host does not draw>
+  fork test, is-equal(property, <outline>)
+    hold
+      back <the platform draws its own focus indication>
+  fork test, is-equal(property, <cursor>)
+    hold
+      back <a pointer shape, which the toolkit host does not set>
+  back <a property the toolkit host does not lower>
+
+task why-not-variant
+  take variant, like text
+  like text
+  mark private
+
+  fork test, is-unequal(breakpoint-of(variant), <>)
+    hold
+      back <a width breakpoint: a native window reads its size class from the device traits, not a media query>
+  fork test, or(starts-with(variant, <group->), starts-with(variant, <peer->))
+    hold
+      back <a variant on another node, which needs a selector engine>
+  back <a pseudo-class, which needs the browser's state machine: the platform control tracks its own focus, hover and press>
+
+# the `tone` blocks: the base tokens, then the dark overrides on top when the scheme is dark
+task tokens-of
+  take groups, like list, like node
+  take scheme, like text
+  like hash, like text, like text
+  mark private
+
+  save tokens, make hash
+  # a bare `tone` has no scope, so its first argument is its first `have`: anything but `dark` is the base scope, the
+  # way look-css reads it
+  walk groups
+    take group
+    fork test, and(is-equal(head-name(group), <tone>), is-unequal(arg-name(group, 0), <dark>))
+      hold
+        read-tokens(group, tokens)
+  fork test, is-equal(scheme, <dark>)
+    hold
+      walk groups
+        take group
+        fork test, and(is-equal(head-name(group), <tone>), is-equal(arg-name(group, 0), <dark>))
+          hold
+            read-tokens(group, tokens)
+  back tokens
+
+task read-tokens
+  take group, like node
+  take tokens, like hash, like text, like text
+  mark private
+
+  walk children-named(group, <have>)
+    take have
+    save token, arg-name(have, 0)
+    fork test, is-unequal(token, <>)
+      hold
+        save tokens/{token}, render-value(have)
+
+task is-token-char
+  take c, like text
+  like boolean
+  mark private
+
+  back contains(<abcdefghijklmnopqrstuvwxyz0123456789->, c)
+
+# replace every `var(--name)` / `var(--name, fallback)` with its token, to a fixed point, or say why not
+task resolve-tokens
+  take text, like text
+  take tokens, like hash, like text, like text
+  take depth, like number
+  like read-text
+  mark private
+
+  fork test, is-above(depth, 16)
+    hold
+      back text-refused(<a token refers to itself>)
+  save out, <>
+  save count, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      # a match is `var(--`, a token name, then `)` or a comma, spaces and a fallback holding no parenthesis, then `)`
+      save matched, false
+      fork test, starts-with(substring(text, at, count), <var(-->)
+        hold
+          save name-end, add(at, 6)
+          walk test
+            hook test, and(is-below(name-end, count), is-token-char(char-at(text, name-end)))
+            hook hold
+              save name-end, add(name-end, 1)
+          fork test, is-above(name-end, add(at, 6))
+            hold
+              save name, substring(text, add(at, 6), name-end)
+              save close, -1
+              save has-fallback, false
+              save fallback, <>
+              fork test, and(is-below(name-end, count), is-equal(char-at(text, name-end), <)>))
+                hold
+                  save close, name-end
+                miss
+                  fork test, and(is-below(name-end, count), is-equal(char-at(text, name-end), <,>))
+                    hold
+                      save scan, add(name-end, 1)
+                      walk test
+                        hook test, and(is-below(scan, count), and(is-unequal(char-at(text, scan), <(>), is-unequal(char-at(text, scan), <)>)))
+                        hook hold
+                          save scan, add(scan, 1)
+                      fork test, and(is-below(scan, count), is-equal(char-at(text, scan), <)>))
+                        hold
+                          save close, scan
+                          save has-fallback, true
+                          save fallback, trim(substring(text, add(name-end, 1), scan))
+              fork test, is-minimum(close, 0)
+                hold
+                  save matched, true
+                  fork test, tokens/has(name)
+                    hold
+                      save out, <{out}{tokens/get(name)}>
+                    miss
+                      fork test, not(has-fallback)
+                        hold
+                          back text-refused(<no token `{name}`>)
+                      save out, <{out}{fallback}>
+                  save at, add(close, 1)
+      fork test, not(matched)
+        hold
+          save out, <{out}{char-at(text, at)}>
+          save at, add(at, 1)
+  fork test, contains(out, <var(>)
+    hold
+      back resolve-tokens(out, tokens, add(depth, 1))
+  back
+    make read-text
+      bind ok, true
+      bind text, out
+      bind why, <>
+
+task text-refused
+  take why, like text
+  like read-text
+  mark private
+
+  back
+    make read-text
+      bind ok, false
+      bind text, <>
+      bind why, why
+
+task number-refused
+  take why, like text
+  like read-number
+  mark private
+
+  back
+    make read-number
+      bind ok, false
+      bind number, 0.0
+      bind why, why
+
+task value-refused
+  take why, like text
+  like read-value
+  mark private
+
+  back
+    make read-value
+      bind ok, false
+      bind value, keyword-value(<>)
+      bind why, why
+
+task keyword-value
+  take text, like text
+  like style-value
+  mark private
+
+  back
+    make style-value/keyword
+      bind text, text
+
+task value-read
+  take value, like style-value
+  like read-value
+  mark private
+
+  back
+    make read-value
+      bind ok, true
+      bind value, value
+      bind why, <>
+
+# a length, `-?\d*\.?\d+` then `px`, `rem` or nothing, nothing allowed only for a zero
+task length-of
+  take text, like text
+  like read-number
+  mark private
+
+  save t, trim(text)
+  save refusal, number-refused(<`{text}` is not a length in px or rem>)
+  save unit, <>
+  save digits, t
+  fork test, ends-with-text(t, <px>)
+    hold
+      save unit, <px>
+      save digits, substring(t, 0, subtract(char-count(t), 2))
+    miss
+      fork test, ends-with-text(t, <rem>)
+        hold
+          save unit, <rem>
+          save digits, substring(t, 0, subtract(char-count(t), 3))
+  fork test, not(is-length-number(digits))
+    hold
+      back refusal
+  save n, host-number(digits)
+  fork test, and(is-equal(unit, <>), is-unequal(n, 0.0))
+    hold
+      back refusal
+  fork test, is-equal(unit, <rem>)
+    hold
+      back
+        make read-number
+          bind ok, true
+          bind number, multiply(n, rem)
+          bind why, <>
+  back
+    make read-number
+      bind ok, true
+      bind number, n
+      bind why, <>
+
+task ends-with-text
+  take text, like text
+  take suffix, like text
+  like boolean
+  mark private
+
+  save n, char-count(text)
+  save m, char-count(suffix)
+  fork test, is-below(n, m)
+    hold
+      back false
+  back is-equal(substring(text, subtract(n, m), n), suffix)
+
+# `-?\d*\.?\d+`: an optional minus, digits, at most one point, and at least one digit after the point or in all
+task is-length-number
+  take text, like text
+  like boolean
+  mark private
+
+  save count, char-count(text)
+  save at, 0
+  fork test, and(is-above(count, 0), is-equal(char-at(text, 0), <->))
+    hold
+      save at, 1
+  fork test, is-minimum(at, count)
+    hold
+      back false
+  save seen-point, false
+  save trailing, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(text, at)
+      fork test, is-equal(c, <.>)
+        hold
+          fork test, seen-point
+            hold
+              back false
+          save seen-point, true
+          save trailing, 0
+        miss
+          fork test, not(contains(<0123456789>, c))
+            hold
+              back false
+          save trailing, add(trailing, 1)
+      save at, add(at, 1)
+  back is-above(trailing, 0)
+
+task is-hex-digits
+  take text, like text
+  like boolean
+  mark private
+
+  save count, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, not(contains(<0123456789abcdef>, char-at(text, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task color-of
+  take text, like text
+  like read-text
+  mark private
+
+  save value, to-lower-case(trim(text))
+  fork test, is-equal(value, <transparent>)
+    hold
+      back
+        make read-text
+          bind ok, true
+          bind text, <#00000000>
+          bind why, <>
+  save count, char-count(value)
+  fork test, and(starts-with(value, <#>), is-hex-digits(substring(value, 1, count)))
+    hold
+      save digits, substring(value, 1, count)
+      fork test, or(is-equal(char-count(digits), 3), is-equal(char-count(digits), 4))
+        hold
+          save doubled, <#>
+          save at, 0
+          walk test
+            hook test, is-below(at, char-count(digits))
+            hook hold
+              save d, char-at(digits, at)
+              save doubled, <{doubled}{d}{d}>
+              save at, add(at, 1)
+          back
+            make read-text
+              bind ok, true
+              bind text, doubled
+              bind why, <>
+      fork test, or(is-equal(char-count(digits), 6), is-equal(char-count(digits), 8))
+        hold
+          back
+            make read-text
+              bind ok, true
+              bind text, value
+              bind why, <>
+  back text-refused(<`{text}` is not a hex color>)
+
+# the whitespace-separated words of a trimmed text, the empty text being one empty word, as `split(/\s+/)` reads it
+task words-of
+  take text, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save current, <>
+  save count, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save c, char-at(text, at)
+      fork test, is-equal(trim(c), <>)
+        hold
+          fork test, is-unequal(current, <>)
+            hold
+              push(out, current)
+              save current, <>
+        miss
+          save current, <{current}{c}>
+      save at, add(at, 1)
+  fork test, or(is-unequal(current, <>), is-equal(out/length, 0))
+    hold
+      push(out, current)
+  back out
+
+task value-of
+  take property, like text
+  take text, like text
+  like read-value
+  mark private
+
+  save kind, property-kind(property)
+  fork test, is-equal(kind, <keyword>)
+    hold
+      back value-read(keyword-value(trim(text)))
+  fork test, is-equal(kind, <length>)
+    hold
+      save read, length-of(text)
+      fork test, not(read/ok)
+        hold
+          back value-refused(read/why)
+      save made
+        make style-value/length
+          bind points, read/number
+      back value-read(made)
+  fork test, is-equal(kind, <number>)
+    hold
+      save n, host-number(trim(text))
+      fork test, is-unequal(n, n)
+        hold
+          back value-refused(<`{text}` is not a number>)
+      save made
+        make style-value/number
+          bind value, n
+      back value-read(made)
+  fork test, is-equal(kind, <color>)
+    hold
+      save read, color-of(text)
+      fork test, not(read/ok)
+        hold
+          back value-refused(read/why)
+      save made
+        make style-value/color
+          bind hex, read/text
+      back value-read(made)
+  fork test, is-equal(kind, <sides>)
+    hold
+      save parts, make list
+      walk words-of(trim(text))
+        take word
+        save read, length-of(word)
+        fork test, not(read/ok)
+          hold
+            back value-refused(read/why)
+        push(parts, read/number)
+      fork test, is-above(parts/length, 4)
+        hold
+          back value-refused(<`{text}` has more than four sides>)
+      save top, get(parts, 0)
+      save right, top
+      fork test, is-above(parts/length, 1)
+        hold
+          save right, get(parts, 1)
+      save bottom, top
+      fork test, is-above(parts/length, 2)
+        hold
+          save bottom, get(parts, 2)
+      save left, right
+      fork test, is-above(parts/length, 3)
+        hold
+          save left, get(parts, 3)
+      save points, make list
+      push(points, top)
+      push(points, right)
+      push(points, bottom)
+      push(points, left)
+      save made
+        make style-value/sides
+          bind points, points
+      back value-read(made)
+  fork test, is-equal(kind, <border>)
+    hold
+      save words, words-of(trim(text))
+      fork test, or(is-below(words/length, 3), or(is-above(words/length, 3), or(is-equal(get(words, 0), <>), is-equal(get(words, 1), <>))))
+        hold
+          back value-refused(<`{text}` is not `\<width\> \<style\> \<color\>`>)
+      save width, length-of(get(words, 0))
+      fork test, not(width/ok)
+        hold
+          back value-refused(width/why)
+      save hex, color-of(get(words, 2))
+      fork test, not(hex/ok)
+        hold
+          back value-refused(hex/why)
+      save made
+        make style-value/border
+          bind points, width/number
+          bind style, get(words, 1)
+          bind hex, hex/text
+      back value-read(made)
+  back value-refused(no-counterpart(property))
+
+# a block's direct `have` declarations as rows, naming each one that does not lower
+task rows-of
+  take group, like node
+  take at, like text
+  take variant, like text
+  take tokens, like hash, like text, like text
+  take unlowered, like list, like unlowered
+  like list, like style-row
+  mark private
+
+  save rows, make list
+  walk children-named(group, <have>)
+    take have
+    save property, arg-name(have, 0)
+    save written, render-value(have)
+    save resolved, resolve-tokens(written, tokens, 0)
+    save why, resolved/why
+    fork test, resolved/ok
+      hold
+        save read, value-of(property, resolved/text)
+        fork test, read/ok
+          hold
+            save row
+              make style-row
+                bind property, property
+                bind value, read/value
+            push(rows, row)
+            turn next
+        save why, read/why
+    push(unlowered, unlowered-at(at, variant, <{property}: {written}>, why))
+  back rows
+
+task unlowered-at
+  take at, like text
+  take variant, like text
+  take what, like text
+  take why, like text
+  like unlowered
+  mark private
+
+  fork test, is-equal(variant, <>)
+    hold
+      back
+        make unlowered
+          bind at, at
+          bind what, what
+          bind why, why
+  back
+    make unlowered
+      bind at, at
+      bind variant, variant
+      bind what, what
+      bind why, why
+
+# the groups at a root
+task root-groups
+  take root, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift root
+    case root
+      walk nodes
+        take one
+        fork test, is-equal(one/kind, <group>)
+          hold
+            push(out, one)
+  back out
+
+# compile a look sheet to the style table a toolkit host applies. `scheme` picks the token set: the dark table is the
+# light one with `tone dark` laid over it and every class's `case dark` rows merged in
+task compile-look-table
+  take source, like token-source
+  take scheme, like text, fall <light>
+  like style-table
+
+  save classes, make list
+  save unlowered, make list
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back
+        make style-table
+          bind target, <toolkit>
+          bind scheme, scheme
+          bind classes, classes
+          bind unlowered, unlowered
+  save groups, root-groups(parsed/tree)
+  save tokens, tokens-of(groups, scheme)
+  walk groups
+    take group
+    save head, head-name(group)
+    fork test, is-equal(head, <base>)
+      hold
+        push(unlowered, unlowered-at(trim(<base {arg-name(group, 0)}>), <>, <a selector rule or at-rule>, <it styles by selector, and a native host applies classes only>))
+        turn next
+    fork test, is-unequal(head, <face>)
+      hold
+        turn next
+    save name, arg-name(group, 0)
+    save rows, rows-of(group, name, <>, tokens, unlowered)
+    save states, make list
+    walk children-named(group, <case>)
+      take variant
+      save which, arg-name(variant, 0)
+      fork test, is-equal(which, <dark>)
+        hold
+          fork test, is-equal(scheme, <dark>)
+            hold
+              walk rows-of(variant, name, which, tokens, unlowered)
+                take row
+                push(rows, row)
+          turn next
+      save attribute, state-attribute-of(which)
+      fork test, is-unequal(attribute, <>)
+        hold
+          # `[name=value]`
+          save inner, substring(attribute, 1, subtract(char-count(attribute), 1))
+          save equals, index-of(inner, <=>)
+          save state-rows, rows-of(variant, name, which, tokens, unlowered)
+          save made
+            make style-state
+              bind attribute, substring(inner, 0, equals)
+              bind value, substring(inner, add(equals, 1), char-count(inner))
+              bind rows, state-rows
+          push(states, made)
+          turn next
+      fork test, is-equal(which, <disabled>)
+        hold
+          save state-rows, rows-of(variant, name, which, tokens, unlowered)
+          save made
+            make style-state
+              bind attribute, <disabled>
+              bind rows, state-rows
+          push(states, made)
+          turn next
+      push(unlowered, unlowered-at(name, which, <case {which}>, why-not-variant(which)))
+    save entry
+      make style-class
+        bind name, name
+        bind rows, rows
+        bind states, states
+    push(classes, entry)
+  back
+    make style-table
+      bind target, <toolkit>
+      bind scheme, scheme
+      bind classes, classes
+      bind unlowered, unlowered
+
+# a row as the one declaration a host's set-style reads: lengths in px, colors in hex, nothing left to resolve
+task declaration-of
+  take row, like style-row
+  like text
+
+  save property, row/property
+  save value, row/value
+  sift value
+    case length
+      back <{property}: {points}px>
+    case sides
+      save parts, make list
+      walk points
+        take side
+        push(parts, <{side}px>)
+      back <{property}: {join(parts, < >)}>
+    case color
+      back <{property}: {hex}>
+    case number
+      link number-value
+      back <{property}: {number-value}>
+    case keyword
+      link keyword-text
+      back <{property}: {keyword-text}>
+    case border
+      back <{property}: {points}px {style} {hex}>
+
+# the table as the text a host loads: rows joined by `;`, each `<class>|<state>|<declaration>`, where state is empty for
+# a class's own rows and `attribute` or `attribute=value` for a state row. A lowered value is a number, a length, a hex
+# color or a keyword, so neither separator can appear inside one, the host splits without a parser, and the whole
+# table is one line any text literal can carry
+task style-table-text
+  take table, like style-table
+  like text
+
+  save lines, make list
+  walk table/classes
+    take entry
+    walk entry/rows
+      take row
+      push(lines, <{entry/name}||{declaration-of(row)}>)
+    walk entry/states
+      take state
+      save on, state/attribute
+      fork test, is-unequal(state/value, <>)
+        hold
+          save on, <{state/attribute}={state/value}>
+      walk state/rows
+        take row
+        push(lines, <{entry/name}|{on}|{declaration-of(row)}>)
+  back join(lines, <;>)

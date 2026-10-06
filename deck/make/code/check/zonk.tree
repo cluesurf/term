@@ -1,0 +1,241 @@
+# Type resolution helpers ("zonking"): deeply follow a type's inference variables to its final form. Extracted from
+# the inference closure as a component of the modular checker. `zonk` resolves to concrete types; `zonk-generic` maps
+# a function's still-unsolved variables back to their declared generic names (so a generic emits `<T>(x: T): T`);
+# `subst-generics` substitutes a form's generic names with concrete types (pure, no substitution needed).
+# See note/seed/plan/compilation-performance.md (Tier 2).
+#
+# Ported from check/zonk.ts (self-hosting, 2026-10-05). A composite is built anew, as the original builds it, so a
+# caller never holds a node the substitution holds. A `need false` list it hands on is copied by a walk and written
+# only when it holds something, so one left out stays out (D10).
+
+load @term/base/list
+  find list
+  find get
+
+load ../compile/node
+  find expression
+  find type
+
+load ./substitution
+  find substitution
+  find resolve-type
+
+# deeply resolve a type (so array<var> becomes array<concrete> for nice output)
+task zonk
+  take given, like type
+  take sub, like substitution
+  like type
+
+  save t, resolve-type(sub, given)
+  sift t
+    case array
+      save element-out, zonk(element, sub)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, zonk(key, sub)
+      save value-out, zonk(value, sub)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, zonk(param, sub))
+      save result-out, zonk(result, sub)
+      back function-like(t, params-out, result-out)
+    case named
+      fork test, and(is-equal(args/length, 0), is-equal(value-args/length, 0))
+        hold
+          back t
+      save args-out, make list
+      walk args
+        take arg
+        push(args-out, zonk(arg, sub))
+      # value-index arguments (an indexed family `vec a n`) are kept verbatim: they are expressions, not types, so the
+      # type substitution does not touch them
+      back named-like(t, args-out, true)
+    miss
+      back t
+
+# deeply resolve, mapping a function's still-unsolved generic variables back to their declared names
+task zonk-generic
+  take given, like type
+  take names, like hash, like number, like text
+  take sub, like substitution
+  like type
+
+  save r, resolve-type(sub, given)
+  sift r
+    case variable
+      fork test, names/has(id)
+        hold
+          save generic, names/get(id)
+          back
+            make type/named
+              bind name, generic
+      back r
+    case array
+      save element-out, zonk-generic(element, names, sub)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, zonk-generic(key, names, sub)
+      save value-out, zonk-generic(value, names, sub)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, zonk-generic(param, names, sub))
+      save result-out, zonk-generic(result, names, sub)
+      back function-like(r, params-out, result-out)
+    case named
+      fork test, and(is-equal(args/length, 0), is-equal(value-args/length, 0))
+        hold
+          back r
+      save args-out, make list
+      walk args
+        take arg
+        push(args-out, zonk-generic(arg, names, sub))
+      back named-like(r, args-out, true)
+    miss
+      back r
+
+# substitute a form's generic names with concrete types (e.g. maybe's `t` -> the subject's element type). Pure.
+task subst-generics
+  take given, like type
+  take map, like hash, like text, like type
+  like type
+
+  sift given
+    case named
+      fork test, and(map/has(name), is-equal(args/length, 0))
+        hold
+          back map/get(name)
+      save args-out, make list
+      walk args
+        take arg
+        push(args-out, subst-generics(arg, map))
+      # the original builds the named type afresh from its name and arguments alone, so its value arguments go
+      back named-like(given, args-out, false)
+    case array
+      save element-out, subst-generics(element, map)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, subst-generics(key, map)
+      save value-out, subst-generics(value, map)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, subst-generics(param, map))
+      save result-out, subst-generics(result, map)
+      back function-like(given, params-out, result-out)
+    miss
+      back given
+
+# a named type of these arguments, its value arguments kept when `keep-values` says so
+task named-like
+  take one, like type
+  take args-out, like list, like type
+  take keep-values, like boolean
+  like type
+  mark private
+
+  sift one
+    case named
+      save values-out, make list
+      fork test, keep-values
+        hold
+          walk value-args
+            take value-arg
+            push(values-out, value-arg)
+      save made
+        make type/named
+          bind name, name
+      fork test, and(is-above(args-out/length, 0), is-above(values-out/length, 0))
+        hold
+          save made
+            make type/named
+              bind name, name
+              bind args, args-out
+              bind value-args, values-out
+          back made
+      fork test, is-above(args-out/length, 0)
+        hold
+          save made
+            make type/named
+              bind name, name
+              bind args, args-out
+      fork test, is-above(values-out/length, 0)
+        hold
+          save made
+            make type/named
+              bind name, name
+              bind value-args, values-out
+      back made
+    miss
+      back one
+
+# a function type of new parameters and result, keeping the effects and parameter names of the one it replaces
+task function-like
+  take one, like type
+  take params-out, like list, like type
+  take result-out, like type
+  like type
+  mark private
+
+  sift one
+    case function
+      save effects-out, make list
+      walk effects
+        take effect
+        push(effects-out, effect)
+      save names-out, make list
+      walk param-names
+        take param-name
+        push(names-out, param-name)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      fork test, and(is-above(effects-out/length, 0), is-above(names-out/length, 0))
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+              bind param-names, names-out
+          back made
+      fork test, is-above(effects-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+      fork test, is-above(names-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind param-names, names-out
+      back made
+    miss
+      back one

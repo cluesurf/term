@@ -10,7 +10,7 @@ import { resolveType } from '@term/make/code/check/substitution'
 
 // deeply resolve a type (so array<var> becomes array<concrete> for nice output)
 export function zonk(type: Type, sub: Substitution): Type {
-  const t = resolveType(sub,type)
+  const t = resolveType(sub, type)
 
   if (t.kind === 'array') {
     return { kind: 'array', element: zonk(t.element, sub) }
@@ -54,7 +54,7 @@ export function zonkGeneric(
   names: Map<number, string>,
   sub: Substitution,
 ): Type {
-  const r = resolveType(sub,type)
+  const r = resolveType(sub, type)
 
   if (r.kind === 'variable') {
     const name = names.get(r.id)

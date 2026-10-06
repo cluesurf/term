@@ -6,6 +6,7 @@
 
 import type { Expression, Type } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
+import { freshType, resolveType } from '@term/make/code/check/substitution'
 
 // a type with some inference variables generalized. Empty `vars` is a plain monomorphic type.
 export type Scheme = { vars: number[]; type: Type }
@@ -24,11 +25,11 @@ export function instantiateScheme(
   const map = new Map<number, Type>()
 
   for (const id of scheme.vars) {
-    map.set(id, sub.fresh())
+    map.set(id, freshType(sub))
   }
 
   const go = (t: Type): Type => {
-    const r = sub.resolve(t)
+    const r = resolveType(sub, t)
 
     if (r.kind === 'variable') {
       return map.get(r.id) ?? r
@@ -58,25 +59,29 @@ export function instantiateScheme(
   return go(scheme.type)
 }
 
-// collect the free (unbound) inference variables of a type
-export function freeTypeVars(
-  type: Type,
-  into: Set<number>,
-  sub: Substitution,
-): void {
-  const r = sub.resolve(type)
+// the free (unbound) inference variables of a type, each once, in the order first met
+export function freeTypeVars(type: Type, sub: Substitution): number[] {
+  const into = new Set<number>()
 
-  if (r.kind === 'variable') {
-    into.add(r.id)
-  } else if (r.kind === 'array') {
-    freeTypeVars(r.element, into, sub)
-  } else if (r.kind === 'map') {
-    freeTypeVars(r.key, into, sub)
-    freeTypeVars(r.value, into, sub)
-  } else if (r.kind === 'function') {
-    r.params.forEach(p => freeTypeVars(p, into, sub))
-    freeTypeVars(r.result, into, sub)
+  const visit = (t: Type): void => {
+    const r = resolveType(sub, t)
+
+    if (r.kind === 'variable') {
+      into.add(r.id)
+    } else if (r.kind === 'array') {
+      visit(r.element)
+    } else if (r.kind === 'map') {
+      visit(r.key)
+      visit(r.value)
+    } else if (r.kind === 'function') {
+      r.params.forEach(visit)
+      visit(r.result)
+    }
   }
+
+  visit(type)
+
+  return [...into]
 }
 
 // the variables free in `type` but not free anywhere in the environment: those may be generalized
@@ -85,14 +90,12 @@ export function generalize(
   env: Env,
   sub: Substitution,
 ): number[] {
-  const inType = new Set<number>()
-  freeTypeVars(type, inType, sub)
+  const inType = new Set(freeTypeVars(type, sub))
 
   const inEnv = new Set<number>()
 
   for (const scheme of env.values()) {
-    const seen = new Set<number>()
-    freeTypeVars(scheme.type, seen, sub)
+    const seen = freeTypeVars(scheme.type, sub)
 
     for (const v of seen) {
       if (!scheme.vars.includes(v)) {

@@ -1,10 +1,18 @@
 
-# Singly linked list: a recursive immutable list (empty | node value next).
+# Singly linked list: a recursive immutable list, `empty` or a `node` holding a value and the rest.
+#
+# Every task that walks it walks it in a LOOP, so a list a million nodes long is measured, reversed or turned into a
+# list without a million frames on the stack: `length` was recursive until 2026-10-05. `prepend`, `head`, `tail` and
+# `is-empty` are O(1), and the rest O(n). test/stdlib/ordered-collections.ts runs it on all four backends.
 
-mark unstable
+mark stable
 
 load @term/base/maybe
   find maybe
+
+load @term/base/list
+  find list
+  find get
 
 form linked-list
   head t
@@ -13,6 +21,7 @@ form linked-list
     link value, like t
     link next, like linked-list t
 
+  # a list with `item` in front of `self`, sharing `self`
   task prepend
     take self, like linked-list t
     take item, like t
@@ -25,17 +34,18 @@ form linked-list
   task is-empty
     take self
     like boolean
-    fork case, read self
+    sift self
       case empty
         send back, true
       case node
         send back, false
 
+  # the first value, `none` for an empty list
   task head
     take self
     like maybe
       head t
-    fork case, read self
+    sift self
       case empty
         send back
           make none
@@ -44,15 +54,116 @@ form linked-list
           make some
             bind value, read self/value
 
-  task length
-    take self
-    like number
-    fork case, read self
+  # everything after the first value, `none` for an empty list
+  task tail
+    take self, like linked-list t
+    like maybe
+      head
+        like linked-list t
+    sift self
       case empty
-        send back, code 0
+        send back
+          make none
       case node
         send back
+          make some
+            bind value, read self/next
+
+  # how many values it holds
+  task length
+    take self, like linked-list t
+    like number
+    save count, code 0
+    save at, read self
+    walk test
+      hook test
+        call not
+          call is-empty
+            read at
+      hook hold
+        sift at
+          case node
+            save at, read next
+          case empty
+            halt
+        save count
           call add
+            read count
             code 1
-            call length
-              read self/next
+    send back, read count
+
+  # the same values, last first
+  task reverse
+    take self, like linked-list t
+    like linked-list t
+    save out
+      make empty
+    save at, read self
+    walk test
+      hook test
+        call not
+          call is-empty
+            read at
+      hook hold
+        sift at
+          case node
+            save out
+              call prepend
+                read out
+                read value
+            save at, read next
+          case empty
+            halt
+    send back, read out
+
+  # the values in order, as a list
+  task to-list
+    take self, like linked-list t
+    like list
+      like t
+    save out, make list
+    save at, read self
+    walk test
+      hook test
+        call not
+          call is-empty
+            read at
+      hook hold
+        sift at
+          case node
+            call push
+              read out
+              read value
+            save at, read next
+          case empty
+            halt
+    send back, read out
+
+# a linked list holding `items` in order
+task from-list
+  head t
+  take items, like list, like t
+  like linked-list t
+  save out
+    make empty
+  save at
+    call subtract
+      read items/length
+      code 1
+  walk test
+    hook test
+      call is-minimum
+        read at
+        code 0
+    hook hold
+      save out
+        call prepend
+          read out
+          call get
+            read items
+            read at
+      save at
+        call subtract
+          read at
+          code 1
+  send back, read out

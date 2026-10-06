@@ -1,8 +1,8 @@
 // Resolution for the `load` term. `load` is a mill (it mints a load record); this module resolves that record's
 // target to a concrete module: a local file, a package in the store, or a host-native module. It is the semantic
 // step the elaboration resolver runs for import holes (see note/research/vibe/computation/plans/16-package-manager.md
-// and 11-elaboration.md). Browser-safe: no host APIs. A file-existence check is injected, so it is testable and
-// usable in the sandbox.
+// and 11-elaboration.md). Browser-safe: no host APIs. The paths that exist are handed in, so it is testable and
+// usable in the sandbox, as deck/resolve.tree is.
 
 export type LoadKind =
   | 'relative'
@@ -17,8 +17,6 @@ export type Resolution =
   | { kind: 'native'; module: string }
   | { kind: 'glob'; pattern: string; base: string }
   | { kind: 'missing'; target: string }
-
-export type Exists = (path: string) => boolean
 
 // ---- posix-style path helpers (browser-safe, no node path) ----
 function dirname(path: string): string {
@@ -86,14 +84,14 @@ export function fileCandidates(path: string): string[] {
 export function resolveFile(
   target: string,
   fromFile: string,
-  exists: Exists,
+  existing: string[],
 ): Resolution {
   const base = target.startsWith('/')
     ? target
     : joinPath(dirname(fromFile), target)
 
   for (const candidate of fileCandidates(base)) {
-    if (exists(candidate)) {
+    if (existing.includes(candidate)) {
       return { kind: 'file', path: candidate }
     }
   }
@@ -126,40 +124,40 @@ export function parsePackage(target: string): {
   }
 }
 
-// the path a package import names INSIDE its package: `@scope/name/a/b` -> `a/b`, `@scope/name` -> ''. Undefined
-// for anything that is not a package path. Browser-safe, so the mill reader can check a `base` with it.
-export function packageRest(importPath: string): { pkg: string; rest: string } | undefined {
+// the path a package import names INSIDE its package: `@scope/name/a/b` -> `a/b`, `@scope/name` -> '', and whether
+// it is a package path at all. Browser-safe, so the mill reader can check a `base` with it.
+export function packageRest(importPath: string): { found: boolean; pkg: string; rest: string } {
   const match = /^(@[^/]+\/[^/]+)(?:\/(.*))?$/.exec(importPath)
 
-  return match ? { pkg: match[1]!, rest: match[2] ?? '' } : undefined
+  return match ? { found: true, pkg: match[1]!, rest: match[2] ?? '' } : { found: false, pkg: '', rest: '' }
 }
 
-// the refusal a `base <dir>` under a load earns, or undefined when it agrees with the path: it forces the PACKAGE
-// root, and must name the path's first segment (note/term/plan/manifest-mark-and-code-root.md). One sentence,
-// wherever it surfaces: the resolver refuses with it and the reader reports it at the `load`.
-export function baseRefusal(importPath: string, base: string): string | undefined {
-  const local = importPath.startsWith('@/') ? { rest: importPath.slice(2) } : packageRest(importPath)
+// the refusal a `base <dir>` under a load earns, or '' when it agrees with the path: it forces the PACKAGE root, and
+// must name the path's first segment (note/term/plan/manifest-mark-and-code-root.md). One sentence, wherever it
+// surfaces: the resolver refuses with it and the reader reports it at the `load`.
+export function baseRefusal(importPath: string, base: string): string {
+  const local = importPath.startsWith('@/') ? { found: true, rest: importPath.slice(2) } : packageRest(importPath)
 
-  if (!local) {
+  if (!local.found) {
     return `\`base ${base}\` names a folder of a package, and \`${importPath}\` is not a package path`
   }
 
   const first = local.rest.split('/')[0] ?? ''
 
   return first === base
-    ? undefined
+    ? ''
     : `\`base ${base}\` must name the path's first segment, and \`${importPath}\` starts with \`${first || '(nothing)'}\``
 }
 
-// walk up from a file to find the enclosing deck root (the directory holding deck.tree)
+// walk up from a file to find the enclosing deck root (the directory holding deck.tree), '' when there is none
 export function findDeckRoot(
   fromFile: string,
-  exists: Exists,
-): string | undefined {
+  existing: string[],
+): string {
   let dir = dirname(fromFile)
 
   while (true) {
-    if (exists(`${dir}/deck.tree`)) {
+    if (existing.includes(`${dir}/deck.tree`)) {
       return dir
     }
 
@@ -172,7 +170,7 @@ export function findDeckRoot(
     dir = parent
   }
 
-  return undefined
+  return ''
 }
 
 // the global content-addressed store path for a package version
@@ -194,7 +192,7 @@ export function treePath(home: string, hash: string): string {
 export function resolveLoad(
   target: string,
   fromFile: string,
-  exists: Exists,
+  existing: string[],
   native = false,
 ): Resolution {
   switch (classifyLoad(target, native)) {
@@ -204,7 +202,7 @@ export function resolveLoad(
       return { kind: 'glob', pattern: target, base: dirname(fromFile) }
     case 'relative':
     case 'absolute':
-      return resolveFile(target, fromFile, exists)
+      return resolveFile(target, fromFile, existing)
 
     case 'package': {
       const { host, name, subpath } = parsePackage(target)

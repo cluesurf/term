@@ -1,0 +1,113 @@
+# The `expect` assertion: unify an actual type against a wanted type, and on failure answer a type-mismatch diagnostic
+# that blames where each side's variable was first fixed. Extracted from the inference closure as a component of the
+# modular checker. See note/seed/plan/compilation-performance.md (Tier 2).
+#
+# Ported from check/expect.ts (self-hosting, 2026-10-05). The original was a factory over the checker's closures
+# (`unify`, `resolve`, the origin table, the diagnostics sink, the current file); here the substitution and the
+# transparent aliases come in, the unify is the checker's own (each side's aliases unfolded, the span recorded), and
+# the diagnostics come back for the checker to add.
+
+load @term/base/list
+  find list
+  find get
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic
+  find diagnostic-input
+  find diagnostic-name
+  find marker
+  find span
+
+load ../compile/node
+  find type
+
+load ../compile/type-text
+  find show-type
+
+load ./alias
+  find type-alias
+  find unfold-alias
+
+load ./substitution
+  find substitution
+  find resolve-type
+  find unify-types-at
+
+task expect-type
+  take sub, like substitution
+  take aliases, like hash, like text, like type-alias
+  take actual, like type
+  take wanted, like type
+  take at, like span
+  take what, like text
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  # remember which sides were still inference variables, so we can blame where they were first fixed
+  save suspects, make list
+  push-variable(suspects, actual)
+  push-variable(suspects, wanted)
+  save unified, unify-types-at(sub, unfold-alias(actual, aliases), unfold-alias(wanted, aliases), at)
+
+  # `number` and `float` unify, so arithmetic can mix them, but a fraction is not a whole number: `number` is `i64` on
+  # Rust, Swift and Kotlin and `float` is `f64`. A whole number where a fraction is wanted widens; a fraction where a
+  # whole number is wanted was accepted, and `whole(1.5)` against `like integer` emitted `return 1.5` (guides:
+  # types/inference, 2026-10-04). Asked after the unify, when both sides are what they resolved to. Each side is
+  # resolved only where the original resolved it, and in its order: resolving compresses the path it follows
+  fork test, unified
+    hold
+      save actual-now, resolve-type(sub, actual)
+      fork test, is-equal(actual-now/kind, <float>)
+        hold
+          save wanted-now, resolve-type(sub, wanted)
+          fork test, is-equal(wanted-now/kind, <number>)
+            hold
+              save input
+                make diagnostic-input
+                  bind file, file
+                  bind span, at
+                  bind message, make(some, <{what}: expected number, a whole number, found float>)
+                  bind hint, make(some, <make it whole with `to-number` from @term/base/float (after `round`, `round-down` or `round-up` to choose the direction), or take `like float` if a fraction is meant>)
+              save kind, make type-mismatch
+              push(out, diagnose(kind, input))
+      back out
+  save markers, make list
+  save first
+    make marker
+      bind span, at
+  push(markers, first)
+  walk suspects
+    take id
+    fork test, sub/origin/has(id)
+      hold
+        save where, sub/origin/get(id)
+        save shown, show-type(where/type)
+        save blamed
+          make marker
+            bind span, where/span
+            bind label, <first used as {shown} here>
+        push(markers, blamed)
+  save wanted-text, show-type(resolve-type(sub, wanted))
+  save actual-text, show-type(resolve-type(sub, actual))
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <{what}: expected {wanted-text}, found {actual-text}>)
+      bind markers, make(some, markers)
+  save kind, make type-mismatch
+  push(out, diagnose(kind, input))
+  back out
+
+task push-variable
+  take ids, like list, like number
+  take given, like type
+  mark private
+
+  sift given
+    case variable
+      push(ids, id)
+    miss
+      back

@@ -16,7 +16,7 @@ import type {
   ViewNode,
 } from '@term/make/code/compile/node'
 import { isBinaryBuiltin, isUnaryBuiltin } from '@term/make/code/compile/surface'
-import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
+import { isFoldable, leanLabels, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { armLocals } from '@term/make/code/check/arm'
 import { overloadGroups } from '@term/make/code/check/overload'
 
@@ -337,8 +337,9 @@ export function resolve(
 
           nestLeanCalls(
             node,
-            name => params?.includes(name) === true,
-            name => look(name) !== undefined || isFoldable(name),
+            leanLabels(node)
+              .filter(label => params?.includes(label.written) !== true && (look(label.name) !== undefined || isFoldable(label.name)))
+              .map(label => label.at),
           )
 
           // AND WHAT IS LEFT ON A CALLEE THAT IS NOT A NAME IS REFUSED (self-hosting-0014, H3). A member or native

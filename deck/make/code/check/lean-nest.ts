@@ -82,37 +82,55 @@ function leanLabelOf(item: Expression): { name: string; imported?: string; value
   }
 }
 
-// Rewrite every lean label of `node` that `isParameter` refuses and `isCallable` accepts into a positional nested
-// call. Returns how many it rewrote. The nested call's own property-shaped arguments become labels again, so its own
-// arrangement decides them by ITS signature, which is what makes the rule recursive.
-export function nestLeanCalls(
-  node: Call,
-  isParameter: (name: string) => boolean,
-  isCallable: (name: string) => boolean,
-): number {
-  if (!node.lean || !node.leanNames?.some(Boolean)) {
+// a label of a lean call that may be a nested call: its argument's place, the name it was written with, and the name
+// it calls (the imported name where the written one is an import alias)
+export type LeanLabel = { at: number; written: string; name: string }
+
+// the labels of a lean call a nested call could stand for, in argument order: a label written over an array of
+// values, with a name. The caller keeps those that name no parameter of the callee and name something callable, asking
+// its scope in this order (the resolver's lookup counts an import used), and hands their places to `nestLeanCalls`
+export function leanLabels(node: Expression): LeanLabel[] {
+  if (node.form !== 'call' || !node.lean || !node.leanNames?.some(Boolean)) {
+    return []
+  }
+
+  const names = node.names ?? node.args.map(() => '')
+  const out: LeanLabel[] = []
+
+  node.args.forEach((arg, at) => {
+    const written = names[at] ?? ''
+    // an import alias is a parameter by its written name and a call by the name it imported (compile/node.ts)
+    const imported = node.leanAliases?.[at] ?? ''
+    const name = imported || written
+
+    if (node.leanNames![at] && written && name && arg.form === 'array') {
+      out.push({ at, written, name })
+    }
+  })
+
+  return out
+}
+
+// Rewrite the lean labels at `chosen` into positional nested calls, writing them into the call. Returns how many it
+// rewrote. The nested call's own property-shaped arguments become labels again, so its own arrangement decides them
+// by ITS signature, which is what makes the rule recursive.
+export function nestLeanCalls(node: Expression, chosen: number[]): number {
+  if (node.form !== 'call' || !node.lean || !node.leanNames?.some(Boolean)) {
     return 0
   }
 
   // `''` is no label and no alias (compile/node.ts, `names`)
   const names = node.names ?? node.args.map(() => '')
   const leanNames = node.leanNames
+  const picked = new Set(chosen)
   let rewritten = 0
 
   node.args = node.args.map((arg, i) => {
     const written = names[i] ?? ''
-    // an import alias is a parameter by its written name and a call by the name it imported (compile/node.ts)
     const imported = node.leanAliases?.[i] ?? ''
     const name = imported || written
 
-    if (
-      !leanNames[i] ||
-      !written ||
-      !name ||
-      arg.form !== 'array' ||
-      isParameter(written) ||
-      !isCallable(name)
-    ) {
+    if (!picked.has(i)) {
       return arg
     }
 
@@ -124,20 +142,21 @@ export function nestLeanCalls(
     leanNames[i] = false
     rewritten++
 
-    const folded = fold(name, arg.items, arg.span)
+    const items = arg.form === 'array' ? arg.items : []
+    const folded = fold(name, items, arg.span)
 
     if (folded) {
       return folded
     }
 
-    const inner = arg.items.map(item => leanLabelOf(item))
+    const inner = items.map(item => leanLabelOf(item))
     const innerNames = inner.map(one => one?.name ?? '')
     const innerAliases = inner.map(one => one?.imported ?? '')
 
     return {
       form: 'call',
       callee: { form: 'variable', name, span: arg.span, ...(imported ? { alias: written } : {}) },
-      args: arg.items.map((item, at) => inner[at]?.value ?? item),
+      args: items.map((item, at) => inner[at]?.value ?? item),
       span: arg.span,
       lean: true,
       ...(innerNames.some(Boolean)

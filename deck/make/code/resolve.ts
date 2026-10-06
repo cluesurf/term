@@ -319,7 +319,7 @@ export function linkResolver(root: string): Resolver {
   return (importPath: string, _from: string, how?: LoadHow): Source | undefined => {
     const found = packageRest(importPath)
 
-    if (!found) {
+    if (!found.found) {
       return undefined
     }
 

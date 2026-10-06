@@ -43,7 +43,13 @@ const OP: Record<string, string | undefined> = {
   '||': '||',
 }
 
-export function emitHvm(input: Program): string {
+// a construct the target cannot lower, where it was written: what `term make --emit hvm` (and `wgsl`) refuses, naming
+// each, before anything is written (call/code/emit.ts)
+export type FragmentGap = { form: string; span?: Span }
+
+// `gaps`, when given, is handed every construct outside the fragment with its span. Without it the emitter writes a
+// marked placeholder and lists them in the header, as it always did
+export function emitHvm(input: Program, gaps?: FragmentGap[]): string {
   // HVM has no type parameters: specialize every generic function at its concrete call types first, so a generic call
   // resolves to a real monomorphic definition rather than being skipped.
   const program = monomorphize(input)
@@ -53,10 +59,12 @@ export function emitHvm(input: Program): string {
 
   let fresh = 0
 
-  const mark = (form: string): string => {
+  const mark = (form: string, span?: Span): string => {
     if (!unsupported.includes(form)) {
       unsupported.push(form)
     }
+
+    gaps?.push({ form, ...(span ? { span } : {}) })
 
     // a parseable placeholder so the rest of the module still reduces; the header lists what was dropped
     return '0'
@@ -80,7 +88,7 @@ export function emitHvm(input: Program): string {
         const op = OP[node.op]
 
         if (!op) {
-          return mark(`binary "${node.op}"`)
+          return mark(`binary "${node.op}"`, node.span)
         }
 
         return `(${expr(node.left)} ${op} ${expr(node.right)})`
@@ -96,7 +104,7 @@ export function emitHvm(input: Program): string {
           return `(λ{0: 1; _: λ_. 0})(${expr(node.operand)})`
         }
 
-        return mark(`unary "${node.op}"`)
+        return mark(`unary "${node.op}"`, node.span)
 
       case 'call': {
         // a call to a named function -> `@callee(args)`. (Arithmetic has already been lowered to `binary`.)
@@ -106,7 +114,7 @@ export function emitHvm(input: Program): string {
           return `@${name(node.callee.name)}(${args})`
         }
 
-        return mark('call (computed callee)')
+        return mark('call (computed callee)', node.span)
       }
 
       case 'conditional':
@@ -116,7 +124,7 @@ export function emitHvm(input: Program): string {
         return expr(node.expr)
 
       default:
-        return mark(node.form)
+        return mark(node.form, node.span)
     }
   }
 
@@ -166,7 +174,7 @@ export function emitHvm(input: Program): string {
       }
     }
 
-    return mark('multi-statement body')
+    return mark('multi-statement body', statements[0]?.span)
   }
 
   // the single expression a branch body returns (the pure fragment), or a placeholder marker
@@ -193,6 +201,9 @@ export function emitHvm(input: Program): string {
     }
 
     const span = statements[0]?.span ?? NOWHERE
+
+    // a branch that is not one returned value is outside the fragment too: it was a silent 0, never named
+    mark('multi-statement branch', statements[0]?.span)
 
     return { form: 'integer', value: 0, span }
   }
@@ -224,7 +235,7 @@ export function emitHvm(input: Program): string {
     ) {
       // declarations with no runtime value in this fragment; skip silently (they carry no HVM definition)
     } else {
-      mark(statement.form)
+      mark(statement.form, statement.span)
     }
   }
 

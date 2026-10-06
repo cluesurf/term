@@ -559,11 +559,15 @@ task use-greet
 `)
     ok('a literal past 64 bits is refused', !past.ok, past.messages)
 
+    // refused on a JavaScript build, where it is not the number written, and warned of on a native one (2026-10-05)
     const unsafe = build(`task big
   like number
   send back, code 9007199254740993
 `)
-    ok('a literal past 2^53 builds with a warning naming what TypeScript reads', unsafe.ok && unsafe.warnings.some(w => /9007199254740992/.test(w)), unsafe.warnings.join(' | '))
+    ok('a literal past 2^53 is refused on TypeScript, naming what it would read', !unsafe.ok && /9007199254740992/.test(unsafe.messages), unsafe.messages)
+
+    const natively = compile({ file: '/gate/code/gap.tree', text: `task big\n  like number\n  send back, code 9007199254740993\n` }, { env: 'rust' })
+    ok('and builds natively with the warning', natively.ok && ((natively as { warnings?: { message: string }[] }).warnings ?? []).some(w => /9007199254740992/.test(w.message)), natively.ok ? '' : natively.diagnostics.map(d => d.message).join(' | '))
 
     const twice = build(`task limit-twice
   like number

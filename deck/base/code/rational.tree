@@ -1,52 +1,38 @@
-# Rational: an exact fraction (numerator over denominator) of integers. Pure and cross-backend: every operation is integer multiply / add / subtract plus a greatest-common-divisor reduction, and the only divisions are exact (the gcd divides both terms), so the result is identical on every backend. The combiners are named `plus` / `minus` / `times` / `divided-by` because `add` / `subtract` / `multiply` / `divide` are the number arithmetic primitives.
+# Rational: an exact fraction, a numerator over a denominator, each a big integer, so no term ever passes the edge of a
+# whole number: until 2026-10-05 they were `number`s, and a product of two numerators past i64 stopped the program. Kept
+# in lowest terms with the denominator positive, so two equal fractions have equal terms. Every operation is big-integer
+# multiply, add and subtract plus a greatest-common-divisor reduction, whose divisions are exact, so the result is the
+# same on every backend. The combiners are named `plus` / `minus` / `times` / `divided-by` because a method named `add`
+# loses to the number intrinsic (note/term/plan/decisions-2026-10.md, D5). test/stdlib/rational-native.ts.
 
 mark unstable
 
-load @term/base/math
-  find greatest-common-divisor
-  find absolute
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+  find big-divide
+  find big-remainder
+  find big-negate
+
+load @term/base/exception
+  find defect
 
 form rational
-  link numerator, like number
-  link denominator, like number
-
-  # reduce to lowest terms by dividing out the greatest common divisor (an exact division). The divisor is zero only
-  # when both terms are, and 0/0 has no lowest terms: it is returned as it is, where it used to divide by zero
-  task reduce
-    take self
-    like rational
-    save g
-      call greatest-common-divisor
-        call absolute
-          read self/numerator
-        call absolute
-          read self/denominator
-    fork test
-      hook test
-        call is-maximum
-          read g
-          code 0
-      hook hold
-        send back, read self
-    send back
-      make rational
-        bind numerator
-          call divide
-            read self/numerator
-            read g
-        bind denominator
-          call divide
-            read self/denominator
-            read g
+  link numerator, like big-integer
+  link denominator, like big-integer
 
   task numerator
     take self
-    like number
+    like big-integer
     send back, read self/numerator
 
   task denominator
     take self
-    like number
+    like big-integer
     send back, read self/denominator
 
   task negate
@@ -54,10 +40,7 @@ form rational
     like rational
     send back
       make rational
-        bind numerator
-          call subtract
-            code 0
-            read self/numerator
+        bind numerator, big-negate(self/numerator)
         bind denominator, read self/denominator
 
   # a/b + c/d = (a*d + c*b) / (b*d), reduced
@@ -66,20 +49,7 @@ form rational
     take other, like rational
     like rational
     send back
-      call reduce
-        make rational
-          bind numerator
-            call add
-              call multiply
-                read self/numerator
-                read other/denominator
-              call multiply
-                read other/numerator
-                read self/denominator
-          bind denominator
-            call multiply
-              read self/denominator
-              read other/denominator
+      call reduced(big-add(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
 
   # a/b - c/d = (a*d - c*b) / (b*d), reduced
   task minus
@@ -87,20 +57,7 @@ form rational
     take other, like rational
     like rational
     send back
-      call reduce
-        make rational
-          bind numerator
-            call subtract
-              call multiply
-                read self/numerator
-                read other/denominator
-              call multiply
-                read other/numerator
-                read self/denominator
-          bind denominator
-            call multiply
-              read self/denominator
-              read other/denominator
+      call reduced(big-subtract(big-multiply(self/numerator, other/denominator), big-multiply(other/numerator, self/denominator)), big-multiply(self/denominator, other/denominator))
 
   # a/b * c/d = (a*c) / (b*d), reduced
   task times
@@ -108,54 +65,102 @@ form rational
     take other, like rational
     like rational
     send back
-      call reduce
-        make rational
-          bind numerator
-            call multiply
-              read self/numerator
-              read other/numerator
-          bind denominator
-            call multiply
-              read self/denominator
-              read other/denominator
+      call reduced(big-multiply(self/numerator, other/numerator), big-multiply(self/denominator, other/denominator))
 
-  # a/b ÷ c/d = (a*d) / (b*c), reduced
+  # a/b ÷ c/d = (a*d) / (b*c), reduced. A division by zero raises `defect`
   task divided-by
     take self
     take other, like rational
     like rational
     send back
-      call reduce
-        make rational
-          bind numerator
-            call multiply
-              read self/numerator
-              read other/denominator
-          bind denominator
-            call multiply
-              read self/denominator
-              read other/numerator
+      call reduced(big-multiply(self/numerator, other/denominator), big-multiply(self/denominator, other/numerator))
 
-  # equal by cross-multiplication: a/b = c/d iff a*d = c*b
+  # equal: in lowest terms with a positive denominator, equal fractions have equal terms
   task is-equal-to
     take self
     take other, like rational
     like boolean
     send back
-      call is-equal
-        call multiply
-          read self/numerator
-          read other/denominator
-        call multiply
-          read other/numerator
-          read self/denominator
+      call and(is-equal(big-compare(self/numerator, other/numerator), code(0)), is-equal(big-compare(self/denominator, other/denominator), code(0)))
 
+# the greatest common divisor of two big integers, never negative: Euclid's, in a loop
+task big-greatest-common-divisor
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  mark private
+  save zero, big-from-number(0)
+  save x, read a
+  save y, read b
+  fork test
+    hook test
+      call is-below(big-compare(x, zero), code(0))
+    hook hold
+      save x, big-negate(x)
+  fork test
+    hook test
+      call is-below(big-compare(y, zero), code(0))
+    hook hold
+      save y, big-negate(y)
+  walk test
+    hook test
+      call is-unequal(big-compare(y, zero), code(0))
+    hook hold
+      save next, big-remainder(x, y)
+      save x, read y
+      save y, read next
+  send back, read x
+
+# n/d in lowest terms with a positive denominator. A zero denominator raises `defect`
+task reduced
+  take n, like big-integer
+  take d, like big-integer
+  like rational
+  mark private
+  save zero, big-from-number(0)
+  fork test
+    hook test
+      call is-equal(big-compare(d, zero), code(0))
+    hook hold
+      halt defect
+        bind thing, <a rational with a zero denominator>
+  save g, big-greatest-common-divisor(n, d)
+  save top, big-divide(n, g)
+  save bottom, big-divide(d, g)
+  fork test
+    hook test
+      call is-below(big-compare(bottom, zero), code(0))
+    hook hold
+      save top, big-negate(top)
+      save bottom, big-negate(bottom)
+  send back
+    make rational
+      bind numerator, read top
+      bind denominator, read bottom
+
+# `numerator / denominator` of two whole numbers, in lowest terms
 task make-rational
   take numerator, like number
   take denominator, like number
   like rational
   send back
-    call reduce
-      make rational
-        bind numerator, read numerator
-        bind denominator, read denominator
+    call reduced(big-from-number(numerator), big-from-number(denominator))
+
+# `numerator / denominator` of two big integers, in lowest terms
+task make-big-rational
+  take numerator, like big-integer
+  take denominator, like big-integer
+  like rational
+  send back
+    call reduced(numerator, denominator)
+
+# `5/6`, or `2` for a whole number
+task rational-text
+  take value, like rational
+  like text
+  fork test
+    hook test
+      call is-equal(big-compare(value/denominator, big-from-number(1)), code(0))
+    hook hold
+      send back, value/numerator/text()
+  send back, <{value/numerator/text()}/{value/denominator/text()}>

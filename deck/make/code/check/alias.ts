@@ -59,6 +59,27 @@ export function throughAlias(type: Type, aliases: ReadonlyMap<string, TypeAlias>
   return { found: true, type: given.size === 0 ? alias.type : (replaced(alias.type, given) as Type) }
 }
 
+// a type with its transparent aliases unfolded to their base, following a chain, each alias once (guarded against a
+// cycle): what the checker unifies and calls (check/infer.ts `unfoldAlias`, check/expect.ts)
+export function unfoldAlias(type: Type, aliases: ReadonlyMap<string, TypeAlias>): Type {
+  let current = type
+
+  const seen = new Set<string>()
+
+  while (current.kind === 'named' && !seen.has(current.name)) {
+    const base = throughAlias(current, aliases)
+
+    if (!base.found) {
+      break
+    }
+
+    seen.add(current.name)
+    current = base.type
+  }
+
+  return current
+}
+
 // a type with each named parameter replaced by its argument, everywhere it stands
 function replaced(node: unknown, given: ReadonlyMap<string, Type>): unknown {
   if (Array.isArray(node)) {
