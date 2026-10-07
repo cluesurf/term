@@ -399,6 +399,8 @@ object nativeView {
 
     private fun present(node: TermNode) {
         val dialog = node.dialog ?: android.app.Dialog(context()).also { made ->
+            // the sheet draws its own heading (D029), so the platform's title bar would draw it twice
+            made.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
             made.setContentView(node.view)
             // back, or a tap outside: the person's own dismissal, reported as `close`
             made.setOnCancelListener { node.fire("close") }

@@ -318,6 +318,9 @@ task wgsl-statement
       back gap(state, <exit>, span-of(node), unsupported-marker(<exit>, <//>))
     case debug
       back gap(state, <debug>, span-of(node), unsupported-marker(<debug>, <//>))
+    # coverage is refused for WGSL, so a probe writes nothing
+    case probe
+      back <>>
     # WGSL has no iterator protocol; a ranged `for` over an array index is the data-parallel form. Emit a marker until
     # the front-end lowers `for-each` to an indexed loop.
     case for-each

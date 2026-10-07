@@ -1,0 +1,122 @@
+# Percent-encode sets, UTF-8 percent-encode, percent-decode and UTF-8 decode of url/percent, each held to values the WHATWG
+# URL Standard section 1.3 states.
+
+load @term/base/url/percent
+  find percent-encode
+  find percent-decode
+  find utf-8-decode
+  find is-encoded
+  find encode-set-c0-control
+  find encode-set-fragment
+  find encode-set-query
+  find encode-set-special-query
+  find encode-set-path
+  find encode-set-userinfo
+  find encode-set-component
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+test c0-set
+  want hold
+    call is-equal
+      call percent-encode(text(<a b>), read(encode-set-c0-control))
+      text <a b>
+
+test fragment-set
+  want hold
+    call is-equal
+      call percent-encode(text(<a b>), read(encode-set-fragment))
+      text <a%20b>
+
+test query-hash
+  want hold
+    call is-equal
+      call percent-encode(text(<a#b>), read(encode-set-query))
+      text <a%23b>
+
+test query-apostrophe-plain
+  want hold
+    call is-equal
+      call percent-encode(text(<a'b>), read(encode-set-query))
+      text <a'b>
+
+test query-apostrophe-special
+  want hold
+    call is-equal
+      call percent-encode(text(<a'b>), read(encode-set-special-query))
+      text <a%27b>
+
+test path-question
+  want hold
+    call is-equal
+      call percent-encode(text(<a?b^c>), read(encode-set-path))
+      text <a%3Fb%5Ec>
+
+test userinfo-colon
+  want hold
+    call is-equal
+      call percent-encode(text(<a:b@c>), read(encode-set-userinfo))
+      text <a%3Ab%40c>
+
+test component-dollar
+  want hold
+    call is-equal
+      call percent-encode(text(<a$b>), read(encode-set-component))
+      text <a%24b>
+
+test utf-8-two-bytes
+  want hold
+    call is-equal
+      call percent-encode(text(<é>), read(encode-set-c0-control))
+      text <%C3%A9>
+
+test utf-8-three-bytes
+  want hold
+    call is-equal
+      call percent-encode(text(<€>), read(encode-set-c0-control))
+      text <%E2%82%AC>
+
+test utf-8-four-bytes
+  want hold
+    call is-equal
+      call percent-encode(text(<𞤢>), read(encode-set-c0-control))
+      text <%F0%9E%A4%A2>
+
+test decode-ascii
+  want hold
+    call is-equal
+      call from-runes(call(utf-8-decode, call(percent-decode, call(to-runes, text(<a%41%7a>)))))
+      text <aAz>
+
+test decode-utf-8
+  want hold
+    call is-equal
+      call from-runes(call(utf-8-decode, call(percent-decode, call(to-runes, text(<%C3%A9%e2%82%ac>)))))
+      text <é€>
+
+test decode-bare-percent
+  want hold
+    call is-equal
+      call from-runes(call(utf-8-decode, call(percent-decode, call(to-runes, text(<%zz%4>)))))
+      text <%zz%4>
+
+test decode-truncated-sequence
+  save bytes, call percent-decode(call(to-runes, text(<%E2%82>)))
+  want hold
+    call is-equal
+      read bytes/length
+      code 2
+
+test decode-replacement-truncated
+  want hold
+    call is-equal
+      call from-runes(call(utf-8-decode, call(percent-decode, call(to-runes, text(<%E2%82x>)))))
+      text <�x>
+
+test decode-replacement-lone-continuation
+  want hold
+    call is-equal
+      call from-runes(call(utf-8-decode, call(percent-decode, call(to-runes, text(<%80a>)))))
+      text <�a>

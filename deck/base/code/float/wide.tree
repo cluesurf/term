@@ -144,10 +144,12 @@ task multiply-wide
   take right, like list
   like list
     like number
+  save left-count, read left/length
+  save right-count, read right/length
   save count
     call add
-      read left/length
-      read right/length
+      read left-count
+      read right-count
   save columns
     call make-zeros
       read count
@@ -155,12 +157,12 @@ task multiply-wide
   walk test
     down
       call subtract
-        read left/length
+        read left-count
         read i
     hook test
       call is-below
         read i
-        read left/length
+        read left-count
     hook step
       save a
         call get
@@ -178,12 +180,12 @@ task multiply-wide
       walk test
         down
           call subtract
-            read right/length
+            read right-count
             read j
         hook test
           call is-below
             read j
-            read right/length
+            read right-count
         hook step
           save b
             call get

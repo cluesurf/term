@@ -2360,6 +2360,10 @@ task emit-statement
       back <process.exit(0)>
     case debug
       back <debugger>
+    # a coverage probe adds its key to the process-wide set (ts-preludes.tree `cover-prelude`, brought in by ts-assemble)
+    case probe
+      link probe-key
+      back <__termCoverHit({json-quote(probe-key)});>
     case record-type
       back emit-form(node, depth, facts)
     case if

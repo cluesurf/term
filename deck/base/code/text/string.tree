@@ -129,7 +129,7 @@ task concat
 
 # render any value as text
 task to-text
-  take value
+  take value, like unknown
   like text
   send back
     call string-to-text

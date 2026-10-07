@@ -33,6 +33,7 @@ load ./substitution
   find substitution
   find resolve-type
   find unify-types-at
+  find is-width-clash
 
 task expect-type
   take sub, like substitution
@@ -80,6 +81,26 @@ task expect-type
               save kind, make type-mismatch
               push(out, diagnose(kind, input))
       back out
+  # a list of one width where a list of another is wanted (D12): the element types and the two ways out
+  fork test, sub/widths
+    hold
+      save clash, width-clash-texts(sub, unfold-alias(actual, aliases), unfold-alias(wanted, aliases))
+      fork test, is-above(clash/length, 0)
+        hold
+          save found-element, get(clash, 0)
+          save wanted-element, get(clash, 1)
+          save way, <type the source as {wanted-element}, or convert each element with to-{wanted-element}>
+          fork test, is-equal(wanted-element, <number>)
+            hold
+              save way, <type the source as number: a callee handed a list of {found-element} could write a value outside {found-element} into it>
+          save input
+            make diagnostic-input
+              bind file, file
+              bind span, at
+              bind message, make(some, <{what}: a list of {found-element} where a list of {wanted-element} is wanted: {way}>)
+          save kind, make type-mismatch
+          push(out, diagnose(kind, input))
+          back out
   save wanted-text, show-type(resolve-type(sub, wanted))
   save actual-text, show-type(resolve-type(sub, actual))
   # THE USE THAT IS BLAMED IS THE LATER ONE IN THE FILE, whichever was checked first. Checking order is not source
@@ -116,6 +137,35 @@ task expect-type
   save kind, make type-mismatch
   push(out, diagnose(kind, input))
   back out
+
+# the element types of the first pair of lists (at any depth) whose element widths differ: found, then wanted. Empty when
+# there is none
+task width-clash-texts
+  take sub, like substitution
+  take actual, like type
+  take wanted, like type
+  like list, like text
+  mark private
+
+  save out, make list
+  save x, resolve-type(sub, actual)
+  save y, resolve-type(sub, wanted)
+  sift x
+    case array
+      link x-element
+      sift y
+        case array
+          link y-element
+          fork test, is-width-clash(sub, x-element, y-element)
+            hold
+              push(out, show-type(resolve-type(sub, x-element)))
+              push(out, show-type(resolve-type(sub, y-element)))
+              back out
+          back width-clash-texts(sub, x-element, y-element)
+        miss
+          back out
+    miss
+      back out
 
 task push-variable
   take ids, like list, like number

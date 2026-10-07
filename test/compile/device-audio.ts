@@ -1,17 +1,17 @@
 // The audio module (beat-term-0001) on AppKit (macOS) and UIKit (the iPhone simulator): one program calls every task of
 // site/code/view/audio.tree and prints each answer as `step <name> <answer>`, judged here against what the platform can
-// answer. Nothing sounds: the loop and the player run at volume 0, so the engine renders and keeps time while the
-// person's speakers stay quiet. The witnesses are the platform's own:
+// answer. Nothing sounds: every file this test writes is digital silence, so the engine renders and keeps time while
+// the person's speakers stay quiet whatever the volume (T007). The witnesses are the platform's own:
 //
-//   length     a 3 second, 44.1 kHz WAV this test writes, whose length AVAudioFile reads from its frames
+//   length     a 3 second, 44.1 kHz silent WAV this test writes, whose length AVAudioFile reads from its frames
 //   the loop   two half-second segments, a one-second round: the watcher must hear `wrap 1` and `wrap 2` a round apart
 //              by the wall clock, and the place the engine's own render clock reports must fall inside a segment
 //   volume     held to 0 through 100, as the node took it
 //   edges      a segment past the end of the file is invalid, a file that is not there unavailable, and stopping and
 //              restarting answer what they did
 //   the queue  two half-second files at volume 0, each `playing` as it starts and `done` about a second after the first
-//   recording  the grant only: on the simulator never asked, so not-determined; the Mac is not asked at all, since a
-//              grant its terminal holds would record the person's own microphone
+//   recording  the grant only: on the simulator revoked, so denied; the Mac is not asked at all, since a grant its
+//              terminal holds would record the person's own microphone
 //
 // The files go where the app reads its temporary folder: the app's own container on the simulator
 // (`simctl get_app_container`), the Mac's temporary folder for the AppKit program. AUDIO_ONLY=macos or ios runs one.
@@ -41,8 +41,8 @@ const TONE = `term-audio-tone-${process.pid}.wav`
 const SHORT = `term-audio-short-${process.pid}.wav`
 const RATE = 44_100
 
-// a 440 Hz sine at a quarter of full scale, `seconds` long, as a 16-bit mono WAV
-function sine(seconds: number): Buffer {
+// digital silence, `seconds` long, as a 16-bit mono WAV: every sample is 0 (the buffer is zero-filled)
+function silence(seconds: number): Buffer {
   const count = Math.round(RATE * seconds)
   const out = Buffer.alloc(44 + count * 2)
   out.write('RIFF', 0, 'ascii')
@@ -58,15 +58,13 @@ function sine(seconds: number): Buffer {
   out.write('data', 36, 'ascii')
   out.writeUInt32LE(count * 2, 40)
 
-  for (let index = 0; index < count; index++) out.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * index) / RATE) * 8000), 44 + index * 2)
-
   return out
 }
 
 function writeFiles(dir: string): void {
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, TONE), sine(3))
-  writeFileSync(join(dir, SHORT), sine(0.5))
+  writeFileSync(join(dir, TONE), silence(3))
+  writeFileSync(join(dir, SHORT), silence(0.5))
 }
 
 // each step the program prints, its task call stacked one argument a line
@@ -160,14 +158,20 @@ ${say('started').join('\n')}
       save said-state
         call loop-state
 ${say('state').join('\n')}
-      save said-louder
-        call set-loop-volume
-          code 150
-${say('louder').join('\n')}
+      # below 0 is held to 0 first, then 150 is held to 100, then back to 0 before anything else plays (the fixtures are
+      # silent besides, T007)
       save said-quieter
         call set-loop-volume
           code -5
 ${say('quieter').join('\n')}
+      save said-louder
+        call set-loop-volume
+          code 150
+${say('louder').join('\n')}
+      save said-zeroed
+        call set-loop-volume
+          code 0
+${say('zeroed').join('\n')}
       save said-restarted
         call restart-loop
 ${say('restarted').join('\n')}
@@ -298,10 +302,21 @@ const events = (said: string): { value: string; at: number }[] =>
 
 function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
   if (leg === 'ios' && target.udid) {
-    const container = spawnSync('xcrun', ['simctl', 'get_app_container', target.udid, target.identifier, 'data'], { encoding: 'utf8' }).stdout.trim()
+    const found = spawnSync('xcrun', ['simctl', 'get_app_container', target.udid, target.identifier, 'data'], { encoding: 'utf8' })
+    const container = (found.stdout ?? '').trim()
+
+    if (found.status !== 0 || container === '') {
+      throw new Error(`simctl get_app_container failed (status ${found.status}): ${found.stderr}`)
+    }
+
+    // revoked, so the recorder answers denied and never reaches the Mac's microphone
+    const revoked = spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'revoke', 'microphone', target.identifier], { encoding: 'utf8' })
+
+    if (revoked.status !== 0) {
+      throw new Error(`simctl privacy revoke microphone failed (status ${revoked.status}): ${revoked.stderr}`)
+    }
+
     writeFiles(join(container, 'tmp'))
-    // never asked, so the recorder answers not-determined and never reaches the Mac's microphone
-    spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'reset', 'microphone', target.identifier])
   }
 }
 
@@ -326,7 +341,7 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const place = Number(ms)
   const inside = segment === '0' ? place >= 500 && place < 1000 : segment === '1' ? place >= 2000 && place < 2500 : false
   ok(`${named}: the engine's render clock places playback inside a segment`, word === 'looping' && inside, said('state'))
-  ok(`${named}: the volume is held to 100 and to 0`, said('louder') === '100' && said('quieter') === '0', `${said('louder')} ${said('quieter')}`)
+  ok(`${named}: the volume is held to 100 and to 0`, said('louder') === '100' && said('quieter') === '0' && said('zeroed') === '0', `${said('louder')} ${said('quieter')} ${said('zeroed')}`)
   ok(`${named}: restart, stop, the state after, and restart with nothing running`, said('restarted') === 'looping' && said('stopped') === 'stopped' && said('state-after') === 'stopped' && said('restart-stopped') === 'stopped', ['restarted', 'stopped', 'state-after', 'restart-stopped'].map(said).join(' '))
   ok(`${named}: and the watcher heard it stop`, loop.at(-1)?.value === 'stopped', said('heard-loop'))
   ok(`${named}: a segment past the file's end is invalid, a missing file unavailable`, said('invalid') === 'invalid' && said('missing') === 'unavailable', `${said('invalid')} ${said('missing')}`)
@@ -336,11 +351,16 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const done = playback.find(one => one.value === 'done')
   ok(`${named}: the queue plays both files, each heard as it starts, then done`, said('playing') === 'playing' && playing.length === 2 && playing.every(one => one.value.endsWith(SHORT)) && done !== undefined, said('heard-playback'))
   const span = (done?.at ?? 0) - (playing[0]?.at ?? 0)
-  ok(`${named}: about a second from the first start to done, two half-second files`, Math.abs(span - 1000) <= 250, `${span} ms`)
+  const gap = (playing[1]?.at ?? 0) - (playing[0]?.at ?? 0)
+  ok(
+    `${named}: about a second from the first start to done, the second file starting 500 ms after the first`,
+    Math.abs(span - 1000) <= 250 && playing.length === 2 && Math.abs(gap - 500) <= 150,
+    `${span} ms to done, ${gap} ms between starts`,
+  )
   ok(`${named}: a file that is not there is unavailable, and stopping answers stopped`, said('play-missing') === 'unavailable' && said('play-stopped') === 'stopped', `${said('play-missing')} ${said('play-stopped')}`)
 
   if (leg === 'ios') {
-    ok(`${named}: never asked, the recorder says not-determined and records nothing`, said('record') === 'not-determined', said('record'))
+    ok(`${named}: the microphone revoked, the recorder says denied and records nothing`, said('record') === 'denied', said('record'))
   }
 
   ok(`${named}: an idle recorder stops as idle, and its watcher hears idle`, said('record-stopped') === 'idle' && said('heard-recording') === 'idle', `${said('record-stopped')} ${said('heard-recording')}`)

@@ -30,6 +30,23 @@ form substitution
   link next, like number
   # where a variable was solved, for hover and "expected/found" diagnostics
   link origin, like hash, like number, like solved
+  # whether a list's element width is invariant (TERM_WIDTH_RANGES, check/width-range.ts), read once when the checker
+  # makes its substitution
+  link widths, like boolean
+
+# the width switch (check/width-range.ts publishes it as `globalThis.termWidthRanges`, which a Term module cannot import)
+bind width-switch
+  like boolean
+  case node
+    text <((globalThis as any).termWidthRanges === true)>
+  case browser
+    text <((globalThis as any).termWidthRanges === true)>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
 
 task new-substitution
   like substitution
@@ -39,6 +56,7 @@ task new-substitution
       bind bindings, make hash
       bind next, 0
       bind origin, make hash
+      bind widths, width-switch()
 
 # a brand-new, unbound type variable
 task fresh-type
@@ -215,6 +233,34 @@ task unify-with
       back bind-variable(sub, y-id, x, recorded, at)
   back unify-shapes(sub, x, y)
 
+# the width word of a number type, or none
+task number-width
+  take given, like type
+  like text
+  mark private
+
+  sift given
+    case number
+      link width
+      back width
+    miss
+      back <>
+
+# two list elements that are both numbers and carry different widths (a plain number is the empty width): the pair a
+# list's invariance refuses, in either direction
+task is-width-clash
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  like boolean
+
+  save x, resolve-type(sub, a)
+  save y, resolve-type(sub, b)
+  fork test, and(is-equal(x/kind, <number>), is-equal(y/kind, <number>))
+    hold
+      back is-unequal(number-width(x), number-width(y))
+  back false
+
 task bind-variable
   take sub, like substitution
   take id, like number
@@ -269,6 +315,13 @@ task unify-shapes
       sift y
         case array
           link y-element
+          # a list's element width is invariant (D12): a list of number is not a list of u8 in either direction, since
+          # a callee could write a value outside the width into the one it was handed
+          fork test, sub/widths
+            hold
+              fork test, is-width-clash(sub, x-element, y-element)
+                hold
+                  back false
           back unify-types(sub, x-element, y-element)
         miss
           back false

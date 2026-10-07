@@ -1,0 +1,308 @@
+# The coverage pass (term/decisions-2026-10/coverage, spec.md §3): a `probe` before every executable statement of the
+# files a test run is measured over, keyed by the statement's `.tree` line, so every backend can report the lines that
+# ran by adding the key to one set. Under `term test --cover` only. The decision (D11) and why probes beat source maps
+# are in that project's spec.md §2.
+#
+# It runs AFTER checking (purity, raise sets, async inference and twin admission never see a probe) and BEFORE the
+# simplifier (an inlined body keeps the keys it was written with, as gcov wants `-O0`). It writes into the program's
+# statements where they stand, as compile/node-rewrite.tree does, and hands back the program, since a port cannot
+# write into its argument: the face (ir/cover.ts) writes it back.
+#
+# What gets a probe: one before every statement of a task, closure, arm, loop or guard body, and before each executable
+# top-level statement. A declaration (`function`, `record-type`, `mask`, `instance`, `native`, `bind`, `view`, `dock`,
+# `roll`, `tell`), a `hold` (checked at compile time, nothing runs) and a probe itself get none. A probe before a
+# statement means a line that started counts as run, including one that raised.
+#
+# Which statements: those of a top-level definition whose span names a file the target covers. A nested statement has no
+# file of its own (module-binding stamps the top-level definitions only), so it takes its definition's. A definition with
+# no file is never covered, and a key is never guessed from one.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find statement-branch
+  find statement-span
+  find match-case
+  find catch-clause
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+# what is measured: the files a probe is written in, and what a key's path is relative to
+form cover-target
+  # a file is covered when it is this one or is under this folder
+  link prefix, like text
+  # the folder keys are relative to, the project's root
+  link root, like text
+
+# the keys written so far, each once, in the order written
+form cover-state
+  mark shared
+  link keys, like list, like text
+  link seen, like hash, like text, like boolean
+
+# the program with its probes, and every key a probe was written for
+form covered
+  link program, like list, like statement
+  link keys, like list, like text
+
+task is-executable
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case let
+      back true
+    case assign
+      back true
+    case expression
+      back true
+    case if
+      back true
+    case while
+      back true
+    case match
+      back true
+    case for-each
+      back true
+    case break
+      back true
+    case continue
+      back true
+    case return
+      back true
+    case exit
+      back true
+    case debug
+      back true
+    case guard
+      back true
+    case throw
+      back true
+    miss
+      back false
+
+# whether a file is one the target measures
+task is-covered
+  take file, like text
+  take target, like cover-target
+  like boolean
+  mark private
+
+  fork test, is-equal(file, <>)
+    hold
+      back false
+  back or(is-equal(file, target/prefix), starts-with(file, <{target/prefix}/>))
+
+# the file a top-level definition came from, empty where it has none
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  save given, at/file
+  sift given
+    case some
+      link file
+      back file
+    case none
+      back <>
+
+# a path relative to the project's root, itself when it lies outside
+task relative-of
+  take file, like text
+  take root, like text
+  like text
+  mark private
+
+  fork test, starts-with(file, <{root}/>)
+    hold
+      back substring(file, add(root/length, 1))
+  back file
+
+# the probe that goes before a statement of this file, none for one that is not executable or has no line
+task probe-before
+  take one, like statement
+  take file, like text
+  take target, like cover-target
+  take state, like cover-state
+  like maybe, like statement
+  mark private
+
+  fork test, not(is-executable(one))
+    hold
+      back make none
+  save at, statement-span(one)
+  save key, <{relative-of(file, target/root)}:{add(at/start/line, 1)}>
+  fork test, not(state/seen/has(key))
+    hold
+      save state/seen/{key}, true
+      push(state/keys, key)
+  save made
+    make statement/probe
+      bind key, key
+      bind span, at
+  back make(some, made)
+
+# a block with a probe before each of its statements
+task probed-block
+  take block, like list, like statement
+  take file, like text
+  take target, like cover-target
+  take state, like cover-state
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk block
+    take one
+    sift probe-before(one, file, target, state)
+      case some
+        link made
+        push(out, made)
+      case none
+        save nothing, 0
+    push(out, one)
+  back out
+
+task probed-maybe-block
+  take block, like maybe, like list, like statement
+  take file, like text
+  take target, like cover-target
+  take state, like cover-state
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save written, probed-block(body, file, target, state)
+      back make(some, written)
+    case none
+      back make none
+
+# the bodies one statement holds, each probed
+task cover-statement
+  take one, like statement
+  take file, like text
+  take target, like cover-target
+  take state, like cover-state
+  like statement
+  mark private
+
+  sift one
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/body, probed-block(branch/body, file, target, state)
+        push(branches-out, branch)
+      save one/branches, branches-out
+      sift otherwise
+        case some
+          save one/otherwise, probed-maybe-block(otherwise, file, target, state)
+        case none
+          save nothing, 0
+    case while
+      save one/body, probed-block(body, file, target, state)
+    case match
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, probed-block(arm/body, file, target, state)
+        push(cases-out, arm)
+      save one/cases, cases-out
+      sift otherwise
+        case some
+          save one/otherwise, probed-maybe-block(otherwise, file, target, state)
+        case none
+          save nothing, 0
+    case for-each
+      save one/body, probed-block(body, file, target, state)
+    case guard
+      save one/body, probed-block(body, file, target, state)
+      sift catch
+        case some
+          link clause
+          save clause/body, probed-block(clause/body, file, target, state)
+          save one/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case function
+      save one/body, probed-block(body, file, target, state)
+    miss
+      save nothing, 0
+  back one
+
+# the body a closure holds, probed
+task cover-expression
+  take one, like expression
+  take file, like text
+  take target, like cover-target
+  take state, like cover-state
+  like expression
+  mark private
+
+  sift one
+    case closure
+      save one/body, probed-block(body, file, target, state)
+    miss
+      save nothing, 0
+  back one
+
+# the program with a probe before every executable statement of the files the target covers
+task cover-program
+  take program, like list, like statement
+  take target, like cover-target
+  like covered
+
+  save state
+    make cover-state
+      bind keys, make list
+      bind seen, make hash
+  save out, make list
+  walk program
+    take top
+    save file, file-of(top)
+    fork test, not(is-covered(file, target))
+      hold
+        push(out, top)
+        turn next
+    sift probe-before(top, file, target, state)
+      case some
+        link made
+        push(out, made)
+      case none
+        save nothing, 0
+    push(out, top)
+    save single, make list
+    push(single, top)
+    walk statements-in(single)
+      take inner
+      save written, cover-statement(inner, file, target, state)
+    walk expressions-in(single)
+      take inner
+      save written-expression, cover-expression(inner, file, target, state)
+  back
+    make covered
+      bind program, out
+      bind keys, state/keys

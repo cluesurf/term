@@ -57,6 +57,7 @@ load ./ts-preludes
   find equal-prelude
   find text-prelude
   find list-prelude
+  find cover-prelude
 
 load ../term/quote
   find json-quote
@@ -720,6 +721,17 @@ task assemble-type-script
       fork test, raises
         hold
           save prelude, with-first(prelude, class-prelude)
+
+  # a coverage probe (ir/cover.tree) calls the set's writer, which rides in when one is written
+  save probes, false
+  walk lines
+    take line
+    fork test, contains(line, <__termCoverHit(>)
+      hold
+        save probes, true
+  fork test, probes
+    hold
+      push(prelude, cover-prelude())
 
   save parts, make list
   walk prelude

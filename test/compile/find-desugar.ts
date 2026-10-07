@@ -313,6 +313,12 @@ for (const fixture of FIXTURES) run(fixture)
   ok('a bare word is a pipe from the result', text.includes('seed-read(link=[call-link(name=[w:click])] path=[w:it])'), text)
   ok('`call x` stays a call', text.includes('call(name=[w:own])'), text)
   ok('a keyword form keeps its meaning', text.includes('save(name=[w:line]'), text)
+
+  // `wait true`, `take z` and a lone `tick` mint as a call or a word for lack of a form of their own: still keywords
+  const kept = minted('find pane\n  wait true\n  take z\n  tick\n  halt', true)
+  const keptText = kept?.values[0] ? canon(kept.values[0]) : ''
+
+  ok('a keyword head that mints as a call or a word is not piped', kept !== undefined && keptText.includes('seed-call-open(name=[w:wait]') && keptText.includes('seed-call-open(name=[w:take]') && keptText.includes('w:tick') && !keptText.includes('call-link(name=[w:wait]') && !keptText.includes('call-link(name=[w:tick]'), keptText)
 }
 
 // ---- the query parts ----

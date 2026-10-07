@@ -1,0 +1,755 @@
+# The WHATWG URL host parser and serializer (decision D9, term/decisions-2026-10/url), in Term, the same on every backend:
+# an ASCII domain, an IPv4 address (decimal, octal, hexadecimal, and the one to four part forms), an IPv6 address
+# (parsed, then serialized with its longest run of zero pieces compressed) and an opaque host. WHATWG URL Standard
+# section 3.5 (host parsing), 3.6 (host serializing) and the IPv4 / IPv6 / opaque host parsers, read at the pinned corpus
+# commit (test/stdlib/url/readme.md). Everything works over lists of code points, never by position in a text.
+#
+# A domain with a code point past U+007F, or a label starting `xn--`, goes through UTS #46 ToASCII (url/idna). Any other
+# domain is made lower case here.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find length
+  find push
+  find join
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+  find rune-to-text
+
+load @term/base/url/idna
+  find domain-to-ascii-runes
+
+load @term/base/url/percent
+  find percent-decode
+  find utf-8-decode
+  find percent-encode-runes
+  find encode-set-c0-control
+  find hex-value
+  find remainder-of
+  find is-among
+
+# the answer of the host parser: `ok` and the serialized `value`, or a failure
+form host-answer
+  link ok, like boolean
+  link value, like text
+
+task host-accepted
+  mark private
+  take value, like text
+  like host-answer
+  send back
+    make host-answer
+      bind ok, true
+      bind value, read value
+
+task host-refused
+  mark private
+  like host-answer
+  send back
+    make host-answer
+      bind ok, false
+      bind value, text <>
+
+# the code point at `at`, or -1 past either end
+task rune-at
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and(call(is-minimum, read(at), code(0)), call(is-below, read(at), read(runes/length)))
+    hook hold
+      send back, call(get, read(runes), read(at))
+  send back, code(-1)
+
+# a forbidden host code point: NUL, tab, line feed, carriage return, space, # / : < > ? @ [ \ ] ^ |
+task is-forbidden-host
+  mark private
+  take c, like number
+  like boolean
+  send back, call(is-among, read(c), text(<00090a0d20232f3a3c3e3f405b5c5d5e7c>))
+
+# a forbidden domain code point: a forbidden host code point, a C0 control, %, and U+007F
+task is-forbidden-domain
+  mark private
+  take c, like number
+  like boolean
+  fork test
+    hook test
+      call is-forbidden-host(read(c))
+    hook hold
+      send back, true
+  send back, call(or, call(is-below, read(c), code(32)), call(or, call(is-equal, read(c), code(37)), call(is-equal, read(c), code(127))))
+
+# the runes cut at every full stop
+task split-dots
+  mark private
+  take runes
+    like list
+      like number
+  like list
+    like list
+      like number
+  save parts, make list
+  save part, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save c, call get(read(runes), read(at))
+      fork test
+        hook test
+          call is-equal(read(c), code(46))
+        hook hold
+          call parts/push(read(part))
+          save part, make list
+        hook miss
+          call part/push(read(c))
+      save at, call add(read(at), code(1))
+  call parts/push(read(part))
+  send back, read parts
+
+# an IPv4 part: an optional 0x or 0X (hexadecimal) or a leading 0 (octal), then the digits. -1 when it is empty or holds
+# a digit past its radix. A value too big for any address stops growing (it fails every range check the same)
+task parse-ipv4-number
+  mark private
+  take part
+    like list
+      like number
+  like number
+  fork test
+    hook test
+      call is-equal(read(part/length), code(0))
+    hook hold
+      send back, code(-1)
+  save radix, code 10
+  save at, code 0
+  fork test
+    hook test
+      call and(call(is-minimum, read(part/length), code(2)), call(is-equal, call(rune-at, read(part), code(0)), code(48)))
+    hook hold
+      fork test
+        hook test
+          call or(call(is-equal, call(rune-at, read(part), code(1)), code(120)), call(is-equal, call(rune-at, read(part), code(1)), code(88)))
+        hook hold
+          save at, code 2
+          save radix, code 16
+        hook miss
+          save at, code 1
+          save radix, code 8
+  save value, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(part/length))
+    hook step
+      save digit, call hex-value(call(get, read(part), read(at)))
+      fork test
+        hook test
+          call or(call(is-below, read(digit), code(0)), call(is-minimum, read(digit), read(radix)))
+        hook hold
+          send back, code(-1)
+      save value, call add(call(multiply, read(value), read(radix)), read(digit))
+      fork test
+        hook test
+          call is-above(read(value), code(100000000000))
+        hook hold
+          save value, code 100000000000
+      save at, call add(read(at), code(1))
+  send back, read value
+
+# the "ends in a number" test: the last part (the one before a trailing full stop) is all ASCII digits, or reads as an IPv4
+# number
+task ends-in-number
+  mark private
+  take runes
+    like list
+      like number
+  like boolean
+  save parts, call split-dots(read(runes))
+  save last, call get(read(parts), call(subtract, read(parts/length), code(1)))
+  fork test
+    hook test
+      call is-equal(read(last/length), code(0))
+    hook hold
+      fork test
+        hook test
+          call is-equal(read(parts/length), code(1))
+        hook hold
+          send back, false
+      save last, call get(read(parts), call(subtract, read(parts/length), code(2)))
+  fork test
+    hook test
+      call is-equal(read(last/length), code(0))
+    hook hold
+      send back, false
+  save digits, true
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(last/length))
+    hook step
+      save c, call get(read(last), read(at))
+      fork test
+        hook test
+          call or(call(is-below, read(c), code(48)), call(is-above, read(c), code(57)))
+        hook hold
+          save digits, false
+      save at, call add(read(at), code(1))
+  fork test
+    hook test
+      read digits
+    hook hold
+      send back, true
+  send back, call(is-minimum, call(parse-ipv4-number, read(last)), code(0))
+
+# the IPv4 parser: the address as one number, or -1 on failure
+task parse-ipv4
+  mark private
+  take runes
+    like list
+      like number
+  like number
+  save parts, call split-dots(read(runes))
+  save tail, call get(read(parts), call(subtract, read(parts/length), code(1)))
+  fork test
+    hook test
+      call and(call(is-above, read(parts/length), code(1)), call(is-equal, read(tail/length), code(0)))
+    hook hold
+      call parts/pop
+  fork test
+    hook test
+      call is-above(read(parts/length), code(4))
+    hook hold
+      send back, code(-1)
+  save numbers, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(parts/length))
+    hook step
+      save number, call parse-ipv4-number(call(get, read(parts), read(at)))
+      fork test
+        hook test
+          call is-below(read(number), code(0))
+        hook hold
+          send back, code(-1)
+      call numbers/push(read(number))
+      save at, call add(read(at), code(1))
+  save last, call get(read(numbers), call(subtract, read(numbers/length), code(1)))
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), call(subtract, read(numbers/length), code(1)))
+    hook step
+      fork test
+        hook test
+          call is-above(call(get, read(numbers), read(at)), code(255))
+        hook hold
+          send back, code(-1)
+      save at, call add(read(at), code(1))
+  # the last part fills the 256 to the power of what is left over
+  save room, code 1
+  save k, call subtract(code(5), read(numbers/length))
+  walk test
+    hook test
+      call is-above(read(k), code(0))
+    hook step
+      save room, call multiply(read(room), code(256))
+      save k, call subtract(read(k), code(1))
+  fork test
+    hook test
+      call is-minimum(read(last), read(room))
+    hook hold
+      send back, code(-1)
+  save address, read last
+  save scale, code 16777216
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), call(subtract, read(numbers/length), code(1)))
+    hook step
+      save address, call add(read(address), call(multiply, call(get, read(numbers), read(at)), read(scale)))
+      save scale, call divide(read(scale), code(256))
+      save at, call add(read(at), code(1))
+  send back, read address
+
+# an IPv4 address as its four decimal parts
+task serialize-ipv4
+  mark private
+  take address, like number
+  like text
+  save a, call divide(read(address), code(16777216))
+  save b, call remainder-of(call(divide, read(address), code(65536)), code(256))
+  save c, call remainder-of(call(divide, read(address), code(256)), code(256))
+  save d, call remainder-of(read(address), code(256))
+  send back, text(<{a}.{b}.{c}.{d}>)
+
+# the IPv6 parser, over the code points between the brackets: eight pieces, or an empty list on failure
+task parse-ipv6
+  mark private
+  take r
+    like list
+      like number
+  like list
+    like number
+  save fail, make list
+  save address, make list
+  save zeros, code 0
+  walk test
+    hook test
+      call is-below(read(zeros), code(8))
+    hook step
+      call address/push(code(0))
+      save zeros, call add(read(zeros), code(1))
+  save piece, code 0
+  save compress, code(-1)
+  save p, code 0
+  save done, false
+  fork test
+    hook test
+      call is-equal(call(rune-at, read(r), read(p)), code(58))
+    hook hold
+      fork test
+        hook test
+          call is-unequal(call(rune-at, read(r), call(add, read(p), code(1))), code(58))
+        hook hold
+          send back, read fail
+      save p, call add(read(p), code(2))
+      save piece, call add(read(piece), code(1))
+      save compress, read piece
+  walk test
+    hook test
+      call and(call(is-unequal, call(rune-at, read(r), read(p)), code(-1)), call(not, read(done)))
+    hook step
+      fork test
+        hook test
+          call is-equal(read(piece), code(8))
+        hook hold
+          send back, read fail
+      fork test
+        hook test
+          call is-equal(call(rune-at, read(r), read(p)), code(58))
+        hook hold
+          fork test
+            hook test
+              call is-unequal(read(compress), code(-1))
+            hook hold
+              send back, read fail
+          save p, call add(read(p), code(1))
+          save piece, call add(read(piece), code(1))
+          save compress, read piece
+          turn next
+      save value, code 0
+      save width, code 0
+      walk test
+        hook test
+          call and(call(is-below, read(width), code(4)), call(is-minimum, call(hex-value, call(rune-at, read(r), read(p))), code(0)))
+        hook step
+          save value, call add(call(multiply, read(value), code(16)), call(hex-value, call(rune-at, read(r), read(p))))
+          save p, call add(read(p), code(1))
+          save width, call add(read(width), code(1))
+      save c, call rune-at(read(r), read(p))
+      fork test
+        hook test
+          call is-equal(read(c), code(46))
+        hook hold
+          fork test
+            hook test
+              call is-equal(read(width), code(0))
+            hook hold
+              send back, read fail
+          save p, call subtract(read(p), read(width))
+          fork test
+            hook test
+              call is-above(read(piece), code(6))
+            hook hold
+              send back, read fail
+          save seen, code 0
+          walk test
+            hook test
+              call is-unequal(call(rune-at, read(r), read(p)), code(-1))
+            hook step
+              save part, code(-1)
+              fork test
+                hook test
+                  call is-above(read(seen), code(0))
+                hook hold
+                  fork test
+                    hook test
+                      call and(call(is-equal, call(rune-at, read(r), read(p)), code(46)), call(is-below, read(seen), code(4)))
+                    hook hold
+                      save p, call add(read(p), code(1))
+                    hook miss
+                      send back, read fail
+              fork test
+                hook test
+                  call not(call(is-digit, call(rune-at, read(r), read(p))))
+                hook hold
+                  send back, read fail
+              walk test
+                hook test
+                  call is-digit(call(rune-at, read(r), read(p)))
+                hook step
+                  save number, call subtract(call(rune-at, read(r), read(p)), code(48))
+                  fork test
+                    hook test
+                      call is-equal(read(part), code(-1))
+                    hook hold
+                      save part, read number
+                    hook test
+                      call is-equal(read(part), code(0))
+                    hook hold
+                      send back, read fail
+                    hook miss
+                      save part, call add(call(multiply, read(part), code(10)), read(number))
+                  fork test
+                    hook test
+                      call is-above(read(part), code(255))
+                    hook hold
+                      send back, read fail
+                  save p, call add(read(p), code(1))
+              call address/set(read(piece), call(add, call(multiply, call(get, read(address), read(piece)), code(256)), read(part)))
+              save seen, call add(read(seen), code(1))
+              fork test
+                hook test
+                  call or(call(is-equal, read(seen), code(2)), call(is-equal, read(seen), code(4)))
+                hook hold
+                  save piece, call add(read(piece), code(1))
+          fork test
+            hook test
+              call is-unequal(read(seen), code(4))
+            hook hold
+              send back, read fail
+          save done, true
+        hook test
+          call is-equal(read(c), code(58))
+        hook hold
+          save p, call add(read(p), code(1))
+          fork test
+            hook test
+              call is-equal(call(rune-at, read(r), read(p)), code(-1))
+            hook hold
+              send back, read fail
+        hook test
+          call is-unequal(read(c), code(-1))
+        hook hold
+          send back, read fail
+      fork test
+        hook test
+          call not(read(done))
+        hook hold
+          call address/set(read(piece), read(value))
+          save piece, call add(read(piece), code(1))
+  fork test
+    hook test
+      call and(call(is-equal, read(compress), code(-1)), call(is-unequal, read(piece), code(8)))
+    hook hold
+      send back, read fail
+  fork test
+    hook test
+      call is-unequal(read(compress), code(-1))
+    hook hold
+      save swaps, call subtract(read(piece), read(compress))
+      save piece, code 7
+      walk test
+        hook test
+          call and(call(is-unequal, read(piece), code(0)), call(is-above, read(swaps), code(0)))
+        hook step
+          save other, call subtract(call(add, read(compress), read(swaps)), code(1))
+          save held, call get(read(address), read(piece))
+          call address/set(read(piece), call(get, read(address), read(other)))
+          call address/set(read(other), read(held))
+          save piece, call subtract(read(piece), code(1))
+          save swaps, call subtract(read(swaps), code(1))
+  send back, read address
+
+task is-digit
+  mark private
+  take c, like number
+  like boolean
+  send back, call(and, call(is-minimum, read(c), code(48)), call(is-maximum, read(c), code(57)))
+
+# one IPv6 piece in lower-case hexadecimal, with no leading zero
+task hex-piece
+  mark private
+  take piece, like number
+  like text
+  fork test
+    hook test
+      call is-equal(read(piece), code(0))
+    hook hold
+      send back, text(<0>)
+  save out, text <>
+  save rest, read piece
+  walk test
+    hook test
+      call is-above(read(rest), code(0))
+    hook step
+      save digit, call remainder-of(read(rest), code(16))
+      fork test
+        hook test
+          call is-below(read(digit), code(10))
+        hook hold
+          save glyph, call rune-to-text(call(add, code(48), read(digit)))
+          save out, text <{glyph}{out}>
+        hook miss
+          save glyph, call rune-to-text(call(add, code(87), read(digit)))
+          save out, text <{glyph}{out}>
+      save rest, call divide(read(rest), code(16))
+  send back, read out
+
+# an IPv6 address: pieces in lower-case hexadecimal joined by colons, the first longest run of two or more zero pieces
+# written as `::`, in brackets
+task serialize-ipv6
+  mark private
+  take address
+    like list
+      like number
+  like text
+  save compress, code(-1)
+  save longest, code 1
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), code(8))
+    hook step
+      fork test
+        hook test
+          call is-equal(call(get, read(address), read(at)), code(0))
+        hook hold
+          save end, read at
+          walk test
+            hook test
+              call and(call(is-below, read(end), code(8)), call(is-equal, call(get, read(address), read(end)), code(0)))
+            hook step
+              save end, call add(read(end), code(1))
+          fork test
+            hook test
+              call is-above(call(subtract, read(end), read(at)), read(longest))
+            hook hold
+              save longest, call subtract(read(end), read(at))
+              save compress, read at
+          save at, read end
+        hook miss
+          save at, call add(read(at), code(1))
+  save parts, make list
+  save skipping, false
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), code(8))
+    hook step
+      fork test
+        hook test
+          call and(read(skipping), call(is-equal, call(get, read(address), read(at)), code(0)))
+        hook hold
+          save at, call add(read(at), code(1))
+          turn next
+      save skipping, false
+      fork test
+        hook test
+          call is-equal(read(compress), read(at))
+        hook hold
+          fork test
+            hook test
+              call is-equal(read(at), code(0))
+            hook hold
+              call parts/push(text(<::>))
+            hook miss
+              call parts/push(text(<:>))
+          save skipping, true
+          save at, call add(read(at), code(1))
+          turn next
+      call parts/push(call(hex-piece, call(get, read(address), read(at))))
+      fork test
+        hook test
+          call is-unequal(read(at), code(7))
+        hook hold
+          call parts/push(text(<:>))
+      save at, call add(read(at), code(1))
+  save joined, call join(read(parts), text(<>))
+  send back, text(<[{joined}]>)
+
+# an opaque host (the host of a URL whose scheme is not special): no forbidden host code point, then each code point
+# percent-encoded by the C0 control set
+task parse-opaque-host
+  mark private
+  take runes
+    like list
+      like number
+  like host-answer
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      fork test
+        hook test
+          call is-forbidden-host(call(get, read(runes), read(at)))
+        hook hold
+          send back, call(host-refused)
+      save at, call add(read(at), code(1))
+  send back
+    call host-accepted
+      call percent-encode-runes(read(runes), code(0), read(runes/length), read(encode-set-c0-control))
+
+# UTS #46 ToASCII of a domain, a failure when it fails or leaves nothing
+task idna-host
+  mark private
+  take runes
+    like list
+      like number
+  like host-answer
+  save answer, call domain-to-ascii-runes(read(runes))
+  fork test
+    hook test
+      call not(read(answer/ok))
+    hook hold
+      send back, call(host-refused)
+  fork test
+    hook test
+      call is-equal(read(answer/value), text(<>))
+    hook hold
+      send back, call(host-refused)
+  send back, call(host-accepted, read(answer/value))
+
+# an ASCII domain made lower case. A domain with a code point past U+007F, or a label that starts with `xn--`, is the work
+# of UTS #46 (idna-host)
+task domain-to-ascii
+  mark private
+  take runes
+    like list
+      like number
+  like host-answer
+  fork test
+    hook test
+      call is-equal(read(runes/length), code(0))
+    hook hold
+      send back, call(host-refused)
+  save lower, make list
+  save at, code 0
+  save pending, false
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save c, call get(read(runes), read(at))
+      fork test
+        hook test
+          call is-above(read(c), code(127))
+        hook hold
+          save pending, true
+      fork test
+        hook test
+          call and(call(is-minimum, read(c), code(65)), call(is-maximum, read(c), code(90)))
+        hook hold
+          call lower/push(call(add, read(c), code(32)))
+        hook miss
+          call lower/push(read(c))
+      save at, call add(read(at), code(1))
+  fork test
+    hook test
+      read pending
+    hook hold
+      send back, call(idna-host, read(runes))
+  # a label starting xn--: the start of the domain, or the code point after a full stop
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(lower/length))
+    hook step
+      fork test
+        hook test
+          call and(call(or, call(is-equal, read(at), code(0)), call(is-equal, call(rune-at, read(lower), call(subtract, read(at), code(1))), code(46))), call(is-among-label, read(lower), read(at)))
+        hook hold
+          send back, call(idna-host, read(runes))
+      save at, call add(read(at), code(1))
+  send back, call(host-accepted, call(from-runes, read(lower)))
+
+# whether the runes from `at` begin `xn--`
+task is-among-label
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like boolean
+  send back, call(and, call(is-equal, call(rune-at, read(runes), read(at)), code(120)), call(and, call(is-equal, call(rune-at, read(runes), call(add, read(at), code(1))), code(110)), call(and, call(is-equal, call(rune-at, read(runes), call(add, read(at), code(2))), code(45)), call(is-equal, call(rune-at, read(runes), call(add, read(at), code(3))), code(45)))))
+
+# the host parser over code points. `opaque` is true for a URL whose scheme is not special
+task parse-host-runes
+  take runes
+    like list
+      like number
+  take opaque, like boolean
+  like host-answer
+  save n, read runes/length
+  fork test
+    hook test
+      call and(call(is-above, read(n), code(0)), call(is-equal, call(rune-at, read(runes), code(0)), code(91)))
+    hook hold
+      fork test
+        hook test
+          call is-unequal(call(rune-at, read(runes), call(subtract, read(n), code(1))), code(93))
+        hook hold
+          send back, call(host-refused)
+      save inner, call runes/slice(code(1), call(subtract, read(n), code(1)))
+      save address, call parse-ipv6(read(inner))
+      fork test
+        hook test
+          call is-equal(read(address/length), code(0))
+        hook hold
+          send back, call(host-refused)
+      send back, call(host-accepted, call(serialize-ipv6, read(address)))
+  fork test
+    hook test
+      read opaque
+    hook hold
+      send back, call(parse-opaque-host, read(runes))
+  save decoded, call utf-8-decode(call(percent-decode, read(runes)))
+  save ascii, call domain-to-ascii(read(decoded))
+  fork test
+    hook test
+      call not(read(ascii/ok))
+    hook hold
+      send back, read ascii
+  save lower, call to-runes(read(ascii/value))
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(lower/length))
+    hook step
+      fork test
+        hook test
+          call is-forbidden-domain(call(get, read(lower), read(at)))
+        hook hold
+          send back, call(host-refused)
+      save at, call add(read(at), code(1))
+  fork test
+    hook test
+      call ends-in-number(read(lower))
+    hook hold
+      save address, call parse-ipv4(read(lower))
+      fork test
+        hook test
+          call is-below(read(address), code(0))
+        hook hold
+          send back, call(host-refused)
+      send back, call(host-accepted, call(serialize-ipv4, read(address)))
+  send back, read ascii
+
+# the host parser: `input` the host as written, `opaque` true for a URL whose scheme is not special
+task parse-host
+  take input, like text
+  take opaque, like boolean
+  like host-answer
+  send back, call(parse-host-runes, call(to-runes, read(input)), read(opaque))

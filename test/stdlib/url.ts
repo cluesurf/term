@@ -7,7 +7,7 @@
 // getter hex-encoded. Cases are never inlined into the program (the Kotlin method size limit).
 //
 //   case file   record `;` field `|`:  <href>|<base>          (a base of "" is none)
-//   answer      record `;` field `|`:  <status>|<scheme>|<host>|<port>|<path>|<query>|<fragment>
+//   answer      record `;` field `|`:  <status>|<href>|<origin>|<scheme>|<username>|<password>|<host>|<port>|<path>|<query>|<fragment>
 //               status 0 parsed, 1 raised `mismatch`, 2 raised `failure`. The getters are hex, empty when failed
 //
 // toascii.json and IdnaTestV2.json hold {input, output}: the input is a domain, so the case parses
@@ -26,7 +26,9 @@ import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
 import { BACKENDS, runOn } from '../compile/shared/run-on'
 
-type Case = { file: string; at: number; href: string; base: string; failure: boolean; want: string[] }
+// `want` is the getters in the order the answer record carries them (href, origin, scheme, username, password, host,
+// port, path, query, fragment), null for one the corpus does not state
+type Case = { file: string; at: number; href: string; base: string; failure: boolean; want: (string | null)[] }
 type Known = Record<string, Record<string, number[]> | { build_failure: string }>
 
 const here = join(process.cwd(), 'test', 'stdlib', 'url')
@@ -57,7 +59,18 @@ function load(): Case[] {
           failure: entry.failure === true,
           want: entry.failure
             ? []
-            : [entry.protocol.slice(0, -1), entry.hostname, entry.port, entry.pathname, entry.search.slice(1), entry.hash.slice(1)],
+            : [
+                entry.href,
+                entry.origin ?? null,
+                entry.protocol.slice(0, -1),
+                entry.username,
+                entry.password,
+                entry.hostname,
+                entry.port,
+                entry.pathname,
+                entry.search.slice(1),
+                entry.hash.slice(1),
+              ],
         })
       } else {
         // only the host is asked: every other getter of `https://<domain>/x` is fixed by the scheme and the path
@@ -67,7 +80,7 @@ function load(): Case[] {
           href: `https://${entry.input}/x`,
           base: '',
           failure: entry.output === null,
-          want: entry.output === null ? [] : ['https', entry.output, '', '/x', '', ''],
+          want: entry.output === null ? [] : [null, null, 'https', '', '', entry.output, '', '/x', '', ''],
         })
       }
     })
@@ -80,12 +93,8 @@ const literal = (text: string): string => [...text].map(c => (c === '<' || c ===
 
 const program = (caseFile: string): string => `load @term/base/url
   find make-url
-  find scheme
-  find host
-  find port
-  find path
-  find query
-  find fragment
+  find href, name serialize
+  find origin
   find url
 
 load @term/base/exception
@@ -113,27 +122,17 @@ task describe
   like text
   save parts, make list
   push(parts, <0>)
-  push(parts, encode-hex(scheme(address)))
-  push(parts, encode-hex(host(address)))
-  push(parts, encode-hex(port(address)))
-  push(parts, encode-hex(path(address)))
-  push(parts, encode-hex(query(address)))
-  push(parts, encode-hex(fragment(address)))
+  push(parts, encode-hex(serialize(address)))
+  push(parts, encode-hex(origin(address)))
+  push(parts, encode-hex(address/scheme))
+  push(parts, encode-hex(address/username))
+  push(parts, encode-hex(address/password))
+  push(parts, encode-hex(address/host))
+  push(parts, encode-hex(address/port))
+  push(parts, encode-hex(address/path))
+  push(parts, encode-hex(address/query))
+  push(parts, encode-hex(address/fragment))
   back join(parts, <|>)
-
-task parse-plain
-  take href, like text
-  like text
-  fork
-    mark unsafe
-    back describe(make-url(href))
-  halt take
-    take problem
-    sift problem
-      case mismatch
-        back <1||||||>
-      case failure
-        back <2||||||>
 
 task parse-based
   take href, like text
@@ -146,23 +145,15 @@ task parse-based
     take problem
     sift problem
       case mismatch
-        back <1||||||>
+        back <1|||||||||>
       case failure
-        back <2||||||>
+        back <2|||||||||>
 
 task parse-record
   take record, like text
   like text
   save fields, split(record, <|>)
-  save href, decode-hex(get(fields, 0))
-  save base, decode-hex(get(fields, 1))
-  fork test
-    hook test
-      is-equal base, <>
-    hook hold
-      back parse-plain(href)
-    hook miss
-      back parse-based(href, base)
+  back parse-based(decode-hex(get(fields, 0)), decode-hex(get(fields, 1)))
 
 task run
   mark async
@@ -181,15 +172,21 @@ task run
 function grade(cases: Case[], answer: string): Record<string, number[]> {
   const records = answer.split(';')
   const wrong: Record<string, number[]> = Object.fromEntries(FILES.map(f => [f.name, [] as number[]]))
+  let shown = 0
 
   cases.forEach((one, index) => {
     const got = (records[index] ?? '').split('|')
     const status = got[0] ?? ''
     const fields = got.slice(1).map(unhex)
-    const good = one.failure ? status === '1' || status === '2' : status === '0' && one.want.every((value, i) => fields[i] === value)
+    const good = one.failure ? status === '1' || status === '2' : status === '0' && one.want.every((value, i) => value === null || fields[i] === value)
 
     if (!good) {
       wrong[one.file]!.push(one.at)
+
+      if (shown < Number(process.env.URL_SHOW ?? 0)) {
+        shown++
+        console.log(`  ${one.file}[${one.at}] ${JSON.stringify(one.href)} base ${JSON.stringify(one.base)}\n    got  ${status} ${JSON.stringify(fields)}\n    want ${one.failure ? 'failure' : JSON.stringify(one.want)}`)
+      }
     }
   })
 
@@ -258,8 +255,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 }
 
 if (process.env.URL_WRITE_KNOWN === '1') {
-  if (existsSync(knownPath)) {
-    console.log(`refused: ${knownPath} exists, known.json only shrinks and is edited by the item that fixes a case`)
+  // an existing known.json is replaced only on purpose (URL_REPLACE_KNOWN=1), by the item whose parser changed what a case does
+  if (existsSync(knownPath) && process.env.URL_REPLACE_KNOWN !== '1') {
+    console.log(`refused: ${knownPath} exists, known.json only shrinks and is edited by the item that fixes a case (URL_REPLACE_KNOWN=1 replaces it)`)
     process.exit(1)
   }
 

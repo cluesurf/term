@@ -1,0 +1,33 @@
+
+# The `mac` tool (spec sections 7.1, 8.4 and 10.1): this Mac, reached through a JXA driver, `osascript -l JavaScript
+# <script>`, with JSON lines on its standard input and output (find/driver/mac.js). `script` is that file's path. The
+# driver is a value of the tool, so no platform is read here (trap t011): an entry chooses to mount this tool, and
+# the engine never does.
+#
+# For now it holds no kind of its own. The AX kinds (`app`, `window`, `button`, ...) come with item 0012, and the
+# terminal apps are tools of their own that name this one as their `base`, see `iterm`.
+
+load @term/base/find/tool
+  find find-tool
+
+load @term/base/list
+  find list
+
+# the mac tool, its driver the JXA file at `script`
+task make-mac
+  take script, like text
+  like find-tool
+  send back
+    make find-tool
+      bind name, text <mac>
+      bind kind
+        make list
+      bind part
+        make list
+      bind base, text <>
+      bind driver, text <osascript>
+      bind argument
+        make list
+          text <-l>
+          text <JavaScript>
+          read script

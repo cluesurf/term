@@ -1,16 +1,28 @@
-// Numbers and money by language (deck/base/code/text/format.tree, 2026-10-05), each platform's own formatter, held
-// case by case to node's `Intl.NumberFormat`. The cases are the shapes that differ most between languages: grouping by
-// threes and the Indian lakh, a comma for the decimal mark, a narrow space for grouping, a currency with no minor digits,
-// Swiss grouping, and Arabic digits. A case where a platform's CLDR differs from node's is named, with both answers.
-// Rust is refused at the load until its locale data is chosen (note/term/plan/decisions-2026-10.md, D7).
-// Run: npx tsx test/stdlib/text-format.ts   (FORMAT_ONLY=typescript, swift or kotlin runs one)
+// Numbers and money by language (decision D7, term/decisions-2026-10/locale): the ONE formatter written in Term
+// (deck/base/code/text/format.tree over the generated CLDR 48.0 module), held on every backend to node's
+// `Intl.NumberFormat` (roundingMode halfEven, CLDR 48.0), frozen case by case into test/stdlib/text-format/reference.tsv.
+// ONE Term program per backend READS test/stdlib/text-format/cases.tsv (the cases are never inline) and prints a line per
+// case, and the lines must equal the reference's, except the cases test/stdlib/text-format/known.json names.
+//
+// known.json is a ratchet: a case that fails and is not listed fails the suite, and a listed case that now passes fails it
+// until it is removed, so the list only shrinks. Each class carries its cause, and a `Diverges:` line at the fold.
+//
+// Prints `<backend> <passed> of <cases>` and the size of known.json per backend.
+// Run: sh /Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/tmp/dec-tsx.sh test/stdlib/text-format.ts
+//      FORMAT_ONLY=typescript|rust|swift|kotlin runs one backend.
+// Write known.json once, from a run: ... test/stdlib/text-format.ts --known   (refuses to overwrite a file that exists)
 
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
-import { compile } from '@term/make/code/compile/compile'
 import { runOn } from '../compile/shared/run-on'
+
+const HERE = resolve(process.cwd(), 'test/stdlib/text-format')
+const KNOWN_FILE = join(HERE, 'known.json')
+const BACKENDS = ['typescript', 'rust', 'swift', 'kotlin'] as const
+
+type Known = { class: Record<string, string>; case: Record<string, Record<string, string>> }
 
 let pass = 0
 let fail = 0
@@ -25,28 +37,56 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Case = { kind: 'number'; value: number; language: string; fewest: number; most: number } | { kind: 'currency'; value: number; currency: string; language: string }
+const lines = readFileSync(join(HERE, 'reference.tsv'), 'utf8').split('\n').filter(line => line !== '' && !line.startsWith('#'))
+const refs = lines.map(line => {
+  const parts = line.split('\t')
+  const width = parts[0] === 'n' ? 5 : 4
 
-const CASES: Case[] = [
-  { kind: 'number', value: 1234567.891, language: 'en-US', fewest: 0, most: 2 },
-  { kind: 'number', value: 1234567.891, language: 'de-DE', fewest: 0, most: 2 },
-  { kind: 'number', value: 1234567.891, language: 'hi-IN', fewest: 2, most: 2 },
-  { kind: 'number', value: 1234567.891, language: 'fr-FR', fewest: 1, most: 3 },
-  { kind: 'number', value: 1234567.891, language: 'de-CH', fewest: 0, most: 1 },
-  { kind: 'number', value: 0.125, language: 'en-US', fewest: 0, most: 2 },
-  { kind: 'number', value: 1234.5, language: 'ar-EG', fewest: 0, most: 2 },
-  { kind: 'currency', value: 1234.5, currency: 'USD', language: 'en-US' },
-  { kind: 'currency', value: 1234.5, currency: 'EUR', language: 'de-DE' },
-  { kind: 'currency', value: 1234.5, currency: 'EUR', language: 'fr-FR' },
-  { kind: 'currency', value: 1234.5, currency: 'JPY', language: 'ja-JP' },
-  { kind: 'currency', value: 1234.5, currency: 'INR', language: 'hi-IN' },
-]
+  return { kind: parts[0]!, locale: parts[1]!, key: parts.slice(0, width).join('\t'), expected: parts[width] ?? '' }
+})
 
-const decimal = (value: number): string => (Number.isInteger(value) ? `${value}.0` : String(value))
+// the three classes of the 170 cases the generated data cannot reproduce (locale/log.md, 0004)
+const CLASSES: Record<string, string> = {
+  'en-currency': "ICU writes plain en's currency format (the symbol before the number, en's marks) for en-150 and 25 en-XX locales, where CLDR 48's own file for the locale says otherwise; their number formats agree",
+  'cve-mark': "CLDR gives the currency CVE its own decimal mark `$` in kea and pt-CV (currencies.json, per currency) and ICU applies it to every currency there, and the generated module stores no per-currency mark",
+  'rsd-digits': "CLDR currencyData fractions say RSD has 0 digits, node's ICU writes 2 (sr, sr-Cyrl, sr-Latn)",
+}
+
+function classOf(one: { kind: string; locale: string; key: string }): string {
+  if (one.kind === 'c' && /^en-/.test(one.locale)) {
+    return 'en-currency'
+  }
+
+  if (one.kind === 'c' && (one.locale === 'kea' || one.locale === 'pt-CV')) {
+    return 'cve-mark'
+  }
+
+  if (one.kind === 'c' && one.key.endsWith('\tRSD')) {
+    return 'rsd-digits'
+  }
+
+  return 'unclassified'
+}
+
+const dir = mkdtempSync(join(tmpdir(), 'term-format-'))
+const casesPath = join(dir, 'cases.tsv')
+// a copy: the program reads a file, and the scratch folder is where the build runs
+writeFileSync(casesPath, readFileSync(join(HERE, 'cases.tsv'), 'utf8'))
 
 const PROGRAM = `load @term/base/text/format
   find format-number
   find format-currency
+
+load @term/base/text
+  find split
+  find char-count
+
+load @term/base/text/number
+  find parse-integer
+  find host-parse-float
+
+load @term/base/file
+  find read
 
 load @term/base/list
   find list
@@ -55,37 +95,86 @@ load @term/base/list
 task run
   like text
   save out, make list
-${CASES.map(one =>
-  one.kind === 'number'
-    ? `  push(out, format-number(${decimal(one.value)}, <${one.language}>, ${one.fewest}, ${one.most}))`
-    : `  push(out, format-currency(${decimal(one.value)}, <${one.currency}>, <${one.language}>))`,
-).join('\n')}
-  back join(out, <|>)
+  save rows
+    call split
+      call read
+        text <${casesPath}>
+      text <\\n>
+  walk list, read rows
+    hook next
+      take site, name row
+      fork test
+        hook test
+          call is-above
+            call char-count
+              read row
+            code 0
+        hook hold
+          save parts
+            call split
+              read row
+              text <\\t>
+          fork test
+            hook test
+              call is-equal
+                call get
+                  read parts
+                  code 0
+                text <n>
+            hook hold
+              save fewest
+                call parse-integer
+                  call get
+                    read parts
+                    code 3
+              save most
+                call parse-integer
+                  call get
+                    read parts
+                    code 4
+              push
+                read out
+                call format-number
+                  call host-parse-float
+                    call get
+                      read parts
+                      code 2
+                  call get
+                    read parts
+                    code 1
+                  read fewest
+                  read most
+            hook miss
+              push
+                read out
+                call format-currency
+                  call host-parse-float
+                    call get
+                      read parts
+                      code 2
+                  call get
+                    read parts
+                    code 3
+                  call get
+                    read parts
+                    code 1
+  send back
+    call join
+      read out
+      text <\\n>
 `
 
-const reference = CASES.map(one =>
-  one.kind === 'number'
-    ? new Intl.NumberFormat(one.language, { minimumFractionDigits: one.fewest, maximumFractionDigits: one.most, roundingMode: 'halfEven' } as Intl.NumberFormatOptions).format(one.value)
-    : new Intl.NumberFormat(one.language, { style: 'currency', currency: one.currency, roundingMode: 'halfEven' } as Intl.NumberFormatOptions).format(one.value),
-)
+const writing = process.argv.includes('--known')
 
-// Where a platform's formatter answers otherwise than node's, by case: each one known and named, never ignored in
-// silence. A BASELINE: a new difference fails, and so does a known one that has gone, so the list cannot rot. These are
-// what decision D7 is about (note/term/plan/decisions-2026-10.md): three copies of CLDR, three answers at the edges
-const KNOWN: Record<string, Record<string, string>> = {
-  swift: {
-    'currency 1234.5 in ja-JP': "Apple's CLDR writes the yen sign U+00A5, node's the full-width U+FFE5",
-  },
-  kotlin: {
-    'number 1234567.891 in hi-IN': "java.text.DecimalFormat groups by one size only, so it cannot write the Indian lakh (12,34,567); ICU4J can",
-    'number 1234567.891 in de-CH': "the JDK's CLDR groups Swiss German with U+2019, node's with an apostrophe",
-  },
+if (writing && existsSync(KNOWN_FILE)) {
+  console.log(`refused: ${KNOWN_FILE} exists. known.json only shrinks: a person removes entries by hand.`)
+  process.exit(1)
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-format-'))
+const known: Known = writing ? { class: CLASSES, case: {} } : (JSON.parse(readFileSync(KNOWN_FILE, 'utf8')) as Known)
 const only = process.env.FORMAT_ONLY ?? ''
 
-for (const backend of (['typescript', 'swift', 'kotlin'] as const).filter(b => !only || b === only)) {
+for (const backend of BACKENDS.filter(b => !only || b === only)) {
   const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'format' })
 
   if (ran.form === 'skipped') {
@@ -93,30 +182,57 @@ for (const backend of (['typescript', 'swift', 'kotlin'] as const).filter(b => !
     continue
   }
 
-  const got = ran.form === 'ran' ? ran.output.split('|') : []
-  const known = KNOWN[backend] ?? {}
-  const label = (one: Case): string => `${one.kind} ${one.value} in ${one.language}`
-  const differ = CASES.flatMap((one, at) =>
-    got[at] === reference[at] || known[label(one)] ? [] : [`${label(one)}: got ${JSON.stringify(got[at])}, node ${JSON.stringify(reference[at])}`],
-  )
-  const gone = Object.keys(known).filter(name => {
-    const at = CASES.findIndex(one => label(one) === name)
+  if (ran.form !== 'ran') {
+    ok(`${backend}: the formatter built and ran`, false, `${ran.stage}: ${ran.reason}`)
+    continue
+  }
 
-    return at >= 0 && got[at] === reference[at]
+  const got = ran.output.split('\n')
+  const own = known.case[backend] ?? {}
+  const unknown: string[] = []
+  const gone: string[] = []
+  const failing: Record<string, string> = {}
+  let passed = 0
+
+  refs.forEach((one, at) => {
+    if (got[at] === one.expected) {
+      passed++
+
+      if (own[one.key] !== undefined) {
+        gone.push(JSON.stringify(one.key))
+      }
+
+      return
+    }
+
+    failing[one.key] = classOf(one)
+
+    if (own[one.key] === undefined) {
+      unknown.push(`${JSON.stringify(one.key)} got ${JSON.stringify(got[at] ?? '')} node ${JSON.stringify(one.expected)}`)
+    }
   })
 
-  ok(`${backend}: numbers and money by language answer as node's Intl does, but for the differences known by case`, ran.form === 'ran' && differ.length === 0, ran.form === 'ran' ? differ.join(' | ') : `${ran.stage}: ${ran.reason}`)
-
-  if (ran.form === 'ran') {
-    ok(`${backend}: every known difference is still one`, gone.length === 0, `now answered as node does, so take it off KNOWN: ${gone.join(' | ')}`)
+  if (writing) {
+    known.case[backend] = failing
   }
+
+  console.log(`${backend} ${passed} of ${refs.length}, known.json holds ${Object.keys(own).length}`)
+  ok(`${backend}: every case equals node's Intl except those in known.json`, writing || unknown.length === 0, `${unknown.length} new: ${unknown.slice(0, 5).join(' | ')}`)
+  ok(`${backend}: every known case still differs`, writing || gone.length === 0, `now passing, take off known.json: ${gone.slice(0, 5).join(' | ')}`)
+  ok(`${backend}: every known case has a named class`, writing || Object.values(own).every(name => known.class[name] !== undefined), '')
 }
 
-// Rust: refused at the build, never formatted for the wrong locale
-if (!only || only === 'rust') {
-  const built = compile({ file: join(dir, 'rust.tree'), text: PROGRAM }, { resolve: projectResolver(process.cwd(), 'rust'), env: 'rust' })
+if (writing) {
+  const unclassified = BACKENDS.filter(b => known.case[b]).flatMap(b => Object.entries(known.case[b]!).filter(([, name]) => name === 'unclassified').map(([key]) => `${b} ${key}`))
 
-  ok('rust: refused at the build, until its locale data is chosen', !built.ok, built.ok ? 'it compiled' : '')
+  if (unclassified.length > 0) {
+    console.log(`not written: ${unclassified.length} failing cases fit no class, e.g. ${unclassified[0]}`)
+    process.exit(1)
+  }
+
+  writeFileSync(KNOWN_FILE, `${JSON.stringify(known, null, 2)}\n`)
+  console.log(`wrote ${KNOWN_FILE}`)
+  process.exit(0)
 }
 
 console.log(`\ntext-format: ${pass} pass, ${fail} fail`)

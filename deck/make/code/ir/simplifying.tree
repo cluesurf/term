@@ -3731,6 +3731,9 @@ task count-references-zone
         count-references(read(value), counts)
       case save
         count-references(read(value), counts)
+      case call
+        # a `call` statement in the view body uses what it names: without this a helper only a view calls is dead code
+        count-references(read(value), counts)
       case fork
         walk branches
           take branch

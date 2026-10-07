@@ -1,12 +1,13 @@
 # An address parses to the same parts on every backend, and one that does not parse raises `mismatch` on every backend
-# rather than stopping (Rust's `unwrap`, Swift's `!`) or raising a host error with no `form`. Held by
-# `pnpm term:base-gate`.
+# rather than stopping (Rust's `unwrap`, Swift's `!`) or raising a host error with no `form`. The parser is the WHATWG one
+# written in Term (url/parse), so a relative address with no base fails too. Held by `pnpm term:base-gate`.
 
 load @term/base/url
   find make-url
-  find host
-  find port
-  find path
+  find url-valid
+  find href
+  find origin
+  find url
 
 load @term/base/exception
   find mismatch
@@ -18,7 +19,24 @@ task host-of
   fork
     mark unsafe
     save address, make-url(href)
-    send back, host(address)
+    send back, read address/host
+  halt take
+    take problem
+    sift problem
+      case mismatch
+        send back, <refused>
+      case failure
+        send back, <failure>
+
+# the serialized address of one parsed against a base, or `refused`
+task href-of
+  take input, like text
+  take base, like text
+  like text
+  fork
+    mark unsafe
+    save address, make-url(input, base)
+    send back, href(address)
   halt take
     take problem
     sift problem
@@ -34,9 +52,79 @@ test <an address reads its host>
         text <https://term.surf:8080/guides>
       text <term.surf>
 
+test <an address reads its port>
+  want hold
+    call is-equal
+      call read-port
+        call make-url
+          text <https://term.surf:8080/guides>
+      text <8080>
+
+test <the default port of a scheme is dropped>
+  want hold
+    call is-equal
+      call read-port
+        call make-url
+          text <https://term.surf:443/guides>
+      text <>
+
 test <an address with a space in its host is refused as mismatch>
   want hold
     call is-equal
       call host-of
         text <http://exa mple.com/>
       text <refused>
+
+test <a relative address with no base is refused>
+  want hold
+    call is-equal
+      call href-of
+        text </users?id=1>
+        text <>
+      text <refused>
+
+test <a relative address resolves against its base>
+  want hold
+    call is-equal
+      call href-of
+        text <../a/./b?x=1#top>
+        text <https://term.surf/guides/library/>
+      text <https://term.surf/guides/a/b?x=1#top>
+
+test <the serializer lowercases the host and keeps a non-default port>
+  want hold
+    call is-equal
+      call href-of
+        text <HTTP://User:Pa%20ss@EXAMPLE.com:8080/a b>
+        text <>
+      text <http://User:Pa%20ss@example.com:8080/a%20b>
+
+test <the origin of a special address is its scheme, host and port>
+  want hold
+    call is-equal
+      call origin
+        call make-url
+          text <https://user@term.surf:8443/x?y#z>
+      text <https://term.surf:8443>
+
+test <an address of a scheme that is not special has an opaque origin>
+  want hold
+    call is-equal
+      call origin
+        call make-url
+          text <mailto:me@term.surf>
+      text <null>
+
+test <url-valid says whether an address parses>
+  want hold
+    call and
+      call url-valid
+        text <https://term.surf/>
+      call not
+        call url-valid
+          text <https://>
+
+task read-port
+  take address, like url
+  like text
+  send back, read address/port

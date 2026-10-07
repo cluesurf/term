@@ -1889,6 +1889,7 @@ task kt-binary
             hold
               back <({long-of(left, st, facts)} / {long-of(right, st, facts)})>
           needs-add(<exception>, st)
+          needs-add(<stop>, st)
           back need(<divide>, <termDivide({long-of(left, st, facts)}, {long-of(right, st, facts)})>, st)
       # a remainder by an unproven divisor raises the `defect` a division does
       fork test, and(and(is-equal(op-text, <%>), numbers), and(not(st/unchecked-ints), not(facts/is-proven(node))))
@@ -3550,6 +3551,9 @@ task kt-statement
       back <kotlin.system.exitProcess(0)>
     case debug
       back <// breakpoint>
+    # a coverage probe is written on TypeScript only until coverage-0002
+    case probe
+      back <// probe>
     case function
       back kt-function(node, depth, st, facts)
     case record-type

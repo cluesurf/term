@@ -2,7 +2,7 @@
 // code 0` was checked against a top-level `get`'s parameters whenever any module in the program defined one (the
 // stdlib's http client did, as `get(url, header)`), and refused as `type-mismatch` or as a name the task does not
 // take, while the positional `call get / read xs / code 0` dispatched on its first argument and compiled. Six such
-// calls in @term/site were rewritten positionally to get around it (note/plan/term-surf-guides.md). Now a call whose
+// calls in @term/site were rewritten positionally to get around it (note/project/term/guides/term-surf-guides.md). Now a call whose
 // labels include `self`, or that the top-level task's parameters cannot take and a method's can, binds to the method
 // of its receiver's form (check/infer.ts, bindLabelledMethod).
 // Run: npx tsx test/compile/method-label.ts

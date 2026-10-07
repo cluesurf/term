@@ -1,0 +1,60 @@
+
+# The `iterm` tool (spec sections 7.1, 8.4 and 10.1): the sessions of iTerm2 as `pane`s, found by their title (the
+# session's `name`) and typed into through iTerm2's own scripting (`write text`). It runs inside the `mac` tool, so its
+# `base` is `mac`, and it speaks to the same JXA driver (find/driver/mac.js), which answers for it: `script` is that
+# file's path. Consent is macOS Automation for iTerm2, which the driver reports as `denied` when it is missing
+# (research/native-lowering.md section 1, trap t006).
+#
+# The driver executes `base`, `link`, `have` and `lack` itself. A `hold` or a `meet` over a pane is decided in Term.
+
+load @term/base/find/tool
+  find find-tool
+  find find-kind-support
+  find find-call-support
+  find find-rung
+
+load @term/base/list
+  find list
+
+# what iTerm2 does with a pane
+task iterm-pane
+  like find-kind-support
+  send back
+    make find-kind-support
+      bind name, text <pane>
+      bind have
+        make list
+          text <title>
+      bind like
+        make list
+      bind call
+        make list
+          make find-call-support
+            bind name, text <run>
+            bind rung
+              make meaning
+            bind mark, text <write text>
+
+# the iterm tool, its driver the JXA file at `script`
+task make-iterm
+  take script, like text
+  like find-tool
+  send back
+    make find-tool
+      bind name, text <iterm>
+      bind kind
+        make list
+          call iterm-pane
+      bind part
+        make list
+          text <base>
+          text <link>
+          text <have>
+          text <lack>
+      bind base, text <mac>
+      bind driver, text <osascript>
+      bind argument
+        make list
+          text <-l>
+          text <JavaScript>
+          read script

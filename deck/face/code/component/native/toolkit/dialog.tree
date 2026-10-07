@@ -10,6 +10,7 @@
 
 load @term/site/view/render
   find make-element
+  find make-text
   find write-attribute
   find attach-event
 load @term/site/view/reactive
@@ -47,6 +48,27 @@ task mount-dialog
     read sheet
     text <title>
     read title
+  # the question is drawn in the sheet as a view, the heading the generic dialog draws: a platform's title slot is a
+  # name, not drawn text (D029, T023). No `margin: 0px` as the generic dialog has: the host maps no `margin` (it would
+  # be reported unsupported) and a native stack has none to remove
+  save heading
+    call make-element
+      text <h2>
+  call write-attribute
+    read heading
+    text <data-slot>
+    text <dialog-title>
+  call write-attribute
+    read heading
+    text <style>
+    text <font-size: 17px; font-weight: 600>
+  call append
+    read heading
+    call make-text
+      read title
+  call append
+    read sheet
+    read heading
   call content
     read sheet
   call append

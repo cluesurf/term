@@ -82,6 +82,10 @@ task divide-whole
   like number
   mark private
 
+  # the only caller divides by 1024, so a divisor of zero or less never comes; this proves the divisor
+  fork test, is-maximum(by, 0)
+    hold
+      back 0
   back divide(subtract(value, modulo(value, by)), by)
 
 task by-name

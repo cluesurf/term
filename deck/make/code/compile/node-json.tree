@@ -1724,6 +1724,18 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f1)}>)
+    case probe
+      link f1
+      link f2
+      fork test, enters(skip-keys, <form>)
+        hold
+          push(members, <"form":"probe">)
+      fork test, enters(skip-keys, <key>)
+        hold
+          push(members, <"key":{json-quote(f1)}>)
+      fork test, enters(skip-keys, <span>)
+        hold
+          push(members, <"span":{json-of-span(skip-keys, f2)}>)
     case guard
       link f1
       link f2

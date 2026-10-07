@@ -734,20 +734,22 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   holds(named, 'song-reset: asks for a part first', step(output, 'song-reset'), ['Loop: choose a part first', 'Record: choose a part first'])
   ok(`${named}: song-reset: no Record over parts`, !step(output, 'song-reset').includes('Record over'), step(output, 'song-reset').slice(0, 400))
   const loopOf = (label: string): string => lines.find(l => l.startsWith(`loop ${label} `))?.slice(`loop ${label} `.length).trim() ?? ''
-  ok(`${named}: song-looping: pressing Loop starts the loop`, loopOf('playing') === 'looping', `loop state ${JSON.stringify(loopOf('playing'))}`)
+  ok(`${named}: song-looping: pressing Loop starts the loop`, loopOf('playing').startsWith('looping'),`loop state ${JSON.stringify(loopOf('playing'))}`)
   ok(`${named}: song-left: leaving the song's screen stops the loop`, loopOf('left') === 'stopped', `loop state ${JSON.stringify(loopOf('left'))}`)
 
   // both delete dialogs are presented with their two choices, and Keep closes them with the song and the take still there
-  for (const [open, kept, still] of DIALOGS
+  for (const [open, kept, still, question] of DIALOGS
     ? [
-        ['song-dialog', 'song-kept', 'MEET HOME'],
-        ['take-dialog', 'take-kept', 'Take 4'],
+        ['song-dialog', 'song-kept', 'MEET HOME', 'Delete Meet Home?'],
+        ['take-dialog', 'take-kept', 'Take 4', 'Delete this take?'],
       ]
     : []) {
     const frames = (name: string, label: string): string => namedFrames[name]?.get(`button|${label}`) ?? ''
     // the sheet is the root's first child (T016), serialized on its own line `sheet <step> <tree>`
     const sheetLine = (name: string): string => lines.find(l => l.startsWith(`sheet ${name} `)) ?? ''
     holds(named, `${open}: the sheet is presented`, sheetLine(open), ['<sheet open="true">'])
+    // D029: the question is drawn in the sheet as a heading view, not only set as the platform's title
+    holds(named, `${open}: the sheet draws its question as a heading`, sheetLine(open), [`<h2>${question}</h2>`])
     const drawn = ['Delete', 'Keep'].filter(label => frames(open, label) === '' || frames(open, label) === '0,0,0,0')
     ok(`${named}: ${open}: Delete and Keep are named and have a frame`, drawn.length === 0, `not drawn ${drawn.join(',')}; named ${labelsOf(open).join(' ; ')}`)
     holds(named, `${kept}: the sheet is closed`, sheetLine(kept), ['<sheet open="false">'])

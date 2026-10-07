@@ -864,14 +864,14 @@ function judge(env: string, toolkit: string, output: string, shot: string): void
     return line?.slice(line.indexOf(`dialog ${what} `) + `dialog ${what} `.length)
   }
   ok(
-    `${env}: the dialog holds its content, closed, and is not in the page it was given`,
-    dialogLine('closed') === '<sheet open="false"><span>Sure?</span></sheet> page <div></div>',
+    `${env}: the dialog holds its heading and content, closed, and is not in the page it was given`,
+    dialogLine('closed') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
     String(dialogLine('closed')),
   )
-  ok(`${env}: opening the disclosure has the platform present it`, dialogLine('opened') === '<sheet open="true"><span>Sure?</span></sheet>', String(dialogLine('opened')))
+  ok(`${env}: opening the disclosure has the platform present it`, dialogLine('opened') === '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>', String(dialogLine('opened')))
   ok(
     `${env}: the person's dismissal ends the presentation and closes the disclosure`,
-    dialogLine('dismissed') === '<sheet open="false"><span>Sure?</span></sheet> false',
+    dialogLine('dismissed') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
     String(dialogLine('dismissed')),
   )
   // native-dom-0027: the words 0007 did not run, judged by the one judge the web is held to as well

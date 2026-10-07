@@ -236,6 +236,8 @@ function provenByKernel(program: Program, discharged: Set<string>): Set<string> 
 import { findUnused } from '@term/make/code/check/unused'
 import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
+import { coverProgram } from '@term/make/code/ir/cover'
+import type { CoverTarget } from '@term/make/code/ir/cover'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerViews } from '@term/make/code/compile/view-lower'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
@@ -327,6 +329,9 @@ export type CompileResult =
       // the `twin` declarations of the closure, checked (check/twin.ts). Beside the program, never in it: nothing
       // here emits one yet, so every build runs the reference (note/term/optimize/readme.md)
       twins?: Twin[]
+      // present when `options.cover` was set: every key (`<path>:<line>`) a coverage probe was written for, in the
+      // order written (ir/cover.tree). The program's probes are what report which of them ran
+      cover?: string[]
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
@@ -419,6 +424,11 @@ export function compile(
     // rewrite the closure's twins before they are built: how admission makes a deliberately WRONG twin (a mutant) and
     // checks its comparison catches it (deck/test/code/twin-diff.ts). Nothing else passes it
     adjustTwins?: (twins: Twin[]) => Twin[]
+    // write a coverage probe before every executable statement of some files (ir/cover.tree), keyed by `.tree` line:
+    // `true` measures the entry file alone, keys relative to its folder, and a target names the folder or file measured
+    // and what a key's path is relative to. TypeScript writes the probe; the native backends write nothing until
+    // coverage-0002. Part of the cache key
+    cover?: true | CoverTarget
   },
 ): CompileResult {
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
@@ -493,6 +503,12 @@ export function compile(
 
   const cache = options?.cache
 
+  // what a coverage build measures: `true` is the entry file alone, its keys relative to the folder it is in
+  const coverTarget: CoverTarget | undefined =
+    options?.cover === true
+      ? { prefix: source.file, root: source.file.slice(0, Math.max(source.file.lastIndexOf('/'), 0)) }
+      : options?.cover
+
   // the effective tree-shaking flag: on by default for the optimized merged build (differential-verified across the
   // stdlib corpus), off in per-module mode and on the editor (`optimize: false`) path, explicit option wins
   const treeShake =
@@ -531,6 +547,8 @@ export function compile(
     // a different choice of implementation is a different program
     (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
     (options?.exposeTwins ? '|expose' : '') +
+    // probes are written into the program, so a covered build is never answered by an uncovered one
+    (coverTarget ? `|cover:${coverTarget.prefix}@${coverTarget.root}` : '') +
     // a mutant is a different program every time it is asked for, so it is never answered from the cache
     (options?.adjustTwins ? `|adjusted:${Math.random()}` : '') +
     (options?.entryPoints?.length
@@ -630,6 +648,7 @@ export function compile(
       undefined,
       // the render runtime's own file, found as the build finds any load, so an app's own `view/render.tree` is not it
       options?.resolve?.('@term/site/view/render', source.file)?.file,
+      coverTarget,
     )
 
     const spelled = compiled.ok ? entryWarnings(source, sources, parsed) : []
@@ -877,6 +896,8 @@ export function compileProgram(
   // the file of the render runtime (@term/site/view/render) as the build's resolver finds it, which names the runtime
   // for the view lowering's name binding. Absent, the binding looks for a file ending `/view/render.tree`
   renderFile?: string,
+  // write coverage probes into the checked program (ir/cover.tree); the keys come back on the result as `cover`
+  cover?: CoverTarget,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -1423,6 +1444,11 @@ export function compileProgram(
     }
   }
 
+  // COVERAGE PROBES, after every check above (purity, raise sets, async inference and twin admission never see one) and
+  // before the simplifier (an inlined body keeps the keys it was written with). Spec: term/decisions-2026-10/coverage
+  const coverKeys = cover ? coverProgram(program, cover) : undefined
+  const covering = coverKeys ? { cover: coverKeys } : {}
+
   // trait-instance dictionary passing: thread a trait's instance through every trait-bounded generic call so generic
   // trait-method dispatch resolves to concrete code. This is the JavaScript-family lowering (records of functions); the
   // native backends instead keep trait calls in native form and emit traits / protocols / interfaces. So the dictionary
@@ -1468,6 +1494,7 @@ export function compileProgram(
       program: tsProgram,
       typescript: '',
       modules: emitModules(tsProgram, modulesUrl, emitOnly, runtimeNames),
+      ...covering,
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,
@@ -1487,6 +1514,7 @@ export function compileProgram(
       // find-references; lower only the copy that feeds the TS emitter.
       program,
       typescript: emitTypeScript(lowerViews(program, runtimeNames)),
+      ...covering,
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,
@@ -1531,6 +1559,7 @@ export function compileProgram(
   const result = {
     ok: true as const,
     program: loweredProgram,
+    ...covering,
     warnings,
     ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,

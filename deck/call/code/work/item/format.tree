@@ -129,6 +129,31 @@ task divide-whole
       back 0
   back divide(top, bottom)
 
+# what is left of `top` after `bottom` goes into it as often as it can, for a `bottom` above zero. The guard holds the divisor
+# above zero where a loop body (which cannot keep a fork's refinement of an outer name) reaches it, and so proves it
+task remainder-of
+  take top, like number
+  take bottom, like number
+
+  like number
+
+  fork test, is-maximum(bottom, 0)
+    hold
+      back 0
+  back modulo(top, bottom)
+
+# whether `bottom`, above zero, goes into `top` a whole number of times
+task is-multiple
+  take top, like number
+  take bottom, like number
+
+  like boolean
+
+  fork test, is-maximum(bottom, 0)
+    hold
+      back false
+  back is-equal(modulo(top, bottom), 0)
+
 # ten to the power
 task power-of-ten
   take places, like number
@@ -187,8 +212,7 @@ task group-number
   walk runes
     take rune
     save left, subtract(count, at)
-    fork test
-      and is-above(at, 0), and(is-above(every, 0), is-equal(modulo(left, every), 0))
+    fork test, and(is-above(at, 0), is-multiple(left, every))
       hold
         save out, <{out}{mark}>
     save out, <{out}{rune-to-text(rune)}>
@@ -350,14 +374,14 @@ task format-size
       # 100.0 kB. Divided by the step of one
       # decimal rather than multiplied up first, so a size near the exact range
       # never leaves it
-      save fraction, divide-round(value, divide(divisor, scale))
-      fork test, is-above(modulo(divisor, scale), 0)
+      save fraction, divide-round(value, divide-whole(divisor, scale))
+      fork test, is-above(remainder-of(divisor, scale), 0)
         hold
           save fraction, divide-round(multiply(value, scale), divisor)
       fork test, is-below(fraction, multiply(rule/whole-from, scale))
         hold
           save whole, divide-whole(fraction, scale)
-          save part, pad-digits(modulo(fraction, scale), rule/decimals)
+          save part, pad-digits(remainder-of(fraction, scale), rule/decimals)
           fork test, is-above(rule/decimals, 0)
             hold
               back push-figure(spans, <{whole}.{part}>, unit, <text>, <dim>)
@@ -457,6 +481,10 @@ task modulo-floor
 
   like number
 
+  # a base of zero or less is never given (every caller passes a day or an hour), and this proves the divisor
+  fork test, is-maximum(base, 0)
+    hold
+      back 0
   save rest, modulo(value, base)
 
   fork test, is-below(rest, 0)

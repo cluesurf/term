@@ -47,7 +47,7 @@ task make-program
 # Upload vertex data to a buffer.
 task make-buffer
   take pane, like surface
-  take data
+  take data, like unknown
   like gpu-buffer
 
 # Draw `count` vertices from the buffer with the program, assembled as the given primitive.

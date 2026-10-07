@@ -34,7 +34,7 @@ const freeOf = (free: (type: unknown) => boolean): never => ((type: Maybe<unknow
 // a value the analyses below took as `unknown` (a body, a statement, an expression or a type), as the node handles
 // compile/node-children.tree walks from. Statement and expression forms do not share a name
 const STATEMENT_FORMS = new Set([
-  'let', 'assign', 'expression', 'if', 'while', 'match', 'for-each', 'break', 'continue', 'return', 'exit', 'debug',
+  'let', 'assign', 'expression', 'if', 'while', 'match', 'for-each', 'break', 'continue', 'return', 'exit', 'debug', 'probe',
   'guard', 'throw', 'hold', 'function', 'record-type', 'mask', 'instance', 'native', 'bind', 'view', 'dock', 'roll', 'tell',
 ])
 

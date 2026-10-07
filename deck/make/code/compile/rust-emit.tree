@@ -384,6 +384,8 @@ form rust-state
   link assigned-vars, like hash, like text, like boolean
   link stack-names, like hash, like text, like boolean
   link spawn-uses, like number
+  # reads through a `mark shared` form's borrow emitted so far (a call hoists its arguments when one grew it, T010)
+  link shared-reads, like number
   link local-names, like hash, like text, like boolean
   link inner-rendering, like list, like expression
   link tail-matches, like list, like statement
@@ -432,6 +434,7 @@ task new-rust-state
       bind assigned-vars, make hash
       bind stack-names, make hash
       bind spawn-uses, 0
+      bind shared-reads, 0
       bind local-names, make hash
       bind inner-rendering, make list
       bind tail-matches, make list
@@ -784,6 +787,8 @@ task statement-form
       back <exit>
     case debug
       back <debug>
+    case probe
+      back <probe>
     case guard
       back <guard>
     case throw
@@ -1565,6 +1570,7 @@ task member-path
       # a field of a `mark shared` value is read through its handle
       fork test, is-shared(expression-type(member-target), facts)
         hold
+          save st/shared-reads, add(st/shared-reads, 1)
           back <{member-path(member-target, st, facts)}.borrow().{snake(member-name)}>
       # a slot of a list in the middle of a path is that list's own view, indexed
       save has-index, false
@@ -3919,10 +3925,12 @@ task emit-call
         make call-plan
           bind raw-lent, make list
       save arg-list, make list
+      save shared-before, st/shared-reads
       walk call-args
         take a
         take i
         push(arg-list, emit-argument(node, a, i, params, has-params, st, facts, plan))
+      save reads-shared, is-above(st/shared-reads, shared-before)
 
       # a trailing `need false` parameter left out still exists in the native signature: its empty value
       fork test, and(has-params, is-above(params/length, arg-list/length))
@@ -4044,7 +4052,9 @@ task emit-call
                     push(handed, variable-name)
               miss
                 save nothing, 0
-          save collides, false
+          # an argument read through a shared form's borrow keeps its `Ref` to the end of the statement, so the
+          # callee could not borrow the form to write it: every argument is a `let` in the block before the call
+          save collides, reads-shared
           walk call-args
             take a
             take i
@@ -7172,6 +7182,9 @@ task emit-statement
       back <std::process::exit(0);>
     case debug
       back <// breakpoint>
+    # a coverage probe is written on TypeScript only until coverage-0002
+    case probe
+      back <// probe>
     case function
       back emit-function(node, depth, st, facts)
     # a form, a mask and an instance read only the program's tables (compile/rust-forms.tree)

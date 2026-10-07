@@ -1180,6 +1180,8 @@ task statement-span
       back span
     case debug
       back span
+    case probe
+      back span
     case guard
       back span
     case throw

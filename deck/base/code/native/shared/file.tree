@@ -1,4 +1,4 @@
 
 task test-path
-  take path
-  take pattern
+  take path, like text
+  take pattern, like text

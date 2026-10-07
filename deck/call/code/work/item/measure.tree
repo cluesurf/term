@@ -386,15 +386,12 @@ task neutralize
   save out, <>
   save column, 0
   save stop, standard/layout/tab-stop
-  fork test, is-below(stop, 1)
-    hold
-      save stop, 8
   walk to-runes(value)
     take rune
     save piece, rune-to-text(rune)
     fork test, is-equal(rune, 9)
       hold
-        save gap, subtract(stop, modulo(column, stop))
+        save gap, tab-gap(column, stop)
         save piece, <>
         save at, 0
         walk test
@@ -417,6 +414,19 @@ task neutralize
     save out, <{out}{piece}>
     save column, add(column, measure-text(piece))
   back out
+
+# the cells from `column` to the next tab stop, a stop below one cell being eight. The stop is held above zero here, in
+# a task of its own, so the remainder's divisor is proven (a name a loop body reads and the task also assigns is unknown there)
+task tab-gap
+  take column, like number
+  take stop, like number
+  like number
+  mark private
+  save width, stop
+  fork test, is-below(width, 1)
+    hold
+      save width, 8
+  back subtract(width, modulo(column, width))
 
 # a character in ASCII by the standard's folds, or as it is when none names it
 task fold-rune

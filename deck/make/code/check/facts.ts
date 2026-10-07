@@ -34,7 +34,7 @@ type Fn = Extract<Statement, { form: 'function' }>
 
 // node.tree's statement and expression cases. No case is both, so a node's `form` says which it is
 const STATEMENT_FORMS = new Set([
-  'let', 'assign', 'expression', 'if', 'while', 'match', 'for-each', 'break', 'continue', 'return', 'exit', 'debug',
+  'let', 'assign', 'expression', 'if', 'while', 'match', 'for-each', 'break', 'continue', 'return', 'exit', 'debug', 'probe',
   'guard', 'throw', 'hold', 'function', 'record-type', 'mask', 'instance', 'native', 'bind', 'view', 'dock', 'roll',
   'tell',
 ])

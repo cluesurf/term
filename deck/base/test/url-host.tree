@@ -1,0 +1,407 @@
+# The host parser of url/host: 40 cases taken from the WHATWG corpus (test/stdlib/url/urltestdata.json, WPT c48d5874) whose
+# input is `<scheme>://<host>` with no base, so the corpus's `hostname` (or its `failure`) is the host parser's answer, and
+# 3 that a domain needing UTS #46 answers its ASCII form. `opaque` is true where the scheme is not special.
+# Regenerate with: sh T/tmp/dec-tsx.sh tmp/url-host-probe.ts (HOST_EMIT=<file>), which also runs them on all four backends.
+
+load @term/base/url/host
+  find parse-host
+  find host-answer
+
+task host-line
+  take input, like text
+  take opaque, like boolean
+  like text
+  save answer, call parse-host(read(input), read(opaque))
+  fork test
+    hook test
+      read answer/ok
+    hook hold
+      send back, text(<ok:{answer/value}>)
+  send back, text(<fail>)
+
+# ipv6, urltestdata.json entry 73: [2001::1]
+test host-00
+  want hold
+    call is-equal
+      call host-line
+        text <[2001::1]>
+        false
+      text <ok:[2001::1]>
+
+# ipv6, urltestdata.json entry 74: [::127.0.0.1]
+test host-01
+  want hold
+    call is-equal
+      call host-line
+        text <[::127.0.0.1]>
+        false
+      text <ok:[::7f00:1]>
+
+# ipv6, urltestdata.json entry 76: [0:0:0:0:0:0:13.1.68.3]
+test host-02
+  want hold
+    call is-equal
+      call host-line
+        text <[0:0:0:0:0:0:13.1.68.3]>
+        false
+      text <ok:[::d01:4403]>
+
+# ipv6, urltestdata.json entry 634: [1:0::]
+test host-03
+  want hold
+    call is-equal
+      call host-line
+        text <[1:0::]>
+        false
+      text <ok:[1::]>
+
+# ipv6, urltestdata.json entry 704: [0:1:0:1:0:1:0:1]
+test host-04
+  want hold
+    call is-equal
+      call host-line
+        text <[0:1:0:1:0:1:0:1]>
+        false
+      text <ok:[0:1:0:1:0:1:0:1]>
+
+# ipv6, urltestdata.json entry 705: [1:0:1:0:1:0:1:0]
+test host-05
+  want hold
+    call is-equal
+      call host-line
+        text <[1:0:1:0:1:0:1:0]>
+        false
+      text <ok:[1:0:1:0:1:0:1:0]>
+
+# ipv4, urltestdata.json entry 178: 192.0x00A80001
+test host-06
+  want hold
+    call is-equal
+      call host-line
+        text <192.0x00A80001>
+        false
+      text <ok:192.168.0.1>
+
+# ipv4, urltestdata.json entry 310: %30%78%63%30%2e%30%32%35%30.01
+test host-07
+  want hold
+    call is-equal
+      call host-line
+        text <%30%78%63%30%2e%30%32%35%30.01>
+        false
+      text <ok:192.168.0.1>
+
+# ipv4, urltestdata.json entry 498: 127.0.0.1
+test host-08
+  want hold
+    call is-equal
+      call host-line
+        text <127.0.0.1>
+        false
+      text <ok:127.0.0.1>
+
+# ipv4, urltestdata.json entry 512: 1.2.3.4
+test host-09
+  want hold
+    call is-equal
+      call host-line
+        text <1.2.3.4>
+        false
+      text <ok:1.2.3.4>
+
+# ipv4, urltestdata.json entry 513: 1.2.3.4.
+test host-10
+  want hold
+    call is-equal
+      call host-line
+        text <1.2.3.4.>
+        false
+      text <ok:1.2.3.4>
+
+# ipv4, urltestdata.json entry 514: 192.168.257
+test host-11
+  want hold
+    call is-equal
+      call host-line
+        text <192.168.257>
+        false
+      text <ok:192.168.1.1>
+
+# ipv4, urltestdata.json entry 515: 192.168.257.
+test host-12
+  want hold
+    call is-equal
+      call host-line
+        text <192.168.257.>
+        false
+      text <ok:192.168.1.1>
+
+# ipv4, urltestdata.json entry 517: 256
+test host-13
+  want hold
+    call is-equal
+      call host-line
+        text <256>
+        false
+      text <ok:0.0.1.0>
+
+# ipv4, urltestdata.json entry 519: 999999999
+test host-14
+  want hold
+    call is-equal
+      call host-line
+        text <999999999>
+        false
+      text <ok:59.154.201.255>
+
+# ipv4, urltestdata.json entry 520: 999999999.
+test host-15
+  want hold
+    call is-equal
+      call host-line
+        text <999999999.>
+        false
+      text <ok:59.154.201.255>
+
+# ipv4, urltestdata.json entry 524: 4294967295
+test host-16
+  want hold
+    call is-equal
+      call host-line
+        text <4294967295>
+        false
+      text <ok:255.255.255.255>
+
+# ipv4, urltestdata.json entry 528: 0xffffffff
+test host-17
+  want hold
+    call is-equal
+      call host-line
+        text <0xffffffff>
+        false
+      text <ok:255.255.255.255>
+
+# ipv4, urltestdata.json entry 531: 0x.0x.0
+test host-18
+  want hold
+    call is-equal
+      call host-line
+        text <0x.0x.0>
+        false
+      text <ok:0.0.0.0>
+
+# ipv4, urltestdata.json entry 532: 0x.0x.0x.0x
+test host-19
+  want hold
+    call is-equal
+      call host-line
+        text <0x.0x.0x.0x>
+        false
+      text <ok:0.0.0.0>
+
+# ipv4, urltestdata.json entry 533: 00.00.00.00
+test host-20
+  want hold
+    call is-equal
+      call host-line
+        text <00.00.00.00>
+        false
+      text <ok:0.0.0.0>
+
+# ipv4, urltestdata.json entry 534: 0000000000000000000000000000000000000000177.0.0.1
+test host-21
+  want hold
+    call is-equal
+      call host-line
+        text <0000000000000000000000000000000000000000177.0.0.1>
+        false
+      text <ok:127.0.0.1>
+
+# domain, urltestdata.json entry 10: f
+test host-22
+  want hold
+    call is-equal
+      call host-line
+        text <f>
+        false
+      text <ok:f>
+
+# domain, urltestdata.json entry 52: foo.com
+test host-23
+  want hold
+    call is-equal
+      call host-line
+        text <foo.com>
+        false
+      text <ok:foo.com>
+
+# domain, urltestdata.json entry 64: foo
+test host-24
+  want hold
+    call is-equal
+      call host-line
+        text <foo>
+        false
+      text <ok:foo>
+
+# domain, urltestdata.json entry 138: example.com
+test host-25
+  want hold
+    call is-equal
+      call host-line
+        text <example.com>
+        false
+      text <ok:example.com>
+
+# domain, urltestdata.json entry 174: www.google.com
+test host-26
+  want hold
+    call is-equal
+      call host-line
+        text <www.google.com>
+        false
+      text <ok:www.google.com>
+
+# domain, urltestdata.json entry 179: www
+test host-27
+  want hold
+    call is-equal
+      call host-line
+        text <www>
+        false
+      text <ok:www>
+
+# domain, urltestdata.json entry 264: www.example2.com
+test host-28
+  want hold
+    call is-equal
+      call host-line
+        text <www.example2.com>
+        false
+      text <ok:www.example2.com>
+
+# opaque, urltestdata.json entry 113: example.com
+test host-29
+  want hold
+    call is-equal
+      call host-line
+        text <example.com>
+        true
+      text <ok:example.com>
+
+# opaque, urltestdata.json entry 186: foo
+test host-30
+  want hold
+    call is-equal
+      call host-line
+        text <foo>
+        true
+      text <ok:foo>
+
+# opaque, urltestdata.json entry 319: .
+test host-31
+  want hold
+    call is-equal
+      call host-line
+        text <.>
+        true
+      text <ok:.>
+
+# opaque, urltestdata.json entry 346: host
+test host-32
+  want hold
+    call is-equal
+      call host-line
+        text <host>
+        true
+      text <ok:host>
+
+# fail-domain, urltestdata.json entry 75: [::127.0.0.1.]
+test host-33
+  want hold
+    call is-equal
+      call host-line
+        text <[::127.0.0.1.]>
+        false
+      text <fail>
+
+# fail-domain, urltestdata.json entry 272: example example.com
+test host-34
+  want hold
+    call is-equal
+      call host-line
+        text <example example.com>
+        false
+      text <fail>
+
+# fail-domain, urltestdata.json entry 273: Goo%20 goo%7C|.com
+test host-35
+  want hold
+    call is-equal
+      call host-line
+        text <Goo%20 goo%7C|.com>
+        false
+      text <fail>
+
+# fail-domain, urltestdata.json entry 275: [:]
+test host-36
+  want hold
+    call is-equal
+      call host-line
+        text <[:]>
+        false
+      text <fail>
+
+# fail-domain, urltestdata.json entry 308: %25
+test host-37
+  want hold
+    call is-equal
+      call host-line
+        text <%25>
+        false
+      text <fail>
+
+# fail-opaque, urltestdata.json entry 392: a b
+test host-38
+  want hold
+    call is-equal
+      call host-line
+        text <a b>
+        true
+      text <fail>
+
+# fail-opaque, urltestdata.json entry 393: a<b
+test host-39
+  want hold
+    call is-equal
+      call host-line
+        text <a\<b>
+        true
+      text <fail>
+
+# idna: xn--mnchen-3ya.de
+test host-40
+  want hold
+    call is-equal
+      call host-line
+        text <xn--mnchen-3ya.de>
+        false
+      text <ok:xn--mnchen-3ya.de>
+
+# idna: M\u{fc}nchen.de
+test host-41
+  want hold
+    call is-equal
+      call host-line
+        text <München.de>
+        false
+      text <ok:xn--mnchen-3ya.de>
+
+# idna: %C3%BCber.de
+test host-42
+  want hold
+    call is-equal
+      call host-line
+        text <%C3%BCber.de>
+        false
+      text <ok:xn--ber-goa.de>

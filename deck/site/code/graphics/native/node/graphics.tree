@@ -55,7 +55,7 @@ task make-program
 
 task make-buffer
   take pane, like surface
-  take data
+  take data, like unknown
   like gpu-buffer
   send back
     make gpu-buffer

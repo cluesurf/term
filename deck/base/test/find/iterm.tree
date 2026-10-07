@@ -1,0 +1,190 @@
+# The `iterm` tool of @term/base/find on this Mac (item term-find-0008): a program that mounts `find pane / have title,
+# <title> / run <line>` into iterm types into that iTerm2 session, and raises find-none or find-many, typing nothing,
+# when zero or two sessions have the title.
+#
+# These tests drive the real iTerm2, so they run only under test/compile/find-native.ts, which opens the sessions and
+# names them in the environment: TERM_FIND_ITERM_SERVER (the one session), TERM_FIND_ITERM_OTHER (a second, never
+# typed into), TERM_FIND_ITERM_DUP (the title of two sessions) and TERM_FIND_ITERM_ABSENT (a title nothing has). With
+# TERM_FIND_ITERM_SERVER unset every test here is a no-op that holds, so a plain `term test` never touches iTerm2.
+# find-native.ts reads each session's contents back, which is what proves what was typed. Run from deck/base.
+
+load @term/base/find
+  find find-one
+
+load @term/base/find/query
+  find find-query
+  find find-step
+  find find-test
+  find find-value
+  find find-count
+  find find-operand
+  find find-back
+  find find-sort
+
+load @term/base/find/kind
+  find pane
+  find run
+
+load @term/base/find/tool
+  find mount
+
+load @term/base/find/tool/iterm
+  find make-iterm
+
+load @term/base/find/error
+  find find-none
+  find find-many
+
+load @term/base/duration
+  find from-seconds
+
+load @term/base/text
+  find ends-with
+
+load @term/base/environment
+  find directory
+  find variable
+  find has-variable
+
+load @term/base/log
+  find info
+
+load @term/base/list
+  find list
+  find push
+  find get
+
+# the folder of deck/base from where the tests run: the package's own folder under `term test`, the Term root under the
+# gate
+task base-folder
+  like text
+  fork test
+    hook test
+      call ends-with
+        call directory
+        text <deck/base>
+    hook hold
+      send back, text <.>
+  fork test
+    hook test
+      call ends-with
+        call directory
+        text <deck/term>
+    hook hold
+      send back, text <deck/base>
+  send back, text <.>
+
+task driver-script
+  like text
+  save folder
+    call base-folder
+  send back, text <{folder}/code/find/driver/mac.js>
+
+# the program: find the pane with this title and type the line into it. A find that matches nothing, or two, raises
+task type-into
+  mark async
+  take title, like text
+  take line, like text
+  find pane
+    have title, <{title}>
+    run <{line}>
+
+# how `type-into` ends: typed, none, or many with the count
+task outcome-of
+  mark async
+  take title, like text
+  take line, like text
+  like text
+  fork
+    mark unsafe
+    call type-into
+      read title
+      read line
+    send back, text <typed>
+  halt take
+    take problem
+    fork case, read problem
+      case find-none
+        send back, text <none>
+      case find-many
+        send back, text <many {actual}>
+      hook miss
+        send back, text <other {problem/note}>
+
+# the program, as an entry: mount the work into iterm
+task entry-outcome
+  mark async
+  take title, like text
+  take line, like text
+  like text
+  save verdict
+    make list
+  call mount
+    bind tool
+      call make-iterm
+        call driver-script
+    bind work
+      task body
+        mark async
+        call verdict/push
+          call outcome-of
+            read title
+            read line
+  send back
+    call get
+      read verdict
+      code 0
+
+# true when this is not a native run, else whether the program ended as expected
+task checked
+  mark async
+  take title-name, like text
+  take line, like text
+  take expected, like text
+  like boolean
+  fork test
+    hook test
+      call not
+        call has-variable
+          text <TERM_FIND_ITERM_SERVER>
+    hook hold
+      send back, true
+  save got
+    call entry-outcome
+      call variable
+        read title-name
+      read line
+  call info
+    text <find-iterm {title-name}: got {got}, expected {expected}>
+  send back
+    call is-equal
+      read got
+      read expected
+
+test <a find of the one session types the line into it>
+  want hold
+    call checked
+      text <TERM_FIND_ITERM_SERVER>
+      text <echo term-find-0008-ok>
+      text <typed>
+
+test <quotes, an apostrophe, a semicolon and a variable reach the session as the same characters>
+  want hold
+    call checked
+      text <TERM_FIND_ITERM_SERVER>
+      text <echo term-find-0008-awk "a'b" ; echo $HOME>
+      text <typed>
+
+test <a title no session has raises find-none and types nothing>
+  want hold
+    call checked
+      text <TERM_FIND_ITERM_ABSENT>
+      text <echo term-find-0008-none>
+      text <none>
+
+test <a title two sessions have raises find-many and types nothing>
+  want hold
+    call checked
+      text <TERM_FIND_ITERM_DUP>
+      text <echo term-find-0008-many>
+      text <many 2>

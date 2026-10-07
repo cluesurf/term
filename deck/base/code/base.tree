@@ -1,5 +1,3 @@
 mark unstable
 
-bear ./hold
-
 bear <./{{base/host/dock}}>

@@ -12,7 +12,7 @@ form ecdh
 
   task compute-secret
     take self
-    take public-key
+    take public-key, like unknown
     call self/bulb/compute-secret
       read public-key
 
@@ -34,7 +34,7 @@ form ecdh
 
   task set-private-key
     take self
-    take private-key
+    take private-key, like unknown
     call self/bulb/set-private-key
       read private-key
     read self

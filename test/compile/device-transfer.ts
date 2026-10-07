@@ -20,6 +20,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildTaps } from './shared/springboard-taps'
+import { bootedSimulator } from './shared/simulator'
 import { runToolkits } from './shared/toolkit-run'
 import type { Leg } from './shared/toolkit-run'
 
@@ -159,7 +160,11 @@ function step(output: string, name: string): string {
 // a picker that never came up answers `unavailable` (native-files.swift), and only this tap shows the picker was there to
 // cancel. Then the share sheet: an element whose label holds the shared file's name, the sheet's header
 const dir = mkdtempSync(join(tmpdir(), 'term-transfer-'))
-const taps = process.env.TRANSFER_ONLY === 'macos' || spawnSync('xcodebuild', ['-version']).status !== 0
+const LEGS = process.env.TRANSFER_ONLY ? [process.env.TRANSFER_ONLY] : ['macos', 'ios']
+// a requested iOS leg with no booted simulator does not run: it is counted as skipped on the last line, never a pass
+const booted = LEGS.includes('ios') ? bootedSimulator() : undefined
+const iosSkipped = booted !== undefined && 'missing' in booted
+const taps = !LEGS.includes('ios') || iosSkipped || spawnSync('xcodebuild', ['-version']).status !== 0
   ? undefined
   : buildTaps(
       dir,
@@ -178,12 +183,15 @@ const taps = process.env.TRANSFER_ONLY === 'macos' || spawnSync('xcodebuild', ['
         XCTAssertTrue(close.exists || cancel.exists, "no document picker came up")
         if close.exists {
             close.tap()
+            print("taps: picker cancelled")
         } else if cancel.exists {
             cancel.tap()
+            print("taps: picker cancelled")
+        } else {
+            print("taps: no picker button")
         }
-        print("taps: picker cancelled")
-        // the share sheet, up for 25 seconds (the Term program waits before it exits): its header shows the file's name
-        let named = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "term-transfer-")).firstMatch
+        // the share sheet, up for 25 seconds (the Term program waits before it exits): its header shows THIS run's file name
+        let named = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "${FILE}")).firstMatch
         var seen = 0
         while !named.waitForExistence(timeout: 10), seen < 2 {
             seen += 1
@@ -207,7 +215,14 @@ if (taps) {
   ok('the UI test that cancels the picker builds', taps.built, taps.errors)
 }
 
+// the simulator the iOS leg used, kept so the app can be ended after it
+let usedUdid: string | undefined
+
 function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
+  if (leg === 'ios') {
+    usedUdid = target.udid
+  }
+
   if (leg === 'ios' && target.udid && taps?.built) {
     taps.start(target.udid)
   }
@@ -220,9 +235,10 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const written = existsSync(where) ? readFileSync(where) : Buffer.alloc(0)
 
   ok(`${named}: the download answers its length`, said('download') === `downloaded ${PAYLOAD.length}`, said('download'))
-  ok(`${named}: and the file holds every byte the server sent, read off the disk`, written.equals(PAYLOAD), `${written.length} bytes at ${where}`)
   ok(`${named}: a 404 is failed 404, and a closed port failed 0`, said('missing') === 'failed 404' && said('closed') === 'failed 0', `${said('missing')} ${said('closed')}`)
-  ok(`${named}: and the two failures left the file as it was`, written.equals(PAYLOAD), '')
+  // the program downloads the good file first, then the 404 and the closed port to the SAME path, so this read, after
+  // all three, is what the failures left
+  ok(`${named}: the file holds every byte the server sent, after a 404 and a closed port to the same path`, written.equals(PAYLOAD), `${written.length} bytes at ${where}`)
   ok(`${named}: a path that is no file has nothing to share`, said('share-none') === 'unavailable', said('share-none'))
 
   if (leg === 'ios') {
@@ -231,29 +247,37 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   }
 }
 
-const LEGS = process.env.TRANSFER_ONLY ? [process.env.TRANSFER_ONLY] : ['macos', 'ios']
+try {
+  for (const leg of LEGS) {
+    runToolkits({ root: process.cwd(), dir: mkdtempSync(join(tmpdir(), 'term-transfer-')), name: 'Transfer', iosIdentifier: IOS_ID, androidIdentifier: 'surf.term.devicetransfer', program, judge, ok, shots: {}, prepare }, leg)
+  }
 
-for (const leg of LEGS) {
-  runToolkits({ root: process.cwd(), dir: mkdtempSync(join(tmpdir(), 'term-transfer-')), name: 'Transfer', iosIdentifier: IOS_ID, androidIdentifier: 'surf.term.devicetransfer', program, judge, ok, shots: {}, prepare }, leg)
+  const tapped = await taps?.finish()
+
+  if (tapped) {
+    writeFileSync(join(dir, 'taps.log'), tapped.log)
+    console.log(`taps log: ${join(dir, 'taps.log')}`)
+    const failures = tapped.log
+      .split('\n')
+      .filter(line => !/^taps: (share )?tree/.test(line) && /error|failed|XCTAssert/i.test(line))
+      .join('\n')
+      .slice(0, 1200)
+
+    ok('ios: the UI test found the picker and tapped Close', tapped.status === 0 && tapped.log.includes('taps: picker cancelled'), failures)
+    ok("ios (UIKit): the share sheet showed the file's name", tapped.log.includes('taps: share sheet shows the file'), failures)
+  }
+} finally {
+  // a picker left up must not stay on the shared simulator's screen: the app is ended, its failure ignored
+  if (usedUdid) {
+    spawnSync('xcrun', ['simctl', 'terminate', usedUdid, IOS_ID], { stdio: 'ignore' })
+    console.log(`terminated ${IOS_ID} on ${usedUdid}`)
+  }
+
+  serving.kill()
 }
 
-const tapped = await taps?.finish()
-
-if (tapped) {
-  writeFileSync(join(dir, 'taps.log'), tapped.log)
-  console.log(`taps log: ${join(dir, 'taps.log')}`)
-  const failures = tapped.log
-    .split('\n')
-    .filter(line => !/^taps: (share )?tree/.test(line) && /error|failed|XCTAssert/i.test(line))
-    .join('\n')
-    .slice(0, 1200)
-
-  ok('ios: the UI test found the picker and tapped Close', tapped.status === 0 && tapped.log.includes('taps: picker cancelled'), failures)
-  ok("ios (UIKit): the share sheet showed the file's name", tapped.log.includes('taps: share sheet shows the file'), failures)
-}
-
-serving.kill()
-console.log(`\ndevice-transfer: ${pass} pass, ${fail} fail`)
+// runToolkits printed the `skip  ios  (reason)` line itself
+console.log(`\ndevice-transfer: ${pass} pass, ${fail} fail${iosSkipped ? ', 1 skipped' : ''}`)
 
 if (fail > 0) {
   process.exit(1)

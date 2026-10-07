@@ -7,6 +7,7 @@
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
+import { setWidthRanges } from '@term/make/code/check/width-range'
 
 let pass = 0
 let fail = 0
@@ -115,6 +116,82 @@ task run
   send back, read got
 `)
 check('(d) a generic get over a list of u8 builds', generic.ok, messages(generic))
+
+// a list's element width is invariant (0002): with the switch on, in both directions; off, nothing is refused
+function buildWith(source: string, ranges: boolean) {
+  setWidthRanges(ranges)
+
+  try {
+    return build(source)
+  } finally {
+    setWidthRanges(false)
+  }
+}
+
+const wantsU8 = (element: string, own: string) => `task wants
+  take xs, like list, like u8
+  like number
+  send back, 0
+
+task run
+  take ys, like list, like ${own}
+  like number
+  send back
+    call wants
+      read ys
+`.replace('like u8', `like ${element}`)
+
+const numberForU8 = buildWith(wantsU8('u8', 'number'), true)
+check('(e) a list of number where a list of u8 is wanted is refused, on', !numberForU8.ok && /a list of number where a list of u8 is wanted: type the source as u8, or convert each element with to-u8/.test(messages(numberForU8)), messages(numberForU8))
+
+const u8ForNumber = buildWith(wantsU8('number', 'u8'), true)
+check('(f) a list of u8 where a list of number is wanted is refused, on', !u8ForNumber.ok && /a list of u8 where a list of number is wanted/.test(messages(u8ForNumber)), messages(u8ForNumber))
+
+const offA = buildWith(wantsU8('u8', 'number'), false)
+const offB = buildWith(wantsU8('number', 'u8'), false)
+check('(g) both build with the switch off', offA.ok && offB.ok, messages(offA) + messages(offB))
+
+const sameWidth = buildWith(wantsU8('u8', 'u8'), true)
+check('(h) a list of u8 to a list of u8 builds, on', sameWidth.ok, messages(sameWidth))
+
+const plainPair = buildWith(wantsU8('number', 'number'), true)
+check('(h2) a list of number to a list of number builds, on', plainPair.ok, messages(plainPair))
+
+const pushed = buildWith(
+  `load @term/base/list
+  find push
+
+task wants
+  take xs, like list, like u8
+  like number
+  send back, 0
+
+task run
+  take v, like u8
+  like number
+  save made, make list
+  push(made, v)
+  send back
+    call wants
+      read made
+`,
+  true,
+)
+check('(i) a make list pushed u8 values, passed to a list of u8, builds (the variable binds u8)', pushed.ok, messages(pushed))
+
+const scalarOn = buildWith(
+  `task bump
+  take x, like u8
+  take y, like number
+  like number
+  send back
+    call add
+      read x
+      read y
+`,
+  true,
+)
+check('(j) scalars still mix, on', scalarOn.ok, messages(scalarOn))
 
 console.log(`\n${pass} pass, ${fail} fail`)
 

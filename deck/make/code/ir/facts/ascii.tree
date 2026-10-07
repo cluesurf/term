@@ -170,6 +170,7 @@ form solving
   link results, like hash, like text, like boolean
   link params, like hash, like text, like list, like number
   link locals, like list, like list, like text
+  link constants, like list, like text
 
 task ascii
   take state, like solving
@@ -315,6 +316,25 @@ task scope
         fork test, not(contains(gone, name))
           hold
             push(kept, name)
+      # a module constant, unless this task binds its name itself: a parameter, any local, or a name bound another way
+      save own, make list
+      walk params
+        take param
+        push(own, param/name)
+      save seen, reach-body(body)
+      walk seen/statements
+        take node
+        sift node
+          case let
+            link let-name
+            push(own, let-name)
+          miss
+            save nothing, 0
+      walk state/constants
+        take constant
+        fork test, and(not(contains(own, constant)), not(contains(gone, constant)))
+          hold
+            push(kept, constant)
       back kept
     miss
       back out
@@ -354,6 +374,66 @@ task count-name
   mark private
 
   save counts/{name}, add(counts/get-or-default(name, 0), 1)
+
+# the module constants proven ASCII: a top-level text `let` whose value is ASCII on its own (a literal, a template, a
+# kept method of one, never a call, so no task's fact decides it) and that nothing assigns. A name two top-level `let`s
+# share is one only when both are. Each joins the scope of every task that binds no name like it (`scope`). Without
+# this a table held in a module constant was never ASCII, so a substring of it walked the whole text on Rust and Swift
+# (term-decisions-2026-10-0017: 100,000 reads of a 16,000-byte constant took 313 s on Rust)
+task module-constants
+  take program, like list, like statement
+  take statements, like list, like statement
+  like list, like text
+  mark private
+
+  save assigned, make list
+  walk statements
+    take node
+    sift node
+      case assign
+        sift target
+          case variable
+            link target-name
+            push(assigned, target-name)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  save bare
+    make solving
+      bind results, make hash
+      bind params, make hash
+      bind locals, make list
+      bind constants, make list
+  save kept, make list
+  save refused, make list
+  walk program
+    take one
+    sift one
+      case let
+        link let-name
+        link init
+        save given, type
+        sift given
+          case none
+            save given, expression-type(init)
+          case some
+            link known
+            save nothing, 0
+        fork test, and(and(is-text(given), not(contains(assigned, let-name))), ascii(bare, init, make list))
+          hold
+            push(kept, let-name)
+          miss
+            push(refused, let-name)
+      miss
+        save nothing, 0
+  save out, make list
+  walk kept
+    take name
+    fork test, not(contains(refused, name))
+      hold
+        push(out, name)
+  back out
 
 task ascii-texts
   take program, like list, like statement
@@ -397,6 +477,7 @@ task ascii-texts
       bind results, make hash
       bind params, make hash
       bind locals, make list
+      bind constants, module-constants(program, all/statements)
   walk fns
     take one
     sift one

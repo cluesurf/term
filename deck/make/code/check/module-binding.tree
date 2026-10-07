@@ -84,6 +84,8 @@ task stamped
       save one/span/file, make(some, file)
     case debug
       save one/span/file, make(some, file)
+    case probe
+      save one/span/file, make(some, file)
     case guard
       save one/span/file, make(some, file)
     case throw

@@ -390,15 +390,13 @@ task round-parts
           read kept
           read cut
 
-# whether the fraction ends in a zero it may drop (past `fewest` places)
+# whether the fraction's first `size` places end in a zero it may drop (past `fewest` places)
 task has-extra-zero
   mark private
   take fraction, like text
+  take size, like number
   take fewest, like number
   like boolean
-  save size
-    call char-count
-      read fraction
   fork test
     hook test
       call is-above
@@ -421,24 +419,32 @@ task fit-fraction
   take fraction, like text
   take fewest, like number
   like text
-  save out, read fraction
+  # the places kept, counted down, so the text is cut once
+  save size
+    call char-count
+      read fraction
   walk test
     down
-      call char-count
-        read out
+      read size
     hook test
-      call has-extra-zero
-        read out
-        read fewest
-    hook step
-      save out
-        call substring
-          read out
+      call and
+        call is-above
+          read size
           code 0
-          call subtract
-            call char-count
-              read out
-            code 1
+        call has-extra-zero
+          read fraction
+          read size
+          read fewest
+    hook step
+      save size
+        call subtract
+          read size
+          code 1
+  save out
+    call substring
+      read fraction
+      code 0
+      read size
   send back
     call pad-right
       read out

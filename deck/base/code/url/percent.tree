@@ -1,0 +1,398 @@
+# Percent-encoding for the WHATWG URL parser (decision D9, term/decisions-2026-10/url): the percent-encode sets, the UTF-8
+# percent-encode of a code point, percent-decode and UTF-8 decode, over code point lists, the same on every backend.
+# WHATWG URL Standard section 1.3 (https://url.spec.whatwg.org/#percent-encoded-bytes), read at the pinned corpus commit
+# (test/stdlib/url/readme.md). A set is named by a number, the `encode-set-*` constants below.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find length
+  find push
+  find join
+
+load @term/base/text/unicode
+  find rune-to-text
+  find to-runes
+  find from-runes
+
+# the percent-encode sets, each holding the one before it where the standard says so
+host encode-set-c0-control, code 0
+host encode-set-fragment, code 1
+host encode-set-query, code 2
+host encode-set-special-query, code 3
+host encode-set-path, code 4
+host encode-set-userinfo, code 5
+host encode-set-component, code 6
+host encode-set-urlencoded, code 7
+
+# whether `c` is one of the ASCII code points that `codes` lists, each as two hexadecimal digits (so a code point that
+# a text literal cannot hold, such as an angle bracket or a brace, needs no escape)
+task is-among
+  take c, like number
+  take codes, like text
+  like boolean
+  save runes, call to-runes(read(codes))
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save value
+        call add(call(multiply, call(hex-value, call(get, read(runes), read(at))), code(16)), call(hex-value, call(get, read(runes), call(add, read(at), code(1)))))
+      fork test
+        hook test
+          call is-equal(read(value), read(c))
+        hook hold
+          send back, true
+      save at, call add(read(at), code(2))
+  send back, false
+
+# whether the code point `c` is in the percent-encode set `set`. Every set holds the C0 controls and everything past
+# U+007E, and each of the others grows the one before: fragment is its own, query and special-query differ by the
+# apostrophe, path grows query, userinfo grows path, component grows userinfo, urlencoded grows component
+task is-encoded
+  take c, like number
+  take set, like number
+  like boolean
+  fork test
+    hook test
+      call or(call(is-below, read(c), code(32)), call(is-above, read(c), code(126)))
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-c0-control))
+    hook hold
+      send back, false
+  # every other set holds the space
+  fork test
+    hook test
+      call is-equal(read(c), code(32))
+    hook hold
+      send back, true
+  # fragment: " < > `
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-fragment))
+    hook hold
+      send back, call(is-among, read(c), text(<223c3e60>))
+  # query, special-query and everything built on them: " # < >
+  fork test
+    hook test
+      call is-among(read(c), text(<22233c3e>))
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-query))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-special-query))
+    hook hold
+      send back, call(is-equal, read(c), code(39))
+  # path and every set that grows it: the query set (not the apostrophe) and ? ^ ` { }
+  fork test
+    hook test
+      call is-among(read(c), text(<3f5e607b7d>))
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-path))
+    hook hold
+      send back, false
+  # userinfo and above: / : ; = @ [ \ ] |
+  fork test
+    hook test
+      call is-among(read(c), text(<2f3a3b3d405b5c5d7c>))
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-userinfo))
+    hook hold
+      send back, false
+  # component and above: $ % & + ,
+  fork test
+    hook test
+      call is-among(read(c), text(<2425262b2c>))
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal(read(set), read(encode-set-component))
+    hook hold
+      send back, false
+  # urlencoded: ! ' ( ) ~
+  send back, call(is-among, read(c), text(<212728297e>))
+
+# the UTF-8 bytes of a code point, as a list of numbers
+task utf-8-bytes
+  take c, like number
+  like list
+    like number
+  save out, make list
+  fork test
+    hook test
+      call is-below(read(c), code(128))
+    hook hold
+      call out/push(read(c))
+      send back, read out
+  fork test
+    hook test
+      call is-below(read(c), code(2048))
+    hook hold
+      call out/push(call(add, code(192), call(divide, read(c), code(64))))
+      call out/push(call(add, code(128), call(remainder-of, read(c), code(64))))
+      send back, read out
+  fork test
+    hook test
+      call is-below(read(c), code(65536))
+    hook hold
+      call out/push(call(add, code(224), call(divide, read(c), code(4096))))
+      call out/push(call(add, code(128), call(remainder-of, call(divide, read(c), code(64)), code(64))))
+      call out/push(call(add, code(128), call(remainder-of, read(c), code(64))))
+      send back, read out
+  call out/push(call(add, code(240), call(divide, read(c), code(262144))))
+  call out/push(call(add, code(128), call(remainder-of, call(divide, read(c), code(4096)), code(64))))
+  call out/push(call(add, code(128), call(remainder-of, call(divide, read(c), code(64)), code(64))))
+  call out/push(call(add, code(128), call(remainder-of, read(c), code(64))))
+  send back, read out
+
+# a non-negative number's remainder
+task remainder-of
+  take value, like number
+  take divisor, like number
+  like number
+  send back, call(subtract, read(value), call(multiply, call(divide, read(value), read(divisor)), read(divisor)))
+
+# one hexadecimal digit, upper case
+task hex-digit
+  take n, like number
+  like text
+  fork test
+    hook test
+      call is-below(read(n), code(10))
+    hook hold
+      send back, call(rune-to-text, call(add, code(48), read(n)))
+  send back, call(rune-to-text, call(add, code(55), read(n)))
+
+# `%` and the two upper-case hexadecimal digits of a byte
+task percent-byte
+  take byte, like number
+  like text
+  save high, call hex-digit(call(divide, read(byte), code(16)))
+  save low, call hex-digit(call(remainder-of, read(byte), code(16)))
+  send back, text(<%{high}{low}>)
+
+# a code point as text, percent-encoded as its UTF-8 bytes when it is in `set`
+task percent-encode-rune
+  take c, like number
+  take set, like number
+  like text
+  fork test
+    hook test
+      call is-encoded(read(c), read(set))
+    hook hold
+      save parts, make list
+      save bytes, call utf-8-bytes(read(c))
+      save at, code 0
+      walk test
+        hook test
+          call is-below(read(at), read(bytes/length))
+        hook step
+          call parts/push(call(percent-byte, call(get, read(bytes), read(at))))
+          save at, call add(read(at), code(1))
+      send back, call(join, read(parts), text(<>))
+  send back, call(rune-to-text, read(c))
+
+# the code points from `from` up to `to` as text, each percent-encoded by `set`
+task percent-encode-runes
+  take runes
+    like list
+      like number
+  take from, like number
+  take to, like number
+  take set, like number
+  like text
+  save parts, make list
+  save at, read from
+  walk test
+    hook test
+      call and(call(is-below, read(at), read(to)), call(is-below, read(at), read(runes/length)))
+    hook step
+      call parts/push(call(percent-encode-rune, call(get, read(runes), read(at)), read(set)))
+      save at, call add(read(at), code(1))
+  send back, call(join, read(parts), text(<>))
+
+# the whole text percent-encoded by `set`
+task percent-encode
+  take value, like text
+  take set, like number
+  like text
+  save runes, call to-runes(read(value))
+  send back, call(percent-encode-runes, read(runes), code(0), read(runes/length), read(set))
+
+# the value of a hexadecimal digit code point, or -1
+task hex-value
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(48)), call(is-maximum, read(c), code(57)))
+    hook hold
+      send back, call(subtract, read(c), code(48))
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(65)), call(is-maximum, read(c), code(70)))
+    hook hold
+      send back, call(subtract, read(c), code(55))
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(97)), call(is-maximum, read(c), code(102)))
+    hook hold
+      send back, call(subtract, read(c), code(87))
+  send back, call(subtract, code(0), code(1))
+
+# percent-decode: the code points of a text as UTF-8 bytes, a `%` and two hexadecimal digits read as that byte, the rest
+# left as they are (a `%` not followed by two hexadecimal digits stays)
+task percent-decode
+  take runes
+    like list
+      like number
+  like list
+    like number
+  save bytes, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save c, call get(read(runes), read(at))
+      fork test
+        hook test
+          call and(call(is-equal, read(c), code(37)), call(is-below, call(add, read(at), code(2)), read(runes/length)))
+        hook hold
+          save high, call hex-value(call(get, read(runes), call(add, read(at), code(1))))
+          save low, call hex-value(call(get, read(runes), call(add, read(at), code(2))))
+          fork test
+            hook test
+              call and(call(is-minimum, read(high), code(0)), call(is-minimum, read(low), code(0)))
+            hook hold
+              call bytes/push(call(add, call(multiply, read(high), code(16)), read(low)))
+              save at, call add(read(at), code(3))
+              turn next
+      save own, call utf-8-bytes(read(c))
+      save k, code 0
+      walk test
+        hook test
+          call is-below(read(k), read(own/length))
+        hook step
+          call bytes/push(call(get, read(own), read(k)))
+          save k, call add(read(k), code(1))
+      save at, call add(read(at), code(1))
+  send back, read bytes
+
+# UTF-8 decode without BOM (the Encoding Standard's decoder): a malformed or truncated sequence becomes one U+FFFD per
+# maximal bad prefix, as the standard's replacement error mode says
+task utf-8-decode
+  take bytes
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save at, code 0
+  save needed, code 0
+  save seen, code 0
+  save point, code 0
+  save lower, code 128
+  save upper, code 191
+  walk test
+    hook test
+      call is-below(read(at), read(bytes/length))
+    hook step
+      save byte, call get(read(bytes), read(at))
+      fork test
+        hook test
+          call is-equal(read(needed), code(0))
+        hook hold
+          save at, call add(read(at), code(1))
+          fork test
+            hook test
+              call is-below(read(byte), code(128))
+            hook hold
+              call out/push(read(byte))
+            hook test
+              call and(call(is-minimum, read(byte), code(194)), call(is-maximum, read(byte), code(223)))
+            hook hold
+              save needed, code 1
+              save point, call remainder-of(read(byte), code(32))
+            hook test
+              call and(call(is-minimum, read(byte), code(224)), call(is-maximum, read(byte), code(239)))
+            hook hold
+              fork test
+                hook test
+                  call is-equal(read(byte), code(224))
+                hook hold
+                  save lower, code 160
+              fork test
+                hook test
+                  call is-equal(read(byte), code(237))
+                hook hold
+                  save upper, code 159
+              save needed, code 2
+              save point, call remainder-of(read(byte), code(16))
+            hook test
+              call and(call(is-minimum, read(byte), code(240)), call(is-maximum, read(byte), code(244)))
+            hook hold
+              fork test
+                hook test
+                  call is-equal(read(byte), code(240))
+                hook hold
+                  save lower, code 144
+              fork test
+                hook test
+                  call is-equal(read(byte), code(244))
+                hook hold
+                  save upper, code 143
+              save needed, code 3
+              save point, call remainder-of(read(byte), code(8))
+            hook miss
+              call out/push(code(65533))
+        hook miss
+          fork test
+            hook test
+              call and(call(is-minimum, read(byte), read(lower)), call(is-maximum, read(byte), read(upper)))
+            hook hold
+              save lower, code 128
+              save upper, code 191
+              save point, call add(call(multiply, read(point), code(64)), call(remainder-of, read(byte), code(64)))
+              save seen, call add(read(seen), code(1))
+              save at, call add(read(at), code(1))
+              fork test
+                hook test
+                  call is-equal(read(seen), read(needed))
+                hook hold
+                  call out/push(read(point))
+                  save needed, code 0
+                  save seen, code 0
+                  save point, code 0
+            hook miss
+              # the byte is not a continuation: one replacement for what came before it, and the byte is read again
+              save needed, code 0
+              save seen, code 0
+              save point, code 0
+              save lower, code 128
+              save upper, code 191
+              call out/push(code(65533))
+  fork test
+    hook test
+      call is-unequal(read(needed), code(0))
+    hook hold
+      call out/push(code(65533))
+  send back, read out

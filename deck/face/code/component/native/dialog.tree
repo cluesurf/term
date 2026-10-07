@@ -64,6 +64,10 @@ task mount-dialog
     read heading
     text <data-slot>
     text <dialog-title>
+  call write-attribute
+    read heading
+    text <style>
+    text <margin: 0px; font-size: 17px; font-weight: 600>
   call append
     read heading
     call make-text

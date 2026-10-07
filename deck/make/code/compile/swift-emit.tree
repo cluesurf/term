@@ -4543,6 +4543,9 @@ task emit-statement-in
       back <exit(0)>
     case debug
       back <// breakpoint>
+    # a coverage probe is written on TypeScript only until coverage-0002
+    case probe
+      back <// probe>
     case function
       back emit-function(node, depth, st, facts)
     case record-type

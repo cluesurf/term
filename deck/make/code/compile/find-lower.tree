@@ -207,18 +207,6 @@ task first-of
       back make(some, found)
   back make none
 
-# the last value of a list, none for an empty one
-task last-of
-  take values, like list, like minted
-  like maybe, like minted
-  mark private
-
-  fork test, is-above(values/length, 0)
-    hold
-      save found, get(values, subtract(values/length, 1))
-      back make(some, found)
-  back make none
-
 # the text a word or a text literal holds, empty for anything else
 task text-of
   take value, like minted
@@ -967,7 +955,6 @@ task lower-query
       push(problems, problem-at(origin, <find-two-bases>, <find has two bases>))
 
   # the steps: the base, then each link
-  save steps, make list
   save kinds, make list
   save base-step, step-at(origin, form-at(origin, <find-base>, fields-of()))
   sift first-of(base-list)

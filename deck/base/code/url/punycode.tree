@@ -1,0 +1,330 @@
+# Punycode (RFC 3492) for the UTS #46 ToASCII of the WHATWG URL parser (decision D9, term/decisions-2026-10/url), in Term,
+# the same on every backend. Both directions work over lists of code points: `decode-punycode` takes what follows `xn--`
+# and answers the code points it stands for, `encode-punycode` takes code points and answers the ASCII that follows
+# `xn--`. A failure (a digit that is not one, an overflow past 32 bits) answers `ok` false. Numbers here are whole numbers.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find length
+  find push
+  find insert-at
+
+load @term/base/url/percent
+  find remainder-of
+
+# the answer of either direction
+form punycode-answer
+  link ok, like boolean
+  link value
+    like list
+      like number
+
+task punycode-refused
+  mark private
+  like punycode-answer
+  send back
+    make punycode-answer
+      bind ok, false
+      bind value
+        make list
+
+task punycode-accepted
+  mark private
+  take value
+    like list
+      like number
+  like punycode-answer
+  send back
+    make punycode-answer
+      bind ok, true
+      bind value, read value
+
+# the bias adaptation of RFC 3492 section 6.1
+task adapt-bias
+  mark private
+  take delta, like number
+  take points, like number
+  take initial, like boolean
+  like number
+  save d, read delta
+  fork test
+    hook test
+      read initial
+    hook hold
+      save d, call divide(read(d), code(700))
+    hook miss
+      save d, call divide(read(d), code(2))
+  save d, call add(read(d), call(divide, read(d), read(points)))
+  save k, code 0
+  walk test
+    hook test
+      call is-above(read(d), code(455))
+    hook step
+      save d, call divide(read(d), code(35))
+      save k, call add(read(k), code(36))
+  send back, call add(read(k), call(divide, call(multiply, code(36), read(d)), call(add, read(d), code(38))))
+
+# the digit a code point stands for (a to z and A to Z are 0 to 25, 0 to 9 are 26 to 35), or -1
+task digit-value
+  mark private
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(97)), call(is-maximum, read(c), code(122)))
+    hook hold
+      send back, call(subtract, read(c), code(97))
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(65)), call(is-maximum, read(c), code(90)))
+    hook hold
+      send back, call(subtract, read(c), code(65))
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(48)), call(is-maximum, read(c), code(57)))
+    hook hold
+      send back, call(add, call(subtract, read(c), code(48)), code(26))
+  send back, code(-1)
+
+# the lower case code point of a digit 0 to 35
+task digit-rune
+  mark private
+  take d, like number
+  like number
+  fork test
+    hook test
+      call is-below(read(d), code(26))
+    hook hold
+      send back, call(add, read(d), code(97))
+  send back, call(add, call(subtract, read(d), code(26)), code(48))
+
+# the position of the last hyphen of `input`, or -1
+task last-delimiter
+  mark private
+  take input
+    like list
+      like number
+  like number
+  save at, call subtract(read(input/length), code(1))
+  walk test
+    hook test
+      call is-minimum(read(at), code(0))
+    hook step
+      fork test
+        hook test
+          call is-equal(call(get, read(input), read(at)), code(45))
+        hook hold
+          send back, read at
+      save at, call subtract(read(at), code(1))
+  send back, code(-1)
+
+# the code points a Punycode string (the part after `xn--`) stands for
+task decode-punycode
+  take input
+    like list
+      like number
+  like punycode-answer
+  save output, make list
+  save b, call last-delimiter(read(input))
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(b))
+    hook step
+      save c, call get(read(input), read(at))
+      fork test
+        hook test
+          call is-above(read(c), code(127))
+        hook hold
+          send back, call(punycode-refused)
+      call output/push(read(c))
+      save at, call add(read(at), code(1))
+  fork test
+    hook test
+      call is-minimum(read(b), code(0))
+    hook hold
+      save at, call add(read(b), code(1))
+    hook miss
+      save at, code 0
+  save n, code 128
+  save i, code 0
+  save bias, code 72
+  save limit, code 4294967295
+  walk test
+    hook test
+      call is-below(read(at), read(input/length))
+    hook step
+      save before, read i
+      save w, code 1
+      save k, code 36
+      save more, true
+      walk test
+        hook test
+          read more
+        hook step
+          fork test
+            hook test
+              call is-minimum(read(at), read(input/length))
+            hook hold
+              send back, call(punycode-refused)
+          save digit, call digit-value(call(get, read(input), read(at)))
+          save at, call add(read(at), code(1))
+          fork test
+            hook test
+              call is-below(read(digit), code(0))
+            hook hold
+              send back, call(punycode-refused)
+          fork test
+            hook test
+              call is-above(read(digit), call(divide, call(subtract, read(limit), read(i)), read(w)))
+            hook hold
+              send back, call(punycode-refused)
+          save i, call add(read(i), call(multiply, read(digit), read(w)))
+          save t, call subtract(read(k), read(bias))
+          fork test
+            hook test
+              call is-maximum(read(k), read(bias))
+            hook hold
+              save t, code 1
+            hook test
+              call is-minimum(read(k), call(add, read(bias), code(26)))
+            hook hold
+              save t, code 26
+          fork test
+            hook test
+              call is-below(read(digit), read(t))
+            hook hold
+              save more, false
+            hook miss
+              fork test
+                hook test
+                  call is-above(read(w), call(divide, read(limit), call(subtract, code(36), read(t))))
+                hook hold
+                  send back, call(punycode-refused)
+              save w, call multiply(read(w), call(subtract, code(36), read(t)))
+              save k, call add(read(k), code(36))
+      save size, call add(read(output/length), code(1))
+      save bias, call adapt-bias(call(subtract, read(i), read(before)), read(size), call(is-equal, read(before), code(0)))
+      fork test
+        hook test
+          call is-above(call(divide, read(i), read(size)), call(subtract, read(limit), read(n)))
+        hook hold
+          send back, call(punycode-refused)
+      save n, call add(read(n), call(divide, read(i), read(size)))
+      save i, call remainder-of(read(i), read(size))
+      save output, call insert-at(read(output), read(i), read(n))
+      save i, call add(read(i), code(1))
+  send back, call(punycode-accepted, read(output))
+
+# the ASCII that follows `xn--` for these code points
+task encode-punycode
+  take input
+    like list
+      like number
+  like punycode-answer
+  save output, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(input/length))
+    hook step
+      save c, call get(read(input), read(at))
+      fork test
+        hook test
+          call is-below(read(c), code(128))
+        hook hold
+          call output/push(read(c))
+      save at, call add(read(at), code(1))
+  save b, read output/length
+  save h, read b
+  fork test
+    hook test
+      call is-above(read(b), code(0))
+    hook hold
+      call output/push(code(45))
+  save n, code 128
+  save delta, code 0
+  save bias, code 72
+  save limit, code 4294967295
+  walk test
+    hook test
+      call is-below(read(h), read(input/length))
+    hook step
+      # the smallest code point not yet handled
+      save m, read limit
+      save at, code 0
+      walk test
+        hook test
+          call is-below(read(at), read(input/length))
+        hook step
+          save c, call get(read(input), read(at))
+          fork test
+            hook test
+              call and(call(is-minimum, read(c), read(n)), call(is-below, read(c), read(m)))
+            hook hold
+              save m, read c
+          save at, call add(read(at), code(1))
+      fork test
+        hook test
+          call is-above(call(subtract, read(m), read(n)), call(divide, call(subtract, read(limit), read(delta)), call(add, read(h), code(1))))
+        hook hold
+          send back, call(punycode-refused)
+      save delta, call add(read(delta), call(multiply, call(subtract, read(m), read(n)), call(add, read(h), code(1))))
+      save n, read m
+      save at, code 0
+      walk test
+        hook test
+          call is-below(read(at), read(input/length))
+        hook step
+          save c, call get(read(input), read(at))
+          fork test
+            hook test
+              call is-below(read(c), read(n))
+            hook hold
+              save delta, call add(read(delta), code(1))
+              fork test
+                hook test
+                  call is-above(read(delta), read(limit))
+                hook hold
+                  send back, call(punycode-refused)
+          fork test
+            hook test
+              call is-equal(read(c), read(n))
+            hook hold
+              save q, read delta
+              save k, code 36
+              save more, true
+              walk test
+                hook test
+                  read more
+                hook step
+                  save t, call subtract(read(k), read(bias))
+                  fork test
+                    hook test
+                      call is-maximum(read(k), read(bias))
+                    hook hold
+                      save t, code 1
+                    hook test
+                      call is-minimum(read(k), call(add, read(bias), code(26)))
+                    hook hold
+                      save t, code 26
+                  fork test
+                    hook test
+                      call is-below(read(q), read(t))
+                    hook hold
+                      save more, false
+                    hook miss
+                      call output/push(call(digit-rune, call(add, read(t), call(remainder-of, call(subtract, read(q), read(t)), call(subtract, code(36), read(t))))))
+                      save q, call divide(call(subtract, read(q), read(t)), call(subtract, code(36), read(t)))
+                      save k, call add(read(k), code(36))
+              call output/push(call(digit-rune, read(q)))
+              save bias, call adapt-bias(read(delta), call(add, read(h), code(1)), call(is-equal, read(h), read(b)))
+              save delta, code 0
+              save h, call add(read(h), code(1))
+          save at, call add(read(at), code(1))
+      save delta, call add(read(delta), code(1))
+      save n, call add(read(n), code(1))
+  send back, call(punycode-accepted, read(output))

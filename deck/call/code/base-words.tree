@@ -62,6 +62,10 @@ task floor-divide
   like number
   mark private
 
+  # a divisor of zero or less is never given (a day, an hour, a minute, a count of days), and this proves it
+  fork test, is-maximum(by, 0)
+    hold
+      back 0
   save rest, modulo(value, by)
   fork test, is-below(rest, 0)
     hold

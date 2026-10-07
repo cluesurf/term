@@ -1,0 +1,1222 @@
+# The WHATWG basic URL parser (decision D9, term/decisions-2026-10/url), in Term, the same on every backend. WHATWG URL
+# Standard section 4.4 (https://url.spec.whatwg.org/#concept-basic-url-parser), read at the pinned corpus commit
+# (test/stdlib/url/readme.md), with no state override (the setters are a non-goal). The parser is a machine: one shared
+# record holds the URL being built and the pointer, and each state of the standard is a task that reads the code point
+# under the pointer and changes the record, so no one task grows past what a native method can hold. It works over the
+# input's code points, never by position in a text. Host parsing is url/host, percent-encoding is url/percent.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find length
+  find push
+  find join
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+  find rune-to-text
+
+load @term/base/url/percent
+  find percent-encode-rune
+  find percent-encode-runes
+  find encode-set-c0-control
+  find encode-set-fragment
+  find encode-set-query
+  find encode-set-special-query
+  find encode-set-path
+  find encode-set-userinfo
+
+load @term/base/url/host
+  find parse-host-runes
+  find host-answer
+
+# a parsed URL as the standard's record, every part already serialized: the path is a list of segments, or (when
+# `opaque`) the one opaque text; a port of -1 is null and so is its default
+form url-parts
+  link scheme, like text
+  link username, like text
+  link password, like text
+  link host, like text
+  link has-host, like boolean
+  link port, like number
+  link path
+    like list
+      like text
+  link opaque, like boolean
+  link opaque-path, like text
+  link query, like text
+  link has-query, like boolean
+  link fragment, like text
+  link has-fragment, like boolean
+
+# the answer of the parser: the record, or a failure
+form url-answer
+  link ok, like boolean
+  link value, like url-parts
+
+task empty-parts
+  like url-parts
+  send back
+    make url-parts
+      bind scheme, text <>
+      bind username, text <>
+      bind password, text <>
+      bind host, text <>
+      bind has-host, false
+      bind port, code(-1)
+      bind path
+        make list
+      bind opaque, false
+      bind opaque-path, text <>
+      bind query, text <>
+      bind has-query, false
+      bind fragment, text <>
+      bind has-fragment, false
+
+# the states of the standard
+host state-scheme-start, code 0
+host state-scheme, code 1
+host state-no-scheme, code 2
+host state-special-relative-or-authority, code 3
+host state-path-or-authority, code 4
+host state-relative, code 5
+host state-relative-slash, code 6
+host state-special-authority-slashes, code 7
+host state-special-authority-ignore-slashes, code 8
+host state-authority, code 9
+host state-host, code 10
+host state-port, code 11
+host state-file, code 12
+host state-file-slash, code 13
+host state-file-host, code 14
+host state-path-start, code 15
+host state-path, code 16
+host state-opaque-path, code 17
+host state-query, code 18
+host state-fragment, code 19
+
+# the URL being built, and the pointer. One object: every state task moves the same one
+form url-machine
+  mark shared
+  link runes
+    like list
+      like number
+  link n, like number
+  link at, like number
+  link state, like number
+  link scheme, like text
+  link special, like boolean
+  link username, like text
+  link password, like text
+  link host, like text
+  link has-host, like boolean
+  link port, like number
+  link path
+    like list
+      like text
+  link opaque, like boolean
+  link opaque-pieces
+    like list
+      like text
+  link query, like text
+  link has-query, like boolean
+  link fragment-pieces
+    like list
+      like text
+  link has-fragment, like boolean
+  link buffer
+    like list
+      like number
+  link at-sign-seen, like boolean
+  link inside-brackets, like boolean
+  link password-token-seen, like boolean
+  link failed, like boolean
+  link base, like url-parts
+  link has-base, like boolean
+
+# the code point at `at`, or -1 past either end
+task rune-at
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and(call(is-minimum, read(at), code(0)), call(is-below, read(at), read(runes/length)))
+    hook hold
+      send back, call(get, read(runes), read(at))
+  send back, code(-1)
+
+task is-alpha
+  mark private
+  take c, like number
+  like boolean
+  send back, call(or, call(and, call(is-minimum, read(c), code(65)), call(is-maximum, read(c), code(90))), call(and, call(is-minimum, read(c), code(97)), call(is-maximum, read(c), code(122))))
+
+task is-ascii-digit
+  mark private
+  take c, like number
+  like boolean
+  send back, call(and, call(is-minimum, read(c), code(48)), call(is-maximum, read(c), code(57)))
+
+# the characters a scheme may hold after its first: letters, digits, + - .
+task is-scheme-char
+  mark private
+  take c, like number
+  like boolean
+  send back, call(or, call(is-alpha, read(c)), call(or, call(is-ascii-digit, read(c)), call(or, call(is-equal, read(c), code(43)), call(or, call(is-equal, read(c), code(45)), call(is-equal, read(c), code(46))))))
+
+task lower-rune
+  mark private
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and(call(is-minimum, read(c), code(65)), call(is-maximum, read(c), code(90)))
+    hook hold
+      send back, call(add, read(c), code(32))
+  send back, read c
+
+task lower-runes
+  mark private
+  take runes
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      call out/push(call(lower-rune, call(get, read(runes), read(at))))
+      save at, call add(read(at), code(1))
+  send back, read out
+
+task is-special-scheme
+  mark private
+  take scheme, like text
+  like boolean
+  send back, call(or, call(is-equal, read(scheme), text(<http>)), call(or, call(is-equal, read(scheme), text(<https>)), call(or, call(is-equal, read(scheme), text(<ws>)), call(or, call(is-equal, read(scheme), text(<wss>)), call(or, call(is-equal, read(scheme), text(<ftp>)), call(is-equal, read(scheme), text(<file>)))))))
+
+# the default port of a special scheme, or -1
+task default-port
+  mark private
+  take scheme, like text
+  like number
+  fork test
+    hook test
+      call or(call(is-equal, read(scheme), text(<http>)), call(is-equal, read(scheme), text(<ws>)))
+    hook hold
+      send back, code 80
+    hook test
+      call or(call(is-equal, read(scheme), text(<https>)), call(is-equal, read(scheme), text(<wss>)))
+    hook hold
+      send back, code 443
+    hook test
+      call is-equal(read(scheme), text(<ftp>))
+    hook hold
+      send back, code 21
+  send back, code(-1)
+
+# the end of an authority, a host or a port: EOF, /, ?, #, or a backslash of a special URL
+task ends-authority
+  mark private
+  take c, like number
+  take special, like boolean
+  like boolean
+  send back, call(or, call(is-equal, read(c), code(-1)), call(or, call(is-equal, read(c), code(47)), call(or, call(is-equal, read(c), code(63)), call(or, call(is-equal, read(c), code(35)), call(and, read(special), call(is-equal, read(c), code(92)))))))
+
+# a slash or a backslash
+task is-slash-either
+  mark private
+  take c, like number
+  like boolean
+  send back, call(or, call(is-equal, read(c), code(47)), call(is-equal, read(c), code(92)))
+
+# two code points that are a Windows drive letter: an ASCII letter and a colon or a vertical bar
+task is-drive-pair
+  mark private
+  take a, like number
+  take b, like number
+  like boolean
+  send back, call(and, call(is-alpha, read(a)), call(or, call(is-equal, read(b), code(58)), call(is-equal, read(b), code(124))))
+
+# whether the code points from `at` begin with a Windows drive letter followed by the end, /, \ , ? or #
+task starts-with-drive
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like boolean
+  fork test
+    hook test
+      call not(call(is-drive-pair, call(rune-at, read(runes), read(at)), call(rune-at, read(runes), call(add, read(at), code(1)))))
+    hook hold
+      send back, false
+  save third, call rune-at(read(runes), call(add, read(at), code(2)))
+  send back, call(or, call(is-equal, read(third), code(-1)), call(or, call(is-slash-either, read(third)), call(or, call(is-equal, read(third), code(63)), call(is-equal, read(third), code(35)))))
+
+# a buffer that is exactly a Windows drive letter
+task buffer-is-drive
+  mark private
+  take buffer
+    like list
+      like number
+  like boolean
+  fork test
+    hook test
+      call is-unequal(read(buffer/length), code(2))
+    hook hold
+      send back, false
+  send back, call(is-drive-pair, call(get, read(buffer), code(0)), call(get, read(buffer), code(1)))
+
+# a path segment that is a normalized Windows drive letter: a letter and a colon
+task is-normalized-drive
+  mark private
+  take segment, like text
+  like boolean
+  save runes, call to-runes(read(segment))
+  fork test
+    hook test
+      call is-unequal(read(runes/length), code(2))
+    hook hold
+      send back, false
+  send back, call(and, call(is-alpha, call(get, read(runes), code(0))), call(is-equal, call(get, read(runes), code(1)), code(58)))
+
+# whether a path starts with a normalized Windows drive letter
+task first-is-drive
+  mark private
+  take path
+    like list
+      like text
+  like boolean
+  fork test
+    hook test
+      call is-equal(read(path/length), code(0))
+    hook hold
+      send back, false
+  send back, call(is-normalized-drive, call(get, read(path), code(0)))
+
+# 0 for any other segment, 1 for a single-dot segment (`.` or `%2e`), 2 for a double-dot segment, in any case
+task dot-kind
+  mark private
+  take buffer
+    like list
+      like number
+  like number
+  save lowered, call from-runes(call(lower-runes, read(buffer)))
+  fork test
+    hook test
+      call or(call(is-equal, read(lowered), text(<.>)), call(is-equal, read(lowered), text(<%2e>)))
+    hook hold
+      send back, code 1
+  fork test
+    hook test
+      call or(call(or, call(is-equal, read(lowered), text(<..>)), call(is-equal, read(lowered), text(<.%2e>))), call(or, call(is-equal, read(lowered), text(<%2e.>)), call(is-equal, read(lowered), text(<%2e%2e>))))
+    hook hold
+      send back, code 2
+  send back, code 0
+
+task copy-texts
+  mark private
+  take items
+    like list
+      like text
+  like list
+    like text
+  save out, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(items/length))
+    hook step
+      call out/push(call(get, read(items), read(at)))
+      save at, call add(read(at), code(1))
+  send back, read out
+
+# back up one code point: the loop moves on by one after the state, so the same code point is read again
+task back-up
+  mark private
+  take m, like url-machine
+  save m/at, call subtract(read(m/at), code(1))
+
+# shorten a URL's path: drop its last segment, except a lone normalized drive letter of a file URL
+task shorten-path
+  mark private
+  take m, like url-machine
+  fork test
+    hook test
+      call and(call(is-equal, read(m/scheme), text(<file>)), call(and, call(is-equal, read(m/path/length), code(1)), call(first-is-drive, read(m/path))))
+    hook miss
+      fork test
+        hook test
+          call is-above(read(m/path/length), code(0))
+        hook hold
+          call m/path/pop
+
+task set-scheme
+  mark private
+  take m, like url-machine
+  take scheme, like text
+  save m/scheme, read scheme
+  save m/special, call is-special-scheme(read(scheme))
+
+# the username, password, host and port of the base
+task copy-base-authority
+  mark private
+  take m, like url-machine
+  save m/username, read m/base/username
+  save m/password, read m/base/password
+  save m/host, read m/base/host
+  save m/has-host, read m/base/has-host
+  save m/port, read m/base/port
+
+task start-query
+  mark private
+  take m, like url-machine
+  save m/has-query, true
+  save m/query, text <>
+  save m/state, read state-query
+
+task start-fragment
+  mark private
+  take m, like url-machine
+  save m/has-fragment, true
+  save m/state, read state-fragment
+
+task step-scheme-start
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-alpha(read(c))
+    hook hold
+      call m/buffer/push(call(lower-rune, read(c)))
+      save m/state, read state-scheme
+    hook miss
+      save m/state, read state-no-scheme
+      call back-up(read(m))
+
+task step-scheme
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-scheme-char(read(c))
+    hook hold
+      call m/buffer/push(call(lower-rune, read(c)))
+    hook test
+      call is-equal(read(c), code(58))
+    hook hold
+      # the name is read into a local first: Rust lends the buffer to the call, and set-scheme writes the machine
+      save name, call from-runes(read(m/buffer))
+      call set-scheme(read(m), read(name))
+      save m/buffer, make list
+      fork test
+        hook test
+          call is-equal(read(m/scheme), text(<file>))
+        hook hold
+          save m/state, read state-file
+        hook test
+          call and(read(m/special), call(and, read(m/has-base), call(is-equal, read(m/base/scheme), read(m/scheme))))
+        hook hold
+          save m/state, read state-special-relative-or-authority
+        hook test
+          read m/special
+        hook hold
+          save m/state, read state-special-authority-slashes
+        hook test
+          call is-equal(call(rune-at, read(m/runes), call(add, read(m/at), code(1))), code(47))
+        hook hold
+          save m/state, read state-path-or-authority
+          save m/at, call add(read(m/at), code(1))
+        hook miss
+          save m/opaque, true
+          save m/state, read state-opaque-path
+    hook miss
+      save m/buffer, make list
+      save m/state, read state-no-scheme
+      save m/at, code(-1)
+
+task step-no-scheme
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call or(call(not, read(m/has-base)), call(and, read(m/base/opaque), call(is-unequal, read(c), code(35))))
+    hook hold
+      save m/failed, true
+    hook test
+      call and(read(m/base/opaque), call(is-equal, read(c), code(35)))
+    hook hold
+      save inherited, read m/base/scheme
+      call set-scheme(read(m), read(inherited))
+      save m/opaque, true
+      save m/opaque-pieces, make list
+      call m/opaque-pieces/push(read(m/base/opaque-path))
+      save m/query, read m/base/query
+      save m/has-query, read m/base/has-query
+      call start-fragment(read(m))
+    hook test
+      call is-unequal(read(m/base/scheme), text(<file>))
+    hook hold
+      save m/state, read state-relative
+      call back-up(read(m))
+    hook miss
+      save m/state, read state-file
+      call back-up(read(m))
+
+task step-special-relative-or-authority
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call and(call(is-equal, read(c), code(47)), call(is-equal, call(rune-at, read(m/runes), call(add, read(m/at), code(1))), code(47)))
+    hook hold
+      save m/state, read state-special-authority-ignore-slashes
+      save m/at, call add(read(m/at), code(1))
+    hook miss
+      save m/state, read state-relative
+      call back-up(read(m))
+
+task step-path-or-authority
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-equal(read(c), code(47))
+    hook hold
+      save m/state, read state-authority
+    hook miss
+      save m/state, read state-path
+      call back-up(read(m))
+
+task step-relative
+  mark private
+  take m, like url-machine
+  take c, like number
+  save inherited, read m/base/scheme
+  call set-scheme(read(m), read(inherited))
+  fork test
+    hook test
+      call is-equal(read(c), code(47))
+    hook hold
+      save m/state, read state-relative-slash
+    hook test
+      call and(read(m/special), call(is-equal, read(c), code(92)))
+    hook hold
+      save m/state, read state-relative-slash
+    hook miss
+      call copy-base-authority(read(m))
+      save m/path, call copy-texts(read(m/base/path))
+      save m/query, read m/base/query
+      save m/has-query, read m/base/has-query
+      fork test
+        hook test
+          call is-equal(read(c), code(63))
+        hook hold
+          call start-query(read(m))
+        hook test
+          call is-equal(read(c), code(35))
+        hook hold
+          call start-fragment(read(m))
+        hook test
+          call is-unequal(read(c), code(-1))
+        hook hold
+          save m/query, text <>
+          save m/has-query, false
+          call shorten-path(read(m))
+          save m/state, read state-path
+          call back-up(read(m))
+
+task step-relative-slash
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call and(read(m/special), call(is-slash-either, read(c)))
+    hook hold
+      save m/state, read state-special-authority-ignore-slashes
+    hook test
+      call is-equal(read(c), code(47))
+    hook hold
+      save m/state, read state-authority
+    hook miss
+      call copy-base-authority(read(m))
+      save m/state, read state-path
+      call back-up(read(m))
+
+task step-special-authority-slashes
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call and(call(is-equal, read(c), code(47)), call(is-equal, call(rune-at, read(m/runes), call(add, read(m/at), code(1))), code(47)))
+    hook hold
+      save m/state, read state-special-authority-ignore-slashes
+      save m/at, call add(read(m/at), code(1))
+    hook miss
+      save m/state, read state-special-authority-ignore-slashes
+      call back-up(read(m))
+
+task step-special-authority-ignore-slashes
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call not(call(is-slash-either, read(c)))
+    hook hold
+      save m/state, read state-authority
+      call back-up(read(m))
+
+# the buffer of an authority read as credentials: up to the first colon the username, after it the password
+task take-credentials
+  mark private
+  take m, like url-machine
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(m/buffer/length))
+    hook step
+      save c, call get(read(m/buffer), read(at))
+      fork test
+        hook test
+          call and(call(is-equal, read(c), code(58)), call(not, read(m/password-token-seen)))
+        hook hold
+          save m/password-token-seen, true
+        hook miss
+          save encoded, call percent-encode-rune(read(c), read(encode-set-userinfo))
+          fork test
+            hook test
+              read m/password-token-seen
+            hook hold
+              save m/password, text <{m/password}{encoded}>
+            hook miss
+              save m/username, text <{m/username}{encoded}>
+      save at, call add(read(at), code(1))
+  save m/buffer, make list
+
+task step-authority
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-equal(read(c), code(64))
+    hook hold
+      fork test
+        hook test
+          read m/at-sign-seen
+        hook hold
+          save fresh, make list
+          call fresh/push(code(37))
+          call fresh/push(code(52))
+          call fresh/push(code(48))
+          save at, code 0
+          walk test
+            hook test
+              call is-below(read(at), read(m/buffer/length))
+            hook step
+              call fresh/push(call(get, read(m/buffer), read(at)))
+              save at, call add(read(at), code(1))
+          save m/buffer, read fresh
+      save m/at-sign-seen, true
+      call take-credentials(read(m))
+    hook test
+      call ends-authority(read(c), read(m/special))
+    hook hold
+      fork test
+        hook test
+          call and(read(m/at-sign-seen), call(is-equal, read(m/buffer/length), code(0)))
+        hook hold
+          save m/failed, true
+        hook miss
+          save m/at, call subtract(read(m/at), call(add, read(m/buffer/length), code(1)))
+          save m/buffer, make list
+          save m/state, read state-host
+    hook miss
+      call m/buffer/push(read(c))
+
+task step-host
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call and(call(is-equal, read(c), code(58)), call(not, read(m/inside-brackets)))
+    hook hold
+      fork test
+        hook test
+          call is-equal(read(m/buffer/length), code(0))
+        hook hold
+          save m/failed, true
+        hook miss
+          save answer, call parse-host-runes(read(m/buffer), call(not, read(m/special)))
+          fork test
+            hook test
+              read answer/ok
+            hook hold
+              save m/host, read answer/value
+              save m/has-host, true
+              save m/buffer, make list
+              save m/state, read state-port
+            hook miss
+              save m/failed, true
+    hook test
+      call ends-authority(read(c), read(m/special))
+    hook hold
+      call back-up(read(m))
+      fork test
+        hook test
+          call and(read(m/special), call(is-equal, read(m/buffer/length), code(0)))
+        hook hold
+          save m/failed, true
+        hook miss
+          save answer, call parse-host-runes(read(m/buffer), call(not, read(m/special)))
+          fork test
+            hook test
+              read answer/ok
+            hook hold
+              save m/host, read answer/value
+              save m/has-host, true
+              save m/buffer, make list
+              save m/state, read state-path-start
+            hook miss
+              save m/failed, true
+    hook miss
+      fork test
+        hook test
+          call is-equal(read(c), code(91))
+        hook hold
+          save m/inside-brackets, true
+      fork test
+        hook test
+          call is-equal(read(c), code(93))
+        hook hold
+          save m/inside-brackets, false
+      call m/buffer/push(read(c))
+
+task step-port
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-ascii-digit(read(c))
+    hook hold
+      call m/buffer/push(read(c))
+    hook test
+      call ends-authority(read(c), read(m/special))
+    hook hold
+      fork test
+        hook test
+          call is-above(read(m/buffer/length), code(0))
+        hook hold
+          save value, code 0
+          save at, code 0
+          walk test
+            hook test
+              call is-below(read(at), read(m/buffer/length))
+            hook step
+              save value, call add(call(multiply, read(value), code(10)), call(subtract, call(get, read(m/buffer), read(at)), code(48)))
+              fork test
+                hook test
+                  call is-above(read(value), code(65535))
+                hook hold
+                  save value, code 65536
+              save at, call add(read(at), code(1))
+          fork test
+            hook test
+              call is-above(read(value), code(65535))
+            hook hold
+              save m/failed, true
+            hook test
+              call is-equal(read(value), call(default-port, read(m/scheme)))
+            hook hold
+              save m/port, code(-1)
+            hook miss
+              save m/port, read value
+          save m/buffer, make list
+      save m/state, read state-path-start
+      call back-up(read(m))
+    hook miss
+      save m/failed, true
+
+task step-file
+  mark private
+  take m, like url-machine
+  take c, like number
+  call set-scheme(read(m), text(<file>))
+  save m/host, text <>
+  save m/has-host, true
+  fork test
+    hook test
+      call is-slash-either(read(c))
+    hook hold
+      save m/state, read state-file-slash
+    hook test
+      call and(read(m/has-base), call(is-equal, read(m/base/scheme), text(<file>)))
+    hook hold
+      save m/host, read m/base/host
+      save m/has-host, read m/base/has-host
+      save m/path, call copy-texts(read(m/base/path))
+      save m/query, read m/base/query
+      save m/has-query, read m/base/has-query
+      fork test
+        hook test
+          call is-equal(read(c), code(63))
+        hook hold
+          call start-query(read(m))
+        hook test
+          call is-equal(read(c), code(35))
+        hook hold
+          call start-fragment(read(m))
+        hook test
+          call is-unequal(read(c), code(-1))
+        hook hold
+          save m/query, text <>
+          save m/has-query, false
+          fork test
+            hook test
+              call not(call(starts-with-drive, read(m/runes), read(m/at)))
+            hook hold
+              call shorten-path(read(m))
+            hook miss
+              save m/path, make list
+          save m/state, read state-path
+          call back-up(read(m))
+    hook miss
+      save m/state, read state-path
+      call back-up(read(m))
+
+task step-file-slash
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-slash-either(read(c))
+    hook hold
+      save m/state, read state-file-host
+    hook miss
+      fork test
+        hook test
+          call and(read(m/has-base), call(is-equal, read(m/base/scheme), text(<file>)))
+        hook hold
+          save m/host, read m/base/host
+          save m/has-host, read m/base/has-host
+          fork test
+            hook test
+              call and(call(not, call(starts-with-drive, read(m/runes), read(m/at))), call(first-is-drive, read(m/base/path)))
+            hook hold
+              call m/path/push(call(get, read(m/base/path), code(0)))
+      save m/state, read state-path
+      call back-up(read(m))
+
+task step-file-host
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call or(call(is-equal, read(c), code(-1)), call(or, call(is-slash-either, read(c)), call(or, call(is-equal, read(c), code(63)), call(is-equal, read(c), code(35)))))
+    hook hold
+      call back-up(read(m))
+      fork test
+        hook test
+          call buffer-is-drive(read(m/buffer))
+        hook hold
+          save m/state, read state-path
+        hook test
+          call is-equal(read(m/buffer/length), code(0))
+        hook hold
+          save m/host, text <>
+          save m/has-host, true
+          save m/state, read state-path-start
+        hook miss
+          save answer, call parse-host-runes(read(m/buffer), false)
+          fork test
+            hook test
+              read answer/ok
+            hook hold
+              save m/host, read answer/value
+              fork test
+                hook test
+                  call is-equal(read(m/host), text(<localhost>))
+                hook hold
+                  save m/host, text <>
+              save m/has-host, true
+              save m/buffer, make list
+              save m/state, read state-path-start
+            hook miss
+              save m/failed, true
+    hook miss
+      call m/buffer/push(read(c))
+
+task step-path-start
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      read m/special
+    hook hold
+      save m/state, read state-path
+      fork test
+        hook test
+          call not(call(is-slash-either, read(c)))
+        hook hold
+          call back-up(read(m))
+    hook test
+      call is-equal(read(c), code(63))
+    hook hold
+      call start-query(read(m))
+    hook test
+      call is-equal(read(c), code(35))
+    hook hold
+      call start-fragment(read(m))
+    hook test
+      call is-unequal(read(c), code(-1))
+    hook hold
+      save m/state, read state-path
+      fork test
+        hook test
+          call is-unequal(read(c), code(47))
+        hook hold
+          call back-up(read(m))
+
+task step-path
+  mark private
+  take m, like url-machine
+  take c, like number
+  save slash-end, call or(call(is-equal, read(c), code(47)), call(and, read(m/special), call(is-equal, read(c), code(92))))
+  fork test
+    hook test
+      call or(call(is-equal, read(c), code(-1)), call(or, read(slash-end), call(or, call(is-equal, read(c), code(63)), call(is-equal, read(c), code(35)))))
+    hook hold
+      save kind, call dot-kind(read(m/buffer))
+      fork test
+        hook test
+          call is-equal(read(kind), code(2))
+        hook hold
+          call shorten-path(read(m))
+          fork test
+            hook test
+              call not(read(slash-end))
+            hook hold
+              call m/path/push(text(<>))
+        hook test
+          call and(call(is-equal, read(kind), code(1)), call(not, read(slash-end)))
+        hook hold
+          call m/path/push(text(<>))
+        hook test
+          call is-equal(read(kind), code(0))
+        hook hold
+          fork test
+            hook test
+              call and(call(is-equal, read(m/scheme), text(<file>)), call(and, call(is-equal, read(m/path/length), code(0)), call(buffer-is-drive, read(m/buffer))))
+            hook hold
+              call m/buffer/set(code(1), code(58))
+          call m/path/push(call(percent-encode-runes, read(m/buffer), code(0), read(m/buffer/length), read(encode-set-path)))
+      save m/buffer, make list
+      fork test
+        hook test
+          call is-equal(read(c), code(63))
+        hook hold
+          call start-query(read(m))
+        hook test
+          call is-equal(read(c), code(35))
+        hook hold
+          call start-fragment(read(m))
+    hook miss
+      call m/buffer/push(read(c))
+
+task step-opaque-path
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-equal(read(c), code(63))
+    hook hold
+      call start-query(read(m))
+    hook test
+      call is-equal(read(c), code(35))
+    hook hold
+      call start-fragment(read(m))
+    hook test
+      call is-equal(read(c), code(32))
+    hook hold
+      save after, call rune-at(read(m/runes), call(add, read(m/at), code(1)))
+      fork test
+        hook test
+          call or(call(is-equal, read(after), code(63)), call(is-equal, read(after), code(35)))
+        hook hold
+          call m/opaque-pieces/push(text(<%20>))
+        hook miss
+          call m/opaque-pieces/push(call(rune-to-text, code(32)))
+    hook test
+      call is-unequal(read(c), code(-1))
+    hook hold
+      call m/opaque-pieces/push(call(percent-encode-rune, read(c), read(encode-set-c0-control)))
+
+task step-query
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call or(call(is-equal, read(c), code(-1)), call(is-equal, read(c), code(35)))
+    hook hold
+      save which, read encode-set-query
+      fork test
+        hook test
+          read m/special
+        hook hold
+          save which, read encode-set-special-query
+      save m/query, call percent-encode-runes(read(m/buffer), code(0), read(m/buffer/length), read(which))
+      save m/buffer, make list
+      fork test
+        hook test
+          call is-equal(read(c), code(35))
+        hook hold
+          call start-fragment(read(m))
+    hook miss
+      call m/buffer/push(read(c))
+
+task step-fragment
+  mark private
+  take m, like url-machine
+  take c, like number
+  fork test
+    hook test
+      call is-unequal(read(c), code(-1))
+    hook hold
+      call m/fragment-pieces/push(call(percent-encode-rune, read(c), read(encode-set-fragment)))
+
+# one state of the machine on the code point under the pointer
+task run-state
+  mark private
+  take m, like url-machine
+  take c, like number
+  save state, read m/state
+  fork test
+    hook test
+      call is-equal(read(state), read(state-scheme-start))
+    hook hold
+      call step-scheme-start(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-scheme))
+    hook hold
+      call step-scheme(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-no-scheme))
+    hook hold
+      call step-no-scheme(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-special-relative-or-authority))
+    hook hold
+      call step-special-relative-or-authority(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-path-or-authority))
+    hook hold
+      call step-path-or-authority(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-relative))
+    hook hold
+      call step-relative(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-relative-slash))
+    hook hold
+      call step-relative-slash(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-special-authority-slashes))
+    hook hold
+      call step-special-authority-slashes(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-special-authority-ignore-slashes))
+    hook hold
+      call step-special-authority-ignore-slashes(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-authority))
+    hook hold
+      call step-authority(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-host))
+    hook hold
+      call step-host(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-port))
+    hook hold
+      call step-port(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-file))
+    hook hold
+      call step-file(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-file-slash))
+    hook hold
+      call step-file-slash(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-file-host))
+    hook hold
+      call step-file-host(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-path-start))
+    hook hold
+      call step-path-start(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-path))
+    hook hold
+      call step-path(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-opaque-path))
+    hook hold
+      call step-opaque-path(read(m), read(c))
+    hook test
+      call is-equal(read(state), read(state-query))
+    hook hold
+      call step-query(read(m), read(c))
+    hook miss
+      call step-fragment(read(m), read(c))
+
+# the input without leading and trailing C0 controls and spaces, and without tabs and newlines
+task clean-runes
+  mark private
+  take input, like text
+  like list
+    like number
+  save all, call to-runes(read(input))
+  save first, code 0
+  save last, read all/length
+  walk test
+    hook test
+      call and(call(is-below, read(first), read(last)), call(is-maximum, call(get, read(all), read(first)), code(32)))
+    hook step
+      save first, call add(read(first), code(1))
+  walk test
+    hook test
+      call and(call(is-above, read(last), read(first)), call(is-maximum, call(get, read(all), call(subtract, read(last), code(1))), code(32)))
+    hook step
+      save last, call subtract(read(last), code(1))
+  save out, make list
+  save at, read first
+  walk test
+    hook test
+      call is-below(read(at), read(last))
+    hook step
+      save c, call get(read(all), read(at))
+      fork test
+        hook test
+          call and(call(is-unequal, read(c), code(9)), call(and, call(is-unequal, read(c), code(10)), call(is-unequal, read(c), code(13))))
+        hook hold
+          call out/push(read(c))
+      save at, call add(read(at), code(1))
+  send back, read out
+
+# the basic URL parser: `input` against `base` when `has-base`. The answer is not ok when the standard says failure
+task parse-parts
+  take input, like text
+  take base, like url-parts
+  take has-base, like boolean
+  like url-answer
+  save runes, call clean-runes(read(input))
+  save m
+    make url-machine
+      bind runes, read runes
+      bind n, read runes/length
+      bind at, code 0
+      bind state, read state-scheme-start
+      bind scheme, text <>
+      bind special, false
+      bind username, text <>
+      bind password, text <>
+      bind host, text <>
+      bind has-host, false
+      bind port, code(-1)
+      bind path
+        make list
+      bind opaque, false
+      bind opaque-pieces
+        make list
+      bind query, text <>
+      bind has-query, false
+      bind fragment-pieces
+        make list
+      bind has-fragment, false
+      bind buffer
+        make list
+      bind at-sign-seen, false
+      bind inside-brackets, false
+      bind password-token-seen, false
+      bind failed, false
+      bind base, read base
+      bind has-base, read has-base
+  walk test
+    hook test
+      call and(call(not, read(m/failed)), call(is-maximum, read(m/at), read(m/n)))
+    hook step
+      call run-state(read(m), call(rune-at, read(m/runes), read(m/at)))
+      save m/at, call add(read(m/at), code(1))
+  fork test
+    hook test
+      read m/failed
+    hook hold
+      send back
+        make url-answer
+          bind ok, false
+          bind value, call empty-parts
+  send back
+    make url-answer
+      bind ok, true
+      bind value
+        make url-parts
+          bind scheme, read m/scheme
+          bind username, read m/username
+          bind password, read m/password
+          bind host, read m/host
+          bind has-host, read m/has-host
+          bind port, read m/port
+          bind path, read m/path
+          bind opaque, read m/opaque
+          bind opaque-path, call join(read(m/opaque-pieces), text(<>))
+          bind query, read m/query
+          bind has-query, read m/has-query
+          bind fragment, call join(read(m/fragment-pieces), text(<>))
+          bind has-fragment, read m/has-fragment
+
+# the serialized path of a parsed URL (the standard's pathname): the opaque path, or a slash before every segment
+task parts-pathname
+  take self, like url-parts
+  like text
+  fork test
+    hook test
+      read self/opaque
+    hook hold
+      send back, read self/opaque-path
+  save pieces, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(self/path/length))
+    hook step
+      save segment, call get(read(self/path), read(at))
+      call pieces/push(text(</{segment}>))
+      save at, call add(read(at), code(1))
+  send back, call(join, read(pieces), text(<>))

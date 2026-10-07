@@ -762,6 +762,11 @@ form statement
   # a debugger breakpoint
   case debug
     link span, like span
+  # a coverage probe, written only by ir/cover.tree under `term test --cover`: the statement after it ran when this
+  # does, and the key is `<file>:<line>` of that statement (every backend adds it to one process-wide set)
+  case probe
+    link key, like text
+    link span, like span
   # a guarded body and its handler
   case guard
     link body, like list, like statement
@@ -1034,6 +1039,8 @@ task statement-span
     case exit
       back span
     case debug
+      back span
+    case probe
       back span
     case guard
       back span

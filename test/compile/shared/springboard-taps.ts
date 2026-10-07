@@ -104,7 +104,8 @@ export type Taps = {
   // start the test on the simulator `udid`; it runs while the app does
   start: (udid: string) => void
   // once the app has gone: the test's exit status and its log, or undefined when it was never started
-  finish: () => Promise<{ status: number | null; log: string } | undefined>
+  // `timeout` ms (default 180 s) bounds the wait: past it the test is ended and the log says `timed out`
+  finish: (timeout?: number) => Promise<{ status: number | null; log: string } | undefined>
 }
 
 // write and build the UI test in `dir`, its one test method's body `body`, Swift under `import XCTest` with `springboard`
@@ -133,13 +134,38 @@ export function buildTaps(dir: string, body: string): Taps {
       child = spawn('xcodebuild', ['test-without-building', '-project', project, '-scheme', RUNNER, '-destination', `id=${udid}`, '-derivedDataPath', derived], { stdio: ['ignore', out, out] })
       closeSync(out)
     },
-    async finish() {
+    // past `timeout` ms the xcodebuild child is ended (SIGTERM, SIGKILL 5 s later) and the answer is a non-zero status with
+    // `timed out` in the log, so a test that never finishes cannot hold the shared simulator for ever
+    async finish(timeout = 180_000) {
       if (!child) return undefined
 
       const running = child
-      const status = running.exitCode ?? (await new Promise<number | null>(settle => running.once('exit', settle)))
+      let timedOut = false
+      let status: number | null
 
-      return { status, log: readFileSync(log, 'utf8') }
+      if (running.exitCode !== null || running.signalCode !== null) {
+        status = running.exitCode
+      } else {
+        status = await new Promise<number | null>(settle => {
+          let hard: ReturnType<typeof setTimeout> | undefined
+          const term = setTimeout(() => {
+            timedOut = true
+            running.kill('SIGTERM')
+            hard = setTimeout(() => running.kill('SIGKILL'), 5000)
+          }, timeout)
+
+          // the child has exited by its code OR by a signal (the code is then null)
+          running.once('exit', code => {
+            clearTimeout(term)
+            clearTimeout(hard)
+            settle(code)
+          })
+        })
+      }
+
+      const text = readFileSync(log, 'utf8')
+
+      return timedOut ? { status: status || 1, log: `${text}\ntimed out after ${timeout} ms\n` } : { status, log: text }
     },
   }
 }

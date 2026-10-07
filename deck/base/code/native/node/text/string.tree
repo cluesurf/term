@@ -78,7 +78,7 @@ task string-concat
       read other
 
 task string-to-text
-  take value
+  take value, like unknown
   like text
   send back
     call value/to-string

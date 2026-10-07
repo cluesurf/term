@@ -820,6 +820,18 @@ task host-value-prelude
   push(lines, <\}>)
   back join(lines, <\n>)
 
+# the set every coverage probe adds its key to: one per process, on `globalThis`, so a reader (the test report) finds the
+# same set whichever module made it (ir/cover.tree, `term test --cover`)
+task cover-prelude
+  like text
+
+  save lines, make list
+  push(lines, <const __termCover: Set\<string\> = ((globalThis as \{ __termCover?: Set\<string\> \}).__termCover ??= new Set\<string\>())>)
+  push(lines, <function __termCoverHit(key: string): void \{>)
+  push(lines, <  __termCover.add(key)>)
+  push(lines, <\}>)
+  back join(lines, <\n>)
+
 # the walk a module that lowers a `fill` or `melt` with a form carries
 task form-walk-prelude
   like text

@@ -168,6 +168,8 @@ export function emitWgsl(input: Program, gaps?: FragmentGap[]): string {
         return 'break;'
       case 'continue':
         return 'continue;'
+      case 'probe':
+        return ''
       case 'exit':
       case 'debug':
         return gap(node.form, node.span, unsupported('WGSL', node.form, '//'))

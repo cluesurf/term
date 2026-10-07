@@ -489,7 +489,7 @@ export function isDefaultCodeRoot(code: string): boolean {
 // The folder a package's book is read from: what `book ./guides` names, `./book` when the manifest names none. A
 // book is a tree of markdown pages published inside the package artifact and rendered on term.surf at
 // `/packages/@scope/name/guides/<kebab path>`, read by `readBook` in @cluesurf/belt/tool/book
-// (note/plan/term-guides-three-tiers.md). A package with no such folder has no book, which is not an error.
+// (note/project/term/guides/term-guides-three-tiers.md). A package with no such folder has no book, which is not an error.
 export const DEFAULT_BOOK_ROOT = './book'
 
 export function bookRoot(manifest: { book?: string }): string {

@@ -70,7 +70,7 @@ task command-flag-make
   take kind, like text
   take note, like text
   take required, like boolean
-  take fallback
+  take fallback, like unknown
   send back
     make command-flag
       bind name, read name
@@ -84,7 +84,7 @@ task command-argument-make
   take name, like text
   take note, like text
   take required, like boolean
-  take fallback
+  take fallback, like unknown
   send back
     make command-argument
       bind name, read name

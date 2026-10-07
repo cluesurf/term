@@ -1,0 +1,610 @@
+# UTS #46 ToASCII for the WHATWG URL host parser (decision D9, term/decisions-2026-10/url), in Term, the same on every
+# backend, over the Unicode 17.0.0 tables of url/idna-data. The parameters are the URL Standard's: CheckHyphens false,
+# CheckBidi true, CheckJoiners true, UseSTD3ASCIIRules false, Transitional_Processing false, VerifyDnsLength false.
+# Processing (UTS #46 section 4): map each code point by its status, normalize to NFC (the platform's normalizer, text/
+# unicode `to-nfc`), cut at full stops, decode each `xn--` label with Punycode, then hold every label to the validity
+# criteria of section 4.1 (NFC, no `xn--` prefix, no full stop, no leading mark, every code point valid or a deviation,
+# the ContextJ rules of RFC 5892, the bidi rule of RFC 5893 when the domain holds a right to left code point), and write
+# each label with a non-ASCII code point as `xn--` and its Punycode. Everything works over lists of code points.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find length
+  find push
+
+load @term/base/text
+  find contains
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+  find to-nfc
+
+load @term/base/url/idna-data
+  find idna-status
+  find idna-mapping
+  find bidi-class
+  find joining-type
+  find is-virama
+  find is-mark
+
+load @term/base/url/punycode
+  find decode-punycode
+  find encode-punycode
+
+# the answer of ToASCII: `ok` and the domain `value`, or a failure
+form idna-answer
+  link ok, like boolean
+  link value, like text
+
+task idna-accepted
+  mark private
+  take value, like text
+  like idna-answer
+  send back
+    make idna-answer
+      bind ok, true
+      bind value, read value
+
+task idna-refused
+  mark private
+  like idna-answer
+  send back
+    make idna-answer
+      bind ok, false
+      bind value, text <>
+
+# code points with a flag, for the steps that can fail
+form idna-runes
+  link ok, like boolean
+  link value
+    like list
+      like number
+
+task runes-accepted
+  mark private
+  take value
+    like list
+      like number
+  like idna-runes
+  send back
+    make idna-runes
+      bind ok, true
+      bind value, read value
+
+task runes-refused
+  mark private
+  like idna-runes
+  send back
+    make idna-runes
+      bind ok, false
+      bind value
+        make list
+
+# step 1, the mapping: valid, deviation and disallowed_std3_valid stay, mapped and disallowed_std3_mapped are replaced,
+# ignored vanish, disallowed fails
+task map-runes
+  mark private
+  take runes
+    like list
+      like number
+  like idna-runes
+  save out, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save c, call get(read(runes), read(at))
+      save status, call idna-status(read(c))
+      fork test
+        hook test
+          call is-equal(read(status), text(<disallowed>))
+        hook hold
+          send back, call(runes-refused)
+        hook test
+          call or(call(is-equal, read(status), text(<mapped>)), call(is-equal, read(status), text(<disallowed_std3_mapped>)))
+        hook hold
+          save mapped, call to-runes(call(idna-mapping, read(c)))
+          save k, code 0
+          walk test
+            hook test
+              call is-below(read(k), read(mapped/length))
+            hook step
+              call out/push(call(get, read(mapped), read(k)))
+              save k, call add(read(k), code(1))
+        hook miss
+          fork test
+            hook test
+              call not(call(is-equal, read(status), text(<ignored>)))
+            hook hold
+              call out/push(read(c))
+      save at, call add(read(at), code(1))
+  send back, call(runes-accepted, read(out))
+
+# the runes cut at every full stop
+task split-labels
+  mark private
+  take runes
+    like list
+      like number
+  like list
+    like list
+      like number
+  save parts, make list
+  save part, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      save c, call get(read(runes), read(at))
+      fork test
+        hook test
+          call is-equal(read(c), code(46))
+        hook hold
+          call parts/push(read(part))
+          save part, make list
+        hook miss
+          call part/push(read(c))
+      save at, call add(read(at), code(1))
+  call parts/push(read(part))
+  send back, read parts
+
+# whether the label starts with `xn--`
+task has-ace-prefix
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  fork test
+    hook test
+      call is-below(read(label/length), code(4))
+    hook hold
+      send back, false
+  send back, call(and, call(is-equal, call(get, read(label), code(0)), code(120)), call(and, call(is-equal, call(get, read(label), code(1)), code(110)), call(and, call(is-equal, call(get, read(label), code(2)), code(45)), call(is-equal, call(get, read(label), code(3)), code(45)))))
+
+task is-ascii-label
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      fork test
+        hook test
+          call is-above(call(get, read(label), read(at)), code(127))
+        hook hold
+          send back, false
+      save at, call add(read(at), code(1))
+  send back, true
+
+# whether every code point of `label` has a status the validity criteria accept (valid, deviation, disallowed_std3_valid)
+task is-valid-label-runes
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      save c, call get(read(label), read(at))
+      fork test
+        hook test
+          call is-above(read(c), code(1114111))
+        hook hold
+          send back, false
+      save status, call idna-status(read(c))
+      fork test
+        hook test
+          call not(call(or, call(is-equal, read(status), text(<valid>)), call(or, call(is-equal, read(status), text(<deviation>)), call(is-equal, read(status), text(<disallowed_std3_valid>)))))
+        hook hold
+          send back, false
+      save at, call add(read(at), code(1))
+  send back, true
+
+# the ContextJ rules of RFC 5892 appendix A.1 and A.2 for every ZWNJ (U+200C) and ZWJ (U+200D) of `label`
+task is-joiners-ok
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      save c, call get(read(label), read(at))
+      fork test
+        hook test
+          call or(call(is-equal, read(c), code(8204)), call(is-equal, read(c), code(8205)))
+        hook hold
+          save virama, false
+          fork test
+            hook test
+              call is-above(read(at), code(0))
+            hook hold
+              save virama, call is-virama(call(get, read(label), call(subtract, read(at), code(1))))
+          fork test
+            hook test
+              call not(read(virama))
+            hook hold
+              fork test
+                hook test
+                  call is-equal(read(c), code(8205))
+                hook hold
+                  send back, false
+              save left, call subtract(read(at), code(1))
+              walk test
+                hook test
+                  call and(call(is-minimum, read(left), code(0)), call(is-equal, call(joining-type, call(get, read(label), read(left))), text(<t>)))
+                hook step
+                  save left, call subtract(read(left), code(1))
+              fork test
+                hook test
+                  call is-below(read(left), code(0))
+                hook hold
+                  send back, false
+              save kind, call joining-type(call(get, read(label), read(left)))
+              fork test
+                hook test
+                  call not(call(or, call(is-equal, read(kind), text(<l>)), call(is-equal, read(kind), text(<d>))))
+                hook hold
+                  send back, false
+              save right, call add(read(at), code(1))
+              walk test
+                hook test
+                  call and(call(is-below, read(right), read(label/length)), call(is-equal, call(joining-type, call(get, read(label), read(right))), text(<t>)))
+                hook step
+                  save right, call add(read(right), code(1))
+              fork test
+                hook test
+                  call is-minimum(read(right), read(label/length))
+                hook hold
+                  send back, false
+              save kind, call joining-type(call(get, read(label), read(right)))
+              fork test
+                hook test
+                  call not(call(or, call(is-equal, read(kind), text(<r>)), call(is-equal, read(kind), text(<d>))))
+                hook hold
+                  send back, false
+      save at, call add(read(at), code(1))
+  send back, true
+
+# whether the label holds a code point of Bidi_Class R, AL or AN
+task has-right-to-left
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      save cls, call bidi-class(call(get, read(label), read(at)))
+      fork test
+        hook test
+          call or(call(is-equal, read(cls), text(<r>)), call(or, call(is-equal, read(cls), text(<al>)), call(is-equal, read(cls), text(<an>))))
+        hook hold
+          send back, true
+      save at, call add(read(at), code(1))
+  send back, false
+
+# the bidi rule of RFC 5893 section 2 for one label of a bidi domain
+task is-bidi-ok
+  mark private
+  take label
+    like list
+      like number
+  like boolean
+  fork test
+    hook test
+      call is-equal(read(label/length), code(0))
+    hook hold
+      send back, true
+  save initial, call bidi-class(call(get, read(label), code(0)))
+  save right-to-left, call or(call(is-equal, read(initial), text(<r>)), call(is-equal, read(initial), text(<al>)))
+  fork test
+    hook test
+      call not(call(or, read(right-to-left), call(is-equal, read(initial), text(<l>))))
+    hook hold
+      send back, false
+  save has-en, false
+  save has-an, false
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      save cls, call bidi-class(call(get, read(label), read(at)))
+      fork test
+        hook test
+          read right-to-left
+        hook hold
+          fork test
+            hook test
+              call not(call(contains, text(<,r,al,an,en,es,cs,et,on,bn,nsm,>), text(<,{cls},>)))
+            hook hold
+              send back, false
+        hook miss
+          fork test
+            hook test
+              call not(call(contains, text(<,l,en,es,cs,et,on,bn,nsm,>), text(<,{cls},>)))
+            hook hold
+              send back, false
+      fork test
+        hook test
+          call is-equal(read(cls), text(<en>))
+        hook hold
+          save has-en, true
+      fork test
+        hook test
+          call is-equal(read(cls), text(<an>))
+        hook hold
+          save has-an, true
+      save at, call add(read(at), code(1))
+  # the last code point that is not a nonspacing mark
+  save at, call subtract(read(label/length), code(1))
+  walk test
+    hook test
+      call and(call(is-minimum, read(at), code(0)), call(is-equal, call(bidi-class, call(get, read(label), read(at))), text(<nsm>)))
+    hook step
+      save at, call subtract(read(at), code(1))
+  fork test
+    hook test
+      call is-below(read(at), code(0))
+    hook hold
+      send back, false
+  save final, call bidi-class(call(get, read(label), read(at)))
+  fork test
+    hook test
+      read right-to-left
+    hook hold
+      fork test
+        hook test
+          call not(call(contains, text(<,r,al,en,an,>), text(<,{final},>)))
+        hook hold
+          send back, false
+      send back, call(not, call(and, read(has-en), read(has-an)))
+  send back, call(contains, text(<,l,en,>), text(<,{final},>))
+
+# whether `label` meets the validity criteria of section 4.1
+task is-label-valid
+  mark private
+  take label
+    like list
+      like number
+  take bidi, like boolean
+  like boolean
+  fork test
+    hook test
+      call is-equal(read(label/length), code(0))
+    hook hold
+      send back, true
+  save label-text, call from-runes(read(label))
+  fork test
+    hook test
+      call not(call(is-equal, call(to-nfc, read(label-text)), read(label-text)))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call has-ace-prefix(read(label))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-mark(call(get, read(label), code(0)))
+    hook hold
+      send back, false
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(label/length))
+    hook step
+      fork test
+        hook test
+          call is-equal(call(get, read(label), read(at)), code(46))
+        hook hold
+          send back, false
+      save at, call add(read(at), code(1))
+  fork test
+    hook test
+      call not(call(is-valid-label-runes, read(label)))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call not(call(is-joiners-ok, read(label)))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      read bidi
+    hook hold
+      send back, call(is-bidi-ok, read(label))
+  send back, true
+
+# the runes of a text of ASCII, with the prefix `xn--` in front
+task ace-prefix
+  mark private
+  like list
+    like number
+  save out, make list
+  call out/push(code(120))
+  call out/push(code(110))
+  call out/push(code(45))
+  call out/push(code(45))
+  send back, read out
+
+# UTS #46 ToASCII of a domain given as code points. The generated tables read their numbers with `parse-integer`, which
+# raises `number-mismatch` on a bad digit: the tables hold only hex digits, so that never happens, and the guard keeps
+# the raise inside url/ (a caller of the URL parser answers `mismatch` and nothing else)
+task domain-to-ascii-runes
+  take runes
+    like list
+      like number
+  like idna-answer
+  fork
+    mark unsafe
+    send back, call(convert-domain, read(runes))
+  halt take
+    take problem
+    send back, call(idna-refused)
+
+task convert-domain
+  mark private
+  take runes
+    like list
+      like number
+  like idna-answer
+  save mapped, call map-runes(read(runes))
+  fork test
+    hook test
+      call not(read(mapped/ok))
+    hook hold
+      send back, call(idna-refused)
+  save normal, call to-runes(call(to-nfc, call(from-runes, read(mapped/value))))
+  save labels, call split-labels(read(normal))
+  # each xn-- label replaced by its decoding
+  save decoded, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(labels/length))
+    hook step
+      save label, call get(read(labels), read(at))
+      fork test
+        hook test
+          call has-ace-prefix(read(label))
+        hook hold
+          fork test
+            hook test
+              call not(call(is-ascii-label, read(label)))
+            hook hold
+              send back, call(idna-refused)
+          save answer, call decode-punycode(call(slice-from, read(label), code(4)))
+          fork test
+            hook test
+              call not(read(answer/ok))
+            hook hold
+              send back, call(idna-refused)
+          call decoded/push(read(answer/value))
+        hook miss
+          call decoded/push(read(label))
+      save at, call add(read(at), code(1))
+  save bidi, false
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(decoded/length))
+    hook step
+      fork test
+        hook test
+          call has-right-to-left(call(get, read(decoded), read(at)))
+        hook hold
+          save bidi, true
+      save at, call add(read(at), code(1))
+  save pieces, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(decoded/length))
+    hook step
+      save label, call get(read(decoded), read(at))
+      fork test
+        hook test
+          call not(call(is-label-valid, read(label), read(bidi)))
+        hook hold
+          send back, call(idna-refused)
+      fork test
+        hook test
+          call is-ascii-label(read(label))
+        hook hold
+          call pieces/push(call(from-runes, read(label)))
+        hook miss
+          save encoded, call encode-punycode(read(label))
+          fork test
+            hook test
+              call not(read(encoded/ok))
+            hook hold
+              send back, call(idna-refused)
+          call pieces/push(call(from-runes, call(concat-runes, call(ace-prefix), read(encoded/value))))
+      save at, call add(read(at), code(1))
+  save out, text <>
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(pieces/length))
+    hook step
+      fork test
+        hook test
+          call is-equal(read(at), code(0))
+        hook hold
+          save out, call get(read(pieces), code(0))
+        hook miss
+          save piece, call get(read(pieces), read(at))
+          save out, text <{out}.{piece}>
+      save at, call add(read(at), code(1))
+  send back, call(idna-accepted, read(out))
+
+# the runes of `first` then those of `second`
+task concat-runes
+  mark private
+  take before
+    like list
+      like number
+  take after
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(before/length))
+    hook step
+      call out/push(call(get, read(before), read(at)))
+      save at, call add(read(at), code(1))
+  save at, code 0
+  walk test
+    hook test
+      call is-below(read(at), read(after/length))
+    hook step
+      call out/push(call(get, read(after), read(at)))
+      save at, call add(read(at), code(1))
+  send back, read out
+
+# the runes of `runes` from `start` on
+task slice-from
+  mark private
+  take runes
+    like list
+      like number
+  take start, like number
+  like list
+    like number
+  save out, make list
+  save at, read start
+  walk test
+    hook test
+      call is-below(read(at), read(runes/length))
+    hook step
+      call out/push(call(get, read(runes), read(at)))
+      save at, call add(read(at), code(1))
+  send back, read out

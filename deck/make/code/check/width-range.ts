@@ -9,8 +9,12 @@
 
 let on = process.env.TERM_WIDTH_RANGES === '1'
 
+// check/substitution.tree reads the switch from here (a Term module cannot import this one), when it makes a substitution
+;(globalThis as { termWidthRanges?: boolean }).termWidthRanges = on
+
 export function setWidthRanges(ranges: boolean): void {
   on = ranges
+  ;(globalThis as { termWidthRanges?: boolean }).termWidthRanges = on
 }
 
 export function widthRanges(): boolean {
