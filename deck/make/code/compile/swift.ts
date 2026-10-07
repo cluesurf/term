@@ -1195,13 +1195,19 @@ export function emitSwift(
   // which is already in scope and is not a module: importing it is `no such module 'runtime'` on a file whose
   // prelude defines it 190 lines above. Every handle type a runtime shim owns is dotted this way, so the whole
   // asynchronous file and server surface tripped it at once.
+  //
+  // The head is compared in the spelling EMITTED, not as written. A two-word alias is kebab in the source
+  // (`name watch-file`) and a native call writes it `watchFile.watchOpen(`, so a type `<watchFile.Watcher>` names
+  // that same namespace; compared as written, `watch-file` never matched and `import watchFile` was emitted
+  // (`no such module`, D026, item 0211). `camelize` is the function every emitted name, a call's namespace
+  // included, comes from (`vname` is it plus the keyword escape, which a head typed by hand never carries).
   const shimNames = new Set(
     program
       .filter(
         (n): n is Extract<Statement, { form: 'native' }> =>
           n.form === 'native' && n.module.startsWith('global:'),
       )
-      .map(n => n.alias),
+      .map(n => swiftNames.camelize(n.alias)),
   )
 
   for (const n of program) {

@@ -1,0 +1,150 @@
+# Whole-file reads, existence, stat, listing and the real path of a file system path, answered WITHOUT awaiting. The
+# clean uniform interface, the per-env native implementation selected at build time and hidden.
+#
+# A new module rather than more tasks in [synchronous.tree](synchronous.tree), which is defined as
+# [handle.tree](handle.tree) with the awaits taken out (an open file with a cursor). These are the whole-path calls a
+# caller that is itself synchronous needs (a package resolver, a mill loader), so that it need not become async and
+# drag every caller after it. Nothing here awaits, on any backend. Reach for `file` (async) unless the caller cannot
+# wait.
+#
+# A path that is not there makes `read`, `stat`, `list` and `resolve-real` raise `absence`, its `thing` the path,
+# decided here in Term before the binding runs, as [../file.tree](../file.tree) does for `read`: node threw its own
+# error and the other three read a missing file as the empty text. `exists` never raises.
+#
+# Browser: there is no file system there, so this module has no browser binding.
+
+mark unstable
+
+load @term/base/native/{platform}/file/blocking
+  find blocking-read
+  find blocking-exists
+  find blocking-stat
+  find blocking-list
+  find blocking-real
+
+load @term/base/exception
+  find absence
+
+# what a directory entry or a path is. A link is a symbolic link, `other` is anything else (a socket, a device, a pipe)
+form entry-kind
+  mark text
+  case file
+  case directory
+  case link
+  case other
+
+# a path's kind, its size in bytes, and when it last changed in milliseconds since the epoch WITH the fraction
+# (seconds times 1000 plus nanoseconds over 1e6, which is node's `mtimeMs`)
+form path-stat
+  link kind, like entry-kind
+  link size, like size
+  link changed, like float
+
+# one entry of a directory: its name, and what it is, asked of the entry itself with links not followed
+form path-entry
+  link name, like text
+  link kind, like entry-kind
+
+# the two records below are what a binding hands back, with the kind as the text it read. They are declared here,
+# once, because all four backends build them and a form declared per backend is four forms sharing a name. Internal:
+# `stat` and `list` turn them into `path-stat` and `path-entry`. Named apart from the binding's tasks
+# (`blocking-stat`), since the binding and this module load each other
+form stat-raw
+  link kind, like text
+  link size, like size
+  link changed, like float
+
+form entry-raw
+  link name, like text
+  link kind, like text
+
+# the whole file as UTF-8 text
+task read
+  take path, like text
+  like text
+  fork test
+    hook test
+      call blocking-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
+  send back
+    call blocking-read
+      read path
+
+# whether a path exists, a file or a directory. A symbolic link is followed, so a link to nothing is not there
+task exists
+  take path, like text
+  like boolean
+  send back
+    call blocking-exists
+      read path
+
+# a path's kind, size and change time. A symbolic link is followed, so it describes what the link points at
+task stat
+  take path, like text
+  like path-stat
+  fork test
+    hook test
+      call blocking-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
+  save raw
+    call blocking-stat
+      read path
+  send back
+    make path-stat
+      bind kind
+        call from-text
+          read raw/kind
+          make other
+      bind size, read raw/size
+      bind changed, read raw/changed
+
+# the entries of a directory in the platform's order, never `.` or `..`. Each kind is the entry's own, links not followed
+task list
+  take path, like text
+  like list
+    like path-entry
+  fork test
+    hook test
+      call blocking-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
+  save raw
+    call blocking-list
+      read path
+  save entries
+    make list
+  walk list, read raw
+    hook next
+      take site, name one
+      call entries/push
+        make path-entry
+          bind name, read one/name
+          bind kind
+            call from-text
+              read one/kind
+              make other
+  send back
+    read entries
+
+# the path with every symbolic link in it followed and every `.` and `..` settled
+task resolve-real
+  take path, like text
+  like text
+  fork test
+    hook test
+      call blocking-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
+  send back
+    call blocking-real
+      read path

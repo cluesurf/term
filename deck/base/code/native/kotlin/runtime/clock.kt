@@ -6,6 +6,17 @@ object clock {
     // milliseconds, as on every other backend (nanoTime alone is nanoseconds)
     fun precise(): Long = System.nanoTime() / 1_000_000L
 
+    // the origin of `nanoseconds`, taken at the first reading (an object's property is initialized on first use)
+    private val origin: Long by lazy { System.nanoTime() }
+
+    // whole nanoseconds since the first reading, never decreasing
+    // the origin is read FIRST: a lazy value is set on its first use, so reading the time before it would make the
+    // first reading earlier than its own origin
+    fun nanoseconds(): Long {
+        val from = origin
+        return System.nanoTime() - from
+    }
+
     // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md)
     fun currentTime(): Long = precise()
 

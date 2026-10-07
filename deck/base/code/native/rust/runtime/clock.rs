@@ -22,6 +22,17 @@ mod clock {
         from.elapsed().as_millis() as i64
     }
 
+    // whole nanoseconds since the first call to this function, never decreasing. A separate origin from `precise`, so
+    // the first read is zero whichever clock the program read first
+    pub fn nanoseconds() -> i64 {
+        use std::sync::OnceLock;
+
+        static FROM: OnceLock<Instant> = OnceLock::new();
+        let from = FROM.get_or_init(Instant::now);
+
+        from.elapsed().as_nanos() as i64
+    }
+
     // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). The wall
     // clock is `time/now`
     pub fn current_time() -> i64 {

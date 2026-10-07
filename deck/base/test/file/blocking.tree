@@ -1,0 +1,297 @@
+# The whole-path file calls that never await answer the same on every backend, on a temporary directory holding a file
+# (text with an astral character), a subdirectory, a link to the file and a link to nothing. A path that is not there
+# raises `absence` naming it. Held by `pnpm term:base-gate`.
+#
+# The fixture is built by one `sh` run through `process/run`, each test on a directory of its own, because the gate's
+# Swift link has no NIO libraries and so cannot link any program that loads the asynchronous file modules (`file`,
+# `file/temporary`, `file/link`). The directories sit under the system's temporary directory and are left for it to
+# clear: nothing here removes a file.
+
+load @term/base/file/blocking
+  find read, name read-path
+  find exists, name exists-path
+  find stat, name stat-path
+  find list, name list-path
+  find resolve-real
+  find entry-kind
+
+load @term/base/exception
+  find absence
+
+load @term/base/process/run
+  find run
+
+load @term/base/list
+  find length
+  find contains
+
+# a new directory holding `plain.txt` (the text `a😀b`, six bytes), the directory `inner`, `shortcut` (a link to the
+# file) and `dangling` (a link to nothing). It answers the directory's path, which the script prints without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); printf %s 'a😀b' \> "$d/plain.txt"; mkdir "$d/inner"; ln -s "$d/plain.txt" "$d/shortcut"; ln -s "$d/nowhere" "$d/dangling"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+task kind-text
+  take kind, like entry-kind
+  like text
+  fork case, read kind
+    case file
+      send back, text <file>
+    case directory
+      send back, text <directory>
+    case link
+      send back, text <link>
+    case other
+      send back, text <other>
+
+# every entry as `name=kind`
+task describe
+  take path, like text
+  like list
+    like text
+  save entries
+    call list-path
+      read path
+  save out
+    make list
+  walk list, read entries
+    hook next
+      take site, name one
+      save kind
+        call kind-text
+          read one/kind
+      call out/push
+        text <{{one/name}}={{kind}}>
+  send back, read out
+
+# the `thing` of the absence each call raises on a path that is not there, or `no` when it raised nothing
+task read-absent
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call read-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
+
+task stat-absent
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call stat-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
+
+task list-absent
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call list-path
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
+
+task resolve-absent
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got
+      call resolve-real
+        read path
+    send back, text <no>
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      case failure
+        send back, text <failure>
+
+test <text with an astral character reads back whole>
+  save dir
+    call make-fixture
+  save got
+    call read-path
+      text <{{dir}}/plain.txt>
+  want hold
+    call is-equal
+      read got
+      text <a😀b>
+
+test <a path that exists is true and one that is not there is false, a link to nothing included>
+  save dir
+    call make-fixture
+  want hold
+    call and
+      call and
+        call exists-path
+          text <{{dir}}/plain.txt>
+        call exists-path
+          text <{{dir}}/inner>
+      call and
+        call and
+          call is-equal
+            call exists-path
+              text <{{dir}}/missing>
+            false
+          call is-equal
+            call exists-path
+              text <{{dir}}/dangling>
+            false
+        call exists-path
+          text <{{dir}}/shortcut>
+
+test <stat of a file gives its kind, its size in bytes and a change time above zero>
+  save dir
+    call make-fixture
+  save info
+    call stat-path
+      text <{{dir}}/plain.txt>
+  want hold
+    call and
+      call and
+        call is-equal
+          call kind-text
+            read info/kind
+          text <file>
+        call is-equal
+          read info/size
+          code 6
+      call is-above
+        read info/changed
+        0.0
+
+test <stat of a directory is a directory, and stat follows a link to what it points at>
+  save dir
+    call make-fixture
+  save folder
+    call stat-path
+      text <{{dir}}/inner>
+  save through
+    call stat-path
+      text <{{dir}}/shortcut>
+  want hold
+    call and
+      call is-equal
+        call kind-text
+          read folder/kind
+        text <directory>
+      call and
+        call is-equal
+          call kind-text
+            read through/kind
+          text <file>
+        call is-equal
+          read through/size
+          code 6
+
+test <list names every entry with its own kind, links not followed, and never dot or dot dot>
+  save dir
+    call make-fixture
+  save described
+    call describe
+      read dir
+  want hold
+    call and
+      call and
+        call is-equal
+          call length
+            read described
+          code 4
+        call contains
+          read described
+          text <plain.txt=file>
+      call and
+        call and
+          call contains
+            read described
+            text <inner=directory>
+          call contains
+            read described
+            text <shortcut=link>
+        call contains
+          read described
+          text <dangling=link>
+
+test <resolve-real through a link is the real path of its target>
+  save dir
+    call make-fixture
+  save through
+    call resolve-real
+      text <{{dir}}/shortcut>
+  save direct
+    call resolve-real
+      text <{{dir}}/plain.txt>
+  want hold
+    call is-equal
+      read through
+      read direct
+
+test <read, stat, list and resolve-real raise absence naming a path that is not there>
+  save dir
+    call make-fixture
+  save missing
+    text <{{dir}}/missing>
+  save dangling
+    text <{{dir}}/dangling>
+  want hold
+    call and
+      call and
+        call is-equal
+          call read-absent
+            read missing
+          read missing
+        call is-equal
+          call stat-absent
+            read missing
+          read missing
+      call and
+        call and
+          call is-equal
+            call list-absent
+              read missing
+            read missing
+          call is-equal
+            call resolve-absent
+              read missing
+            read missing
+        call is-equal
+          call read-absent
+            read dangling
+          read dangling

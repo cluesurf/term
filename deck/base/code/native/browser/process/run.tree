@@ -12,11 +12,18 @@ task spawn-process
   take argument-list
     like list
       like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
   like run-result
   send back
     call runner/run
       read command
       read argument-list
+      read directory
+      read environment
       wait true
 
 task spawn-on-terminal
@@ -25,11 +32,18 @@ task spawn-on-terminal
   take argument-list
     like list
       like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
   like number
   send back
     call runner/attached
       read command
       read argument-list
+      read directory
+      read environment
       wait true
 
 task spawn-with-input
@@ -39,10 +53,17 @@ task spawn-with-input
     like list
       like text
   take input, like text
+  take directory, like text
+  take environment
+    like hash
+      like text
+      like text
   like run-result
   send back
     call runner/with-input
       read command
       read argument-list
       read input
+      read directory
+      read environment
       wait true

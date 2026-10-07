@@ -117,9 +117,12 @@ dock type
 
 # The dock ALIAS is `watch-file`, not `watch`: the alias is what the emitted namespace is called, and `watch` is
 # already a stdlib task name. Both in one emitted file is `invalid redeclaration of 'watch'` from a line that
-# mentions neither. The GLOBAL stays `watch`, so the shim file is still runtime/watch.<ext>.
+# mentions neither. On the native targets the GLOBAL stays `watch`, so the shim file is still runtime/watch.<ext>. NODE'S
+# global is `watch-runtime` (runtime/watch-runtime.ts): the TypeScript emitter binds an alias to its global
+# (`const watchFile = typeof watch ...`), so a prelude `const watch` stood beside the public `export function watch`
+# of the same module and esbuild refused the file (`The symbol "watch" has already been declared`).
 dock load
-  load <global:watch>, name watch-file
+  load <global:watch-runtime>, name watch-file
 
 load @term/base/file/watch
   find watch-event

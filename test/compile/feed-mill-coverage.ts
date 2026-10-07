@@ -156,7 +156,9 @@ const NEITHER = 18
 // (`grammar.size` counts top-level `mine <name>` entries, and losing a nested construct leaves the name in place
 // with a shorter body). Counting every object, nested ones included, is what actually moves. Same lesson as the
 // per-rule pin in feed-mill-json.ts, one level deeper.
-const RULES = 2034
+//
+// 2034 to 2050 on 2026-10-06: the LaTeX grammar's `verb-wide` (a `\verb` delimiter past printable ASCII), 16 objects.
+const RULES = 2050
 
 let pass = 0
 let fail = 0

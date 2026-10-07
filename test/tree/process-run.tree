@@ -14,6 +14,7 @@ load @term/base/code/environment
 
 load @term/base/code/text
   find contains
+  find trim
 
 # the exit code a command ran to, or `absent <thing>` when it could not start
 task outcome
@@ -105,3 +106,167 @@ test <run-with-input hands the text to standard input>
     call is-equal
       read result/output
       text <typed>
+
+# the arguments of one word
+task one-word
+  take first, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    read first
+  send back, read words
+
+# the arguments of two words
+task two-words
+  take first, like text
+  take second, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    read first
+  call words/push
+    read second
+  send back, read words
+
+# a run with a directory and nothing else named, its output
+task output-in
+  mark async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take directory, like text
+  like text
+  save result
+    call run
+      read command
+      read argument-list
+      bind directory, read directory
+  send back, read result/output
+
+# D025 §1: a directory, an environment and the signal of a run
+
+test <a run with a directory sees a file made there>
+  call run
+    text <mkdir>
+    call two-words
+      text <-p>
+      text </tmp/term-run-probe-0190>
+  call run
+    text <touch>
+    call one-word
+      text <term-run-probe-file>
+    bind directory, text </tmp/term-run-probe-0190>
+  save listing
+    call output-in
+      text <ls>
+      make list
+      text </tmp/term-run-probe-0190>
+  want hold
+    call contains
+      read listing
+      text <term-run-probe-file>
+
+test <a variable the call adds is seen by the child and the inherited one still is>
+  call set-variable
+    text <TERM_RUN_INHERITED>
+    text <inherited>
+  save added
+    make hash
+      save <TERM_RUN_ADDED>, <added>
+  save result
+    call run
+      text <sh>
+      call two-words
+        text <-c>
+        text <echo "$TERM_RUN_ADDED $TERM_RUN_INHERITED">
+      bind environment, read added
+  want hold
+    call is-equal
+      call trim
+        read result/output
+      text <added inherited>
+
+test <a call that names only the environment runs in the current directory>
+  save added
+    make hash
+      save <TERM_RUN_ADDED>, <added>
+  save plain
+    call run
+      text <pwd>
+      make list
+  save named
+    call run
+      text <pwd>
+      make list
+      bind environment, read added
+  want hold
+    call is-equal
+      read plain/output
+      read named/output
+
+# `absent` when a run in `directory` could not start, `ran` when it did
+task outcome-in
+  mark async
+  take directory, like text
+  like text
+  fork
+    mark unsafe
+    call output-in
+      text <pwd>
+      make list
+      read directory
+    send back, <ran>
+  halt take
+    take problem
+    sift problem
+      case command-absence
+        send back, <absent>
+      case failure
+        send back, <failure>
+
+test <a directory that is not there raises command-absence>
+  want hold
+    call is-equal
+      call outcome-in
+        text </term-no-such-directory>
+      text <absent>
+
+test <run-with-input takes a directory>
+  save result
+    call run-with-input
+      text <pwd>
+      make list
+      text <>
+      bind directory, text </>
+  want hold
+    call is-equal
+      call trim
+        read result/output
+      text </>
+
+test <a process that exited by itself answers signal zero>
+  save result
+    call run
+      text <true>
+      make list
+  want hold
+    call is-equal
+      read result/signal
+      code 0
+
+test <a child that a signal killed answers code 128 plus the signal>
+  save result
+    call run
+      text <sh>
+      call two-words
+        text <-c>
+        text <kill -TERM $$>
+  want hold
+    call is-equal
+      read result/code
+      code 143

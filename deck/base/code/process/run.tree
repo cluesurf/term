@@ -3,6 +3,10 @@
 # words. It answered code -1, so a typo in a program's name read as a program that ran and failed (guides:
 # library/processes, 2026-10-04). Each runner still reports -1 for it, and the raise is made here, in Term, so all
 # four agree on when.
+# `run`, `run-attached` and `run-with-input` take a trailing `directory` (empty runs in this process's own; one that is
+# not there is a `command-absence` too) and `environment` (entries added over the inherited one, which holds
+# `set-variable` writes), left out by a caller that sets neither (D025). A child a signal ended answers code 128 plus the
+# signal's number and `signal` that number, on every target, so a killed child never reads as success (D024).
 
 mark stable
 
@@ -19,6 +23,9 @@ form run-result
   link code, like number
   link output, like text
   link error, like text
+  # 0 for a process that exited by itself, else the number of the signal that ended it. `code` is then 128 plus that
+  # number. Kotlin cannot tell a signal from `exit 129` and above (the JVM answers 128+n for both), so it answers 0
+  link signal, like number
 
 # a command that could not be started: not on the PATH, not executable, or not there at all
 form command-absence
@@ -33,11 +40,21 @@ task run
   take argument-list
     like list
       like text
+  take directory
+    like text
+    fall text <>
+  take environment
+    like hash
+      like text
+      like text
+    need false
   like run-result
   save result
     call spawn-process
       read command
       read argument-list
+      read directory
+      read environment
       wait true
   call started
     read command
@@ -53,11 +70,21 @@ task run-attached
   take argument-list
     like list
       like text
+  take directory
+    like text
+    fall text <>
+  take environment
+    like hash
+      like text
+      like text
+    need false
   like number
   save code
     call spawn-on-terminal
       read command
       read argument-list
+      read directory
+      read environment
       wait true
   fork test
     hook test
@@ -79,12 +106,22 @@ task run-with-input
     like list
       like text
   take input, like text
+  take directory
+    like text
+    fall text <>
+  take environment
+    like hash
+      like text
+      like text
+    need false
   like run-result
   save result
     call spawn-with-input
       read command
       read argument-list
       read input
+      read directory
+      read environment
       wait true
   call started
     read command

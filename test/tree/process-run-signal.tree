@@ -1,0 +1,55 @@
+note <A child that a signal ended answers the signal's number beside code 128 plus that number, on node, rust and swift. Kotlin cannot tell it from an `exit` of the same number, so it answers signal 0 (the JVM reports 128 plus the number for both): task/term/base-gate.ts names this file a skip there, and process-run.tree holds the code on all four.>
+
+load @term/base/code/process/run
+  find run
+
+load @term/base/code/list
+  find list
+
+# the arguments `sh` takes to run a script
+task script-words
+  take script, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    text <-c>
+  call words/push
+    read script
+  send back, read words
+
+test <a child that a signal killed answers that signal>
+  save result
+    call run
+      text <sh>
+      call script-words
+        text <kill -TERM $$>
+  want hold
+    call is-equal
+      read result/signal
+      code 15
+
+test <a signal death and its code agree>
+  save result
+    call run
+      text <sh>
+      call script-words
+        text <kill -KILL $$>
+  want hold
+    call is-equal
+      read result/code
+      call add
+        code 128
+        read result/signal
+
+test <an exit of 143 is an exit, not a signal>
+  save result
+    call run
+      text <sh>
+      call script-words
+        text <exit 143>
+  want hold
+    call is-equal
+      read result/signal
+      code 0

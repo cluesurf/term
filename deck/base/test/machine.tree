@@ -1,0 +1,58 @@
+# The machine answers the same names on every backend: at least one logical core, and the platform and architecture
+# spelled as node's `os.platform()` and `os.arch()` spell them (rust `macos` is `darwin`, `aarch64` is `arm64`, `x86_64`
+# is `x64`). Held by `pnpm term:base-gate`.
+
+load @term/base/machine
+  find count-cores
+  find read-platform
+  find read-architecture
+
+load @term/base/text
+  find char-count
+
+test <the core count is above zero>
+  want hold
+    call is-above
+      call count-cores
+      code 0
+
+# the three platforms a developer runs the toolchain on
+test <the platform is darwin, linux or win32>
+  save name
+    call read-platform
+  want hold
+    call or
+      call is-equal
+        read name
+        text <darwin>
+      call or
+        call is-equal
+          read name
+          text <linux>
+        call is-equal
+          read name
+          text <win32>
+
+test <the architecture is arm64 or x64>
+  save name
+    call read-architecture
+  want hold
+    call or
+      call is-equal
+        read name
+        text <arm64>
+      call is-equal
+        read name
+        text <x64>
+
+test <the names are never empty>
+  want hold
+    call and
+      call is-above
+        call char-count
+          call read-platform
+        code 0
+      call is-above
+        call char-count
+          call read-architecture
+        code 0

@@ -1,0 +1,29 @@
+# Machine: what the program runs on. The logical core count the parallel walk sizes its pool by, and the platform and
+# architecture names, spelled as node's `os.platform()` and `os.arch()` spell them on every backend (`darwin`, `linux`,
+# `win32`; `arm64`, `x64`), so a program branches on one set of names. The implementation is selected at build time per
+# platform and hidden behind this API.
+
+mark unstable
+
+load @term/base/native/{platform}/machine
+  find host-cores
+  find host-platform
+  find host-architecture
+
+# the logical processors, at least 1
+task count-cores
+  like number
+  send back
+    call host-cores
+
+# `darwin`, `linux`, `win32`, as node's `os.platform()` names them
+task read-platform
+  like text
+  send back
+    call host-platform
+
+# `arm64`, `x64`, as node's `os.arch()` names them
+task read-architecture
+  like text
+  send back
+    call host-architecture

@@ -1,0 +1,19 @@
+# kotlin machine implementation. Forwards to the linked machine runtime shim. Internal: reached only through the public machine API.
+
+dock load
+  load <global:machine>, name machine
+
+task host-cores
+  like number
+  send back
+    call machine/cores
+
+task host-platform
+  like text
+  send back
+    call machine/platform
+
+task host-architecture
+  like text
+  send back
+    call machine/architecture

@@ -1,8 +1,0 @@
-mark draft
-
-# SHELVED 2026-10-02 (base-v1-0037): a scratch probe, waiting for the owner's rm. It exported package-global
-# names (`task add`, `form box`, `form colour`) into every program that loads the stdlib.
-
-
-# Scratch probe from the August 2026 pass, kept only because deletion was not
-# permitted here. Safe to remove.

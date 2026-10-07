@@ -13,6 +13,20 @@ task current-time
     call math/floor
       call perf/performance/now
 
+# whole nanoseconds since the first reading, from the monotonic `process.hrtime.bigint()`. The origin is taken at the
+# first call and kept on globalThis, so every module of the process counts from one zero, and the Number stays exact
+# for 104 days (2^53 ns). The origin is taken BEFORE the reading (the comma runs left to right), or the first reading is negative. No arrow and
+# no brace: a `>` closes the text and a `{` opens an interpolation
+bind hrtime-since-origin
+  like number
+  case node
+    text <(globalThis.__term_clock_origin ??= process.hrtime.bigint(), Number(process.hrtime.bigint() - globalThis.__term_clock_origin))>
+
+task current-nanoseconds
+  like number
+  send back
+    call hrtime-since-origin
+
 task delay
   mark async
   take ms, like number

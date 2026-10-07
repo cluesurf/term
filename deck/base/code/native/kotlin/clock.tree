@@ -8,6 +8,11 @@ task current-time
   send back
     call clock/current-time
 
+task current-nanoseconds
+  like number
+  send back
+    call clock/nanoseconds
+
 # a wait that blocks nothing: the coroutine is suspended and resumed on the program's event loop when the time is up
 # (compile/kotlin.ts, `termSleep`), so two jobs that each wait wait at the same time. It was `Thread.sleep`, which held
 # the thread

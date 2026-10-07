@@ -5,6 +5,7 @@ mark stable
 
 load @term/base/native/{platform}/clock
   find current-time
+  find current-nanoseconds
   find delay
 
 load @term/base/duration
@@ -14,6 +15,13 @@ task now
   like number
   send back
     call current-time
+
+# monotonic whole nanoseconds, counted from the process's first call and never decreasing, so only the difference of two
+# readings means anything. The origin keeps the value exact on TypeScript for 104 days (2^53 ns)
+task read-nanoseconds
+  like number
+  send back
+    call current-nanoseconds
 
 task sleep
   mark async

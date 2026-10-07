@@ -1,0 +1,48 @@
+# node whole-path file calls that never await, over fs's *Sync calls through the linked `blocking` runtime shim, which
+# builds each record in one call. Internal: reached only through the public file/blocking API.
+
+# The dock ALIAS is the global's own name, `blocking`: on node a different alias is emitted as a second declaration
+# beside the shim's object and the module does not load (`walk` is `walk-file` for the reason that a stdlib task is
+# called `walk`, and no stdlib name is `blocking`). The shim file is runtime/blocking.<ext>.
+dock load
+  load <global:blocking>, name blocking
+
+load @term/base/file/blocking
+  find stat-raw
+  find entry-raw
+
+task blocking-read
+  take path, like text
+  like text
+  send back
+    call blocking/read-path
+      read path
+
+task blocking-exists
+  take path, like text
+  like boolean
+  send back
+    call blocking/exists-path
+      read path
+
+task blocking-stat
+  take path, like text
+  like stat-raw
+  send back
+    call blocking/stat-path
+      read path
+
+task blocking-list
+  take path, like text
+  like list
+    like entry-raw
+  send back
+    call blocking/list-path
+      read path
+
+task blocking-real
+  take path, like text
+  like text
+  send back
+    call blocking/real-path
+      read path

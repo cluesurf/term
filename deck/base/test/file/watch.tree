@@ -1,0 +1,161 @@
+# `file/watch` answers the same on every backend: open a watcher on a temporary directory, write a file, and `next`
+# answers a `create` or a `change` whose path ends in that file's name. `close` then makes `next` answer the empty
+# event, and a file written in a subdirectory that existed before the watch is seen with `deep` true. Held by
+# `pnpm term:base-gate`.
+#
+# Paths are never compared whole: macOS reports `/private/var` for `/var`, so a path is only held to its tail. A
+# watcher can report an event for the directory itself before the file's own (a write to a directory, an FSEvents
+# batch), so `event-kind` reads on until an event ends in the name asked for, and gives up after eight.
+#
+# The fixture is built by `sh` run through `process/run`, as in test/file/blocking.tree: the gate's Swift link has no
+# NIO libraries, so the asynchronous `file/temporary` and `file` modules cannot be loaded here. The directories sit
+# under the system's temporary directory and are left for it to clear: nothing here removes a file.
+
+load @term/base/file/watch
+  find watch, name watch-path
+  find next, name next-event
+  find close, name close-watch
+  find watcher
+
+load @term/base/text
+  find ends-with
+
+load @term/base/process/run
+  find run
+
+# a new directory holding the empty directory `inner`. It answers the directory's path, printed without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); mkdir "$d/inner"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# write `data` to the file at `path`, which `sh` makes
+task write-file
+  take path, like text
+  take data, like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <printf %s {{data}} \> {{path}}>
+  call run
+    text </bin/sh>
+    read arguments
+
+# the kind of the first of the next eight events whose path ends in `suffix`, or the empty text when none does or the
+# watcher closed
+task event-kind
+  take eye, like watcher
+  take suffix, like text
+  like text
+  save left, code 8
+  walk test
+    hook test
+      call is-above
+        read left
+        code 0
+    hook hold
+      save event
+        call next-event
+          read eye
+      fork test
+        call is-equal
+          read event/kind
+          text <>
+        hook hold
+          send back, text <>
+      fork test
+        call ends-with
+          read event/path
+          read suffix
+        hook hold
+          send back, read event/kind
+      save left
+        call subtract
+          read left
+          code 1
+  send back, text <>
+
+# whether `kind` is one a new file may be reported as
+task is-new-file
+  take kind, like text
+  like boolean
+  send back
+    call or
+      call is-equal
+        read kind
+        text <create>
+      call is-equal
+        read kind
+        text <change>
+
+test <a file written under a watched directory is reported with a path ending in its name>
+  save dir
+    call make-fixture
+  save eye
+    call watch-path
+      read dir
+      true
+  call write-file
+    text <{{dir}}/a.tree>
+    text <hello>
+  save kind
+    call event-kind
+      read eye
+      text <a.tree>
+  call close-watch
+    read eye
+  want hold
+    call is-new-file
+      read kind
+
+test <next answers the empty event once the watcher is closed>
+  save dir
+    call make-fixture
+  save eye
+    call watch-path
+      read dir
+      true
+  call close-watch
+    read eye
+  save event
+    call next-event
+      read eye
+  want hold
+    call and
+      call is-equal
+        read event/kind
+        text <>
+      call is-equal
+        read event/path
+        text <>
+
+test <a file written in a subdirectory made before the watch is seen with deep true>
+  save dir
+    call make-fixture
+  save eye
+    call watch-path
+      read dir
+      true
+  call write-file
+    text <{{dir}}/inner/b.tree>
+    text <hello>
+  save kind
+    call event-kind
+      read eye
+      text <b.tree>
+  call close-watch
+    read eye
+  want hold
+    call is-new-file
+      read kind

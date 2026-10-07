@@ -19,6 +19,13 @@ task now
   send back
     call clock-reading
 
+# whole nanoseconds since the first reading, from the monotonic `performance.now()` (the page's timer is coarser than
+# a nanosecond, so the low digits are only as fine as the browser allows)
+task current-nanoseconds
+  like number
+  send back
+    call clock/nanoseconds
+
 # what the public `clock/now` reads: monotonic whole milliseconds, as on every backend
 # (note/term/stdlib/semantics.md)
 task current-time
