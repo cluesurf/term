@@ -32,7 +32,7 @@ import { expectType } from '@term/make/code/check/expect'
 import { typeTestOf, unknownSeam } from '@term/make/code/check/seam'
 import type { TypeTest } from '@term/make/code/check/seam'
 import { HOLE, nameSpan } from '@term/make/code/check/resolve'
-import { inferStrict, unknownSeamOn } from '@term/make/code/check/strict'
+import { ambiguousRefused, inferStrict, unknownSeamOn } from '@term/make/code/check/strict'
 import type {
   DeclaredSignature,
   Expression,
@@ -3681,8 +3681,8 @@ function checkProgram(
 
       callee.name = pool[pool.length - 1]!
 
-      // under the strict switch a tie is refused, naming every definition it could be (check/strict.ts)
-      if (pool.length > 1 && inferStrict()) {
+      // a tie is refused, naming every definition it could be: on by default since D10 (check/strict.ts)
+      if (pool.length > 1 && ambiguousRefused()) {
         const written = callee.name.replace(/__\d+(__\d+)?$/, '')
         const each = pool.map(name => {
           const signature = functions.get(name)!

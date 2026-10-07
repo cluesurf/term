@@ -13,10 +13,23 @@ load @term/site/dom/dom
   find view
   find append
 
+# a column header
+form paradigm-column
+  link label, like text
+
+# one inflected form
+form paradigm-cell
+  link text, like text
+
+# a row: its label and the cells across it
+form paradigm-row
+  link label, like text
+  link cells, like list, like paradigm-cell
+
 view paradigm
   take host, like view
-  take columns
-  take rows
+  take columns, like list, like paradigm-column
+  take rows, like list, like paradigm-row
   view table
     bind data-slot, text <paradigm>
     view thead

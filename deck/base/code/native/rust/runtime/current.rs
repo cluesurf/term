@@ -29,29 +29,51 @@ mod current {
 
     // `signal` is one of "terminate", "interrupt", "hangup"; anything else is ignored
     pub fn listen(signal: String, handler: std::rc::Rc<dyn Fn()>) {
-        let number = match signal.as_str() {
-            "terminate" => libc::SIGTERM,
-            "interrupt" => libc::SIGINT,
-            "hangup" => libc::SIGHUP,
+        // the numbers are the same on macOS and Linux: SIGHUP 1, SIGINT 2, SIGTERM 15
+        let number: i32 = match signal.as_str() {
+            "terminate" => 15,
+            "interrupt" => 2,
+            "hangup" => 1,
             _ => return,
         };
 
-        // the handler is an Rc closure, so not Send by construction. The emitted program is
-        // single threaded, and registration keeps the closure alive for the process lifetime,
-        // so asserting Send/Sync on the trampoline is sound here.
-        struct Trampoline(std::rc::Rc<dyn Fn()>);
-        unsafe impl Send for Trampoline {}
-        unsafe impl Sync for Trampoline {}
-        impl Trampoline {
-            // a method call captures the whole struct in the closure below; a bare field read
-            // would capture only the non-Send field and lose the Send/Sync assertion
-            fn call(&self) {
-                (self.0)()
+        // signal(2) through extern "C", as signals.rs does, so it builds with a bare rustc and no crate
+        #[cfg(unix)]
+        {
+            extern "C" {
+                fn signal(signum: i32, handler: usize) -> usize;
+            }
+
+            // the handler is an Rc closure, so not Send by construction. The emitted program is
+            // single threaded, and registration keeps the closure alive for the process lifetime,
+            // so asserting Send/Sync on the table is sound here.
+            struct Trampoline(std::rc::Rc<dyn Fn()>);
+            unsafe impl Send for Trampoline {}
+            unsafe impl Sync for Trampoline {}
+
+            // one handler per signal, a later listen replacing an earlier one
+            static HANDLERS: std::sync::Mutex<Vec<(i32, Trampoline)>> = std::sync::Mutex::new(Vec::new());
+
+            extern "C" fn notice(signum: i32) {
+                // a handler that lands while the table is being changed is dropped, not waited for
+                if let Ok(table) = HANDLERS.try_lock() {
+                    if let Some((_, trampoline)) = table.iter().find(|(known, _)| *known == signum) {
+                        (trampoline.0)();
+                    }
+                }
+            }
+
+            if let Ok(mut table) = HANDLERS.lock() {
+                table.retain(|(known, _)| *known != number);
+                table.push((number, Trampoline(handler)));
+            }
+            unsafe {
+                signal(number, notice as usize);
             }
         }
-        let trampoline = Trampoline(handler);
-        unsafe {
-            let _ = signal_hook::low_level::register(number, move || trampoline.call());
+        #[cfg(not(unix))]
+        {
+            let _ = (number, handler);
         }
     }
 }

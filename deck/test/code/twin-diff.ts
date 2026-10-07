@@ -27,6 +27,7 @@ import { CompileCache } from '@term/make/code/compile/cache'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { Statement, Twin, Type } from '@term/make/code/compile/node'
 import { guardTask, twinTask } from '@term/make/code/ir/twin'
+import { isTestTwin } from '@term/make/code/check/twin'
 
 type Fn = Extract<Statement, { form: 'function' }>
 
@@ -475,6 +476,11 @@ export async function admit(input: {
   const pending: { verdict: Verdict; twin: Twin; reference: Fn; cases: unknown[][] }[] = []
 
   for (const twin of loaded.twins) {
+    // a test twin stands in for a task in a test and is not claimed equivalent: nothing to compare (mocks spec 2.1)
+    if (isTestTwin(twin)) {
+      continue
+    }
+
     const reference = loaded.program.find((s): s is Fn => s.form === 'function' && s.name === twin.of)
     const verdict: Verdict = {
       task: twin.of,

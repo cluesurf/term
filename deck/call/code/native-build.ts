@@ -27,7 +27,7 @@ import { stdlibBase } from '@term/make/code/resolve'
 export type Built = { ok: true; command: string[]; artifact: string } | { ok: false; reason: string }
 
 // the toolchain each target needs
-const TOOLS: Record<EmitTarget, string[]> = { node: [], rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }
+const TOOLS: Record<EmitTarget, string[]> = { node: [], rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java', 'jar'] }
 
 function have(tool: string): boolean {
   return spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
@@ -140,10 +140,25 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
     return { ok: false, reason: failed }
   }
 
-  // with the runtime's jars beside it the main class is named, since `-jar` reads no classpath but the jar's own
+  // The jar's manifest grants native access too (JDK 24 and newer read `Enable-Native-Access` from the main jar), so a
+  // jar handed out and run with a plain `java -jar` prints no restricted-method warning either. An older JDK ignores it
+  const manifest = `${stem}-manifest.txt`
+  writeFileSync(manifest, 'Enable-Native-Access: ALL-UNNAMED\n')
+  const updated = tool('jar', ['--update', '--file', artifact, '--manifest', manifest])
+
+  if (updated) {
+    return { ok: false, reason: updated }
+  }
+
+  // with the runtime's jars beside it the main class is named, since `-jar` reads no classpath but the jar's own.
+  // Native access is granted because the process runner spawns through java.lang.foreign (JDK 22 and newer), and
+  // without it JDK 24 and newer print a restricted-method warning on stderr that no other target prints
+  const access = '--enable-native-access=ALL-UNNAMED'
   return {
     ok: true,
-    command: classpath ? ['java', '-cp', `${artifact}:${classpath}`, kotlinMainClass(input.name)] : ['java', '-jar', artifact],
+    command: classpath
+      ? ['java', access, '-cp', `${artifact}:${classpath}`, kotlinMainClass(input.name)]
+      : ['java', access, '-jar', artifact],
     artifact,
   }
 }

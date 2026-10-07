@@ -21,7 +21,7 @@ load ../logic/disclosure
 
 view listbox
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <listbox>
     bind class, read class
@@ -29,7 +29,7 @@ view listbox
 
 view listbox-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -49,7 +49,7 @@ view listbox-trigger
 
 view listbox-value
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <listbox-value>
     bind class, read class
@@ -57,7 +57,7 @@ view listbox-value
 
 view listbox-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -75,8 +75,8 @@ view listbox-content
 
 view listbox-item
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <listbox-item>
@@ -87,7 +87,7 @@ view listbox-item
 
 view listbox-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <listbox-group>
     bind role, text <group>
@@ -96,7 +96,7 @@ view listbox-group
 
 view listbox-label
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <listbox-label>
     bind class, read class

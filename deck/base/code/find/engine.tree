@@ -1,0 +1,432 @@
+
+# The engine (spec section 4): resolve a query through the driver and hand the body what it receives for a hit. The
+# public tasks `find-one`, `find-all` and `find-some`, which check the cardinality and run the body, are in `find`.
+#
+# A driver says in `hello` which query parts it executes (`part`). What it lacks is decided here, in Term, over the
+# hits (spec section 4.9, find/test): the tests of the LAST step, because those are the hits. A test it lacks on an
+# earlier step is a `find-cannot`. When a test is decided here the driver is asked for every hit (limit zero), and the
+# limit is applied after the filter.
+
+load @term/base/find/query
+  find find-query
+  find find-step
+  find find-test
+  find find-value
+  find find-handle
+
+load @term/base/find/kind
+  find pane
+
+load @term/base/find/send
+  find find-hits
+  find find-parts
+  find find-read
+
+load @term/base/find/test
+  find find-all-hold
+  find operand-value
+
+load @term/base/find/error
+  find find-none
+  find find-many
+  find find-cannot
+
+load @term/base/list
+  find list
+  find length
+  find push
+  find get
+  find contains
+
+# the kind a query finds: the kind of its last step, the base's when it has no path
+task last-kind
+  take query, like find-query
+  like text
+  save size
+    call length
+      read query/path
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 0
+    hook hold
+      send back, read query/base/kind
+  save last
+    call get
+      read query/path
+      call subtract
+        read size
+        code 1
+  send back, read last/kind
+
+# whether the driver executes this test itself: it names the test's form among its parts, and for a `meet` every
+# test inside as well
+task is-pushable
+  mark private
+  take piece, like find-test
+  take parts
+    like list
+      like text
+  like boolean
+  fork case, read piece
+    case have
+      send back
+        call contains
+          read parts
+          text <have>
+    case lack
+      send back
+        call contains
+          read parts
+          text <lack>
+    case hold
+      send back
+        call contains
+          read parts
+          text <hold>
+    case meet
+      link mode
+      link members
+      fork test
+        hook test
+          call not
+            call contains
+              read parts
+              text <meet>
+        hook hold
+          send back, false
+      walk members
+        take one
+        fork test
+          hook test
+            call not
+              call is-pushable
+                read one
+                read parts
+          hook hold
+            send back, false
+      send back, true
+
+# the tests of `tests` the driver executes (`pushed` true) or leaves to the engine (false)
+task split-tests
+  mark private
+  take tests
+    like list
+      like find-test
+  take parts
+    like list
+      like text
+  take pushed, like boolean
+  like list
+    like find-test
+  save out
+    make list
+  walk tests
+    take one
+    fork test
+      hook test
+        call is-equal
+          call is-pushable
+            read one
+            read parts
+          read pushed
+      hook hold
+        call push
+          read out
+          read one
+  send back, read out
+
+task step-with
+  mark private
+  take step, like find-step
+  take tests
+    like list
+      like find-test
+  like find-step
+  send back
+    make find-step
+      bind kind, read step/kind
+      bind like, read step/like
+      bind turn, read step/turn
+      bind depth, read step/depth
+      bind test, read tests
+
+# the query the driver is sent: the last step carries only the tests the driver executes
+task pushed-query
+  mark private
+  take query, like find-query
+  take parts
+    like list
+      like text
+  like find-query
+  save steps
+    call length
+      read query/path
+  save start
+    read query/base
+  save path
+    make list
+  fork test
+    hook test
+      call is-equal
+        read steps
+        code 0
+    hook hold
+      save start
+        call step-with
+          read query/base
+          call split-tests
+            read query/base/test
+            read parts
+            true
+  walk size
+    bind base, code 0
+    bind head, read steps
+    hook next
+      take site, name at
+      save step
+        call get
+          read query/path
+          read at
+      fork test
+        hook test
+          call is-equal
+            read at
+            call subtract
+              read steps
+              code 1
+        hook hold
+          call push
+            read path
+            call step-with
+              read step
+              call split-tests
+                read step/test
+                read parts
+                true
+        hook miss
+          call push
+            read path
+            read step
+  send back
+    make find-query
+      bind count, read query/count
+      bind base, read start
+      bind path, read path
+      bind union, read query/union
+      bind back, read query/back
+      bind sort, read query/sort
+      bind size, read query/size
+      bind head, read query/head
+      bind sift, read query/sift
+      bind wait, read query/wait
+      bind line, read query/line
+
+# the tests of the last step the driver does not execute
+task kept-tests
+  mark private
+  take query, like find-query
+  take parts
+    like list
+      like text
+  like list
+    like find-test
+  save size
+    call length
+      read query/path
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 0
+    hook hold
+      send back
+        call split-tests
+          read query/base/test
+          read parts
+          false
+  save last
+    call get
+      read query/path
+      call subtract
+        read size
+        code 1
+  send back
+    call split-tests
+      read last/test
+      read parts
+      false
+
+# a test the driver lacks on a step before the last cannot be decided over the hits: refuse it by name
+task refuse-early-tests
+  mark private
+  take query, like find-query
+  take parts
+    like list
+      like text
+  save steps
+    call length
+      read query/path
+  fork test
+    hook test
+      call is-above
+        read steps
+        code 0
+    hook hold
+      save early
+        call split-tests
+          read query/base/test
+          read parts
+          false
+      fork test
+        hook test
+          call is-above
+            call length
+              read early
+            code 0
+        hook hold
+          halt find-cannot
+            bind thing, text <test>
+            bind detail, text <the driver lacks a test on the base and the engine can decide only the last step's>
+  walk size
+    bind base, code 0
+    bind head
+      call subtract
+        read steps
+        code 1
+    hook next
+      take site, name at
+      save step
+        call get
+          read query/path
+          read at
+      save early
+        call split-tests
+          read step/test
+          read parts
+          false
+      fork test
+        hook test
+          call is-above
+            call length
+              read early
+            code 0
+        hook hold
+          halt find-cannot
+            bind thing, text <test>
+            bind detail, text <the driver lacks a test on a step before the last and the engine can decide only the last step's>
+
+# the hits of a query, at most `limit` (zero is no limit): the driver's, narrowed here by the tests it lacks
+task resolve-hits
+  mark async
+  take query, like find-query
+  take limit, like number
+  take base
+    like list
+      like find-handle
+  like list
+    like find-handle
+  save parts
+    call find-parts
+  call refuse-early-tests
+    read query
+    read parts
+  save engine-tests
+    call kept-tests
+      read query
+      read parts
+  fork test
+    hook test
+      call is-equal
+        call length
+          read engine-tests
+        code 0
+    hook hold
+      send back
+        call find-hits
+          call pushed-query
+            read query
+            read parts
+          read limit
+          read base
+  save hits
+    call find-hits
+      call pushed-query
+        read query
+        read parts
+      code 0
+      read base
+  save out
+    make list
+  walk hits
+    take hit
+    save keeps
+      call find-all-hold
+        read engine-tests
+        read hit
+    fork test
+      hook test
+        read keeps
+      hook hold
+        call push
+          read out
+          read hit
+    fork test
+      hook test
+        call and
+          call is-above
+            read limit
+            code 0
+          call is-minimum
+            call length
+              read out
+            read limit
+      hook hold
+        halt
+  send back, read out
+
+# a hit as the kind form its body expects. Only `pane` exists so far: another kind arrives as the handle itself
+task wrap-hit
+  mark private
+  take hit, like find-handle
+  like unknown
+  fork test
+    hook test
+      call is-equal
+        read hit/kind
+        text <pane>
+    hook hold
+      send back
+        make pane
+          bind handle, read hit
+    hook miss
+      send back, read hit
+
+# what the body receives for a hit: the hit as its kind, or, when the query has `back` lines, a record of the
+# properties read (name to value) and only those
+task make-it
+  mark async
+  take query, like find-query
+  take hit, like find-handle
+  like unknown
+  fork test
+    hook test
+      call is-equal
+        call length
+          read query/back
+        code 0
+    hook hold
+      send back
+        call wrap-hit
+          read hit
+  save record
+    make hash
+  walk query/back
+    take one
+    call record/set
+      read one/name
+      call operand-value
+        read one/from
+        read hit
+  send back, read record

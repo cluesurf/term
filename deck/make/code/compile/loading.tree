@@ -23,6 +23,7 @@ load @term/base/text
   find split
   find starts-with
   find ends-with
+  find contains
 
 load ../parser/diagnostic
   find span
@@ -533,6 +534,18 @@ task is-third-party
       back false
   back is-unequal(char-at(path, add(at, 1)), </>)
 
+# a path written relative to the file, `./x` or `../x`, with no `{platform}` slot. One with a slot is left to the build on
+# each platform, since a platform lacking the file is what the slot means (D027, beat-term)
+task is-relative
+  take path, like text
+  like boolean
+  mark private
+
+  fork test, not(or(starts-with(path, <./>), starts-with(path, <../>)))
+    hold
+      back false
+  back not(contains(path, <\{platform\}>))
+
 # a file that IS a per-backend bit module, `.../base/code/native/<one segment>/bit.tree`
 task is-native-bit
   take file, like text
@@ -619,13 +632,19 @@ task walk-one
   save at-of, make hash
   save aliases-of, make hash
   save plain-of, make hash
-  # a module with a view implicitly depends on the render runtime, unless it loads it or IS it
-  fork test, and(and(scanned/has-zone, not(some-ends-with(paths, <view/render>))), not(ends-with(given/file, <view/render.tree>)))
+  # a module with a view implicitly depends on the render runtime, a module with a web route on the route runtime
+  # (native-navigation-0002). Each is pushed AFTER the written loads and its place remembered. It is left out below, once
+  # it resolves, only when its file is this module's own or a written load already reached it: by resolved file, never
+  # by the text of a path (D026, beat-term-0064)
+  save render-at, -1
+  save route-at, -1
+  fork test, scanned/has-zone
     hold
+      save render-at, paths/length
       push(paths, view-runtime-module())
-  # a module with a web route implicitly depends on the route runtime (native-navigation-0002)
-  fork test, and(and(scanned/has-route, not(some-ends-with(paths, <view/route-runtime>))), not(ends-with(given/file, <view/route-runtime.tree>)))
+  fork test, scanned/has-route
     hold
+      save route-at, paths/length
       push(paths, route-runtime-module())
   # a module naming a built-in bit word is given the bit module and a `find` of each word, unless it loads the module
   # itself or is the module, or one of its per-backend files
@@ -662,8 +681,10 @@ task walk-one
           bind spans, make list
           bind aliases, no-aliases
       push(finds, injected)
+  save place, -1
   walk paths
     take path
+    save place, add(place, 1)
     save base, <>
     save has-base, false
     walk finds
@@ -687,6 +708,22 @@ task walk-one
     sift resolve(path, given/file, how)
       case some
         link dependency
+        # an implicit runtime that resolves to this module's own file, or to a file a written load reached, is the
+        # runtime already: it is dropped whole, so it is never given twice
+        save repeated, false
+        fork test, or(is-equal(place, render-at), is-equal(place, route-at))
+          hold
+            fork test, is-equal(dependency/file, given/file)
+              hold
+                save repeated, true
+            walk deps
+              take reached
+              fork test, is-equal(reached/file, dependency/file)
+                hold
+                  save repeated, true
+        fork test, repeated
+          hold
+            turn next
         walk finds
           take entry
           fork test, is-equal(entry/path, path)
@@ -744,9 +781,11 @@ task walk-one
             save ask/how, how
         push(asks, ask)
       case none
-        # another deck's module that nothing answers: the deck is not installed. Refused here, at the load. Anything
-        # else unresolved (a stdlib module a platform lacks, a relative path) is left to the checker
-        fork test, and(is-third-party(path), not(has-base))
+        # another deck's module that nothing answers: the deck is not installed. A relative path that nothing answers
+        # (D027): the file does not exist, or it leaves the roots. Both are refused here, at the load. Anything else
+        # unresolved (a stdlib module a platform lacks, a `{platform}` path) is left to the checker
+        save third, is-third-party(path)
+        fork test, and(or(third, is-relative(path)), not(has-base))
           hold
             save written-at, make none
             save looked, false
@@ -772,11 +811,15 @@ task walk-one
                     bind file, make(some, given/file)
               case none
                 save nothing, 0
+            save said, <{deck} is not installed, so nothing answers `load {path}`>
+            fork test, not(third)
+              hold
+                save said, <nothing answers `load {path}`: the file does not exist, or it leaves the package and project roots a relative load must stay inside>
             save input
               make diagnostic-input
                 bind file, given/file
                 bind span, at-span
-                bind message, make(some, <{deck} is not installed, so nothing answers `load {path}`>)
+                bind message, make(some, said)
             save refusal, make unresolved-load
             push(found, diagnose(refusal, input))
   save own

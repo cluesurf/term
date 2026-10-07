@@ -90,7 +90,7 @@ writeFileSync(entry, PROGRAM)
 // the dom is the memory host, so the tree can be printed
 const base = projectResolver(ROOT, 'swift')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/dom$/, 'dom/native/memory/dom'), fromFile)
+  base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
 const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'swift' })
 ok('the program compiles for swift', result.ok, result.ok ? '' : result.diagnostics.slice(0, 3).map(d => d.message).join(' | '))
 

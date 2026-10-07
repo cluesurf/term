@@ -27,7 +27,7 @@ load ../memory/dom
 load ./paint
   find length-of
 
-load ../../view
+load ./view
   find view
 
 load ./focus

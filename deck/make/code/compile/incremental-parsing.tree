@@ -1,0 +1,332 @@
+# Definition-granular incremental parsing. A Seed file is a sequence of top-level definitions, each a column-0 head
+# (`task` / `form` / `load` ...) plus its indented body, with leading comments riding with the definition below them.
+# Splitting the source at these boundaries lets the incremental layer re-parse only the definitions whose text
+# changed and reuse the rest, instead of re-lexing the whole file on every keystroke. The blocks partition the source
+# exactly: `blocks.map(b => b.text).join('\n') === source`.
+#
+# Ported from compile/incremental-parse.ts (self-hosting, 2026-10-07), which stays as the face. The decisions:
+#   - SPANS ARE SHIFTED IN COPIES. The original shifted a cached definition's spans where they stood, so a tree handed
+#     back by one call was moved by the next call that reused the same definition at another line (the tree a caller was
+#     still holding changed under it). Here a shift makes new nodes, the cache holds the shifted copies, and the cache
+#     comes back beside the tree for the face to write into the map its caller holds. Diverges: a tree handed back
+#     earlier no longer moves, fixture `held tree` in tmp/pair-incremental-parsing.ts
+#   - A COMMENT'S SPAN SHIFTS WHEREVER ONE IS KEPT. The original moved the comments of a group and none of the comments a
+#     text, an integer, a decimal or a radix carries, so a comment written above one of them kept the line it had in
+#     its own block. Diverges: those comments, fixture `text comment` in the pair
+#   - A POSITION IS SHIFTED ONCE. The original added the delta to a span's start and to its end, so a span whose two
+#     ends were one object moved twice. Here each end is a position of its own
+#   - the cache's entry is a `block-entry` (its groups, and the line they sit at), which the face reads as the plain
+#     object the original kept
+#   - the blocks are handed in: compile/block-split's rule, which the streaming loader feeds a line at a time, stays where it is
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ../parser/tree
+  find node
+  find root-node
+  find comment
+  find parse
+  find parse-result
+
+load ../parser/token
+  find token-source
+
+# a definition's parse, and the line it is now positioned at (so a reuse re-positions by the difference)
+form block-entry
+  link groups, like list, like node
+  link shifted-to, like number
+
+form incremental-result
+  link tree, like root-node
+  link reused, like number
+  link parsed, like number
+  # the cache after this call: kept entries, with their groups at the line they now sit on, and the new ones
+  link cache, like hash, like text, like block-entry
+
+# a definition of the source: its text, the line it starts on (counted from 0) and its content hash, the cache key. The
+# blocks come from compile/block-split (`splitTopLevel` in the face), which the streaming loader feeds a line at a time
+form definition-block
+  link text, like text
+  link start-line, like number
+  link hash, like text
+
+# ---- shifting a parse by lines, in copies ----
+
+task shift-position
+  take at, like position
+  take delta, like number
+  like position
+  mark private
+
+  back
+    make position
+      bind line, add(at/line, delta)
+      bind column, at/column
+
+task shift-span
+  take at, like span
+  take delta, like number
+  like span
+
+  sift at/file
+    case some
+      link written
+      back
+        make span
+          bind start, shift-position(at/start, delta)
+          bind end, shift-position(at/end, delta)
+          bind file, make(some, written)
+    case none
+      back
+        make span
+          bind start, shift-position(at/start, delta)
+          bind end, shift-position(at/end, delta)
+
+task shift-comment
+  take one, like comment
+  take delta, like number
+  like comment
+  mark private
+
+  back
+    make comment
+      bind text, one/text
+      bind span, shift-span(one/span, delta)
+
+# the comments of a node, each moved, or none when it kept none
+task shift-comments
+  take kept, like maybe, like list, like comment
+  take delta, like number
+  like maybe, like list, like comment
+  mark private
+
+  sift kept
+    case some
+      link all
+      save out, make list
+      walk all
+        take one
+        push(out, shift-comment(one, delta))
+      back make(some, out)
+    case none
+      back make none
+
+task shift-nodes
+  take nodes, like list, like node
+  take delta, like number
+  like list, like node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, shift-node(one, delta))
+  back out
+
+# a node and everything under it, as new nodes `delta` lines further down
+task shift-node
+  take one, like node
+  take delta, like number
+  like node
+
+  sift one
+    case group
+      back
+        make group
+          bind nodes, shift-nodes(nodes, delta)
+          bind optional, optional
+          bind comments, shift-comments(comments, delta)
+    case name
+      back
+        make name
+          bind parts, shift-nodes(parts, delta)
+    case text
+      back
+        make text
+          bind parts, shift-nodes(parts, delta)
+          bind raw, raw
+          bind scope, scope
+          bind comments, shift-comments(comments, delta)
+    case interpolation
+      sift group
+        case some
+          link inner
+          save moved, shift-node(inner, delta)
+          back
+            make interpolation
+              bind depth, depth
+              bind group, make(some, moved)
+              bind call, call
+        case none
+          back
+            make interpolation
+              bind depth, depth
+              bind call, call
+    case chunk
+      back
+        make chunk
+          bind text, read text
+          bind span, shift-span(span, delta)
+          bind follows, follows
+    case integer
+      back
+        make integer
+          bind value, value
+          bind text, read text
+          bind span, shift-span(span, delta)
+          bind comments, shift-comments(comments, delta)
+    case decimal
+      back
+        make decimal
+          bind value, value
+          bind text, read text
+          bind span, shift-span(span, delta)
+          bind comments, shift-comments(comments, delta)
+    case radix
+      back
+        make radix
+          bind value, value
+          bind text, read text
+          bind span, shift-span(span, delta)
+          bind comments, shift-comments(comments, delta)
+          bind radix, radix
+
+# the groups of a parse, none of them moved when `delta` is zero
+task shift-groups
+  take groups, like list, like node
+  take delta, like number
+  like list, like node
+
+  fork test, is-equal(delta, 0)
+    hold
+      back groups
+  back shift-nodes(groups, delta)
+
+# the group nodes among a root's nodes
+task groups-of
+  take nodes, like list, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    sift one
+      case group
+        push(out, one)
+      miss
+        save skipped, true
+  back out
+
+task copy-cache
+  take cache, like hash, like text, like block-entry
+  like hash, like text, like block-entry
+  mark private
+
+  save out, make hash
+  walk cache/keys()
+    take key
+    out/set(key, cache/get(key))
+  back out
+
+# parse a file definition by definition, reusing the cached parse of every block whose text is unchanged and parsing
+# only the changed or new ones. The merged tree is identical to a whole-file parse; `reused` and `parsed` report the
+# incremental win. Unchanged blocks that merely moved are re-positioned by a cheap span shift, never re-lexed. The
+# cache is handed back: the entries the file still holds, shifted, and the blocks parsed this time
+task incremental-parse
+  take file, like text
+  take blocks, like list, like definition-block
+  take cache, like hash, like text, like block-entry
+  like incremental-result
+
+  save next, copy-cache(cache)
+  save nodes, make list
+  save used, make hash
+  save reused, 0
+  save parsed, 0
+
+  walk blocks
+    take block
+    fork test, and(next/has(block/hash), not(used/has(block/hash)))
+      hold
+        save cached, next/get(block/hash)
+        save groups, cached/groups
+        save delta, subtract(block/start-line, cached/shifted-to)
+        fork test, is-unequal(delta, 0)
+          hold
+            save groups, shift-groups(cached/groups, delta)
+            next/set(block/hash, make-entry(groups, block/start-line))
+        walk groups
+          take group
+          push(nodes, group)
+        used/set(block/hash, true)
+        save reused, add(reused, 1)
+      miss
+        # a changed or new block, or a duplicate of one already used this pass: parse fresh
+        save result
+          parse
+            make token-source
+              bind file, file
+              bind text, block/text
+        save groups, make list
+        fork test, result/ok
+          hold
+            sift result/tree
+              case root
+                link top
+                save groups, shift-groups(groups-of(top), block/start-line)
+        # cache only the first occurrence of a hash (a duplicate definition re-parses each pass, which is correct)
+        fork test, not(used/has(block/hash))
+          hold
+            next/set(block/hash, make-entry(groups, block/start-line))
+            used/set(block/hash, true)
+        walk groups
+          take group
+          push(nodes, group)
+        save parsed, add(parsed, 1)
+
+  # drop cache entries for definitions no longer in the file, so the cache tracks the live set
+  walk next/keys()
+    take key
+    fork test, not(used/has(key))
+      hold
+        next/delete(key)
+
+  back
+    make incremental-result
+      bind tree, make-root(nodes)
+      bind reused, reused
+      bind parsed, parsed
+      bind cache, next
+
+task make-entry
+  take groups, like list, like node
+  take shifted-to, like number
+  like block-entry
+  mark private
+
+  back
+    make block-entry
+      bind groups, groups
+      bind shifted-to, shifted-to
+
+task make-root
+  take nodes, like list, like node
+  like root-node
+  mark private
+
+  back
+    make root
+      bind nodes, nodes

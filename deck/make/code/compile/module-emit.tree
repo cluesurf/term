@@ -34,6 +34,12 @@ load ./node
 load ./render-names
   find render-names
 
+load ./view-lower
+  find runtime-bound
+
+load ./ts-emit
+  find runtime-bound-name
+
 load ../check/eliminate
   find utf16-order
 
@@ -433,25 +439,28 @@ task own-name
 # the render-runtime names a component module's emitted code calls but its AST never names (the view ABI and the HMR
 # bookkeeping), added to its value imports
 task zone-runtime
+  take runtime, like list, like runtime-bound
   like list, like text
   mark private
 
+  # each under the name the build bound it by (D020): a name another file defines too is split by file, and the zone
+  # calls the definition render.tree reaches
   save names, render-names()
   save out, make list
-  push(out, names/element)
-  push(out, names/text)
-  push(out, names/dynamic)
-  push(out, names/attribute)
-  push(out, names/event)
-  push(out, <append>)
-  push(out, names/show)
-  push(out, names/each)
-  push(out, <open-scope>)
-  push(out, <close-scope>)
-  push(out, <make-signal>)
-  push(out, <read-signal>)
-  push(out, <dispose-scope>)
-  push(out, <remove>)
+  push(out, runtime-bound-name(runtime, names/element))
+  push(out, runtime-bound-name(runtime, names/text))
+  push(out, runtime-bound-name(runtime, names/dynamic))
+  push(out, runtime-bound-name(runtime, names/attribute))
+  push(out, runtime-bound-name(runtime, names/event))
+  push(out, runtime-bound-name(runtime, <append>))
+  push(out, runtime-bound-name(runtime, names/show))
+  push(out, runtime-bound-name(runtime, names/each))
+  push(out, runtime-bound-name(runtime, <open-scope>))
+  push(out, runtime-bound-name(runtime, <close-scope>))
+  push(out, runtime-bound-name(runtime, <make-signal>))
+  push(out, runtime-bound-name(runtime, <read-signal>))
+  push(out, runtime-bound-name(runtime, <dispose-scope>))
+  push(out, runtime-bound-name(runtime, <remove>))
   back out
 
 # one group of imports per defining file, in the order each file was first reached
@@ -510,6 +519,8 @@ task plan-modules
       take one, like statement
       like boolean
   take only, like maybe, like list, like text
+  # the render runtime names as the build bound them (D020), empty where it split none
+  take runtime, like list, like runtime-bound
   like module-plans
 
   # group statements by their source file, in program order within each
@@ -608,7 +619,7 @@ task plan-modules
           save nothing, 0
     fork test, is-zone
       hold
-        walk zone-runtime()
+        walk zone-runtime(runtime)
           take helper
           add-name(values, helper)
 

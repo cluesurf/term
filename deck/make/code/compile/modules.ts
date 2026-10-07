@@ -39,17 +39,20 @@ function hotPrelude(): string {
 // the hot boundary, registered once per zone module after the component functions. On a change the dev client calls
 // `dispose` (snapshot each instance's signals, tear down its effects, remove its nodes, remember its host) then
 // `accept` with the fresh module (re-mount each remembered host from the new code, restoring the snapshot).
-function hotEpilogue(): string {
+// `spell` writes a render runtime name the way the zone emitter does, the name the build bound it by (D020)
+function hotEpilogue(spell: (name: string) => string): string {
+  const [readSignal, disposeScope, remove] = [spell('read-signal'), spell('dispose-scope'), spell('remove')]
+
   return `if (hot) {
   hot.dispose((data) => {
     data.signals = {}
     data.remount = []
     for (const inst of (data.instances || [])) {
       const snapshot = {}
-      for (const key in inst.signals) snapshot[key] = readSignal(inst.signals[key])
+      for (const key in inst.signals) snapshot[key] = ${readSignal}(inst.signals[key])
       data.signals[inst.zone] = snapshot
-      disposeScope(inst.scope)
-      for (const node of inst.nodes) remove(node)
+      ${disposeScope}(inst.scope)
+      for (const node of inst.nodes) ${remove}(node)
       data.remount.push({ zone: inst.zone, host: inst.host })
     }
     data.instances = []
@@ -68,6 +71,9 @@ export function emitModules(
   urlForFile: (file: string) => string,
   // the files to emit, when not all of them. Every file's statements are still the context each emit reads
   only?: Set<string>,
+  // the render runtime's names as the build bound them (D020): a name two files define is split by file, and a view's
+  // zone calls (and imports) the one render.tree reaches, never the plain name. Empty where the build split none
+  runtime: { name: string; bound: string }[] = [],
 ): Map<string, ModuleEmit> {
   const plans = planModules(
     program as never,
@@ -76,7 +82,9 @@ export function emitModules(
     toPascal,
     (statement: Statement) => 'stubExport' in statement && statement.stubExport !== undefined,
     only === undefined ? { form: 'none' } : { form: 'some', value: [...only] },
+    runtime as never,
   )
+  const spell = (name: string): string => toCamel(runtime.find(pair => pair.name === name)?.bound ?? name)
   const variants = new Set(plans.variants)
   const out = new Map<string, ModuleEmit>()
 
@@ -88,13 +96,14 @@ export function emitModules(
       variants,
       exportConstants: true,
       context: program,
+      runtime,
     })
 
     const pieces = [
       plan.lines.join('\n'),
       plan.isZone ? hotPrelude() : '',
       body,
-      plan.isZone ? hotEpilogue() : '',
+      plan.isZone ? hotEpilogue(spell) : '',
     ].filter(Boolean)
 
     out.set(plan.file, {

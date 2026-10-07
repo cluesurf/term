@@ -112,7 +112,7 @@ task run
   writeFileSync(entry, program)
   const base = projectResolver(ROOT, 'node')
   const resolve = (importPath: string, fromFile: string) =>
-    base(importPath.replace(/dom\/native\/\{platform\}\/dom$/, 'dom/native/memory/dom'), fromFile)
+    base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
   const result = compile({ file: entry, text: program }, { resolve, env: 'node' })
   ok('typescript: the route table compiles, the route runtime injected', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
 

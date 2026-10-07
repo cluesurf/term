@@ -44,7 +44,7 @@ object watchFile {
       }
 
       Watcher(service, roots)
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       Watcher(null, mutableMapOf())
     }
   }
@@ -95,7 +95,7 @@ object watchFile {
 
       @Suppress("UNREACHABLE_CODE")
       WatchEvent("", "")
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       WatchEvent("", "")
     }
   }
@@ -106,7 +106,7 @@ object watchFile {
 
       try {
         watcher.service?.close()
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }

@@ -18,17 +18,21 @@ load ../component/document
   find document
 load ../component/phoneme-chart
   find phoneme-chart
+  find phoneme
 load ../component/paradigm
   find paradigm
+  find paradigm-column
+  find paradigm-row
 load ../component/gloss
   find gloss
+  find gloss-word
 
 view grammar-sketch
   take host, like view
-  take sounds
-  take columns
-  take rows
-  take words
+  take sounds, like list, like phoneme
+  take columns, like list, like paradigm-column
+  take rows, like list, like paradigm-row
+  take words, like list, like gloss-word
   view document
     bind title, text <A Grammar Sketch>
     view section

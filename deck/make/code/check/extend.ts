@@ -146,7 +146,15 @@ function extendFormsIn(
     }
   }
 
-  const cloneField = (f: Field, type: Type): Field => ({ ...f, type })
+  // A node stands at one place (D011 rule 8): an inherited field holds its own copy of the default, and a pin its own
+  // record and value. `structuredClone`, not `clone` (a JSON round trip), keeps a BigInt literal.
+  const cloneField = (f: Field, type: Type): Field =>
+    f.fallback ? { ...f, type, fallback: structuredClone(f.fallback) } : { ...f, type }
+
+  const copyPin = <P extends { value: unknown }>(pin: P): P => ({
+    ...pin,
+    value: structuredClone(pin.value),
+  })
 
   const resolveOne = (rt: RecordType): void => {
     if (resolved.has(rt.name) || !rt.extend) {
@@ -318,7 +326,7 @@ function extendFormsIn(
     }
 
     // pins: inherited first, then this form's, later winning
-    const pins = [...(base.pins ?? [])]
+    const pins = (base.pins ?? []).map(copyPin)
 
     for (const pin of ext.pins) {
       if (OWNED.has(pin.name) && (base.chain ?? [base.name]).concat(base.name).includes(EXCEPTION_FORM)) {
@@ -348,9 +356,9 @@ function extendFormsIn(
       const at = pins.findIndex(p => p.name === pin.name)
 
       if (at >= 0) {
-        pins[at] = pin
+        pins[at] = copyPin(pin)
       } else {
-        pins.push(pin)
+        pins.push(copyPin(pin))
       }
     }
 

@@ -16,7 +16,7 @@ load ../logic/registry
 
 view command-palette
   take host, like view
-  take class
+  take class, like text
   take registry, like signal
   save actions
     call list-actions

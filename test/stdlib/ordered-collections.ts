@@ -1,5 +1,5 @@
-// `list/bag`, `list/ordered-set` and `list/linked-list`, marked stable on 2026-10-05, held to one answer on every
-// backend: what v1 promises of them. The bag counts each value in a hash (O(1) insert, remove, count-of), the ordered
+// `list/bag`, `set` and `list/linked-list`, marked stable on 2026-10-05, held to one answer on every
+// backend: what v1 promises of them. The bag counts each value in a hash (O(1) insert, remove, count-of), the
 // set is a hash's insertion-ordered keys (O(1) membership), and the linked list walks itself in loops, so a long one
 // needs no deep stack. Each was list-backed or recursive before, and none had a test past TypeScript.
 // Run: npx tsx test/stdlib/ordered-collections.ts   (COLLECTION_ONLY=typescript, rust, swift or kotlin runs one)
@@ -25,9 +25,6 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const PROGRAM = `load @term/base/list/bag
   find bag
-
-load @term/base/list/ordered-set
-  find ordered-set
 
 load @term/base/list/linked-list
   find linked-list
@@ -59,23 +56,9 @@ task bag-story
     push(shown, <{one}>)
   back <{length(b)} {distinct(b)} {count-of(b, 5)} {count-of(b, 7)} {contains(b, 2)} {took} {missed} {join(shown, <,>)}>
 
-# an ordered set: first-insertion order kept, a second insert of 3 changing nothing, a removal keeping the rest in order
+# a set: first-insertion order kept, a second insert of 3 changing nothing, a removal keeping the rest in order
+# (set.tree, decisions-2026-10.md, D13)
 task set-story
-  like text
-  save s, make(ordered-set)
-  insert(s, 3)
-  insert(s, 1)
-  insert(s, 3)
-  insert(s, 2)
-  save gone, remove(s, 1)
-  save shown, make list
-  walk to-list(s)
-    take one
-    push(shown, <{one}>)
-  back <{length(s)} {has(s, 3)} {has(s, 1)} {gone} {join(shown, <,>)}>
-
-# a plain set, the same story: it keeps insertion order too (set.tree, decisions-2026-10.md, D13)
-task plain-set-story
   like text
   save s
     make set
@@ -113,13 +96,13 @@ task chain-story
 
 task run
   like text
-  back <{bag-story()} | {set-story()} | {plain-set-story()} | {chain-story()}>
+  back <{bag-story()} | {set-story()} | {chain-story()}>
 `
 
 // bag: 3 copies left (5, 5, 2), 2 distinct, two 5s, no 7, a 2, a 5 taken, no 9 to take, and the copies grouped by
 // first insertion. set: 3 and 2 left of 3, 1, 2, in that order. chain: 3 long, reversed, head 1, a tail of 2, an empty
 // list empty, and 200,000 nodes measured
-const EXPECTED = `3 2 2 0 true true false 5,5,2 | 2 true false true 3,2 | 2 true false 3,2 | 3 3,2,1 1 2 true ${process.env.CHAIN_LENGTH ?? '200000'}`
+const EXPECTED = `3 2 2 0 true true false 5,5,2 | 2 true false 3,2 | 3 3,2,1 1 2 true ${process.env.CHAIN_LENGTH ?? '200000'}`
 
 const dir = mkdtempSync(join(tmpdir(), 'term-ordered-'))
 const only = process.env.COLLECTION_ONLY ?? ''
@@ -133,7 +116,7 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   }
 
   ok(
-    `${backend}: bag, ordered set and linked list answer alike`,
+    `${backend}: bag, set and linked list answer alike`,
     ran.form === 'ran' && ran.output === EXPECTED,
     ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
   )

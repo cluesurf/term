@@ -5,7 +5,7 @@
 // before, since the write comes after the test. A value that is more than one checked operation keeps the call.
 // Run: npx tsx test/compile/ts-tested-in-place.ts
 
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -87,12 +87,14 @@ ok(
   at(/y \+/),
 )
 
-// what it means, run: 10 + 1 is y = 11, x = 11 + next(10) = 22, then 22 + 2^53 - 1 is past the safe integers
+// what it means, run: 10 + 1 is y = 11, x = 11 + next(10) = 22, then 22 + 2^53 - 1 is past the safe integers. An
+// overflow is a stop (D15, divisor-0006): the guard's handler no longer runs (it answered `excess:22:11` here before),
+// so the run ends non-zero with `excess` on stderr and nothing on stdout
 const dir = runDir('ts-tested-in-place-')
 const file = join(dir, 'main.ts')
 writeFileSync(file, `${joinTypeScriptPrelude(nativePrelude(built.program, 'node', () => undefined), ts)}\nprocess.stdout.write(String(compute()))\n`)
-const out = execFileSync('npx', ['tsx', file], { stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()
-ok('the overflow raises `excess`, and the handler reads the value the variable held before', out === 'excess:22:11', out)
+const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
+ok('the overflow is a stop the guard does not catch: `excess` on stderr, no handler answer', run.status !== 0 && run.stdout === '' && /excess/.test(run.stderr), `${run.status} ${JSON.stringify(run.stdout)} ${run.stderr.slice(0, 160)}`)
 
 console.log(`\nts-tested-in-place: ${pass} pass, ${fail} fail`)
 

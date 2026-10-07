@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view aspect-ratio
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <aspect-ratio>
     bind class, read class

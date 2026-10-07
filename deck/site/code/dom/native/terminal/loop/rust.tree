@@ -6,7 +6,7 @@
 load @term/base/pending
   find run-pending
 
-load ../../../view
+load ../view
   find view
 
 load ../screen

@@ -8,7 +8,7 @@ load @term/site/dom/dom
 
 view field
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <field>
     bind class, read class
@@ -16,7 +16,7 @@ view field
 
 view field-label
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <field-label>
     bind class, read class
@@ -24,7 +24,7 @@ view field-label
 
 view field-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <field-description>
     bind class, read class
@@ -32,7 +32,7 @@ view field-description
 
 view field-error
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <field-error>
     bind class, read class
@@ -40,7 +40,7 @@ view field-error
 
 view field-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <field-group>
     bind class, read class

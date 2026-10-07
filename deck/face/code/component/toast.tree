@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view toaster
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toaster>
     bind role, text <region>
@@ -20,7 +20,7 @@ view toaster
 
 view toast
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toast>
     bind role, text <status>
@@ -29,7 +29,7 @@ view toast
 
 view toast-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toast-title>
     bind class, read class
@@ -37,7 +37,7 @@ view toast-title
 
 view toast-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toast-description>
     bind class, read class
@@ -45,7 +45,7 @@ view toast-description
 
 view toast-action
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toast-action>
     bind class, read class
@@ -53,8 +53,8 @@ view toast-action
 
 view toast-close
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <toast-close>

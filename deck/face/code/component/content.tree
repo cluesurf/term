@@ -24,7 +24,7 @@ load @term/site/dom/dom
 # align default center -> text-center.
 view h1
   take host, like view
-  take class
+  take class, like text
   view h1
     bind class, text <text-h1 sm:text-h1-large uppercase w-full scale-y-90 tracking-wide-015 font-bold theme-h1-1-colors text-center>
     slot
@@ -34,7 +34,7 @@ view h1
 # align default left -> no alignment class.
 view h2
   take host, like view
-  take class
+  take class, like text
   view h2
     bind class, text <text-h2 sm:text-h2-large mb-8 mt-16 px-16 first:mt-0 uppercase w-full scale-y-87 theme-h2-1-colors>
     slot
@@ -44,7 +44,7 @@ view h2
 # (zinc-700/semibold), align default left.
 view h3
   take host, like view
-  take class
+  take class, like text
   view h3
     bind class, text <text-h3 sm:text-h3-large mb-8 mt-16 px-16 uppercase w-full scale-y-87 tracking-wide-015 pt-8 theme-h3-1-colors>
     slot
@@ -53,7 +53,7 @@ view h3
 # (zinc-700/semibold).
 view h4
   take host, like view
-  take class
+  take class, like text
   view h4
     bind class, text <text-h4 sm:text-h4-large px-16 mb-16 theme-h4-1-colors>
     slot
@@ -62,7 +62,7 @@ view h4
 # color, NOT a themeClass call).
 view h5
   take host, like view
-  take class
+  take class, like text
   view h5
     bind class, text <text-h5 sm:text-h5-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300>
     slot
@@ -70,7 +70,7 @@ view h5
 # H6 — React: tag h6, `text-h6 sm:text-h6-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300` (hard-coded color).
 view h6
   take host, like view
-  take class
+  take class, like text
   view h6
     bind class, text <text-h6 sm:text-h6-large px-16 w-full mb-16 text-zinc-900 dark:text-zinc-300>
     slot
@@ -82,8 +82,8 @@ view h6
 # trailing theme-*-1-colors token).
 view p
   take host, like view
-  take class
-  take kind
+  take class, like text
+  take kind, like text
   view p
     bind class, text <text-base sm:text-base-large mb-8 last:mb-0 px-16 dark:font-semibold theme-body-1-colors>
     slot
@@ -94,8 +94,8 @@ view p
 # bound to the href attribute.
 view a
   take host, like view
-  take class
-  take href
+  take class, like text
+  take href, like text
   view a
     bind href, read href
     bind class, text <cursor-pointer underline decoration-dotted underline-offset-3 print:text-zinc-800 dark:print:text-zinc-300 print:no-underline print:active:text-zinc-800 dark:print:active:text-zinc-300 hover:opacity-70 active:text-blue-500 active:hover:opacity-70 transition duration-200 text-violet-500 dark:text-violet-400 decoration-violet-500 dark:decoration-violet-400>
@@ -105,7 +105,7 @@ view a
 # nested-list margin resets, themeClass('ul', 1) -> theme-ul-1-colors (zinc-400 markers).
 view ul
   take host, like view
-  take class
+  take class, like text
   view ul
     bind class, text <list-['*_'] list-inside relative m-0 p-0 sm:ml-16 ml-0 mb-32 last:mb-0 [&\>li\>ul]:mb-0 [&\>li\>ol]:mb-0 sm:mr-32 mr-16 [&\>li\>ul]:mr-0 [&\>li\>ol]:mr-0 theme-ul-1-colors>
     slot
@@ -114,7 +114,7 @@ view ul
 # `[&>li>ol]:ml-8`, themeClass('ol', 1) -> theme-ol-1-colors.
 view ol
   take host, like view
-  take class
+  take class, like text
   view ol
     bind class, text <relative list-decimal ml-24 list-inside mb-16 [&\>li\>ul]:mb-0 [&\>li\>ol]:mb-0 mr-16 [&\>li\>ul]:mr-0 [&\>li\>ol]:mr-0 [&\>li\>ol]:ml-8 theme-ol-1-colors>
     slot
@@ -123,7 +123,7 @@ view ol
 # padding + inline-p resets, themeClass('li', 1) -> theme-li-1-colors (zinc-800).
 view li
   take host, like view
-  take class
+  take class, like text
   view li
     bind class, text <text-base sm:text-base-large relative m-0 ml-8 p-0 list-item mb-8 [&\>ul]:pl-24 [&\>ol]:pl-24 [&\>ul\>li]:ml-0 [&\>ol\>li]:ml-0 [&&\>p]:inline-block [&&\>p]:pointer-events-auto [&&\>p]:mb-0 [&&\>p]:px-0 theme-li-1-colors>
     slot
@@ -131,7 +131,7 @@ view li
 # Em — emphasis. React: tag em, `italic`.
 view em
   take host, like view
-  take class
+  take class, like text
   view em
     bind class, text <italic>
     slot
@@ -139,7 +139,7 @@ view em
 # Strong — bold. React: tag strong, `font-bold`.
 view strong
   take host, like view
-  take class
+  take class, like text
   view strong
     bind class, text <font-bold>
     slot
@@ -149,7 +149,7 @@ view strong
 # text-zinc-600`). Reproduced here: the code wrapper, the background span, then the inner text span holding the children.
 view code
   take host, like view
-  take class
+  take class, like text
   view code
     bind class, text <inline-block bg-inherit text-inherit relative py-2 text-base sm:text-base-large>
     view span
@@ -164,7 +164,7 @@ view code
 # (zinc-50 bg / zinc-100 border / zinc-700 text).
 view pre
   take host, like view
-  take class
+  take class, like text
   view pre
     bind class, text <mx-16 mb-32 last:mb-0 p-16 block overflow-auto whitespace-pre text-base sm:text-base-large [&\>code]:bg-none [&\>code]:p-0 theme-code-block-1-colors>
     slot
@@ -173,7 +173,7 @@ view pre
 # theme-blockquote-1-colors (zinc-100 bg / zinc-700 text / zinc-200 left rule).
 view block-quote
   take host, like view
-  take class
+  take class, like text
   view blockquote
     bind class, text <mt-16 mb-24 w-full p-16 theme-blockquote-1-colors>
     slot
@@ -181,7 +181,7 @@ view block-quote
 # Sup — superscript. React: tag sup, leading-base, `text-sm -top-6`.
 view sup
   take host, like view
-  take class
+  take class, like text
   view sup
     bind class, text <text-sm -top-6>
     slot
@@ -189,7 +189,7 @@ view sup
 # HR — horizontal rule. React: raw hr, `relative h-16 bg-zinc-50 dark:bg-zinc-900`.
 view hr
   take host, like view
-  take class
+  take class, like text
   view hr
     bind class, text <relative h-16 bg-zinc-50 dark:bg-zinc-900>
 
@@ -211,7 +211,7 @@ view whole
 # (the table ref + commented-out fixed-column effect is omitted as it is dead in React too).
 view table
   take host, like view
-  take class
+  take class, like text
   view table
     bind class, text <border-collapse w-full h-1 table-fixed-header no-scrollbar mb-32 last:mb-0 border-0 border-t-1 border-b-1 border-solid border-zinc-200 dark:border-zinc-800>
     slot
@@ -219,7 +219,7 @@ view table
 # THead — React: raw thead, no extra classes (only the passed className).
 view t-head
   take host, like view
-  take class
+  take class, like text
   view thead
     bind class, read class
     slot
@@ -227,7 +227,7 @@ view t-head
 # TBody — React: raw tbody carrying the striped-row + hairline-separator class block.
 view t-body
   take host, like view
-  take class
+  take class, like text
   view tbody
     bind class, text <h-full [&\>tr]:dark:text-zinc-300 [&\>tr:nth-child(odd)]:bg-white [&\>tr:nth-child(even)]:bg-zinc-50 [&\>tr:nth-child(odd)]:dark:bg-zinc-950 [&\>tr:nth-child(even)]:dark:bg-zinc-900 [&\>tr]:border-b-1 [&\>tr:last-child]:border-b-0 [&\>tr]:border-solid [&\>tr]:border-zinc-200 [&\>tr]:dark:border-zinc-800>
     slot
@@ -235,7 +235,7 @@ view t-body
 # TR — table row. React: raw tr, `h-full dark:text-zinc-300`.
 view t-row
   take host, like view
-  take class
+  take class, like text
   view tr
     bind class, text <h-full dark:text-zinc-300>
     slot
@@ -245,7 +245,7 @@ view t-row
 # center -> text-center.
 view t-head-cell
   take host, like view
-  take class
+  take class, like text
   view th
     bind class, text <bg-zinc-100 dark:bg-zinc-900 border-0 border-r-1 last:border-r-0 border-b-1 border-solid border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-300 font-bold text-base sm:text-base-large h-full px-16 py-8 lowercase text-center>
     slot
@@ -255,7 +255,7 @@ view t-head-cell
 # + (padded=true default) py-12 px-16.
 view t-cell
   take host, like view
-  take class
+  take class, like text
   view td
     bind class, text <border-0 border-r-1 last:border-r-0 border-solid border-zinc-200 dark:border-zinc-800 h-full text-base sm:text-base-large text-zinc-800 dark:text-zinc-400 bg-inherit whitespace-pre py-12 px-16>
     slot

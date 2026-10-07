@@ -27,8 +27,9 @@ import {
   assembleApk,
   assembleIosBundle,
   buildAndroidProgram,
-  simulator,
 } from '@term/call/code/cask'
+import { holdDeviceSync } from './shared/device-hold'
+import { bootedSimulator } from './shared/simulator'
 
 // the macOS app opens its window past the right edge of the screens and never takes focus (native-view.swift windowAway)
 process.env.TERM_WINDOW_AWAY ??= '1'
@@ -926,8 +927,8 @@ function runMacos(): void {
 }
 
 // the simulator SDK, a flat .app, installed clean on a booted iPhone simulator, its console read until it exits
-function runIos(): void {
-  const found = simulator()
+async function runIos(): Promise<void> {
+  const found = bootedSimulator()
 
   if ('missing' in found) {
     console.log(`skip  ios  (${found.missing})`)
@@ -945,21 +946,30 @@ function runIos(): void {
     return
   }
 
-  spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
-  spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
-  execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
-  const run = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, identifier], {
-    encoding: 'utf8',
-    timeout: 120_000,
-  })
-  const output = `${run.stdout ?? ''}${run.stderr ?? ''}`
+  // the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
+  const release = holdDeviceSync('simulator', 'toolkit-view ios')
+  let output = ''
+
+  try {
+    spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
+    spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
+    execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
+    const run = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, identifier], {
+      encoding: 'utf8',
+      timeout: 120_000,
+    })
+    output = `${run.stdout ?? ''}${run.stderr ?? ''}`
+  } finally {
+    release()
+  }
+
   ok('ios: the app said it exits 0', output.includes('native-view exit 0'), output.slice(0, 600))
   judge('ios', 'UIKit', output, shot)
 }
 
 // kotlinc and d8, an APK with no assets, installed on the emulator, the `native-dom` log read until the app says it
 // exits, and the PNG pulled out of the app's own files directory (a debug APK lets `run-as` read it)
-function runAndroid(): void {
+async function runAndroid(): Promise<void> {
   const found = androidDevice()
 
   if ('missing' in found) {
@@ -968,8 +978,6 @@ function runAndroid(): void {
     return
   }
 
-  const tools = androidTools()
-  const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
   const identifier = 'surf.term.nativedom'
   const work = join(dir, 'android')
   const assets = join(work, 'assets')
@@ -996,6 +1004,21 @@ function runAndroid(): void {
 
     return
   }
+
+  // the emulator is one device the whole machine shares: held from the first adb call to the last (D017)
+  const release = holdDeviceSync('emulator', 'toolkit-view android')
+
+  try {
+    judgeAndroid({ found, identifier, apk })
+  } finally {
+    release()
+  }
+}
+
+// install, start, read the log and pull the PNG, on the emulator held by the caller
+function judgeAndroid({ found, identifier, apk }: { found: { serial: string }; identifier: string; apk: string }): void {
+  const tools = androidTools()
+  const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
 
   adb('uninstall', identifier)
   adb('logcat', '-c')
@@ -1042,11 +1065,11 @@ if (!only || only === 'macos') {
 }
 
 if (!only || only === 'ios') {
-  apple ? runIos() : console.log('skip  ios  (the iOS simulator is macOS only)')
+  apple ? await runIos() : console.log('skip  ios  (the iOS simulator is macOS only)')
 }
 
 if (!only || only === 'android') {
-  runAndroid()
+  await runAndroid()
 }
 
 console.log(`\ntoolkit-view: ${pass} pass, ${fail} fail`)

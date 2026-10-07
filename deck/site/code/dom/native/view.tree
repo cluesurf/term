@@ -1,0 +1,7 @@
+
+# The abstract view handle: what `withNativeEnv` reaches for an env with no `view` of its own (`javascript`, `shared`).
+# Opaque and `dynamic`, since no backend can say what it holds. The backends that can define their own beside it
+# (node/view, memory/view, browser/view, toolkit/view), and the build bears the one for its target through ../view.
+
+form view
+  link handle, like dynamic, mark private

@@ -751,8 +751,16 @@ export type RaiseSets = {
   native: string[]
 }
 
-export function raiseSetsOf(program: Program, exceptions: string[]): RaiseSets {
-  const sets = raiseSetsWith(program, new Set(exceptions))
+// `checkedDivision` is the one place the emitters tell the raise sets which integer `/` and `%` they write checked
+// (divisor/spec.md section 3.1, 4.1). Swift and Rust compute it from their interval facts and pass it, so a task
+// raises `defect` on account of a division if and only if its emitted body holds one. Every check-time caller passes
+// nothing, and nothing changes for it
+export function raiseSetsOf(
+  program: Program,
+  exceptions: string[],
+  checkedDivision?: (node: Expression) => boolean,
+): RaiseSets {
+  const sets = raiseSetsWith(program, new Set(exceptions), checkedDivision)
 
   return {
     raises: new Map([...sets.raises].map(([name, raised]) => [name, [...raised]])),
@@ -765,6 +773,7 @@ function raiseSetsWith(
   program: Program,
   // the record-types that are exceptions, by name
   exceptions: Set<string>,
+  checkedDivision?: (node: Expression) => boolean,
 ): RaiseSetsWith {
   const functions = new Map<
     string,
@@ -833,6 +842,9 @@ function raiseSetsWith(
             // a re-raised value: what it is was decided where it was first raised
             direct.add('exception')
           }
+
+          // a division in the thrown value is written checked like any other
+          markDivisions(node.value, direct)
 
           break
         case 'guard':
@@ -913,10 +925,51 @@ function raiseSetsWith(
     }
 
     if (direct) {
+      markDivisions(node, direct)
+
       for (const closure of closuresIn(node)) {
         scan(closure.body, direct, called)
       }
     }
+  }
+
+  // AN INTEGER DIVISION OR REMAINDER THE EMITTER WRITES CHECKED RAISES `defect`, added by name the way `failure` is for
+  // a native shim, so a program whose tree shaking dropped the `defect` form still has it in the set. A closure's body
+  // is not entered: `scan` reaches it through `closuresIn`, and the closure's maker takes what it raises
+  const markDivisions = (node: Expression, direct: Set<string>): void => {
+    if (!checkedDivision) {
+      return
+    }
+
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object') {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const record = value as Record<string, unknown>
+
+      if (record.form === 'closure') {
+        return
+      }
+
+      if (record.form === 'binary' && (record.op === '/' || record.op === '%') && checkedDivision(record as Expression)) {
+        direct.add('defect')
+      }
+
+      for (const [key, child] of Object.entries(record)) {
+        if (key !== 'type' && key !== 'span' && key !== 'result') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(node)
   }
 
   for (const [name, statement] of functions) {

@@ -1,0 +1,153 @@
+# MODULE SCOPE FOR A HAND-BUILT PIPELINE. `compileProgram` binds every name by what its file imported (forms in
+# check/scope.ts, tasks in check/overload.ts), keyed on the file each definition came from. A harness that parses and
+# mills the modules itself (the native gates, the roundtrip suites) must do the same, or a name two modules define
+# merges flat and binds to the wrong one. That happened on 2026-10-04 to `matches` and `escape-pattern`, which
+# `regex.tree` and `pattern.tree` both define: node, built by `compile`, was right, and Rust, Swift and Kotlin, built
+# by three harnesses that stamped no file and passed no scope, called the other module's task.
+#
+# So a harness does two things, and these are they:
+#
+#   stamp-module(program, file)                          for each module, as it is milled
+#   bind-modules(program, bind-forms, extend, overload)  once, where it would call extendForms
+#
+# Ported from check/bind-modules.ts (self-hosting, 2026-10-07), which stays as the face. The decisions:
+#   - THE THREE STEPS ARE HANDED IN. The import scope is what `collectModules` returned beside the sources, and the face
+#     closes each step over it and the entry file: forms split and bound by import (check/scope), forms extended (an
+#     exception form gets its fields and every raise is filled, check/extend), tasks split and bound by import
+#     (check/overload, which is TypeScript). The order, and what stops it, is here
+#   - THE PROGRAM IS HANDED BACK. The original wrote the bound program into the one it was handed (`splice`), so a harness
+#     that read it saw the result. A port cannot write into its argument, so the bound program comes back beside the
+#     refusal, and the face writes it into the argument. A step that bound nothing hands back the program it took
+#   - a step that refused stops the sequence there: the later steps do not run, and the program holds what the steps
+#     before it wrote
+
+load @term/base/list
+  find list
+
+load ../compile/node
+  find statement
+
+load ../parser/diagnostic
+  find diagnostic
+  find span
+
+# what a step that rewrites the program hands back: the program, and its refusals
+form step-result
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+# the program bound, and the first refusal of any step, none when none refused
+form bound-modules
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+# each top-level definition of one module knows its file: the module scope splits a name by it, and a diagnostic names it
+task stamp-module
+  take program, like list, like statement
+  take file, like text
+  like list, like statement
+
+  save out, make list
+  walk program
+    take one
+    push(out, stamped(one, file))
+  back out
+
+task stamped
+  take one, like statement
+  take file, like text
+  like statement
+  mark private
+
+  sift one
+    case let
+      save one/span/file, make(some, file)
+    case assign
+      save one/span/file, make(some, file)
+    case expression
+      save one/span/file, make(some, file)
+    case if
+      save one/span/file, make(some, file)
+    case while
+      save one/span/file, make(some, file)
+    case match
+      save one/span/file, make(some, file)
+    case for-each
+      save one/span/file, make(some, file)
+    case break
+      save one/span/file, make(some, file)
+    case continue
+      save one/span/file, make(some, file)
+    case return
+      save one/span/file, make(some, file)
+    case exit
+      save one/span/file, make(some, file)
+    case debug
+      save one/span/file, make(some, file)
+    case guard
+      save one/span/file, make(some, file)
+    case throw
+      save one/span/file, make(some, file)
+    case hold
+      save one/span/file, make(some, file)
+    case function
+      save one/span/file, make(some, file)
+    case record-type
+      save one/span/file, make(some, file)
+    case mask
+      save one/span/file, make(some, file)
+    case instance
+      save one/span/file, make(some, file)
+    case native
+      save one/span/file, make(some, file)
+    case bind
+      save one/span/file, make(some, file)
+    case view
+      save one/span/file, make(some, file)
+    case dock
+      save one/span/file, make(some, file)
+    case roll
+      save one/span/file, make(some, file)
+    case tell
+      save one/span/file, make(some, file)
+  back one
+
+# the module scope in `compileProgram`'s order: forms split and bound by import, then extended, then tasks split and bound
+# by import. The first refusal of any step, or none
+task bind-modules
+  take program, like list, like statement
+  take bind-forms
+    like task
+      take program, like list, like statement
+      like step-result
+  take extend
+    like task
+      take program, like list, like statement
+      like step-result
+  take overload
+    like task
+      take program, like list, like statement
+      like list, like diagnostic
+  like bound-modules
+
+  save forms, bind-forms(program)
+  fork test, is-above(forms/diagnostics/length, 0)
+    hold
+      back
+        make bound-modules
+          bind program, forms/program
+          bind diagnostics, forms/diagnostics
+
+  save extended, extend(forms/program)
+  fork test, is-above(extended/diagnostics/length, 0)
+    hold
+      back
+        make bound-modules
+          bind program, extended/program
+          bind diagnostics, extended/diagnostics
+
+  save refused, overload(extended/program)
+  back
+    make bound-modules
+      bind program, extended/program
+      bind diagnostics, refused

@@ -23,7 +23,7 @@ import {
 import { atLeast, atMost, linear, noteUncertified, proves, uncertifiedCount } from '@term/make/code/check/refine'
 import { unfoldDefinitions } from '@term/make/code/check/unfold'
 import type { Fact } from '@term/make/code/check/product'
-import { budgetSpent, openBudget, productProfile, productProves, workSpent } from '@term/make/code/check/product'
+import { budgetSpent, openBudget, productProfile, productProves, spendWork, workSpent } from '@term/make/code/check/product'
 import { freshHoldState } from '@term/make/code/check/hold-state'
 import type { HoldState } from '@term/make/code/check/hold-state'
 import * as universalPart from '@term/make/code/check/universal'
@@ -111,7 +111,20 @@ const CALLS: universalPart.HoldCalls = {
   polynomialFacts: (cond, negated) => inequalityPart.polynomialFacts(STATE, cond as never, negated),
   productGoalLinear: (expr, facts) => inequalityPart.productGoalLinear(STATE, CALLS, expr as never, facts),
   productGoal: (expr, facts) => inequalityPart.productGoal(STATE, CALLS, expr as never, facts),
-  refutedByProducts: facts => inequalityPart.refutedByProducts(CALLS, facts),
+  // A REFUTATION IS PAID FOR. The case split asks this once per way of every instance at every level, and each call
+  // builds the products of its facts, n facts making about n^2 rows that a pivot sweeps, about n^3 cells: the units the
+  // exact search counts (THE BUDGET). Unpaid, a goal the prover refuses split its cases past every timeout with the
+  // budget untouched (test/check/universal.ts "a tighter limit is refused", 2026-10-07). Once the budget is spent the
+  // answer is "not refuted", which only keeps a case open, so a refusal stays a refusal and nothing false is proven
+  refutedByProducts: facts => {
+    if (budgetSpent()) {
+      return false
+    }
+
+    spendWork(facts.length ** 3)
+
+    return inequalityPart.refutedByProducts(CALLS, facts)
+  },
   proves: (facts, goal) => proves(facts, goal),
   theoremParts: rule => inequalityPart.theoremParts(rule as never) as never,
   unfold: expr => unfoldDefinitions(expr as never, STATE.program as never) as never,

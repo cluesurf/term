@@ -34,6 +34,7 @@ import type {
 } from '@term/make/code/compile/node'
 import {
   headWord,
+  runCodeMint,
   runMine,
   runMint,
   spanOfWhole,
@@ -5536,12 +5537,21 @@ export function millByGrammar(
       continue
     }
 
-    for (const value of runMint(
-      grammar.mint,
-      capture.rule,
-      capture.match,
-      capture.node,
-    )) {
+    // every `find` in it is lowered here, to the core forms below (compile/find-lower.tree, decision 005); what the
+    // pass cannot lower comes back as a problem, reported as a diagnostic
+    const minted = runCodeMint(grammar.mint, capture.rule, capture.match, capture.node)
+
+    for (const problem of minted.problems) {
+      bridge.diagnostics.push(
+        diagnose('not-implemented', {
+          file,
+          span: problem.span ?? ZERO_SPAN,
+          message: problem.message,
+        }),
+      )
+    }
+
+    for (const value of minted.values) {
       // EACH TOP-LEVEL STATEMENT GETS A FRESH SCOPE. The reader lowers one at a time with an empty one, so a
       // second `save a` at the top level is a fresh binding rather than an assignment to the first.
       bridge.declared = new Set()

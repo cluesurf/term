@@ -2,15 +2,13 @@
 // byte for byte (mint-bridge-0001). The hand-written `compile/mill.ts` and the grammar-driven executor both
 // produce a `Program`; `pnpm term:mint-parity` renders each through here and diffs the text.
 //
-// Canonical means: keys in sorted order, a key whose value is `undefined` dropped (so an absent field and a
-// field explicitly set to undefined read the same), and every value rendered in a form that round trips. Spans
-// are INCLUDED and are not negotiable: an AST node that cannot say where it came from cannot report an error,
-// which is the whole reason the executor threads the CST node through minting.
-//
-// `diffCanonical` reports the first differences by path rather than a wall of text, so a failing file names the
-// node and field that disagree instead of asking someone to eyeball two thousand lines of JSON.
+// Everything it decides is Term, compile/program-canon.tree (self-hosting, 2026-10-07): keys sorted, a key holding
+// `undefined` dropped, a bigint tagged, `-0` as `0`, the text of a canonical value, the diff by path and the census by
+// form. This face reads a host value into the port's `raw-value` (its own keys, in the order the host gives them) and
+// hands the canonical value back as plain objects. The header of the port says why each rule is what it is.
 
-import type { Program, Statement } from '@term/make/code/compile/node'
+import type { Program } from '@term/make/code/compile/node'
+import * as canon from '@term/make/code/compile/program-canon'
 
 export type CanonicalValue =
   | null
@@ -20,74 +18,88 @@ export type CanonicalValue =
   | CanonicalValue[]
   | { [key: string]: CanonicalValue }
 
-// A bigint (an integer literal wider than a JS number) renders tagged rather than lossily coerced: `2n ** 63n`
-// through `Number()` is a different value, and this file exists to catch exactly that class of difference.
-const BIGINT_TAG = '$bigint'
-
-export function canonical(value: unknown): CanonicalValue {
-  if (value === null || value === undefined) {
-    return null
+// a host value as the port reads it. `omit` is a key left out wherever it stands (the census's CST back-pointer)
+function rawOf(value: unknown, omit?: string): canon.RawValue {
+  if (value === undefined) {
+    return { form: 'raw-undefined' }
   }
 
-  if (typeof value === 'bigint') {
-    return { [BIGINT_TAG]: value.toString() }
+  if (value === null) {
+    return { form: 'raw-null' }
   }
 
-  if (
-    typeof value === 'boolean' ||
-    typeof value === 'string'
-  ) {
-    return value
-  }
-
-  if (typeof value === 'number') {
-    // -0 and 0 are the same value to a reader and different to Object.is; normalize so a sign that no backend
-    // can observe never shows up as a parity difference
-    return Object.is(value, -0) ? 0 : value
+  switch (typeof value) {
+    case 'bigint':
+      return { form: 'raw-bigint', digits: value.toString() }
+    case 'boolean':
+      return { form: 'raw-flag', value }
+    case 'string':
+      return { form: 'raw-text', value }
+    case 'number':
+      return { form: 'raw-number', value }
+    case 'object':
+      break
+    default:
+      return { form: 'raw-other', kind: typeof value }
   }
 
   if (Array.isArray(value)) {
-    return value.map(canonical)
+    return { form: 'raw-items', items: value.map(item => rawOf(item, omit)) }
   }
 
-  if (typeof value === 'object') {
-    const out: { [key: string]: CanonicalValue } = {}
+  const pairs: canon.RawPair[] = []
 
-    for (const key of Object.keys(value as object).sort()) {
-      const inner = (value as Record<string, unknown>)[key]
-
-      if (inner === undefined) {
-        continue
-      }
-
-      out[key] = canonical(inner)
+  for (const key of Object.keys(value as object)) {
+    if (key === omit) {
+      continue
     }
 
-    return out
+    pairs.push({ key, value: rawOf((value as Record<string, unknown>)[key], omit) })
   }
 
-  // a function or a symbol has no place in an AST: render it as a marker rather than dropping it silently
-  return `<unserializable ${typeof value}>`
+  return { form: 'raw-record', pairs }
+}
+
+// a canonical value as plain objects. A key is defined, never assigned, so a key named `__proto__` stays a key
+function plainOf(value: canon.CanonicalValue): CanonicalValue {
+  switch (value.form) {
+    case 'canon-null':
+      return null
+    case 'canon-flag':
+    case 'canon-number':
+    case 'canon-text':
+      return value.value
+    case 'canon-items':
+      return value.items.map(plainOf)
+    case 'canon-record': {
+      const out: { [key: string]: CanonicalValue } = {}
+
+      for (const pair of value.pairs) {
+        Object.defineProperty(out, pair.key, {
+          value: plainOf(pair.value),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        })
+      }
+
+      return out
+    }
+  }
+}
+
+export function canonical(value: unknown): CanonicalValue {
+  return plainOf(canon.canonicalOf(rawOf(value)))
 }
 
 export function showProgram(program: Program): string {
-  return JSON.stringify(canonical(program), undefined, 2)
+  return canon.showProgram(canon.canonicalOf(rawOf(program)))
 }
 
 export type CanonicalDiff = {
   path: string
   left: string
   right: string
-}
-
-const show = (value: CanonicalValue | undefined): string => {
-  if (value === undefined) {
-    return '<absent>'
-  }
-
-  const text = JSON.stringify(value)
-
-  return text.length > 120 ? `${text.slice(0, 117)}...` : text
 }
 
 // walk both trees together and report where they part company. Depth-first in key order, so the first entry is
@@ -99,76 +111,15 @@ export function diffCanonical(
   path = '',
   into: CanonicalDiff[] = [],
 ): CanonicalDiff[] {
-  if (into.length >= limit) {
-    return into
-  }
+  const found = canon.diffCanonical(
+    canon.canonicalOf(rawOf(left)),
+    canon.canonicalOf(rawOf(right)),
+    limit,
+    path,
+    into.length,
+  )
 
-  const leftArray = Array.isArray(left)
-  const rightArray = Array.isArray(right)
-  const leftObject =
-    left !== null && typeof left === 'object' && !leftArray
-  const rightObject =
-    right !== null && typeof right === 'object' && !rightArray
-
-  if (leftArray && rightArray) {
-    if (left.length !== right.length) {
-      into.push({
-        path: `${path}.length`,
-        left: String(left.length),
-        right: String(right.length),
-      })
-    }
-
-    for (let i = 0; i < Math.max(left.length, right.length); i++) {
-      if (into.length >= limit) {
-        return into
-      }
-
-      const l = left[i]
-      const r = right[i]
-
-      if (l === undefined || r === undefined) {
-        into.push({ path: `${path}[${i}]`, left: show(l), right: show(r) })
-        continue
-      }
-
-      diffCanonical(l, r, limit, `${path}[${i}]`, into)
-    }
-
-    return into
-  }
-
-  if (leftObject && rightObject) {
-    const keys = [
-      ...new Set([...Object.keys(left), ...Object.keys(right)]),
-    ].sort()
-
-    for (const key of keys) {
-      if (into.length >= limit) {
-        return into
-      }
-
-      const l = (left as Record<string, CanonicalValue>)[key]
-      const r = (right as Record<string, CanonicalValue>)[key]
-
-      if (l === undefined || r === undefined) {
-        into.push({
-          path: `${path}.${key}`,
-          left: show(l),
-          right: show(r),
-        })
-        continue
-      }
-
-      diffCanonical(l, r, limit, `${path}.${key}`, into)
-    }
-
-    return into
-  }
-
-  if (JSON.stringify(left) !== JSON.stringify(right)) {
-    into.push({ path: path || '.', left: show(left), right: show(right) })
-  }
+  into.push(...found)
 
   return into
 }
@@ -178,35 +129,9 @@ export function diffCanonical(
 export function censusProgram(program: Program): Map<string, number> {
   const counts = new Map<string, number>()
 
-  const walk = (value: unknown): void => {
-    if (Array.isArray(value)) {
-      value.forEach(walk)
-
-      return
-    }
-
-    if (value === null || typeof value !== 'object') {
-      return
-    }
-
-    const record = value as Record<string, unknown>
-    const form = record.form
-
-    if (typeof form === 'string') {
-      counts.set(form, (counts.get(form) ?? 0) + 1)
-    }
-
-    for (const key of Object.keys(record)) {
-      // the CST back-pointer is not part of the AST's shape and would recurse into the whole parse tree
-      if (key === 'node') {
-        continue
-      }
-
-      walk(record[key])
-    }
+  for (const { form, count } of canon.censusRaw(rawOf(program, 'node'))) {
+    counts.set(form, count)
   }
-
-  walk(program as Statement[])
 
   return counts
 }

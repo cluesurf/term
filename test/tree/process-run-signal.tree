@@ -1,4 +1,4 @@
-note <A child that a signal ended answers the signal's number beside code 128 plus that number, on node, rust and swift. Kotlin cannot tell it from an `exit` of the same number, so it answers signal 0 (the JVM reports 128 plus the number for both): task/term/base-gate.ts names this file a skip there, and process-run.tree holds the code on all four.>
+note <A child that a signal ended answers the signal's number beside code 128 plus that number, on node, rust, swift and kotlin. Kotlin spawns the child through the JDK's foreign function API (JDK 22 or newer, posix_spawnp and waitpid) because the JVM's own ProcessBuilder folds a signal death into 128 plus the number.>
 
 load @term/base/code/process/run
   find run

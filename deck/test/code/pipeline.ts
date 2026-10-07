@@ -4,7 +4,7 @@
  * call. This ties the whole system together - proposers (the AI plug
  * point first, CEGIS as the net), the bounded prover, the Seed emitter,
  * and the live compiler - into the single loop the synthesis design
- * describes (note/methodology/verification/synthesis.md).
+ * describes (note/project/term/verification/synthesis.md).
  *
  * `autocomplete` is the function a checker would call on an unfilled
  * task: hand it the spec, get back proven, compilable Seed code, with

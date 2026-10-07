@@ -27,7 +27,7 @@ load ../memory/dom
   find memory-pair
   find element-of
 
-load ../../view
+load ./view
   find view
 
 load ../../../view/cells/grid

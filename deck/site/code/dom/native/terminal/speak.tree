@@ -12,7 +12,7 @@ load ../memory/dom
   find element-of
   find get-attribute
 
-load ../../view
+load ./view
   find view
 
 load ./paint

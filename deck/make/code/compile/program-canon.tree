@@ -1,0 +1,622 @@
+# One canonical serialization of a `Program`, so two paths that claim to build the same AST can be held to it byte for
+# byte (mint-bridge-0001). The hand-written `compile/mill.ts` and the grammar-driven executor both produce a `Program`;
+# `pnpm term:mint-parity` renders each through here and diffs the text.
+#
+# Canonical means: keys in sorted order, a key whose value is `undefined` dropped (so an absent field and a field
+# explicitly set to undefined read the same), and every value rendered in a form that round trips. Spans are INCLUDED
+# and are not negotiable: an AST node that cannot say where it came from cannot report an error.
+#
+# Ported from compile/program-json.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
+#   - THE FACE READS THE HOST'S OBJECTS: a `raw-value` is what a plain JavaScript value is (its own keys in the order the
+#     host gives them), made by the face, and the canonical value comes back to it as plain objects. Everything the
+#     original decided is here: what is dropped, what is sorted, what is tagged
+#   - a number is a float, as JavaScript's is: `-0` is `0`, and what JSON cannot write (not a number, an infinity) is
+#     `null` in a printed text, as `JSON.stringify` writes it
+#   - keys sort in UTF-16 unit order, as `sort()` with no comparator did, and a text is quoted by term/quote
+#   - `show` of a value in a diff keeps 117 units of a text over 120 and never cuts through the middle of a surrogate
+#     pair: the original's cut left half of an astral character at the end (a lone surrogate, which is not text). A
+#     cut that would land inside a pair stops one unit short. Diverges: only for a long value whose 117th unit is the
+#     first half of a pair, fixture `show-split-pair` in tmp/pair-program-json.ts
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/float
+  find to-decimal
+
+load ../term/quote
+  find json-quote
+
+load ../fixing
+  find units-of
+  find units-text
+
+# ---- the values ----
+
+# a plain JavaScript value as the face read it
+form raw-value
+  case raw-undefined
+  case raw-null
+  case raw-bigint
+    link digits, like text
+  case raw-flag
+    link value, like boolean
+  case raw-text
+    link value, like text
+  case raw-number
+    link value, like float
+  case raw-items
+    link items, like list, like raw-value
+  case raw-record
+    link pairs, like list, like raw-pair
+  case raw-other
+    link kind, like text
+
+form raw-pair
+  link key, like text
+  link value, like raw-value
+
+# the canonical value: what JSON holds
+form canonical-value
+  case canon-null
+  case canon-flag
+    link value, like boolean
+  case canon-number
+    link value, like float
+  case canon-text
+    link value, like text
+  case canon-items
+    link items, like list, like canonical-value
+  case canon-record
+    link pairs, like list, like canonical-pair
+
+form canonical-pair
+  link key, like text
+  link value, like canonical-value
+
+form canonical-diff
+  link path, like text
+  link left, like text
+  link right, like text
+
+form diff-state
+  mark shared
+  link found, like list, like canonical-diff
+  link limit, like number
+  # the entries the caller already held, which count against the limit
+  link taken, like number
+
+form census-count
+  link form, like text
+  link count, like number
+
+form census-state
+  mark shared
+  link counts, like hash, like text, like number
+  link order, like list, like text
+
+# ---- canonical ----
+
+task canonical-of
+  take raw, like raw-value
+  like canonical-value
+
+  sift raw
+    case raw-undefined
+      back make canon-null
+    case raw-null
+      back make canon-null
+    case raw-bigint
+      link digits
+      save tagged, make list
+      save written
+        make canon-text
+          bind value, digits
+      push(tagged, make-canon-pair(<$bigint>, written))
+      back
+        make canon-record
+          bind pairs, tagged
+    case raw-flag
+      link value
+      back
+        make canon-flag
+          bind value, value
+    case raw-text
+      link value
+      back
+        make canon-text
+          bind value, value
+    case raw-number
+      link value
+      # -0 and 0 are the same value to a reader and different to Object.is
+      fork test, is-equal(value, to-decimal(0))
+        hold
+          back
+            make canon-number
+              bind value, to-decimal(0)
+      back
+        make canon-number
+          bind value, value
+    case raw-items
+      link items
+      save out, make list
+      walk items
+        take one
+        push(out, canonical-of(one))
+      back
+        make canon-items
+          bind items, out
+    case raw-record
+      link pairs
+      save kept, make list
+      walk pairs
+        take pair
+        sift pair/value
+          case raw-undefined
+            turn next
+          miss
+            push(kept, make-canon-pair(pair/key, canonical-of(pair/value)))
+      back
+        make canon-record
+          bind pairs, sort(kept, pair-order)
+    case raw-other
+      link kind
+      back
+        make canon-text
+          bind value, <\<unserializable {kind}\>>
+
+task make-canon-pair
+  take key, like text
+  take value, like canonical-value
+  like canonical-pair
+  mark private
+
+  back
+    make canonical-pair
+      bind key, key
+      bind value, value
+
+task pair-order
+  take left, like canonical-pair
+  take right, like canonical-pair
+  like ordering
+  mark private
+
+  back unit-order(left/key, right/key)
+
+# texts in UTF-16 unit order, as `sort()` with no comparator orders them
+task unit-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  save a, units-of(left)
+  save b, units-of(right)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, a/length), is-below(at, b/length))
+    hook hold
+      fork test, is-below(get(a, at), get(b, at))
+        hold
+          back make less
+      fork test, is-above(get(a, at), get(b, at))
+        hold
+          back make greater
+      save at, add(at, 1)
+  fork test, is-below(a/length, b/length)
+    hold
+      back make less
+  fork test, is-above(a/length, b/length)
+    hold
+      back make greater
+  back make equal
+
+# ---- writing ----
+
+# `JSON.stringify(value, undefined, 2)`
+task show-program
+  take value, like canonical-value
+  like text
+
+  back write-json(value, true, 0)
+
+# `JSON.stringify(value)`
+task show-compact
+  take value, like canonical-value
+  like text
+
+  back write-json(value, false, 0)
+
+task spaces
+  take depth, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, multiply(depth, 2))
+    hook hold
+      save out, < {out}>
+      save at, add(at, 1)
+  back out
+
+# a number as JSON writes it: what is not finite is `null`
+task show-number
+  take value, like float
+  like text
+  mark private
+
+  save written, <{value}>
+  fork test, is-equal(written, <NaN>)
+    hold
+      back <null>
+  fork test, is-equal(written, <Infinity>)
+    hold
+      back <null>
+  fork test, is-equal(written, <-Infinity>)
+    hold
+      back <null>
+  back written
+
+task write-json
+  take value, like canonical-value
+  take pretty, like boolean
+  take depth, like number
+  like text
+  mark private
+
+  sift value
+    case canon-null
+      back <null>
+    case canon-flag
+      link value
+      fork test, value
+        hold
+          back <true>
+      back <false>
+    case canon-number
+      link value
+      back show-number(value)
+    case canon-text
+      link value
+      back json-quote(value)
+    case canon-items
+      link items
+      fork test, is-equal(items/length, 0)
+        hold
+          back <[]>
+      save parts, make list
+      walk items
+        take one
+        push(parts, write-json(one, pretty, add(depth, 1)))
+      fork test, pretty
+        hold
+          save inner, spaces(add(depth, 1))
+          save lead, <,\n{inner}>
+          back <[\n{inner}{join(parts, lead)}\n{spaces(depth)}]>
+      back <[{join(parts, <,>)}]>
+    case canon-record
+      link pairs
+      fork test, is-equal(pairs/length, 0)
+        hold
+          back <\{\}>
+      save parts, make list
+      save colon, <:>
+      fork test, pretty
+        hold
+          save colon, <: >
+      walk pairs
+        take pair
+        push(parts, <{json-quote(pair/key)}{colon}{write-json(pair/value, pretty, add(depth, 1))}>)
+      fork test, pretty
+        hold
+          save inner, spaces(add(depth, 1))
+          save lead, <,\n{inner}>
+          back <\{\n{inner}{join(parts, lead)}\n{spaces(depth)}\}>
+      back <\{{join(parts, <,>)}\}>
+
+# ---- the diff ----
+
+# a value as the diff shows it: `<absent>`, else its JSON, cut to 117 units and `...` when over 120. A cut never lands
+# between the two halves of a surrogate pair
+task show-value
+  take value, like maybe, like canonical-value
+  like text
+  mark private
+
+  sift value
+    case none
+      back <\<absent\>>
+    case some
+      link found
+      save text, show-compact(found)
+      save units, units-of(text)
+      fork test, is-above(units/length, 120)
+        hold
+          save cut, 117
+          save last, get(units, 116)
+          save next, get(units, 117)
+          fork test, and(and(is-minimum(last, 55296), is-maximum(last, 56319)), and(is-minimum(next, 56320), is-maximum(next, 57343)))
+            hold
+              save cut, 116
+          back <{units-text(units, 0, cut)}...>
+      back text
+
+task is-full
+  take state, like diff-state
+  like boolean
+  mark private
+
+  back is-minimum(add(state/taken, state/found/length), state/limit)
+
+task add-diff
+  take state, like diff-state
+  take path, like text
+  take left, like text
+  take right, like text
+  like boolean
+  mark private
+
+  push(state/found, make-diff(path, left, right))
+  back true
+
+task make-diff
+  take path, like text
+  take left, like text
+  take right, like text
+  like canonical-diff
+  mark private
+
+  back
+    make canonical-diff
+      bind path, path
+      bind left, left
+      bind right, right
+
+task item-at
+  take items, like list, like canonical-value
+  take at, like number
+  like maybe, like canonical-value
+  mark private
+
+  fork test, is-below(at, items/length)
+    hold
+      save found, get(items, at)
+      back make(some, found)
+  back make none
+
+task pair-at
+  take pairs, like list, like canonical-pair
+  take key, like text
+  like maybe, like canonical-value
+  mark private
+
+  walk pairs
+    take pair
+    fork test, is-equal(pair/key, key)
+      hold
+        save found, pair/value
+        back make(some, found)
+  back make none
+
+# walk both values together and report where they part company, depth-first in key order. The entries come back, in
+# order, and `taken` entries the caller already holds count against the limit
+task diff-canonical
+  take left, like canonical-value
+  take right, like canonical-value
+  take limit, like number
+  take path, like text
+  take taken, like number
+  like list, like canonical-diff
+
+  save state
+    make diff-state
+      bind found, make list
+      bind limit, limit
+      bind taken, taken
+  diff-values(state, left, right, path)
+  back state/found
+
+task diff-values
+  take state, like diff-state
+  take left, like canonical-value
+  take right, like canonical-value
+  take path, like text
+  mark private
+
+  fork test, is-full(state)
+    hold
+      back
+  save left-items, make list
+  save left-array, false
+  sift left
+    case canon-items
+      link items
+      save left-items, items
+      save left-array, true
+    miss
+      save left-array, left-array
+  save right-items, make list
+  save right-array, false
+  sift right
+    case canon-items
+      link items
+      save right-items, items
+      save right-array, true
+    miss
+      save right-array, right-array
+  fork test, and(left-array, right-array)
+    hold
+      fork test, is-unequal(left-items/length, right-items/length)
+        hold
+          add-diff(state, <{path}.length>, <{left-items/length}>, <{right-items/length}>)
+      save size, left-items/length
+      fork test, is-above(right-items/length, size)
+        hold
+          save size, right-items/length
+      save at, 0
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          fork test, is-full(state)
+            hold
+              back
+          save l, item-at(left-items, at)
+          save r, item-at(right-items, at)
+          save here, <{path}[{at}]>
+          sift l
+            case some
+              link one
+              sift r
+                case some
+                  link two
+                  diff-values(state, one, two, here)
+                case none
+                  add-diff(state, here, show-value(l), show-value(r))
+            case none
+              add-diff(state, here, show-value(l), show-value(r))
+          save at, add(at, 1)
+      back
+  save left-pairs, make list
+  save left-record, false
+  sift left
+    case canon-record
+      link pairs
+      save left-pairs, pairs
+      save left-record, true
+    miss
+      save left-record, left-record
+  save right-pairs, make list
+  save right-record, false
+  sift right
+    case canon-record
+      link pairs
+      save right-pairs, pairs
+      save right-record, true
+    miss
+      save right-record, right-record
+  fork test, and(left-record, right-record)
+    hold
+      save keys-seen, make hash
+      save keys, make list
+      walk left-pairs
+        take pair
+        keys-seen/set(pair/key, true)
+        push(keys, pair/key)
+      walk right-pairs
+        take pair
+        fork test, is-equal(keys-seen/has(pair/key), false)
+          hold
+            keys-seen/set(pair/key, true)
+            push(keys, pair/key)
+      walk sort(keys, unit-order)
+        take key
+        fork test, is-full(state)
+          hold
+            back
+        save l, pair-at(left-pairs, key)
+        save r, pair-at(right-pairs, key)
+        save here, <{path}.{key}>
+        sift l
+          case some
+            link one
+            sift r
+              case some
+                link two
+                diff-values(state, one, two, here)
+              case none
+                add-diff(state, here, show-value(l), show-value(r))
+          case none
+            add-diff(state, here, show-value(l), show-value(r))
+      back
+  fork test, is-unequal(show-compact(left), show-compact(right))
+    hold
+      save where, path
+      fork test, is-equal(path, <>)
+        hold
+          save where, <.>
+      add-diff(state, where, show-value(make(some, left)), show-value(make(some, right)))
+
+# ---- the census ----
+
+# how many nodes of each `form` a raw value holds, at every depth, in the order each form is first met. The CST
+# back-pointer (`node`) is not part of the AST's shape
+task census-raw
+  take raw, like raw-value
+  like list, like census-count
+
+  save state
+    make census-state
+      bind counts, make hash
+      bind order, make list
+  walk-census(state, raw)
+  save out, make list
+  walk state/order
+    take name
+    push(out, make-count(name, state/counts/get(name)))
+  back out
+
+task walk-census
+  take state, like census-state
+  take raw, like raw-value
+  mark private
+
+  sift raw
+    case raw-items
+      link items
+      walk items
+        take one
+        walk-census(state, one)
+    case raw-record
+      link pairs
+      walk pairs
+        take pair
+        fork test, is-equal(pair/key, <form>)
+          hold
+            sift pair/value
+              case raw-text
+                link name
+                count-form(state, name)
+              miss
+                save ignored, true
+      walk pairs
+        take pair
+        fork test, is-unequal(pair/key, <node>)
+          hold
+            walk-census(state, pair/value)
+    miss
+      save ignored, true
+
+task count-form
+  take state, like census-state
+  take name, like text
+  mark private
+
+  fork test, state/counts/has(name)
+    hold
+      state/counts/set(name, add(state/counts/get(name), 1))
+    miss
+      state/counts/set(name, 1)
+      push(state/order, name)
+
+task make-count
+  take name, like text
+  take count, like number
+  like census-count
+  mark private
+
+  back
+    make census-count
+      bind form, name
+      bind count, count

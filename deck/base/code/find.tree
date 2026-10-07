@@ -1,0 +1,135 @@
+
+# find: Term's general query (spec section 4). A program builds a query as data (find/query), and `find-one`,
+# `find-all` and `find-some` resolve it through a driver (find/send) and check the cardinality: `find-one` asks the
+# driver for at most 2 hits, enough to tell one from many, `find-all` for every hit, `find-some` for at most 1. The
+# body runs on each hit, in the driver's order. The `find` statement lowers to calls of these (item 0007).
+
+load @term/base/find/query
+  find find-query
+  find find-handle
+
+load @term/base/find/engine
+  find resolve-hits
+  find make-it
+  find last-kind
+
+load @term/base/find/error
+  find find-none
+  find find-many
+
+load @term/base/find/tool
+  find require-mounted
+
+load @term/base/list
+  find list
+  find length
+  find push
+  find get
+
+# the one hit of a query, `body` run on it, and the hit back. Raises `find-none` for none and `find-many` for more
+task find-one
+  mark async
+  take query, like find-query
+  take base
+    like list
+      like find-handle
+    fall make list
+  take body
+    like task
+      mark async
+      take it, like unknown
+  like unknown
+  call require-mounted
+  save hits
+    call resolve-hits
+      read query
+      code 2
+      read base
+  save found
+    call length
+      read hits
+  fork test
+    hook test
+      call is-equal
+        read found
+        code 0
+    hook hold
+      halt find-none
+        bind thing
+          call last-kind
+            read query
+        bind line, read query/line
+  fork test
+    hook test
+      call is-above
+        read found
+        code 1
+    hook hold
+      halt find-many
+        bind thing
+          call last-kind
+            read query
+        bind actual, read found
+        bind line, read query/line
+  save it
+    call make-it
+      read query
+      call get
+        read hits
+        code 0
+  call body
+    read it
+  send back, read it
+
+# every hit of a query, in the driver's order, `body` run on each. No hit is an empty list, never an error
+task find-all
+  mark async
+  take query, like find-query
+  take base
+    like list
+      like find-handle
+    fall make list
+  take body
+    like task
+      mark async
+      take it, like unknown
+  like list, like unknown
+  call require-mounted
+  save hits
+    call resolve-hits
+      read query
+      code 0
+      read base
+  save out
+    make list
+  walk hits
+    take hit
+    save it
+      call make-it
+        read query
+        read hit
+    call body
+      read it
+    push(out, it)
+  send back, read out
+
+# whether a query has a hit, asking the driver for at most one. No body runs: there is no result to act on
+task find-some
+  mark async
+  take query, like find-query
+  take base
+    like list
+      like find-handle
+    fall make list
+  like boolean
+  call require-mounted
+  save hits
+    call resolve-hits
+      read query
+      code 1
+      read base
+  send back
+    call is-above
+      call length
+        read hits
+      code 0

@@ -11,9 +11,14 @@ load @term/site/dom/dom
   find view
   find append
 
+# one source word over its interlinear label
+form gloss-word
+  link form, like text
+  link gloss, like text
+
 view gloss
   take host, like view
-  take words
+  take words, like list, like gloss-word
   view div
     bind data-slot, text <gloss>
     walk list, read words

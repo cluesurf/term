@@ -3,7 +3,7 @@
 // other's token. The hold is a folder, `<home>/<device>/`, made with `mkdirSync` (atomic: the process that makes it holds
 // it) and holding `owner.json`. A holder whose process is gone holds nothing.
 
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -97,10 +97,11 @@ function pause(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-// takes the machine-wide hold on `device` for this process, waiting while another live process holds it (it says
-// once who holds it, then checks again every second), and answers the release. A device named in TERM_HELD (a
-// comma-separated list) is held by an ancestor process: the answer is a release that does nothing, at once
-export async function holdDevice(device: Device, who: string): Promise<() => void> {
+// The one lock routine both doors drive. It does every step they share (the TERM_HELD answer, the home folder, the
+// `mkdirSync` attempt, stale and orphan clearing, the waiting line said once, `owner.json`, the release) and yields
+// whenever it must pause one second before trying again. The door decides what a pause is (a timer awaited, or an
+// `Atomics.wait`) and whether the release also hangs on SIGINT and SIGTERM (`signals`).
+function* lock(device: Device, who: string, signals: boolean): Generator<void, () => void, void> {
   const inherited = (process.env.TERM_HELD ?? '').split(',').map(name => name.trim())
 
   if (inherited.includes(device)) {
@@ -130,11 +131,17 @@ export async function holdDevice(device: Device, who: string): Promise<() => voi
       if (!told) {
         const holder = holderOf(device)
 
-        process.stderr.write(`hold  ${device} is held by ${holder ? `${holder.who} (pid ${holder.pid}, since ${holder.since})` : 'another process'}, waiting\n`)
+        // writeSync, so the line shows at once even while the thread is blocked
+        try {
+          writeSync(2, `hold  ${device} is held by ${holder ? `${holder.who} (pid ${holder.pid}, since ${holder.since})` : 'another process'}, waiting\n`)
+        } catch {
+          // a full non-blocking pipe (EAGAIN): the line is only information, the wait goes on
+        }
+
         told = true
       }
 
-      await pause(1000)
+      yield
 
       continue
     }
@@ -177,8 +184,45 @@ export async function holdDevice(device: Device, who: string): Promise<() => voi
   }
 
   process.on('exit', onExit)
-  process.on('SIGINT', onInt)
-  process.on('SIGTERM', onTerm)
+
+  if (signals) {
+    process.on('SIGINT', onInt)
+    process.on('SIGTERM', onTerm)
+  }
 
   return release
+}
+
+// takes the machine-wide hold on `device` for this process, waiting while another live process holds it (it says
+// once who holds it, then checks again every second), and answers the release. A device named in TERM_HELD (a
+// comma-separated list) is held by an ancestor process: the answer is a release that does nothing, at once
+export async function holdDevice(device: Device, who: string): Promise<() => void> {
+  const steps = lock(device, who, true)
+
+  for (;;) {
+    const step = steps.next()
+
+    if (step.done) {
+      return step.value
+    }
+
+    await pause(1000)
+  }
+}
+
+// the same hold as holdDevice, for a process whose work under the hold is synchronous (spawnSync, execFileSync,
+// beat-term D024): it waits with Atomics.wait, and releases on exit only, never from a signal listener, so a SIGINT
+// or SIGTERM ends the process at once and the next taker clears the folder its dead pid left
+export function holdDeviceSync(device: Device, who: string): () => void {
+  const steps = lock(device, who, false)
+
+  for (;;) {
+    const step = steps.next()
+
+    if (step.done) {
+      return step.value
+    }
+
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)
+  }
 }

@@ -95,7 +95,7 @@ writeFileSync(entry, PROGRAM)
 // the dom is the memory host, so the tree can be read back
 const base = projectResolver(ROOT, 'node')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/dom$/, 'dom/native/memory/dom'), fromFile)
+  base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
 const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'node' })
 ok('a page placing every new word compiles', result.ok, result.ok ? '' : result.diagnostics.slice(0, 4).map(d => d.message).join(' | '))
 

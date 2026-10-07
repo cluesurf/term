@@ -1,0 +1,194 @@
+# The generated Unicode 17.0.0 data of url/idna-data, read back through its six lookups for 30 code points. The expected values were
+# read out of IdnaMappingTable.txt, DerivedBidiClass.txt, DerivedJoiningType.txt, DerivedCombiningClass.txt and
+# DerivedGeneralCategory.txt by scanning their lines, not out of the generator's own arrays: status, mapping, Bidi_Class,
+# Joining_Type, virama, mark. The set covers every status (valid, mapped, deviation, ignored, disallowed), a mapping of
+# one, two and eighteen code points, the @missing Bidi_Class defaults, a derived joining type, and both ends of the range.
+# Regenerate with: sh T/tmp/dec-tsx.sh tmp/idna-probe.ts (IDNA_EMIT=<file>).
+
+load @term/base/url/idna-data
+  find idna-status
+  find idna-mapping
+  find bidi-class
+  find joining-type
+  find is-virama
+  find is-mark
+
+test point-0000
+  want hold
+    call is-equal
+      text <{idna-status(0)}|{idna-mapping(0)}|{bidi-class(0)}|{joining-type(0)}|{is-virama(0)}|{is-mark(0)}>
+      text <valid||bn|u|false|false>
+
+test point-0009
+  want hold
+    call is-equal
+      text <{idna-status(9)}|{idna-mapping(9)}|{bidi-class(9)}|{joining-type(9)}|{is-virama(9)}|{is-mark(9)}>
+      text <valid||s|u|false|false>
+
+test point-0020
+  want hold
+    call is-equal
+      text <{idna-status(32)}|{idna-mapping(32)}|{bidi-class(32)}|{joining-type(32)}|{is-virama(32)}|{is-mark(32)}>
+      text <valid||ws|u|false|false>
+
+test point-002b
+  want hold
+    call is-equal
+      text <{idna-status(43)}|{idna-mapping(43)}|{bidi-class(43)}|{joining-type(43)}|{is-virama(43)}|{is-mark(43)}>
+      text <valid||es|u|false|false>
+
+test point-002c
+  want hold
+    call is-equal
+      text <{idna-status(44)}|{idna-mapping(44)}|{bidi-class(44)}|{joining-type(44)}|{is-virama(44)}|{is-mark(44)}>
+      text <valid||cs|u|false|false>
+
+test point-002d
+  want hold
+    call is-equal
+      text <{idna-status(45)}|{idna-mapping(45)}|{bidi-class(45)}|{joining-type(45)}|{is-virama(45)}|{is-mark(45)}>
+      text <valid||es|u|false|false>
+
+test point-0030
+  want hold
+    call is-equal
+      text <{idna-status(48)}|{idna-mapping(48)}|{bidi-class(48)}|{joining-type(48)}|{is-virama(48)}|{is-mark(48)}>
+      text <valid||en|u|false|false>
+
+test point-0041
+  want hold
+    call is-equal
+      text <{idna-status(65)}|{idna-mapping(65)}|{bidi-class(65)}|{joining-type(65)}|{is-virama(65)}|{is-mark(65)}>
+      text <mapped|a|l|u|false|false>
+
+test point-0061
+  want hold
+    call is-equal
+      text <{idna-status(97)}|{idna-mapping(97)}|{bidi-class(97)}|{joining-type(97)}|{is-virama(97)}|{is-mark(97)}>
+      text <valid||l|u|false|false>
+
+test point-0080
+  want hold
+    call is-equal
+      text <{idna-status(128)}|{idna-mapping(128)}|{bidi-class(128)}|{joining-type(128)}|{is-virama(128)}|{is-mark(128)}>
+      text <disallowed||bn|u|false|false>
+
+test point-00a0
+  want hold
+    call is-equal
+      text <{idna-status(160)}|{idna-mapping(160)}|{bidi-class(160)}|{joining-type(160)}|{is-virama(160)}|{is-mark(160)}>
+      text <mapped| |cs|u|false|false>
+
+test point-00a8
+  want hold
+    call is-equal
+      text <{idna-status(168)}|{idna-mapping(168)}|{bidi-class(168)}|{joining-type(168)}|{is-virama(168)}|{is-mark(168)}>
+      text <mapped| ̈|on|u|false|false>
+
+test point-00ad
+  want hold
+    call is-equal
+      text <{idna-status(173)}|{idna-mapping(173)}|{bidi-class(173)}|{joining-type(173)}|{is-virama(173)}|{is-mark(173)}>
+      text <ignored||bn|t|false|false>
+
+test point-00df
+  want hold
+    call is-equal
+      text <{idna-status(223)}|{idna-mapping(223)}|{bidi-class(223)}|{joining-type(223)}|{is-virama(223)}|{is-mark(223)}>
+      text <deviation|ss|l|u|false|false>
+
+test point-0300
+  want hold
+    call is-equal
+      text <{idna-status(768)}|{idna-mapping(768)}|{bidi-class(768)}|{joining-type(768)}|{is-virama(768)}|{is-mark(768)}>
+      text <valid||nsm|t|false|true>
+
+test point-05d0
+  want hold
+    call is-equal
+      text <{idna-status(1488)}|{idna-mapping(1488)}|{bidi-class(1488)}|{joining-type(1488)}|{is-virama(1488)}|{is-mark(1488)}>
+      text <valid||r|u|false|false>
+
+test point-0627
+  want hold
+    call is-equal
+      text <{idna-status(1575)}|{idna-mapping(1575)}|{bidi-class(1575)}|{joining-type(1575)}|{is-virama(1575)}|{is-mark(1575)}>
+      text <valid||al|r|false|false>
+
+test point-0628
+  want hold
+    call is-equal
+      text <{idna-status(1576)}|{idna-mapping(1576)}|{bidi-class(1576)}|{joining-type(1576)}|{is-virama(1576)}|{is-mark(1576)}>
+      text <valid||al|d|false|false>
+
+test point-0640
+  want hold
+    call is-equal
+      text <{idna-status(1600)}|{idna-mapping(1600)}|{bidi-class(1600)}|{joining-type(1600)}|{is-virama(1600)}|{is-mark(1600)}>
+      text <valid||al|c|false|false>
+
+test point-0661
+  want hold
+    call is-equal
+      text <{idna-status(1633)}|{idna-mapping(1633)}|{bidi-class(1633)}|{joining-type(1633)}|{is-virama(1633)}|{is-mark(1633)}>
+      text <valid||an|u|false|false>
+
+test point-094d
+  want hold
+    call is-equal
+      text <{idna-status(2381)}|{idna-mapping(2381)}|{bidi-class(2381)}|{joining-type(2381)}|{is-virama(2381)}|{is-mark(2381)}>
+      text <valid||nsm|t|true|true>
+
+test point-200c
+  want hold
+    call is-equal
+      text <{idna-status(8204)}|{idna-mapping(8204)}|{bidi-class(8204)}|{joining-type(8204)}|{is-virama(8204)}|{is-mark(8204)}>
+      text <deviation||bn|u|false|false>
+
+test point-200d
+  want hold
+    call is-equal
+      text <{idna-status(8205)}|{idna-mapping(8205)}|{bidi-class(8205)}|{joining-type(8205)}|{is-virama(8205)}|{is-mark(8205)}>
+      text <deviation||bn|c|false|false>
+
+test point-2028
+  want hold
+    call is-equal
+      text <{idna-status(8232)}|{idna-mapping(8232)}|{bidi-class(8232)}|{joining-type(8232)}|{is-virama(8232)}|{is-mark(8232)}>
+      text <disallowed||ws|u|false|false>
+
+test point-20ac
+  want hold
+    call is-equal
+      text <{idna-status(8364)}|{idna-mapping(8364)}|{bidi-class(8364)}|{joining-type(8364)}|{is-virama(8364)}|{is-mark(8364)}>
+      text <valid||et|u|false|false>
+
+test point-2160
+  want hold
+    call is-equal
+      text <{idna-status(8544)}|{idna-mapping(8544)}|{bidi-class(8544)}|{joining-type(8544)}|{is-virama(8544)}|{is-mark(8544)}>
+      text <mapped|i|l|u|false|false>
+
+test point-fdfa
+  want hold
+    call is-equal
+      text <{idna-status(65018)}|{idna-mapping(65018)}|{bidi-class(65018)}|{joining-type(65018)}|{is-virama(65018)}|{is-mark(65018)}>
+      text <mapped|صلى الله عليه وسلم|al|u|false|false>
+
+test point-fe0f
+  want hold
+    call is-equal
+      text <{idna-status(65039)}|{idna-mapping(65039)}|{bidi-class(65039)}|{joining-type(65039)}|{is-virama(65039)}|{is-mark(65039)}>
+      text <ignored||nsm|t|false|true>
+
+test point-1e900
+  want hold
+    call is-equal
+      text <{idna-status(125184)}|{idna-mapping(125184)}|{bidi-class(125184)}|{joining-type(125184)}|{is-virama(125184)}|{is-mark(125184)}>
+      text <mapped|𞤢|r|d|false|false>
+
+test point-10ffff
+  want hold
+    call is-equal
+      text <{idna-status(1114111)}|{idna-mapping(1114111)}|{bidi-class(1114111)}|{joining-type(1114111)}|{is-virama(1114111)}|{is-mark(1114111)}>
+      text <disallowed||bn|u|false|false>

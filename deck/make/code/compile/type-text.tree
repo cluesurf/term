@@ -55,6 +55,13 @@ task spell
   mark private
 
   sift of
+    case number
+      link width
+      # a width word prints as itself, so a diagnostic says `list, like u8` (never the type-key's `number`)
+      fork test, is-unequal(width, <>)
+        hold
+          back width
+      back <number>
     case string
       back <text>
     case unit

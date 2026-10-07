@@ -8,7 +8,7 @@ load @term/site/dom/dom
 
 view button-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <button-group>
     bind class, read class

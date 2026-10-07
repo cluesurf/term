@@ -2,17 +2,664 @@
 # `<hi-IN>` groups `12,34,567.89`, and `format-currency(1234.5, <EUR>, <fr-FR>)` is `1 234,50 €`. The language is a
 # BCP 47 tag, and the currency an ISO 4217 code.
 #
-# Each platform's own formatter over its own copy of Unicode's CLDR: `Intl.NumberFormat` on node and in the browser,
-# Foundation's `NumberFormatter` on Swift, and `java.text.NumberFormat` on Kotlin. Rust's standard library has no
-# locale data, so a Rust build that loads this module is refused at the load until the choice of data is made
-# (note/term/plan/decisions-2026-10.md, D7): a number formatted for the wrong locale with no word would be worse.
-# test/stdlib/text-format.ts holds Swift and Kotlin to node's answers.
+# One formatter, written in Term over Unicode's CLDR 48.0 (decision D7, term/decisions-2026-10/locale), so every backend
+# prints the same bytes and Rust formats too: no platform formatter is called. The data is ./format/cldr (read through
+# ./format/locale), the float's decimal digits are ./format/digits, the pattern is read by ./format/pattern.
+#
+# The rules, which test/stdlib/text-format.ts holds to Intl.NumberFormat on CLDR 48.0 (roundingMode halfEven):
+#   - the digits are the SHORTEST that read the float back, so 1.005 is `1005e-3` and rounds to 1.01
+#   - they are rounded half to even to `most` places, trailing zeros past `fewest` are dropped, zeros are added up to it
+#   - the whole part takes the locale's digits and grouping (primary and secondary sizes of its pattern, and
+#     minimumGroupingDigits), the marks are the locale's, the currency marks where it has its own
+#   - the pattern's prefix and suffix carry the sign and the currency symbol (the locale's, else the ISO code), and
+#     currencySpacing puts one no-break space between a symbol that ends or begins in a letter and the digits
+#   - a negative number takes the pattern's negative subpattern, else the locale's minus before the positive prefix
+# It does NOT read the pattern a locale writes for a symbol next to a letter (CLDR's alphaNextToNumber): node's ICU never
+# uses it, and the reference is node's (locale/log.md).
 
 mark unstable
 
-load @term/base/native/{platform}/text/format
-  find platform-format-number
-  find platform-format-currency
+load @term/base/text/format/locale
+  find find-locale
+  find currency-symbol
+  find currency-digits
+  find spacing-between
+  find locale
+
+load @term/base/text/format/digits
+  find shortest-digits
+  find float-digits
+
+load @term/base/text/format/pattern
+  find read-pattern
+  find expand-affix
+  find group-digits
+  find number-pattern
+
+load @term/base/text
+  find split
+  find substring
+  find char-count
+  find char-at
+  find pad-left
+  find pad-right
+  find to-upper-case
+  find starts-with
+  find ends-with
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/list
+  find length
+  find get
+
+load @term/base/exception
+  find mismatch
+
+form format-mismatch
+  like mismatch
+    bind note, <Not a number of fraction digits>
+    link reason, like text
+
+# the ranges of code points CLDR's currencySpacing does NOT match at the edge of a symbol: the currency signs and other
+# symbols (general category S) and the separators (Z), each as `from` and `to` in four hex digits. Every symbol edge in
+# CLDR 48 that is S or Z lies in one of these (tmp/edge-look.ts)
+host symbol-ranges, text <00240024 00a200a5 058f058f 060b060b 07fe07ff 09f209f3 09fb09fb 0af10af1 0bf90bf9 0e3f0e3f 17db17db 20a020c0 a838a838 fdfcfdfc fe69fe69 ff04ff04 ffe0ffe1 ffe5ffe6 00200020 00a000a0 16801680 2000200a 20282029 202f202f 205f205f 30003000>
+host symbol-range-count, code 26
+
+# the whole and the fraction of a number, as digit texts
+form decimal-parts
+  link whole, like text
+  link fraction, like text
+
+# `most` when 0 to 20 places are wanted with `fewest` not above it, else a `format-mismatch`
+task checked-places
+  mark private
+  take fewest, like number
+  take most, like number
+  like number
+  fork test
+    hook test
+      call or
+        call or
+          call is-below
+            read fewest
+            code 0
+          call is-above
+            read most
+            code 20
+        call is-below
+          read most
+          read fewest
+    hook hold
+      halt format-mismatch
+        bind thing, text <fraction digits>
+        bind reason, text <fewest {fewest}, most {most}: wanted 0 to 20, fewest not above most>
+  send back, read most
+
+# whether a code point is a symbol or a separator
+task is-symbol-rune
+  mark private
+  take rune, like number
+  like boolean
+  save found, false
+  walk size
+    bind base, code 0
+    bind head, read symbol-range-count
+    hook next
+      take site, name at
+      save from
+        call multiply
+          read at
+          code 9
+      save low
+        call parse-integer
+          call substring
+            read symbol-ranges
+            read from
+            call add
+              read from
+              code 4
+          code 16
+      save high
+        call parse-integer
+          call substring
+            read symbol-ranges
+            call add
+              read from
+              code 4
+            call add
+              read from
+              code 8
+          code 16
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read rune
+              read low
+            call is-maximum
+              read rune
+              read high
+        hook hold
+          save found, true
+          halt
+  send back, read found
+
+# whether CLDR's currencySpacing applies to the edge of `symbol` next to the number: the character at its end (`after`
+# true, the symbol before the number) or its start is neither a symbol nor a separator
+task edge-needs-space
+  mark private
+  take symbol, like text
+  take after, like boolean
+  like boolean
+  save runes
+    call to-runes
+      read symbol
+  save count
+    call length
+      read runes
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back, false
+  save at, code 0
+  fork test
+    hook test
+      read after
+    hook hold
+      save at
+        call subtract
+          read count
+          code 1
+  send back
+    call is-equal
+      call is-symbol-rune
+        call get
+          read runes
+          read at
+      false
+
+# the digits and exponent of a float as a whole and a fraction: digits `1005` with exponent -3 is `1` and `005`
+task split-digits
+  mark private
+  take digits, like float-digits
+  like decimal-parts
+  save text, read digits/digits
+  save size
+    call char-count
+      read text
+  fork test
+    hook test
+      call is-equal
+        read text
+        text <0>
+    hook hold
+      send back
+        make decimal-parts
+          bind whole, text <0>
+          bind fraction, text <>
+  fork test
+    hook test
+      call is-minimum
+        read digits/exponent
+        code 0
+    hook hold
+      send back
+        make decimal-parts
+          bind whole
+            call pad-right
+              read text
+              call add
+                read size
+                read digits/exponent
+              text <0>
+          bind fraction, text <>
+  save places
+    call subtract
+      code 0
+      read digits/exponent
+  fork test
+    hook test
+      call is-above
+        read size
+        read places
+    hook hold
+      send back
+        make decimal-parts
+          bind whole
+            call substring
+              read text
+              code 0
+              call subtract
+                read size
+                read places
+          bind fraction
+            call substring
+              read text
+              call subtract
+                read size
+                read places
+  send back
+    make decimal-parts
+      bind whole, text <0>
+      bind fraction
+        call pad-left
+          read text
+          read places
+          text <0>
+
+# the decimal text `digits` plus one
+task increment-digits
+  mark private
+  take digits, like text
+  like text
+  save count
+    call char-count
+      read digits
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back, text <1>
+  save head
+    call substring
+      read digits
+      code 0
+      call subtract
+        read count
+        code 1
+  save last
+    call parse-integer
+      call char-at
+        read digits
+        call subtract
+          read count
+          code 1
+      code 10
+  fork test
+    hook test
+      call is-equal
+        read last
+        code 9
+    hook hold
+      send back
+        text <{increment-digits(head)}0>
+  save next
+    call char-at
+      text <0123456789>
+      call add
+        read last
+        code 1
+  send back, text <{head}{next}>
+
+# the number rounded half to even to `most` places of fraction
+task round-parts
+  mark private
+  take parts, like decimal-parts
+  take most, like number
+  like decimal-parts
+  save size
+    call char-count
+      read parts/fraction
+  fork test
+    hook test
+      call is-maximum
+        read size
+        read most
+    hook hold
+      send back, read parts
+  save kept
+    text <{parts/whole}{substring(parts/fraction, 0, most)}>
+  save width
+    call char-count
+      read kept
+  save next
+    call parse-integer
+      call char-at
+        read parts/fraction
+        read most
+      code 10
+  save odd
+    call is-equal
+      call modulo
+        call parse-integer
+          call char-at
+            read kept
+            call subtract
+              read width
+              code 1
+          code 10
+        code 2
+      code 1
+  save up, false
+  fork test
+    hook test
+      call is-above
+        read next
+        code 5
+    hook hold
+      save up, true
+    hook miss
+      fork test
+        hook test
+          call is-equal
+            read next
+            code 5
+        hook hold
+          save up
+            call or
+              call is-above
+                read size
+                call add
+                  read most
+                  code 1
+              read odd
+  fork test
+    hook test
+      read up
+    hook hold
+      save kept
+        call increment-digits
+          read kept
+      save width
+        call char-count
+          read kept
+  save cut
+    call subtract
+      read width
+      read most
+  send back
+    make decimal-parts
+      bind whole
+        call substring
+          read kept
+          code 0
+          read cut
+      bind fraction
+        call substring
+          read kept
+          read cut
+
+# whether the fraction ends in a zero it may drop (past `fewest` places)
+task has-extra-zero
+  mark private
+  take fraction, like text
+  take fewest, like number
+  like boolean
+  save size
+    call char-count
+      read fraction
+  fork test
+    hook test
+      call is-above
+        read size
+        read fewest
+    hook hold
+      send back
+        call is-equal
+          call char-at
+            read fraction
+            call subtract
+              read size
+              code 1
+          text <0>
+  send back, false
+
+# the fraction with the zeros past `fewest` places dropped, then zeros added up to `fewest`
+task fit-fraction
+  mark private
+  take fraction, like text
+  take fewest, like number
+  like text
+  save out, read fraction
+  walk test
+    down
+      call char-count
+        read out
+    hook test
+      call has-extra-zero
+        read out
+        read fewest
+    hook step
+      save out
+        call substring
+          read out
+          code 0
+          call subtract
+            call char-count
+              read out
+            code 1
+  send back
+    call pad-right
+      read out
+      read fewest
+      text <0>
+
+# the digits of `text` written in the locale's ten digits (`digits` is those ten, zero first)
+task write-digits
+  mark private
+  take text, like text
+  take digits, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read digits
+        text <0123456789>
+    hook hold
+      send back, read text
+  save out, text <>
+  save runes
+    call to-runes
+      read text
+  walk list, read runes
+    hook next
+      take site, name rune
+      save slot
+        call subtract
+          read rune
+          code 48
+      save out, text <{out}{char-at(digits, slot)}>
+  send back, read out
+
+# the number's digits as text: the shortest digits rounded and fitted, in the locale's digits, grouped, with its mark
+task write-body
+  mark private
+  take digits, like float-digits
+  take at, like locale
+  take pattern, like number-pattern
+  take fewest, like number
+  take most, like number
+  take currency, like boolean
+  like text
+  save parts
+    call round-parts
+      call split-digits
+        read digits
+      read most
+  save fraction
+    call fit-fraction
+      read parts/fraction
+      read fewest
+  save whole
+    call pad-left
+      read parts/whole
+      read pattern/minimum-integer
+      text <0>
+  save decimal, read at/decimal
+  save group, read at/group
+  fork test
+    hook test
+      read currency
+    hook hold
+      fork test
+        hook test
+          call is-above
+            call char-count
+              read at/currency-decimal
+            code 0
+        hook hold
+          save decimal, read at/currency-decimal
+      fork test
+        hook test
+          call is-above
+            call char-count
+              read at/currency-group
+            code 0
+        hook hold
+          save group, read at/currency-group
+  save grouped
+    call group-digits
+      call write-digits
+        read whole
+        read at/digits
+      read pattern/primary
+      read pattern/secondary
+      read at/minimum-grouping
+      read group
+  fork test
+    hook test
+      call is-above
+        call char-count
+          read fraction
+        code 0
+    hook hold
+      send back
+        text <{grouped}{decimal}{write-digits(fraction, at/digits)}>
+  send back, read grouped
+
+# `value` in the locale `at`, with `symbol` as the currency sign (an empty text for a plain number)
+task write-formatted
+  mark private
+  take value, like float
+  take at, like locale
+  take fewest, like number
+  take most, like number
+  take symbol, like text
+  like text
+  save places
+    call checked-places
+      read fewest
+      read most
+  save currency
+    call is-above
+      call char-count
+        read symbol
+      code 0
+  save source, read at/decimal-pattern
+  fork test
+    hook test
+      read currency
+    hook hold
+      save source, read at/currency-pattern
+  save halves
+    call split
+      read source
+      text <;>
+  save pattern
+    call read-pattern
+      call get
+        read halves
+        code 0
+  save digits
+    call shortest-digits
+      read value
+  save prefix, read pattern/prefix
+  save suffix, read pattern/suffix
+  fork test
+    hook test
+      read digits/negative
+    hook hold
+      fork test
+        hook test
+          call is-above
+            call length
+              read halves
+            code 1
+        hook hold
+          save sign
+            call read-pattern
+              call get
+                read halves
+                code 1
+          save prefix, read sign/prefix
+          save suffix, read sign/suffix
+        hook miss
+          save prefix, text <-{pattern/prefix}>
+  save body, text <>
+  fork test
+    hook test
+      read digits/finite
+    hook hold
+      save body
+        call write-body
+          read digits
+          read at
+          read pattern
+          read fewest
+          read places
+          read currency
+    hook miss
+      fork test
+        hook test
+          call is-equal
+            read digits/digits
+            text <NaN>
+        hook hold
+          save body, read at/nan
+        hook miss
+          save body, read at/infinity
+  save before
+    call expand-affix
+      read prefix
+      read at/minus
+      read at/plus
+      read symbol
+  save after
+    call expand-affix
+      read suffix
+      read at/minus
+      read at/plus
+      read symbol
+  fork test
+    hook test
+      call and
+        read currency
+        read digits/finite
+    hook hold
+      fork test
+        hook test
+          call and
+            call ends-with
+              read prefix
+              text <¤>
+            call edge-needs-space
+              read symbol
+              true
+        hook hold
+          save before, text <{before}{spacing-between(true)}>
+      fork test
+        hook test
+          call and
+            call starts-with
+              read suffix
+              text <¤>
+            call edge-needs-space
+              read symbol
+              false
+        hook hold
+          save after, text <{spacing-between(false)}{after}>
+  send back, text <{before}{body}{after}>
 
 # `value` with at least `fewest` and at most `most` digits after the decimal mark, rounded half to even past them, the
 # digits grouped and the mark placed as `language` writes them
@@ -23,14 +670,45 @@ task format-number
   take most, like number
   like text
   send back
-    call platform-format-number(read(value), read(language), read(fewest), read(most))
+    call write-formatted
+      read value
+      call find-locale
+        read language
+      read fewest
+      read most
+      text <>
 
 # `value` as an amount of the currency `currency` (`<EUR>`, `<JPY>`), with that currency's own number of minor digits,
-# its symbol where `language` puts it
+# its symbol where `language` puts it, else the ISO code
 task format-currency
   take value, like float
   take currency, like text
   take language, like text
   like text
+  save code
+    call to-upper-case
+      read currency
+  save at
+    call find-locale
+      read language
+  save symbol
+    call currency-symbol
+      read at
+      read code
+  fork test
+    hook test
+      call is-equal
+        read symbol
+        text <>
+    hook hold
+      save symbol, read code
+  save places
+    call currency-digits
+      read code
   send back
-    call platform-format-currency(read(value), read(currency), read(language))
+    call write-formatted
+      read value
+      read at
+      read places
+      read places
+      read symbol

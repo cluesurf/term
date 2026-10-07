@@ -13,7 +13,7 @@ load @term/site/dom/dom
 
 view card
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card>
     bind class, read class
@@ -21,7 +21,7 @@ view card
 
 view card-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-header>
     bind class, read class
@@ -29,7 +29,7 @@ view card-header
 
 view card-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-title>
     bind class, read class
@@ -37,7 +37,7 @@ view card-title
 
 view card-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-description>
     bind class, read class
@@ -45,7 +45,7 @@ view card-description
 
 view card-action
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-action>
     bind class, read class
@@ -53,7 +53,7 @@ view card-action
 
 view card-content
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-content>
     bind class, read class
@@ -61,7 +61,7 @@ view card-content
 
 view card-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <card-footer>
     bind class, read class

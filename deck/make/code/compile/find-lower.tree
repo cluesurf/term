@@ -1,0 +1,1033 @@
+# THE LOWERING OF `find` (note/project/term/find, decision 005): a Term pass over the minted values of the code
+# grammar. The find mint (deck/mill/code/tree/code/find/mint.tree) is a faithful pass-through: it mints a `find-query`
+# form with the slots the grammar read, and cannot do more, because a mint writes no constant and makes no choice. This
+# pass rewrites every `find-query` form, wherever it stands, into the minted core forms the bridge already lowers, which
+# are exactly what the code grammar mints for the program written out by hand (spec section 6.2):
+#
+#   find pane                          call find-one
+#     have title, <server>               bind query, make find-query
+#     run <npm dev>                        bind count, make one
+#                                          bind base, make find-step ...
+#                                          bind path / union / back / sort, make list ...
+#                                          bind size, code 0 / bind head, code 0 / bind sift, make list
+#                                          bind wait, call from-seconds, code 0
+#                                          bind line, text <find one pane>
+#                                        bind body, task
+#                                          take it, like pane
+#                                          read it / link run, <npm dev>
+#
+# Shorthand and explicit spellings mint one shape (the shorthand's mint makes the count and the base), so they lower to
+# one program. A program with no find comes back as it went in: every list and form the pass did not change is the
+# SAME object it was given (`none` from `lower-list` and `lower-value` means unchanged), so nothing downstream can tell
+# the pass ran.
+#
+# What a body statement means (spec section 4.5): a bare head is an operation on the result, `read it / link run,
+# <npm dev>`, and is told by its form, `seed-call-open` or a lone word. `call x` is a `call` and stays one. Every keyword
+# form keeps its meaning, and only the DIRECT statements of a body are read this way, never a block inside a `fork`.
+#
+# Parts this pass does not lower yet are not dropped in silence: each is a `find-problem`, which `millByGrammar` reports
+# as a diagnostic, and the refusals of spec section 3.4 are added here by item 0010 (never in the mint, never in the
+# bridge). The problems today: a `find read <value>` (the mount of 0011), a named find with `take`, a `have`, `hold` or
+# `meet` written directly under the find, a find with no base or two, a body under `find some`, a `back` of anything
+# but a property, a `wait` that is not whole units, and a union of `find one`s.
+#
+# NAMES. The lowered code names `find-one`, `find-all`, `find-some`, `find-query`, `find-step`, `find-back`,
+# `find-sort`, the test cases `have`, `lack`, `hold` and `meet`, the value cases `text`, `number`, `flag` and `void`,
+# the operand cases `self` and `value`, the counts, and `from-seconds` (and its units). A file's loads must reach them.
+#
+# Ported toolchain module: `make:port` writes it to deck/make/host/port, and compile/mill-run.ts `runCodeMint` calls
+# it. Rebuild the CLI (`make:line`) after any edit.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find char-count
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+
+load ../parser/diagnostic
+  find span
+
+load ../parser/tree
+  find node
+
+load ./mill-running
+  find minted
+
+# ---- the values ----
+
+# what the pass gives: the values with every find lowered, and what it could not lower
+form find-lowered
+  link values, like list, like minted
+  link problems, like list, like find-problem
+
+form find-problem
+  link code, like text
+  link message, like text
+  link span
+    like maybe, like span
+    need false
+
+# where lowered code sits: the span and node of the find it came from, so a diagnostic on a form this pass made
+# points at the find
+form find-origin
+  link span
+    like maybe, like span
+    need false
+  link node
+    like maybe, like node
+    need false
+
+task lower-finds
+  take values, like list, like minted
+  like find-lowered
+
+  save problems, make list
+  sift lower-list(values, problems)
+    case some
+      link changed
+      back
+        make find-lowered
+          bind values, changed
+          bind problems, problems
+    case none
+      back
+        make find-lowered
+          bind values, values
+          bind problems, problems
+
+# ---- the walk ----
+
+# the list with every find in it lowered, or none when the list holds none
+task lower-list
+  take values, like list, like minted
+  take problems, like list, like find-problem
+  like maybe, like list, like minted
+  mark private
+
+  save out, make list
+  save changed, false
+  walk values
+    take one
+    sift lower-value(one, problems)
+      case some
+        link next
+        push(out, next)
+        save changed, true
+      case none
+        push(out, one)
+  fork test, changed
+    hold
+      back make(some, out)
+  back make none
+
+# a value with every find in it lowered, or none when it holds none. A form's fields are lowered first, so a find in a
+# body or in a value is a call before the find around it is read
+task lower-value
+  take value, like minted
+  take problems, like list, like find-problem
+  like maybe, like minted
+  mark private
+
+  sift value
+    case form
+      link form-name
+      link form-fields
+      link form-span
+      link form-node
+      save fields, make hash
+      save changed, false
+      walk form-fields/keys()
+        take key
+        sift lower-list(form-fields/get(key), problems)
+          case some
+            link next
+            save fields/{key}, next
+            save changed, true
+          case none
+            save fields/{key}, form-fields/get(key)
+      save here
+        make form
+          bind form, form-name
+          bind fields, fields
+          bind span, form-span
+          bind node, form-node
+      fork test, is-equal(form-name, <find-query>)
+        hold
+          save lowered, lower-query(here, problems)
+          back make(some, lowered)
+      fork test, changed
+        hold
+          back make(some, here)
+      back make none
+    miss
+      back make none
+
+# ---- reading the minted form ----
+
+# the values a form holds at a field, none when the field is not there
+task field-of
+  take whole, like minted
+  take key, like text
+  like list, like minted
+  mark private
+
+  sift whole
+    case form
+      link form-name
+      link form-fields
+      fork test, form-fields/has(key)
+        hold
+          back form-fields/get(key)
+    miss
+      save nothing, 0
+  back make list
+
+# the first value of a list, none for an empty one
+task first-of
+  take values, like list, like minted
+  like maybe, like minted
+  mark private
+
+  fork test, is-above(values/length, 0)
+    hold
+      save found, get(values, 0)
+      back make(some, found)
+  back make none
+
+# the last value of a list, none for an empty one
+task last-of
+  take values, like list, like minted
+  like maybe, like minted
+  mark private
+
+  fork test, is-above(values/length, 0)
+    hold
+      save found, get(values, subtract(values/length, 1))
+      back make(some, found)
+  back make none
+
+# the text a word or a text literal holds, empty for anything else
+task text-of
+  take value, like minted
+  like text
+  mark private
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      back word-value
+    case text
+      link text-value
+      link text-span
+      link text-node
+      back text-value
+    miss
+      back <>
+
+# the text of the first value of a list
+task first-text
+  take values, like list, like minted
+  like text
+  mark private
+
+  sift first-of(values)
+    case some
+      link known
+      back text-of(known)
+    case none
+      back <>
+
+# the name of a form, empty for a word, a text or a number
+task form-name-of
+  take value, like minted
+  like text
+  mark private
+
+  sift value
+    case form
+      link form-name
+      link form-fields
+      link form-span
+      link form-node
+      back form-name
+    miss
+      back <>
+
+# ---- building minted forms ----
+
+task origin-of
+  take whole, like minted
+  like find-origin
+  mark private
+
+  sift whole
+    case form
+      link form-name
+      link form-fields
+      link form-span
+      link form-node
+      back
+        make find-origin
+          bind span, form-span
+          bind node, form-node
+    miss
+      back
+        make find-origin
+          bind span, make none
+          bind node, make none
+
+task word-at
+  take origin, like find-origin
+  take value, like text
+  like minted
+  mark private
+
+  back
+    make word
+      bind value, value
+      bind span, origin/span
+      bind node, origin/node
+
+task text-at
+  take origin, like find-origin
+  take value, like text
+  like minted
+  mark private
+
+  back
+    make text
+      bind value, value
+      bind span, origin/span
+      bind node, origin/node
+
+task number-at
+  take origin, like find-origin
+  take value, like float
+  like minted
+  mark private
+
+  back
+    make number
+      bind value, value
+      bind decimal, false
+      bind span, origin/span
+      bind node, origin/node
+
+task form-at
+  take origin, like find-origin
+  take name, like text
+  take fields, like hash, like text, like list, like minted
+  like minted
+  mark private
+
+  back
+    make form
+      bind form, name
+      bind fields, fields
+      bind span, origin/span
+      bind node, origin/node
+
+# no values: an argument position cannot say `make list` before a comma
+task none-of
+  like list, like minted
+  mark private
+
+  back make list
+
+# a one-element list
+task one-of
+  take value, like minted
+  like list, like minted
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+# a field written into a form's fields, left out when it is empty
+task put
+  take fields, like hash, like text, like list, like minted
+  take key, like text
+  take values, like list, like minted
+  like hash, like text, like list, like minted
+  mark private
+
+  fork test, is-above(values/length, 0)
+    hold
+      save fields/{key}, values
+  back fields
+
+task fields-of
+  like hash, like text, like list, like minted
+  mark private
+
+  back make hash
+
+# `text <value>` as the expression the grammar mints for it
+task seed-text-at
+  take origin, like find-origin
+  take value, like text
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <value>, one-of(text-at(origin, value)))
+  back form-at(origin, <seed-text>, fields)
+
+# `code <value>`
+task seed-code-at
+  take origin, like find-origin
+  take value, like float
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <value>, one-of(number-at(origin, value)))
+  back form-at(origin, <seed-code>, fields)
+
+# `read <path>`
+task read-at
+  take origin, like find-origin
+  take path-text, like text
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <path>, one-of(word-at(origin, path-text)))
+  back form-at(origin, <seed-read>, fields)
+
+# `bind <name>, <seed>`
+task bind-at
+  take origin, like find-origin
+  take name, like text
+  take seed, like minted
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <seed>, one-of(seed))
+  put(fields, <name>, one-of(word-at(origin, name)))
+  back form-at(origin, <bind>, fields)
+
+# `make <form>` over bind children and positional values
+task make-at
+  take origin, like find-origin
+  take name, like text
+  take binds, like list, like minted
+  take seeds, like list, like minted
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <name>, one-of(word-at(origin, name)))
+  put(fields, <bind>, binds)
+  put(fields, <seed>, seeds)
+  back form-at(origin, <make>, fields)
+
+# `make list` over its elements
+task list-at
+  take origin, like find-origin
+  take items, like list, like minted
+  like minted
+  mark private
+
+  back make-at(origin, <list>, none-of(), items)
+
+# `call <name>` over bind children and positional arguments
+task call-at
+  take origin, like find-origin
+  take name, like text
+  take binds, like list, like minted
+  take seeds, like list, like minted
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <bind>, binds)
+  put(fields, <seed>, seeds)
+  put(fields, <name>, one-of(word-at(origin, name)))
+  back form-at(origin, <call>, fields)
+
+# `take <name>, like <type>`
+task take-at
+  take origin, like find-origin
+  take name, like text
+  take type-name, like text
+  like minted
+  mark private
+
+  save like-fields, fields-of()
+  put(like-fields, <name>, one-of(word-at(origin, type-name)))
+  save fields, fields-of()
+  put(fields, <name>, one-of(word-at(origin, name)))
+  put(fields, <like>, one-of(form-at(origin, <like>, like-fields)))
+  back form-at(origin, <take>, fields)
+
+# an anonymous task over its parameters and its statements
+task task-at
+  take origin, like find-origin
+  take params, like list, like minted
+  take statements, like list, like minted
+  like minted
+  mark private
+
+  save fields, fields-of()
+  put(fields, <take>, params)
+  put(fields, <flow>, statements)
+  back form-at(origin, <task>, fields)
+
+# ---- values and operands ----
+
+# a value of a query as the `find-value` it is: a text, a number, a flag or nothing. A literal says which; any other
+# expression is read as a text, and the checker refuses it when it is not one
+task value-at
+  take origin, like find-origin
+  take seeds, like list, like minted
+  like minted
+  mark private
+
+  sift first-of(seeds)
+    case none
+      back make-at(origin, <void>, none-of(), none-of())
+    case some
+      link known
+      sift known
+        case text
+          link text-value
+          link text-span
+          link text-node
+          back make-at(origin, <text>, one-of(bind-at(origin, <value>, known)), none-of())
+        case number
+          link number-value
+          link number-decimal
+          link number-span
+          link number-node
+          back make-at(origin, <number>, one-of(bind-at(origin, <value>, known)), none-of())
+        case word
+          link word-value
+          link word-span
+          link word-node
+          fork test, or(is-equal(word-value, <true>), is-equal(word-value, <false>))
+            hold
+              back make-at(origin, <flag>, one-of(bind-at(origin, <value>, known)), none-of())
+          fork test, is-equal(word-value, <void>)
+            hold
+              back make-at(origin, <void>, none-of(), none-of())
+          back make-at(origin, <text>, one-of(bind-at(origin, <value>, known)), none-of())
+        case form
+          link form-name
+          link form-fields
+          link form-span
+          link form-node
+          fork test, is-equal(form-name, <seed-code>)
+            hold
+              back make-at(origin, <number>, one-of(bind-at(origin, <value>, known)), none-of())
+          back make-at(origin, <text>, one-of(bind-at(origin, <value>, known)), none-of())
+
+# the property a `read self/<name>` reads, none for any other expression
+task self-name
+  take seeds, like list, like minted
+  like maybe, like text
+  mark private
+
+  sift first-of(seeds)
+    case some
+      link known
+      fork test, is-equal(form-name-of(known), <seed-read>)
+        hold
+          save path-text, first-text(field-of(known, <path>))
+          fork test, starts-with(path-text, <self/>)
+            hold
+              save property, substring(path-text, 5)
+              back make(some, property)
+    case none
+      save nothing, 0
+  back make none
+
+# a `find-operand`: the property of the component a test sits under, or a value written in the query
+task operand-at
+  take origin, like find-origin
+  take seeds, like list, like minted
+  like minted
+  mark private
+
+  sift self-name(seeds)
+    case some
+      link property
+      back make-at(origin, <self>, one-of(bind-at(origin, <name>, seed-text-at(origin, property))), none-of())
+    case none
+      back make-at(origin, <value>, one-of(bind-at(origin, <value>, value-at(origin, seeds))), none-of())
+
+# ---- tests ----
+
+# `have <name>, <value>` and `lack <name>, <value>`
+task have-test
+  take origin, like find-origin
+  take one, like minted
+  like minted
+  mark private
+
+  save mode, first-text(field-of(one, <mode>))
+  fork test, not(is-equal(mode, <lack>))
+    hold
+      save mode, <have>
+  save binds, make list
+  push(binds, bind-at(origin, <name>, seed-text-at(origin, first-text(field-of(one, <name>)))))
+  push(binds, bind-at(origin, <value>, value-at(origin, field-of(one, <bond>))))
+  back make-at(origin, mode, binds, none-of())
+
+# the seeds of the `bind` of a hold named `operand`
+task operand-seeds
+  take binds, like list, like minted
+  take operand, like text
+  like list, like minted
+  mark private
+
+  walk binds
+    take one
+    fork test, is-equal(first-text(field-of(one, <name>)), operand)
+      hold
+        back field-of(one, <seed>)
+  back make list
+
+# `hold <predicate>` with its operands `a` and `b`
+task hold-test
+  take origin, like find-origin
+  take one, like minted
+  like minted
+  mark private
+
+  save binds, field-of(one, <bind>)
+  save parts, make list
+  push(parts, bind-at(origin, <name>, seed-text-at(origin, first-text(field-of(one, <name>)))))
+  push(parts, bind-at(origin, <a>, operand-at(origin, operand-seeds(binds, <a>))))
+  push(parts, bind-at(origin, <b>, operand-at(origin, operand-seeds(binds, <b>))))
+  back make-at(origin, <hold>, parts, none-of())
+
+# `meet and`, `meet or`, `meet lack` over what is under it
+task meet-test
+  take origin, like find-origin
+  take one, like minted
+  like minted
+  mark private
+
+  save members, make list
+  walk field-of(one, <hold>)
+    take member
+    push(members, hold-test(origin, member))
+  walk field-of(one, <meet>)
+    take member
+    push(members, meet-test(origin, member))
+  walk field-of(one, <have>)
+    take member
+    push(members, have-test(origin, member))
+  save parts, make list
+  push(parts, bind-at(origin, <kind>, seed-text-at(origin, first-text(field-of(one, <mode>)))))
+  push(parts, bind-at(origin, <test>, list-at(origin, members)))
+  back make-at(origin, <meet>, parts, none-of())
+
+# the tests under a step: its haves and lacks, then its holds, then its meets
+task tests-of
+  take origin, like find-origin
+  take piece, like minted
+  like list, like minted
+  mark private
+
+  save tests, make list
+  walk field-of(piece, <have>)
+    take one
+    push(tests, have-test(origin, one))
+  walk field-of(piece, <hold>)
+    take one
+    push(tests, hold-test(origin, one))
+  walk field-of(piece, <meet>)
+    take one
+    push(tests, meet-test(origin, one))
+  back tests
+
+# ---- steps ----
+
+# `find-step` of a `base` or a `link`
+task step-at
+  take origin, like find-origin
+  take piece, like minted
+  like minted
+  mark private
+
+  save parts, make list
+  push(parts, bind-at(origin, <kind>, seed-text-at(origin, first-text(field-of(piece, <kind>)))))
+  push(parts, bind-at(origin, <like>, seed-text-at(origin, first-text(field-of(piece, <like>)))))
+  push(parts, bind-at(origin, <turn>, seed-text-at(origin, <>)))
+  push(parts, bind-at(origin, <depth>, seed-text-at(origin, <>)))
+  push(parts, bind-at(origin, <test>, list-at(origin, tests-of(origin, piece))))
+  back make-at(origin, <find-step>, parts, none-of())
+
+# ---- the parts of the query ----
+
+# `back <name>`, read from the property of that name, or from `read self/<property>` after it
+task back-at
+  take origin, like find-origin
+  take one, like minted
+  take problems, like list, like find-problem
+  like minted
+  mark private
+
+  save field-name, first-text(field-of(one, <name>))
+  save seeds, field-of(one, <seed>)
+  save parts, make list
+  push(parts, bind-at(origin, <name>, seed-text-at(origin, field-name)))
+  fork test, is-equal(seeds/length, 0)
+    hold
+      push(parts, bind-at(origin, <from>, operand-at(origin, one-of(read-at(origin, <self/{field-name}>)))))
+      back make-at(origin, <find-back>, parts, none-of())
+  sift self-name(seeds)
+    case some
+      link known
+      push(parts, bind-at(origin, <from>, operand-at(origin, seeds)))
+    case none
+      push(problems, problem-at(origin, <find-back-computed>, <back {field-name} reads a computed value, which a query cannot evaluate yet (term-find-0010)>))
+      push(parts, bind-at(origin, <from>, operand-at(origin, one-of(read-at(origin, <self/{field-name}>)))))
+  back make-at(origin, <find-back>, parts, none-of())
+
+# `sort rise|fall, name <field>`
+task sort-at
+  take origin, like find-origin
+  take one, like minted
+  like minted
+  mark private
+
+  save parts, make list
+  push(parts, bind-at(origin, <name>, seed-text-at(origin, first-text(field-of(one, <name>)))))
+  save descending, <false>
+  fork test, is-equal(first-text(field-of(one, <order>)), <fall>)
+    hold
+      save descending, <true>
+  push(parts, bind-at(origin, <fall>, word-at(origin, descending)))
+  back make-at(origin, <find-sort>, parts, none-of())
+
+# `size <n>` and `head <n>`: the expression written, zero when there is none
+task count-at
+  take origin, like find-origin
+  take one, like list, like minted
+  like minted
+  mark private
+
+  sift first-of(one)
+    case some
+      link known
+      save seeds, field-of(known, <seed>)
+      sift first-of(seeds)
+        case some
+          link given
+          back given
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  back seed-code-at(origin, 0)
+
+# the number a text of digits spells, none for anything else
+task digits-of
+  take digits, like text
+  like maybe, like number
+  mark private
+
+  save runes, to-runes(digits)
+  fork test, is-equal(runes/length, 0)
+    hold
+      back make none
+  save total, 0
+  walk runes
+    take rune
+    fork test, or(is-below(rune, 48), is-above(rune, 57))
+      hold
+        back make none
+    save total, add(multiply(total, 10), subtract(rune, 48))
+  back make(some, total)
+
+# the unit a deadline text ends with, and the task of @term/base/duration that makes it from a whole number
+task unit-of
+  take written, like text
+  like text
+  mark private
+
+  fork test, ends-with(written, <ms>)
+    hold
+      back <from-milliseconds>
+  fork test, ends-with(written, <s>)
+    hold
+      back <from-seconds>
+  fork test, ends-with(written, <m>)
+    hold
+      back <from-minutes>
+  fork test, ends-with(written, <h>)
+    hold
+      back <from-hours>
+  fork test, ends-with(written, <d>)
+    hold
+      back <from-days>
+  back <>
+
+# how many characters of a deadline text its unit takes
+task unit-width
+  take written, like text
+  like number
+  mark private
+
+  fork test, ends-with(written, <ms>)
+    hold
+      back 2
+  back 1
+
+# the duration of `wait <10s>`: a whole number and one unit (`ms`, `s`, `m`, `h`, `d`). No wait is zero seconds
+task wait-at
+  take origin, like find-origin
+  take waits, like list, like minted
+  take problems, like list, like find-problem
+  like minted
+  mark private
+
+  save zero, call-at(origin, <from-seconds>, none-of(), one-of(seed-code-at(origin, 0)))
+  sift first-of(waits)
+    case none
+      back zero
+    case some
+      link known
+      save written, first-text(field-of(known, <value>))
+      save unit, unit-of(written)
+      fork test, is-equal(unit, <>)
+        hold
+          push(problems, problem-at(origin, <find-wait-unit>, <wait {written} needs a whole number and a unit: ms, s, m, h or d>))
+          back zero
+      save digits, substring(written, 0, subtract(char-count(written), unit-width(written)))
+      sift digits-of(digits)
+        case some
+          link amount
+          back call-at(origin, unit, none-of(), one-of(seed-code-at(origin, amount)))
+        case none
+          push(problems, problem-at(origin, <find-wait-unit>, <wait {written} needs a whole number and a unit: ms, s, m, h or d>))
+          back zero
+
+# the words of a find for a message: its count, then the kind of each step
+task line-of
+  take count-name, like text
+  take kinds, like list, like text
+  like text
+  mark private
+
+  save out, <find {count-name}>
+  walk kinds
+    take one
+    save out, <{out} {one}>
+  back out
+
+# ---- the call ----
+
+task problem-at
+  take origin, like find-origin
+  take code, like text
+  take message, like text
+  like find-problem
+  mark private
+
+  back
+    make find-problem
+      bind code, code
+      bind message, message
+      bind span, origin/span
+
+# a head the language reads as a keyword, which the code grammar mints as a call or a word only for lack of a form of
+# its own: `wait true` (the await marker, trap t007), `tick`, `take`. In a body it keeps its meaning (spec section 4.5)
+task is-keyword-head
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, or(is-equal(word, <wait>), is-equal(word, <tick>))
+    hold
+      back true
+  fork test, or(is-equal(word, <take>), is-equal(word, <halt>))
+    hold
+      back true
+  fork test, or(is-equal(word, <turn>), is-equal(word, <rest>))
+    hold
+      back true
+  back false
+
+# a body statement as the operation on the result it is: `read <it>` piped into `link <head>, <arguments>`. A statement
+# that is not a bare head comes back as it was
+task operate-at
+  take it-name, like text
+  take statement, like minted
+  like minted
+  mark private
+
+  save origin, origin-of(statement)
+  save operation, <>
+  save arguments, make list
+  sift statement
+    case word
+      link word-value
+      link word-span
+      link word-node
+      save operation, word-value
+    case form
+      link form-name
+      link form-fields
+      link form-span
+      link form-node
+      fork test, is-equal(form-name, <seed-call-open>)
+        hold
+          save operation, first-text(field-of(statement, <name>))
+          save arguments, field-of(statement, <seed>)
+    miss
+      save nothing, 0
+  fork test, or(is-equal(operation, <>), is-keyword-head(operation))
+    hold
+      back statement
+  save link-fields, fields-of()
+  put(link-fields, <name>, one-of(word-at(origin, operation)))
+  put(link-fields, <seed>, arguments)
+  save fields, fields-of()
+  put(fields, <path>, one-of(word-at(origin, it-name)))
+  put(fields, <link>, one-of(form-at(origin, <call-link>, link-fields)))
+  back form-at(origin, <seed-read>, fields)
+
+# the type of the body's parameter: the kind of the LAST step. A source written as a path, and a find with `back` lines
+# (whose result is a record), have no form to name, so the parameter is `unknown`
+task body-type
+  take kinds, like list, like text
+  take has-back, like boolean
+  like text
+  mark private
+
+  fork test, has-back
+    hold
+      back <unknown>
+  fork test, is-equal(kinds/length, 0)
+    hold
+      back <unknown>
+  save last-kind, get(kinds, subtract(kinds/length, 1))
+  fork test, or(is-equal(last-kind, <>), starts-with(last-kind, <.>))
+    hold
+      back <unknown>
+  fork test, starts-with(last-kind, </>)
+    hold
+      back <unknown>
+  back last-kind
+
+# the call a find lowers to. `whole` is the minted `find-query`, its fields already lowered
+task lower-query
+  take whole, like minted
+  take problems, like list, like find-problem
+  like minted
+  mark private
+
+  save origin, origin-of(whole)
+  save count-name, <one>
+  sift first-of(field-of(whole, <count>))
+    case some
+      link known
+      save count-name, form-name-of(known)
+    case none
+      save nothing, 0
+  save base-list, field-of(whole, <base>)
+  save link-list, field-of(whole, <link>)
+
+  # what the pass cannot lower yet
+  fork test, is-above(field-of(whole, <take>)/length, 0)
+    hold
+      push(problems, problem-at(origin, <find-take>, <a named find with take is lowered by term-find-0010>))
+  fork test, is-above(field-of(whole, <from>)/length, 0)
+    hold
+      push(problems, problem-at(origin, <find-read>, <find read is lowered with mount (term-find-0011)>))
+  fork test, is-above(add(add(field-of(whole, <have>)/length, field-of(whole, <hold>)/length), field-of(whole, <meet>)/length), 0)
+    hold
+      push(problems, problem-at(origin, <find-test-place>, <a test belongs to its component. Put it under base or a link (term-find-0010)>))
+  fork test, is-equal(base-list/length, 0)
+    hold
+      push(problems, problem-at(origin, <find-no-base>, <a path starts with base. Write base and a kind first (term-find-0010)>))
+  fork test, is-above(base-list/length, 1)
+    hold
+      push(problems, problem-at(origin, <find-two-bases>, <find has two bases>))
+
+  # the steps: the base, then each link
+  save steps, make list
+  save kinds, make list
+  save base-step, step-at(origin, form-at(origin, <find-base>, fields-of()))
+  sift first-of(base-list)
+    case some
+      link known
+      save base-step, step-at(origin, known)
+      push(kinds, first-text(field-of(known, <kind>)))
+    case none
+      save nothing, 0
+  save path-steps, make list
+  walk link-list
+    take one
+    push(path-steps, step-at(origin, one))
+    push(kinds, first-text(field-of(one, <kind>)))
+
+  # the query
+  save parts, make list
+  push(parts, bind-at(origin, <count>, make-at(origin, count-name, none-of(), none-of())))
+  push(parts, bind-at(origin, <base>, base-step))
+  push(parts, bind-at(origin, <path>, list-at(origin, path-steps)))
+  push(parts, bind-at(origin, <union>, list-at(origin, none-of())))
+  save backs, make list
+  walk field-of(whole, <back>)
+    take one
+    push(backs, back-at(origin, one, problems))
+  push(parts, bind-at(origin, <back>, list-at(origin, backs)))
+  save sorts, make list
+  walk field-of(whole, <sort>)
+    take one
+    push(sorts, sort-at(origin, one))
+  push(parts, bind-at(origin, <sort>, list-at(origin, sorts)))
+  push(parts, bind-at(origin, <size>, count-at(origin, field-of(whole, <size>))))
+  push(parts, bind-at(origin, <head>, count-at(origin, field-of(whole, <head>))))
+  save sifts, make list
+  walk field-of(whole, <sift>)
+    take one
+    push(sifts, seed-text-at(origin, first-text(field-of(one, <name>))))
+  push(parts, bind-at(origin, <sift>, list-at(origin, sifts)))
+  push(parts, bind-at(origin, <wait>, wait-at(origin, field-of(whole, <wait>), problems)))
+  push(parts, bind-at(origin, <line>, seed-text-at(origin, line-of(count-name, kinds))))
+  save arguments, make list
+  push(arguments, bind-at(origin, <query>, make-at(origin, <find-query>, parts, none-of())))
+
+  # the body, run on each hit: the result is `it`, or the word of `, name <word>`
+  save body-flow, field-of(whole, <flow>)
+  fork test, is-equal(count-name, <some>)
+    hold
+      fork test, is-above(body-flow/length, 0)
+        hold
+          push(problems, problem-at(origin, <find-body-on-some>, <find some answers yes or no. Remove the body (term-find-0010)>))
+  fork test, not(is-equal(count-name, <some>))
+    hold
+      save it-name, first-text(field-of(whole, <name>))
+      fork test, is-equal(it-name, <>)
+        hold
+          save it-name, <it>
+      save statements, make list
+      walk body-flow
+        take one
+        push(statements, operate-at(it-name, one))
+      save param-type, body-type(kinds, is-above(field-of(whole, <back>)/length, 0))
+      push(arguments, bind-at(origin, <body>, task-at(origin, one-of(take-at(origin, it-name, param-type)), statements)))
+  back call-at(origin, <find-{count-name}>, arguments, none-of())

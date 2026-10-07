@@ -42,14 +42,14 @@ load ../logic/text-visibility
 # runtime's `text` primitive (create-text); the per-tag variants below follow the same `text-<tag>` scheme.
 view text-span
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
   view span
     name text-node
@@ -73,14 +73,14 @@ view text-span
 # renderer needs a literal tag name, so each tag is its own zone (callers pick the one matching the React `tag` prop).
 view text-h1
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
   view h1
     name text-node
@@ -102,14 +102,14 @@ view text-h1
 
 view text-h2
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
   view h2
     name text-node
@@ -131,14 +131,14 @@ view text-h2
 
 view text-h3
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
   view h3
     name text-node
@@ -160,14 +160,14 @@ view text-h3
 
 view text-p
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
   view p
     name text-node
@@ -191,18 +191,18 @@ view text-p
 # prop surface alongside the typography contract.
 view text-a
   take host, like view
-  take class
+  take class, like text
   take font
-  take size
-  take weight
-  take leading
-  take color
-  take direction
-  take style
+  take size, like text
+  take weight, like text
+  take leading, like text
+  take color, like text
+  take direction, like text
+  take style, like text
   take opacity
-  take href
-  take target
-  take rel
+  take href, like text
+  take target, like text
+  take rel, like text
   view a
     name text-node
     bind data-slot, text <text>
@@ -227,7 +227,7 @@ view text-a
 # balanced wrapping — the theme applies `text-wrap: balance` on [data-slot=balanced]. Pure CSS, fully headless.
 view balanced
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <balanced>
     bind class, read class
@@ -236,8 +236,8 @@ view balanced
 # truncate to `lines` lines with an ellipsis — the theme applies line-clamp keyed off data-lines. Pure CSS.
 view truncated
   take host, like view
-  take class
-  take lines
+  take class, like text
+  take lines, like text
   view span
     bind data-slot, text <truncated>
     bind data-lines, read lines
@@ -248,7 +248,7 @@ view truncated
 # primitive (ResizeObserver + a binary-search on font size), the remaining piece; this is the themeable shell.
 view fitted
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <fitted>
     bind class, read class

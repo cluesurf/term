@@ -11,7 +11,7 @@ load @term/site/dom/dom
 
 view radio-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <radio-group>
     bind role, text <radiogroup>
@@ -20,10 +20,10 @@ view radio-group
 
 view radio-group-item
   take host, like view
-  take class
-  take state
-  take checked
-  take press
+  take class, like text
+  take state, like text
+  take checked, like boolean
+  take press, like task
   view button
     bind type, text <button>
     bind role, text <radio>

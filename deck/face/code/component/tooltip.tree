@@ -11,7 +11,7 @@ load @term/site/dom/dom
 
 view tooltip
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <tooltip>
     bind class, read class
@@ -19,7 +19,7 @@ view tooltip
 
 view tooltip-trigger
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <tooltip-trigger>
     bind class, read class
@@ -27,8 +27,8 @@ view tooltip-trigger
 
 view tooltip-content
   take host, like view
-  take class
-  take state
+  take class, like text
+  take state, like text
   view div
     bind data-slot, text <tooltip-content>
     bind data-state, read state

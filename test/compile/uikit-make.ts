@@ -12,8 +12,9 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { simulator } from '@term/call/code/cask'
 import { makeUikit, signingTeam } from '@term/call/code/uikit'
+import { holdDeviceSync } from './shared/device-hold'
+import { bootedSimulator } from './shared/simulator'
 
 let pass = 0
 let fail = 0
@@ -132,7 +133,7 @@ try {
 }
 
 // 2. the same project for the simulator, run, and read back
-const found = simulator()
+const found = bootedSimulator()
 
 if ('missing' in found) {
   console.log(`skip  uikit: the project on the simulator (${found.missing})`)
@@ -147,13 +148,20 @@ if ('missing' in found) {
   ok('uikit: the generated project builds for the simulator too', built.status === 0 && existsSync(app), `${built.stdout}${built.stderr}`.split('\n').filter(line => /error/.test(line)).join('\n'))
 
   if (existsSync(app)) {
-    spawnSync('xcrun', ['simctl', 'terminate', found.udid, IDENTIFIER], { stdio: 'ignore' })
-    spawnSync('xcrun', ['simctl', 'uninstall', found.udid, IDENTIFIER], { stdio: 'ignore' })
-    spawnSync('xcrun', ['simctl', 'install', found.udid, app], { stdio: 'ignore' })
-    const ran = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, IDENTIFIER], { encoding: 'utf8', timeout: 120_000 })
-    const output = `${ran.stdout ?? ''}${ran.stderr ?? ''}`
-    ok('uikit: that app presses twice and reads it back from UIKit', output.split('\n').map(line => line.trim()).includes(WANT), output.slice(-800))
-    ok('uikit: it exits 0', output.includes('native-view exit 0'), output.slice(-400))
+    // the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
+    const release = holdDeviceSync('simulator', 'uikit-make ios')
+
+    try {
+      spawnSync('xcrun', ['simctl', 'terminate', found.udid, IDENTIFIER], { stdio: 'ignore' })
+      spawnSync('xcrun', ['simctl', 'uninstall', found.udid, IDENTIFIER], { stdio: 'ignore' })
+      spawnSync('xcrun', ['simctl', 'install', found.udid, app], { stdio: 'ignore' })
+      const ran = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, IDENTIFIER], { encoding: 'utf8', timeout: 120_000 })
+      const output = `${ran.stdout ?? ''}${ran.stderr ?? ''}`
+      ok('uikit: that app presses twice and reads it back from UIKit', output.split('\n').map(line => line.trim()).includes(WANT), output.slice(-800))
+      ok('uikit: it exits 0', output.includes('native-view exit 0'), output.slice(-400))
+    } finally {
+      release()
+    }
   }
 }
 

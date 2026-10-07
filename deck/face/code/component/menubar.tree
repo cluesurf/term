@@ -13,7 +13,7 @@ load ../logic/disclosure
 
 view menubar
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <menubar>
     bind class, read class
@@ -21,7 +21,7 @@ view menubar
 
 view menubar-menu
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <menubar-menu>
     bind class, read class
@@ -29,7 +29,7 @@ view menubar-menu
 
 view menubar-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -45,7 +45,7 @@ view menubar-trigger
 
 view menubar-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -63,7 +63,7 @@ view menubar-content
 
 view menubar-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <menubar-item>
     bind role, text <menuitem>

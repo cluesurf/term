@@ -4,7 +4,7 @@
  * route first (Z3 for a verify goal, CEGIS+Z3 for a synthesis goal),
  * and returns a proof state - proved (with the witness), refuted (with
  * a counterexample), or open. This is the "hammer" of
- * note/methodology/verification/theorem-proving-lsp.md, runnable.
+ * note/project/term/verification/theorem-proving-lsp.md, runnable.
  *
  * The same `hammer` powers both the LSP `proof/hammer` request and the
  * terminal workflow: state a goal, hammer it, read the result.

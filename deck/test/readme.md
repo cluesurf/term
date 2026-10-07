@@ -1,6 +1,6 @@
 # @cluesurf/test
 
-The Seed testing + verification library. The first runnable layers of the verification + synthesis system designed in `note/methodology/verification/`. A package under `deck/` (alongside `make`, `call`, `site`), imported as `@cluesurf/test`. Distinct from the install's `test/` tree, which runs the actual test suites.
+The Seed testing + verification library. The first runnable layers of the verification + synthesis system designed in `note/project/term/verification/`. A package under `deck/` (alongside `make`, `call`, `site`), imported as `@cluesurf/test`. Distinct from the install's `test/` tree, which runs the actual test suites.
 
 Built on the design's governing principle: **one generator** (property testing + the verifier) and **one prover**, with the **search-proposes-checker-verifies** discipline (CEGIS or an AI proposes, the prover checks).
 
@@ -18,7 +18,7 @@ From the seed install root. A demo that drives the CLI itself (its project resol
 - `npx tsx deck/test/code/demo-smt.ts` (3/3) - **real UNBOUNDED proof via Z3**: proves the synthesized bodies meet their specs for ALL integers (not just a bound), and refutes a buggy one with a concrete counterexample. Needs `z3-solver` (in package.json; `pnpm install`).
 - `npx tsx test/demo/demo-synth-smt.ts` (4/4) - **Z3 inside the synthesis loop**: CEGIS where the verifier is Z3, so the synthesized body is proven for ALL integers, then emitted as Seed and compiled. The strongest form of the loop - spec in, unbounded-proven compiling Seed out.
 - `npx tsx deck/test/code/demo-cross.ts` (3/3) - **cross-backend differential** (`test cross`): emits the same program to all four backends (TypeScript, Rust, Kotlin, Swift) and checks every backend agrees the program is well-formed. A backend that diverges is a bug. The emitters live in `@cluesurf/make/code/compile/{rust,kotlin,swift}.ts`.
-- `npx tsx deck/test/code/demo-fuzz.ts` (5/5) - **coverage-guided fuzzing** (AFL + libFuzzer modeled: edge coverage, value profile, corpus evolution, havoc mutators, power schedule, splicing, minimization). Reaches a deep nested bug in 469 execs where blind random fails; finds a property violation; and value-profile solves a magic-constant guard (`x==0xCAFE`) in 6149 execs. See `note/methodology/verification/fuzzing.md`.
+- `npx tsx deck/test/code/demo-fuzz.ts` (5/5) - **coverage-guided fuzzing** (AFL + libFuzzer modeled: edge coverage, value profile, corpus evolution, havoc mutators, power schedule, splicing, minimization). Reaches a deep nested bug in 469 execs where blind random fails; finds a property violation; and value-profile solves a magic-constant guard (`x==0xCAFE`) in 6149 execs. See `note/project/term/verification/fuzzing.md`.
 - `npx tsx test/demo/prove-cli.ts <file.tree>` - **the `seed hold` terminal workflow** (built, runnable): compiles a file, reports structured verification gaps, runs the cross-backend differential, and exits 0/1 to gate CI. `deck/test/code/fixture/good.tree` -> PROVED, exit 0; `fixture/bad.tree` -> the gap, exit 1.
 - `npx tsx deck/test/code/demo-proof-lsp.ts` (5/5) - **the LSP proof-protocol server**: `proof/state` (the InfoView's goal list) and `proof/hammer` (close a goal) running end to end - open a document, render goals, hammer them, re-render (`[OK]`/`[BAD]`/`[...]`). The server half of the proof IDE.
 - `npx tsx deck/test/code/demo-ai.ts` (3/3) - **the AI proposer, async and LLM-ready**: `modelProposer(ask)` plugs a model into synthesis. A correct answer is proven and accepted, a wrong one rejected by the proof with CEGIS recovering, a decline falls back. Only the network call (`ask`) is external.
@@ -29,10 +29,10 @@ From the seed install root. A demo that drives the CLI itself (its project resol
 - `npx tsx deck/test/code/demo-variant.ts` (5/5) - **sum-type (ADT) dispatch synthesis**: synthesizes a per-variant handler for a tagged union (`to-value: pos(x)->x, neg(x)->0-x, zero->0`; `unwrap-or-default`). With record/tuple synthesis, this covers both halves of an algebraic data type (products + sums).
 - `npx tsx deck/test/code/demo-tree-synth.ts` (6/6) - **structural recursion over a RECURSIVE ADT**: synthesizes tree catamorphisms (`tree-sum`, `tree-size`, `tree-max`) - the recursion descends both subtrees and combines. General recursion over recursive types, beyond the flat-list folds.
 - `npx tsx deck/test/code/demo-rose-synth.ts` (4/4) - **mutual recursion**: synthesizes a rose-tree fold (a node with a LIST of children), where the tree fold recurses through a fold over its child list - `rose-sum`, `rose-count`. Closes the mutual-recursion case.
-- `npx tsx deck/test/code/demo-synth-extra.ts` (4/4) - **the full synthesis-strategy suite**: the four search strategies from the literature beyond CEGIS - observational-equivalence bottom-up enumeration, constraint-based exists-forall (SyGuS single-query via Z3 `ForAll`), stochastic MCMC (Metropolis-Hastings, STOKE-style), and sketching (fill a hole). Each solves a problem (max, 2a+3b+1, max, max). See `note/methodology/verification/synthesis.md`.
+- `npx tsx deck/test/code/demo-synth-extra.ts` (4/4) - **the full synthesis-strategy suite**: the four search strategies from the literature beyond CEGIS - observational-equivalence bottom-up enumeration, constraint-based exists-forall (SyGuS single-query via Z3 `ForAll`), stochastic MCMC (Metropolis-Hastings, STOKE-style), and sketching (fill a hole). Each solves a problem (max, 2a+3b+1, max, max). See `note/project/term/verification/synthesis.md`.
 - `npx tsx test/demo/demo-seed-culmination.ts` (4/4) - **every synthesis strategy culminating in compiling Seed**: each of the four strategies synthesizes an expression, which is lowered via `emitSeed` and compiled by the LIVE Seed compiler. Spec/examples in, compiling Seed out, by every strategy in the field.
 
-Model checking, the full stack (`note/methodology/verification/model-checking.md`):
+Model checking, the full stack (`note/project/term/verification/model-checking.md`):
 
 - `npx tsx deck/test/code/demo-bmc.ts` (5/5) - **bounded model checking + k-induction**: unrolls a transition system into Z3 to depth k, returns a concrete counterexample trace when a safety property breaks, and proves unbounded safety by k-induction.
 - `npx tsx deck/test/code/demo-bdd.ts` (8/8) - **reduced ordered BDDs**: a hash-consed `BddManager` (ite/and/or/xor/not/restrict/exists), the symbolic-set engine under the model checker.
@@ -43,9 +43,9 @@ Model checking, the full stack (`note/methodology/verification/model-checking.md
 - `npx tsx deck/test/code/demo-model.ts` (9/9) - **the real model integration**: `model.ts` builds the prompt, calls a chat-completions API, and `parseExpr` turns the reply (code fences, prose) into an `Expr` the loop proves. Drop-in: set `SEED_MODEL_ENDPOINT` + `SEED_MODEL_KEY` and `realModelProposer` calls the live model; a hallucination is rejected and CEGIS recovers.
 - `vscode/` - the **complete VSCode extension** (manifest, `extension.ts`, `client.ts` LSP bootstrap, `infoview.ts` webview, tsconfig, readme). Drop-in: `pnpm install && pnpm compile && code .` then F5. Renders `proof/state` + posts `proof/hammer`.
 
-For how to drive all of this, see the **usage cheatsheet**: `note/methodology/verification/cheatsheet.md`.
+For how to drive all of this, see the **usage cheatsheet**: `note/project/term/verification/cheatsheet.md`.
 - `vscode/infoview.ts` - the **VSCode InfoView client**: complete extension code (the webview that renders `proof/state` and posts `proof/hammer`). Runs in the VSCode host, not the sandbox - the last piece of the proof IDE, as code.
-- `npx tsx deck/test/code/demo-hammer.ts` (3/3) - **the proof hammer + terminal workflow**: state a goal, hammer it, get a proof state - PROVED (witness emitted as Seed), REFUTED (counterexample), or OPEN. The core behind the LSP `proof/hammer` and a `seed hold` CLI. See `note/methodology/verification/theorem-proving-lsp.md`.
+- `npx tsx deck/test/code/demo-hammer.ts` (3/3) - **the proof hammer + terminal workflow**: state a goal, hammer it, get a proof state - PROVED (witness emitted as Seed), REFUTED (counterexample), or OPEN. The core behind the LSP `proof/hammer` and a `seed hold` CLI. See `note/project/term/verification/theorem-proving-lsp.md`.
 
 And the verification tests themselves are authored in idiomatic Seed `.tree`, like the other `.tree` suites:
 
@@ -76,6 +76,6 @@ And the verification tests themselves are authored in idiomatic Seed `.tree`, li
 
 ## Where it sits in the plan
 
-The runnable foundation. Build order (`note/methodology/verification/seed-verification-system.md`): generators + property testing (done), bounded proof (done), the gap/proposer/repair loop (done), then the SMT bridge + VCG (dock Z3, for refinement types + contracts), `test cross` differential across the five backends, bounded model checking on the same SMT, and the Level-4 AI proposer wired through `@cluesurf/link`.
+The runnable foundation. Build order (`note/project/term/verification/seed-verification-system.md`): generators + property testing (done), bounded proof (done), the gap/proposer/repair loop (done), then the SMT bridge + VCG (dock Z3, for refinement types + contracts), `test cross` differential across the five backends, bounded model checking on the same SMT, and the Level-4 AI proposer wired through `@cluesurf/link`.
 
 Next integration: read the compiler's real type IR in `genForType` (instead of the standalone `SeedType`), emit a `GapReport` from the checker on each unproven obligation, and lift CEGIS from the toy grammar onto the Seed IR with the SMT backend doing the proof.

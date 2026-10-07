@@ -1,0 +1,60 @@
+
+# node driver seam: a child process speaking JSON lines (the linked find-driver runtime shim). Internal: reached only through the public find/send API.
+
+dock load
+  load <global:find-driver>, name find-driver
+
+task choose-driver
+  take command, like text
+  take argument-list
+    like list
+      like text
+  call find-driver/use
+    read command
+    read argument-list
+
+task mount-driver
+  take tool, like dynamic
+  take command, like text
+  take argument-list
+    like list
+      like text
+  like dynamic
+  send back
+    call find-driver/mount
+      read tool
+      read command
+      read argument-list
+
+task run-driver-mounted
+  mark async
+  take work
+    like task
+      mark async
+  take before, like dynamic
+  call find-driver/run-mounted
+    read work
+    read before
+    wait true
+
+task has-driver-mount
+  like boolean
+  send back
+    call find-driver/mounted
+
+task next-message-id
+  like number
+  send back
+    call find-driver/next-id
+
+task exchange-line
+  mark async
+  take line, like text
+  like text
+  send back
+    call find-driver/exchange
+      read line
+      wait true
+
+task stop-drivers
+  call find-driver/stop

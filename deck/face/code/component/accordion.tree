@@ -23,7 +23,7 @@ load ../logic/disclosure
 
 view accordion
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <accordion>
     bind class, read class
@@ -31,7 +31,7 @@ view accordion
 
 view accordion-item
   take host, like view
-  take class
+  take class, like text
   take control
   view div
     bind data-slot, text <accordion-item>
@@ -43,7 +43,7 @@ view accordion-item
 
 view accordion-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -62,7 +62,7 @@ view accordion-trigger
 
 view accordion-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test

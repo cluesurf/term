@@ -9,10 +9,25 @@
 //
 // Its own module, so the switch is module state the checker reads and a test can set. The gradual seam's switch lives
 // here too (check/seam.tree holds the seam itself, and Term holds no module state).
+//
+// DECIDED 2026-10-07 (D10, ambiguous-only): the ambiguous-call refusal is ON BY DEFAULT, its own switch, since no call
+// in the repository is ambiguous; TERM_INFER_AMBIGUOUS=0 turns it off. The unconstrained-parameter refusal stays behind
+// TERM_INFER_STRICT until its census (face 315, base 8, site 2) reaches zero. TERM_INFER_STRICT=1 still turns both on.
 
 import { widthRanges } from '@term/make/code/check/width-range'
 
 let on = process.env.TERM_INFER_STRICT === '1'
+
+let ambiguous = process.env.TERM_INFER_AMBIGUOUS !== '0'
+
+export function setAmbiguousRefused(value: boolean): void {
+  ambiguous = value
+}
+
+// whether a call several same-arity definitions fit equally is refused: on by default, or under the strict switch
+export function ambiguousRefused(): boolean {
+  return ambiguous || on
+}
 
 // THE GRADUAL SEAM'S SWITCH: whether an `unknown` must be narrowed before it flows into a typed place (check/seam.tree).
 // Off until the decision (note/term/plan/decisions-2026-10.md, D1), on for a census with TERM_UNKNOWN_SEAM=1
@@ -40,5 +55,5 @@ export function inferStrict(): boolean {
 // so a key with the two off is the key before they existed. A switch left out of the key let a census under it read
 // answers stored without it, and count less than it should
 export function checkerSwitchKey(awaitOutside: boolean, seam: boolean): string {
-  return `${awaitOutside ? 'await-outside' : ''}${seam ? '+seam' : ''}${on ? '+strict' : ''}${widthRanges() ? '+widths' : ''}`
+  return `${awaitOutside ? 'await-outside' : ''}${seam ? '+seam' : ''}${on ? '+strict' : ''}${ambiguous ? '+ambiguous' : ''}${widthRanges() ? '+widths' : ''}`
 }

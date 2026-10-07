@@ -34,6 +34,19 @@ load @term/base/code/hive
   find hive-roll
   find hive-hear
   find hive-size
+  find hive-wake-typed
+  find hive-tells
+  find hive-docks
+  find hive-exceptions
+  find hive-clear
+  find hive-entry
+  find exception-roll
+  find tell-roll
+  find dock-roll
+
+load @term/base/list
+  find push
+  find length
 
 form user-absence
   like absence
@@ -90,6 +103,107 @@ task metrics
   send back
     call hive-roll
       text <metric>
+
+# the typed wake: one exception, one tell and one dock of the deck <typed-deck>
+task wake-typed
+  save exceptions
+    make list
+  save tells
+    make list
+  save docks
+    make list
+  call push
+    read exceptions
+    make hive-entry
+      bind host, text <typed-deck>
+      bind kind, text <exception>
+      bind name, text <typed-absence>
+      bind site, text <>
+      bind base
+        make exception-roll
+          bind like, text <absence>
+          bind chain
+            make list
+          bind note, text <Gone>
+          bind link
+            make list
+  call push
+    read tells
+    make hive-entry
+      bind host, text <typed-deck>
+      bind kind, text <tell>
+      bind name, text <typed-absence>
+      bind site, text <>
+      bind base
+        make tell-roll
+          bind note, text <Not here>
+          bind hint, text <>
+          bind link
+            make list
+          bind alias, text <>
+  call push
+    read docks
+    make hive-entry
+      bind host, text <typed-deck>
+      bind kind, text <dock>
+      bind name, text <typed-route>
+      bind site, text <>
+      bind base
+        make dock-roll
+          bind halt
+            make list
+  call hive-wake-typed
+    text <typed-deck>
+    read exceptions
+    read tells
+    read docks
+
+# the first static tell, its note read as text through the typed roll
+task first-tell-note
+  like text
+  save all
+    call hive-tells
+  send back, read all/0/base/note
+
+task tell-count
+  like number
+  save all
+    call hive-tells
+  send back
+    call length
+      read all
+
+task dock-count
+  like number
+  save all
+    call hive-docks
+  send back
+    call length
+      read all
+
+task exception-note
+  like text
+  save all
+    call hive-exceptions
+      text <typed-deck>
+  send back, read all/0/base/note
+
+task clear-tells
+  call hive-clear
+    text <tell>
+
+task tell-entries
+  like list
+  send back
+    call hive-roll
+      text <tell>
+
+task listen-tell
+  take work, like task
+    take entry, like unknown
+  call hive-hear
+    text <tell>
+    read work
 `
 
 async function main(): Promise<void> {
@@ -144,6 +258,23 @@ async function main(): Promise<void> {
   const metrics = mod.metrics() as { name: string; kind: string; base: { name: string; unit: string } }[]
   ok('a declared kind wakes into the hive', metrics.length === 1 && metrics[0]!.kind === 'metric' && metrics[0]!.name === 'request-count', JSON.stringify(metrics))
   ok('its entry is the constant\'s value, typed', metrics[0]?.base.name === 'requests' && metrics[0]?.base.unit === 'count', JSON.stringify(metrics[0]?.base))
+
+  // the typed wake: the three static kinds are kept in typed lists AND told, so the roster still sees them
+  type Entry = { name: string; kind: string; base: Record<string, unknown> }
+  const heardTells: Entry[] = []
+  mod.listenTell((entry: Entry) => heardTells.push(entry))
+  ok('the typed lists are empty before a typed wake', mod.tellCount() === 0 && mod.dockCount() === 0)
+  mod.wakeTyped()
+  ok('a tell reads back through hive-tells with its note as text', mod.firstTellNote() === 'Not here', String(mod.firstTellNote()))
+  console.log(`      hive-tells note: ${mod.firstTellNote()}`)
+  ok('an exception reads back through hive-exceptions', mod.exceptionNote() === 'Gone', String(mod.exceptionNote()))
+  ok('a dock reads back through hive-docks', mod.dockCount() === 1, String(mod.dockCount()))
+  const rolled = mod.tellEntries() as Entry[]
+  ok('hive-roll answers the typed tell too', rolled.length === 1 && rolled[0]!.name === 'typed-absence' && rolled[0]!.base.note === 'Not here', JSON.stringify(rolled))
+  ok('an ear on tell hears the typed tell once', heardTells.filter(e => e.kind === 'tell').length === 1, JSON.stringify(heardTells.map(e => e.kind)))
+  mod.clearTells()
+  ok('hive-clear on tell empties the roll and the typed list', mod.tellEntries().length === 0 && mod.tellCount() === 0)
+  ok('hive-clear on tell leaves the other kinds', mod.dockCount() === 1)
 
   console.log(`\nhive: ${pass} pass, ${fail} fail`)
 

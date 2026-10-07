@@ -15,8 +15,8 @@ load @term/site/dom/dom
 
 view document
   take host, like view
-  take class
-  take title
+  take class, like text
+  take title, like text
   view article
     bind data-slot, text <document>
     bind class, read class

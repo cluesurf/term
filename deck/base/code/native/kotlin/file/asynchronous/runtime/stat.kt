@@ -52,7 +52,7 @@ object stat {
           mode,
           info.isSymbolicLink,
         )
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         // a missing path reads as the zero record rather than throwing: the public API is total
         FileMetadata(0L, "other", 0L, 0L, 0L, 0L, false)
       }

@@ -13,7 +13,7 @@ load ../logic/disclosure
 
 view collapsible
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <collapsible>
     bind class, read class
@@ -21,7 +21,7 @@ view collapsible
 
 view collapsible-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -37,7 +37,7 @@ view collapsible-trigger
 
 view collapsible-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test

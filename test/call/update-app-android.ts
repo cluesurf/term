@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { androidDevice, androidTools, assembleApk, buildAndroidProgram, buildPage, caskAndroidDriver, stampRuntimeVersion } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
+import { holdDeviceSync } from '../compile/shared/device-hold'
 
 let pass = 0
 let fail = 0
@@ -103,18 +104,26 @@ async function main(): Promise<void> {
   const published = publishUpdate({ page: next, out: served, identifier, platform: 'android', runtimeVersion: version.hex, channel: 'main', keyFile })
   ok('the update is published for android', published.manifest.metadata.platform === 'android')
 
-  adb('reverse', `tcp:${PORT}`, `tcp:${PORT}`)
-  adb('uninstall', identifier)
-  ok('the APK installs', adb('install', '-r', apk).status === 0)
+  // the emulator is one device the whole machine shares: held from the first adb call to the last (D017)
+  const release = holdDeviceSync('emulator', 'update-app-android')
 
-  const first = launch()
-  ok('the first launch runs the shipped page', first === 11, `exit ${first}`)
-  const second = launch()
-  ok('the second launch runs the update', second === 12, `exit ${second}`)
-  const third = launch()
-  ok('and keeps running it', third === 12, `exit ${third}`)
+  try {
+    adb('reverse', `tcp:${PORT}`, `tcp:${PORT}`)
+    adb('uninstall', identifier)
+    ok('the APK installs', adb('install', '-r', apk).status === 0)
 
-  adb('reverse', '--remove', `tcp:${PORT}`)
+    const first = launch()
+    ok('the first launch runs the shipped page', first === 11, `exit ${first}`)
+    const second = launch()
+    ok('the second launch runs the update', second === 12, `exit ${second}`)
+    const third = launch()
+    ok('and keeps running it', third === 12, `exit ${third}`)
+
+    adb('reverse', '--remove', `tcp:${PORT}`)
+  } finally {
+    release()
+  }
+
   server.kill()
   console.log(`\nupdate-app-android: ${pass} pass, ${fail} fail`)
 

@@ -26,42 +26,15 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
-load ../../view
+load ./view
   find view
+  find memory-element
+  find memory-pair
+  find memory-listener
 
-form memory-element
-  mark shared
-  link key, like number
-  link tag, like text
-  link text, like text
-  link value, like text
-  link attributes
-    like list
-      like memory-pair
-  link styles
-    like list
-      like memory-pair
-  link classes
-    like list
-      like text
-  link children
-    like list
-      like view
-  link listeners
-    like list
-      like memory-listener
-  link parent
-    like maybe
-      like view
-
-form memory-pair
-  link name, like text
-  link value, like text
-
-form memory-listener
-  link event, like text
-  link handle
-    like task
+# the forms a node is made of live in ./view beside the view handle that holds one, and are reached from this module
+# too: ../terminal reads `memory-element` and `memory-pair` through it
+bear ./view
 
 # the next key to hand out. A key is never reused, so a removed node can never be mistaken for a new one. ONE clock,
 # so shared: unshared, a backend whose forms are values (Rust) bumps a copy, hands every node key 0, and every node is
@@ -101,11 +74,11 @@ task make-memory-element
       bind parent
         make none
 
-# the one place the opaque handle is retyped
+# the node's element. The handle is a `memory-element` already (./view), so this is a read and no retype
 task element-of
   take node, like view
   like memory-element
-  host element, like memory-element
+  host element
     read node/handle
   send back, read element
 

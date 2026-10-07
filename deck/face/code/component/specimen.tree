@@ -14,8 +14,8 @@ load @term/site/dom/dom
 
 view specimen
   take host, like view
-  take class
-  take sample
+  take class, like text
+  take sample, like text
   view div
     bind data-slot, text <specimen>
     bind class, read class

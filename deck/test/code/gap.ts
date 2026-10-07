@@ -3,7 +3,7 @@
  * between "found a hole" and "fill it"), the Proposer interface (every
  * fix source implements it), and the driver that tries proposers and
  * re-verifies. This is Phases A-C of the synthesis design
- * (note/methodology/verification/synthesis.md).
+ * (note/project/term/verification/synthesis.md).
  *
  * The driver, the proof and both proposers' answers are Term since
  * 2026-10-04, deck/test/code/repair-loop.tree. This is the face: a

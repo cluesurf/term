@@ -38,6 +38,15 @@ task spawn-on-terminal
       like text
       like text
   like number
+
+  # runner.rs names run-result for every call it holds, so the struct stays whenever this task is reached
+  save kept
+    make run-result
+      bind code, code -1
+      bind output, text <>
+      bind error, text <>
+      bind signal, code 0
+
   send back
     call runner/attached
       read command

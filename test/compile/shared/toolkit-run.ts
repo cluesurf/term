@@ -7,7 +7,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
@@ -19,9 +19,10 @@ import {
   assembleApk,
   assembleIosBundle,
   buildAndroidProgram,
-  simulator,
   SWIFT_MODULE,
 } from '@term/call/code/cask'
+import { holdDeviceSync } from './device-hold'
+import { bootedSimulator } from './simulator'
 import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
 import { runCompose } from './compose-build'
 import { runComposeAndroid } from './compose-android'
@@ -33,7 +34,12 @@ import type { RemoteDesktop } from './compose-remote'
 // windowAway), run from the gate or by hand alike
 process.env.TERM_WINDOW_AWAY ??= '1'
 
-export type Leg = 'macos' | 'ios' | 'android' | 'compose' | 'compose-android' | 'compose-linux' | 'compose-windows'
+// who a leg says holds the device: the test that runs it and the leg, `device-audio.ts ios`
+function holdName(leg: Leg): string {
+  return `${basename(process.argv[1] ?? 'toolkit-run')} ${leg}`
+}
+
+export type Leg ='macos' | 'ios' | 'android' | 'compose' | 'compose-android' | 'compose-linux' | 'compose-windows'
 
 export type ToolkitRun = {
   // the Term root, where `@term/*` resolves
@@ -134,7 +140,7 @@ function runMacos(run: ToolkitRun): void {
 
 // the simulator SDK, a flat .app, installed clean on a booted iPhone simulator, its console read until it exits
 function runIos(run: ToolkitRun): void {
-  const found = simulator()
+  const found = bootedSimulator()
 
   if ('missing' in found) {
     console.log(`skip  ios  (${found.missing})`)
@@ -167,17 +173,25 @@ function runIos(run: ToolkitRun): void {
   }
 
   execFileSync('codesign', ['--force', '--sign', '-', bundle.app], { stdio: 'pipe' })
-  spawnSync('xcrun', ['simctl', 'terminate', found.udid, run.iosIdentifier], { stdio: 'ignore' })
-  spawnSync('xcrun', ['simctl', 'uninstall', found.udid, run.iosIdentifier], { stdio: 'ignore' })
-  execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
-  run.prepare?.('ios', { udid: found.udid, identifier: run.iosIdentifier })
-  const result = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, run.iosIdentifier], {
-    encoding: 'utf8',
-    timeout: 120_000,
-  })
-  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
-  run.ok('ios: the app said it exits 0', output.includes('native-view exit 0'), output.slice(0, 600))
-  run.judge('ios', TOOLKIT.ios, output, shot)
+  // the machine-wide hold (D017, D024), from the first simctl call to the end of the judge: the Swift build above
+  // stays outside it, and a run with nothing booted never waits for it
+  const release = holdDeviceSync('simulator', holdName('ios'))
+
+  try {
+    spawnSync('xcrun', ['simctl', 'terminate', found.udid, run.iosIdentifier], { stdio: 'ignore' })
+    spawnSync('xcrun', ['simctl', 'uninstall', found.udid, run.iosIdentifier], { stdio: 'ignore' })
+    execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
+    run.prepare?.('ios', { udid: found.udid, identifier: run.iosIdentifier })
+    const result = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, run.iosIdentifier], {
+      encoding: 'utf8',
+      timeout: 120_000,
+    })
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+    run.ok('ios: the app said it exits 0', output.includes('native-view exit 0'), output.slice(0, 600))
+    run.judge('ios', TOOLKIT.ios, output, shot)
+  } finally {
+    release()
+  }
 }
 
 // kotlinc and d8, an APK with no assets, installed on the emulator, the `native-dom` log read until the app says it
@@ -231,24 +245,31 @@ function runAndroid(run: ToolkitRun): void {
     return
   }
 
-  adb('uninstall', run.androidIdentifier)
-  const installed = adb('install', '-r', apk)
-  run.ok('android: installs', installed.status === 0, `${installed.stdout}${installed.stderr}`.slice(0, 400))
-  run.prepare?.('android', { serial: found.serial, identifier: run.androidIdentifier })
-  adb('shell', 'am', 'start', '-n', `${run.androidIdentifier}/.TermActivity`)
+  // the machine-wide hold (D017, D024), from the first adb call that touches the app to the end of the judge
+  const release = holdDeviceSync('emulator', holdName('android'))
 
-  // the app logs every line under `native-dom` and says when it exits: its own lines, streamed (./android-log.ts)
-  const said = followAppLog({ adb: tools.adb, serial: found.serial, identifier: run.androidIdentifier })
-  run.ok('android: the app said it exits 0', said.includes('native-view exit 0'), said.slice(-600))
+  try {
+    adb('uninstall', run.androidIdentifier)
+    const installed = adb('install', '-r', apk)
+    run.ok('android: installs', installed.status === 0, `${installed.stdout}${installed.stderr}`.slice(0, 400))
+    run.prepare?.('android', { serial: found.serial, identifier: run.androidIdentifier })
+    adb('shell', 'am', 'start', '-n', `${run.androidIdentifier}/.TermActivity`)
 
-  const shot = run.shots.android ?? join(run.dir, 'android.png')
-  const pulled = spawnSync(tools.adb, ['-s', found.serial, 'exec-out', 'cat', `/sdcard/Android/data/${run.androidIdentifier}/files/native-dom.png`])
+    // the app logs every line under `native-dom` and says when it exits: its own lines, streamed (./android-log.ts)
+    const said = followAppLog({ adb: tools.adb, serial: found.serial, identifier: run.androidIdentifier })
+    run.ok('android: the app said it exits 0', said.includes('native-view exit 0'), said.slice(-600))
 
-  if (pulled.status === 0 && pulled.stdout.length > 0) {
-    writeFileSync(shot, pulled.stdout)
+    const shot = run.shots.android ?? join(run.dir, 'android.png')
+    const pulled = spawnSync(tools.adb, ['-s', found.serial, 'exec-out', 'cat', `/sdcard/Android/data/${run.androidIdentifier}/files/native-dom.png`])
+
+    if (pulled.status === 0 && pulled.stdout.length > 0) {
+      writeFileSync(shot, pulled.stdout)
+    }
+
+    run.judge('android', TOOLKIT.android, said, shot)
+  } finally {
+    release()
   }
-
-  run.judge('android', TOOLKIT.android, said, shot)
 }
 
 // Compose on the desktop JVM (compose-target): the Android program with the Compose runtime in place of the Android
@@ -300,23 +321,30 @@ function runComposeAndroidLeg(run: ToolkitRun): void {
     return
   }
 
-  const ran = runComposeAndroid({
-    apk: built.apk,
-    identifier,
-    shot: 'compose.png',
-    pulled: shot,
-    prepare: serial => run.prepare?.('compose-android', { serial, identifier }),
-  })
+  // the machine-wide hold (D017, D024) around the install, the run and the judge
+  const release = holdDeviceSync('emulator', holdName('compose-android'))
 
-  if (ran.form === 'skipped') {
-    console.log(`skip  compose-android  (${ran.reason})`)
+  try {
+    const ran = runComposeAndroid({
+      apk: built.apk,
+      identifier,
+      shot: 'compose.png',
+      pulled: shot,
+      prepare: serial => run.prepare?.('compose-android', { serial, identifier }),
+    })
 
-    return
+    if (ran.form === 'skipped') {
+      console.log(`skip  compose-android  (${ran.reason})`)
+
+      return
+    }
+
+    run.ok('compose-android: installs', ran.installed)
+    run.ok('compose-android: the app said it exits 0', ran.exited, ran.output.slice(-1600))
+    run.judge('compose-android', TOOLKIT['compose-android'], ran.output, shot)
+  } finally {
+    release()
   }
-
-  run.ok('compose-android: installs', ran.installed)
-  run.ok('compose-android: the app said it exits 0', ran.exited, ran.output.slice(-1600))
-  run.judge('compose-android', TOOLKIT['compose-android'], ran.output, shot)
 }
 
 // Compose on another desktop (compose-target-0004, 0005): the program built here, packaged by the target's own jpackage

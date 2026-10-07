@@ -12,24 +12,12 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
-load ../../view
+load ./view
   find view
+  find page-element
 
 dock load
   load <global:html>, name doc
-
-# one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
-form page-element
-  mark shared
-  link tag, like text
-  link text, like text
-  link value, like text
-  link attributes, like list
-  link styles, like list
-  link classes, like list
-  link children, like list
-  link listeners, like list
-  link parent, like maybe
 
 # one attribute or style, a name and its value. Not the stdlib `pair` (`first` / `second`): names are package-global,
 # so a second `form pair` here took the stdlib's place in any program that loaded both (`"pair" has no field "name"`)
@@ -97,8 +85,7 @@ task set-attribute
   take node, like view
   take name, like text
   take value, like text
-  # retype the opaque handle so `attributes` is a list and `filter` dispatches to the list method (see `remove`)
-  host self, like page-element
+  host self
     read node/handle
   save kept
     call filter
@@ -122,7 +109,7 @@ task get-attribute
   take node, like view
   take name, like text
   like text
-  host self, like page-element
+  host self
     read node/handle
   save found
     call find
@@ -168,7 +155,7 @@ task add-class
 task remove-class
   take node, like view
   take name, like text
-  host self, like page-element
+  host self
     read node/handle
   save kept
     call filter
@@ -251,8 +238,8 @@ task anchor
 task page-body
   like view
   send back
-    make view
-      bind handle, make none
+    call create-element
+      bind tag, text <body>
 
 # serialize the in-memory tree to HTML (the SSR render output), via the runtime shim. The shim fns are named
 # `serialize-node` / `document-shell` (not `serialize` / `page-shell`) so they do not collide with these task names
@@ -327,15 +314,13 @@ task append
 # their contents (a parent link makes the tree a cycle)
 task remove
   take node, like view
-  # retype the opaque view handle to this impl's concrete page-element, so `children` reads as a list and `filter`
-  # dispatches to the list method (an opaque handle has unknown type, where method dispatch cannot resolve)
-  host self, like page-element
+  host self
     read node/handle
-  host edge, like maybe
+  host edge
     read self/parent
   fork case, read edge
     case some
-      host owner, like page-element
+      host owner
         read edge/value/handle
       save kept
         call filter
@@ -361,13 +346,13 @@ task replace
   take new, like view
   call remove
     read new
-  host gone, like page-element
+  host gone
     read old/handle
-  host edge, like maybe
+  host edge
     read gone/parent
   fork case, read edge
     case some
-      host owner, like page-element
+      host owner
         read edge/value/handle
       save swapped
         make list
@@ -402,13 +387,13 @@ task insert-before
   take reference, like view
   call remove
     read node
-  host anchor, like page-element
+  host anchor
     read reference/handle
-  host edge, like maybe
+  host edge
     read anchor/parent
   fork case, read edge
     case some
-      host owner, like page-element
+      host owner
         read edge/value/handle
       save placed
         make list

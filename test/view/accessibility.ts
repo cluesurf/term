@@ -285,7 +285,7 @@ writeFileSync(entry, PROGRAM)
 
 const base = projectResolver(process.cwd(), 'node')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/dom$/, 'dom/native/memory/dom'), fromFile)
+  base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
 const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'node' })
 ok('a page of every word compiles', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
 

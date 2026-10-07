@@ -3498,7 +3498,7 @@ async function main(): Promise<void> {
     true,
   )
   runKotlinText(
-    'kotlin + process/run: echo exits 0 (ProcessBuilder)',
+    'kotlin + process/run: echo exits 0 (posix_spawnp over java.lang.foreign)',
     frontEnd(RUN_PROG, true, 'kotlin'),
     'true',
     true,

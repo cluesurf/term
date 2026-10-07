@@ -1438,6 +1438,144 @@ task closures-in-expression
     miss
       save nothing, 0
 
+# ---- the integer divisions an emitter writes checked ----
+#
+# Walks an expression the way `closures-in` does (every field but `type`, `span` and `result`, a closure not entered:
+# the scan reaches its body through `closures-in`) and asks `check` of every `binary` node whose operator is `/` or `%`.
+# `found` says whether any answered true (divisor/spec.md section 3.1)
+form division-gather
+  mark shared
+  link check
+    like task
+      take node, like expression
+      like boolean
+  link found, like boolean
+
+task divisions-in
+  take check
+    like task
+      take node, like expression
+      like boolean
+  take node, like expression
+  like boolean
+  mark private
+
+  save gather
+    make division-gather
+      bind check, check
+      bind found, false
+  divisions-in-expression(gather, node)
+  back gather/found
+
+task divisions-in-maybe
+  take gather, like division-gather
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      divisions-in-expression(gather, inner)
+    case none
+      save nothing, 0
+
+task divisions-in-type
+  take gather, like division-gather
+  take given, like type
+  mark private
+
+  sift given
+    case array
+      divisions-in-type(gather, element)
+    case map
+      divisions-in-type(gather, key)
+      divisions-in-type(gather, value)
+    case named
+      walk args
+        take arg
+        divisions-in-type(gather, arg)
+      walk value-args
+        take one
+        divisions-in-expression(gather, one)
+    case function
+      walk params
+        take param
+        divisions-in-type(gather, param)
+    miss
+      save nothing, 0
+
+task divisions-in-expression
+  take gather, like division-gather
+  take node, like expression
+  mark private
+
+  sift node
+    case closure
+      save nothing, 0
+    case call
+      divisions-in-expression(gather, callee)
+      walk args
+        take arg
+        divisions-in-expression(gather, arg)
+      sift into
+        case some
+          link target-type
+          divisions-in-type(gather, target-type)
+        case none
+          save nothing, 0
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            divisions-in-expression(gather, inner)
+          miss
+            save nothing, 0
+    case binary
+      link binary-op
+      link left
+      link right
+      save op, to-text(binary-op)
+      fork test, or(is-equal(op, </>), is-equal(op, <%>))
+        hold
+          fork test, gather/check(node)
+            hold
+              save gather/found, true
+      divisions-in-expression(gather, left)
+      divisions-in-expression(gather, right)
+    case unary
+      divisions-in-expression(gather, operand)
+    case array
+      walk items
+        take item
+        divisions-in-expression(gather, item)
+    case map
+      walk entries
+        take entry
+        divisions-in-expression(gather, entry/key)
+        divisions-in-expression(gather, entry/value)
+    case record
+      walk fields
+        take field
+        divisions-in-expression(gather, field/value)
+      walk positional
+        take one
+        divisions-in-expression(gather, one)
+    case member
+      divisions-in-expression(gather, target)
+      divisions-in-maybe(gather, index)
+    case await
+      divisions-in-expression(gather, expr)
+    case conditional
+      walk branches
+        take branch
+        divisions-in-expression(gather, branch/cond)
+        divisions-in-expression(gather, branch/value)
+      divisions-in-maybe(gather, otherwise)
+    miss
+      save nothing, 0
+
 # ---- raise sets ----
 #
 # The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
@@ -1460,11 +1598,27 @@ form raise-state
   # the function being scanned: what its body raises directly, and the functions it calls outside a guarded body
   link direct, like list, like text
   link called, like list, like text
+  # which integer `/` and `%` the emitter writes checked: each raises `defect`. The default answers false for all
+  link checked-division
+    like task
+      take node, like expression
+      like boolean
 
+# `checked-division` is the one place an emitter tells the raise sets which integer `/` and `%` it writes checked
+# (divisor/spec.md section 3.1, 4.1). Every check-time caller passes nothing, and nothing changes for it
 task raise-sets-of
   take program, like list, like statement
   # the record-types that are exceptions, by name
   take exceptions, like list, like text
+  take checked-division
+    like task
+      take node, like expression
+      like boolean
+    fall
+      task
+        take node, like expression
+        like boolean
+        back false
   like raise-sets
 
   save places, function-places(program)
@@ -1529,6 +1683,7 @@ task raise-sets-of
       bind reach, reach
       bind direct, make list
       bind called, make list
+      bind checked-division, checked-division
   # named apart from a task's own `raises`, which the arm over a task binds
   save raised-by, make hash
   save via, make hash
@@ -1673,6 +1828,8 @@ task scan
             save state/direct, add-text(state/direct, raised)
           miss
             save state/direct, add-text(state/direct, thrown-exception(state, thrown))
+        # a division in the thrown value is written checked like any other
+        mark-divisions(state, thrown)
       case guard
         # no handler: the body's raises are caught and dropped
         sift catch
@@ -1728,6 +1885,17 @@ task scan
       miss
         save nothing, 0
 
+# AN INTEGER DIVISION OR REMAINDER THE EMITTER WRITES CHECKED RAISES `defect`, added by name the way `failure` is for a
+# native shim, so a program whose tree shaking dropped the `defect` form still has it in the set
+task mark-divisions
+  take state, like raise-state
+  take node, like expression
+  mark private
+
+  fork test, divisions-in(state/checked-division, node)
+    hold
+      save state/direct, add-text(state/direct, <defect>)
+
 # what a thrown value raises: an exception constructed by name, `failure` for a text (one that interpolates too), and
 # `exception` for a re-raised value, decided where it was first raised
 task thrown-exception
@@ -1764,6 +1932,7 @@ task expression-calls
   walk state/reach/found
     take name
     save state/called, add-text(state/called, name)
+  mark-divisions(state, node)
   save made, closures-in(node)
   walk made
     take closure

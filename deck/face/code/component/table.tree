@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view table-header
   take host, like view
-  take class
+  take class, like text
   view thead
     bind data-slot, text <table-header>
     bind class, read class
@@ -18,7 +18,7 @@ view table-header
 
 view table-body
   take host, like view
-  take class
+  take class, like text
   view tbody
     bind data-slot, text <table-body>
     bind class, read class
@@ -26,7 +26,7 @@ view table-body
 
 view table-footer
   take host, like view
-  take class
+  take class, like text
   view tfoot
     bind data-slot, text <table-footer>
     bind class, read class
@@ -34,7 +34,7 @@ view table-footer
 
 view table-row
   take host, like view
-  take class
+  take class, like text
   view tr
     bind data-slot, text <table-row>
     bind class, read class
@@ -42,7 +42,7 @@ view table-row
 
 view table-head
   take host, like view
-  take class
+  take class, like text
   view th
     bind data-slot, text <table-head>
     bind class, read class
@@ -50,7 +50,7 @@ view table-head
 
 view table-cell
   take host, like view
-  take class
+  take class, like text
   view td
     bind data-slot, text <table-cell>
     bind class, read class
@@ -58,7 +58,7 @@ view table-cell
 
 view table-caption
   take host, like view
-  take class
+  take class, like text
   view caption
     bind data-slot, text <table-caption>
     bind class, read class

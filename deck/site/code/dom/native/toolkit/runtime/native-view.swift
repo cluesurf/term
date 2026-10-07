@@ -23,6 +23,12 @@
 //                          (swiftui-target-0001, note/term/view/12-render-seam.md)
 //   anything else          a vertical stack: the container every layout starts from
 //
+// The window's root (a vertical stack) is pinned to all four edges of the window's safe area (UIKit: the root controller's
+// `safeAreaLayoutGuide`, AppKit: the content view) with no inset of the host's own, so its size is the window's, never its
+// content's (D021). A view with no intrinsic size holds its content's size at 250 until it grows, a growing child takes the
+// free room (growing siblings in ratio at 251), and else each stack's own trailing rest spacer does (249, 249.5 while a
+// child grows), as D028 and T019 say. A dialog's sheet content is as wide as its sheet. `safe-area` reads the frame.
+//
 // Every call happens on the main thread, the only one a toolkit may be touched from. An event handler fires there and
 // the effects it triggers run inside it, but a page's async `boot` resumes after an await wherever Swift chose, so every
 // `nativeView` entry point hops to the main thread first (`onMain`) when it is called from another (native-dom-0014).
@@ -186,6 +192,17 @@ final class TermNode {
     // the flexible views `justify-content` center or end puts in the stack: a leading one for both, a trailing one
     // for center. Not children, so every index a child is installed at skips the leading one (`leading`)
     var spacers: [TermPlatformView] = []
+    // a container stack's trailing flexible view: the free room after the last child, as on the web. Never in `spacers`
+    // (whose first entry counts as a leading one) and never a child, so it stays last in the stack (D021, D028)
+    var rest: TermPlatformView?
+    // the content hold of a view with no intrinsic size: width and height held to zero at 250 until it grows (D028)
+    var holds: [NSLayoutConstraint] = []
+    // the rest spacer's own hold, at 249 while no child grows and 249.5 while one does (D028)
+    var restHold: NSLayoutConstraint?
+    // the axis `restHold` was made for, so a turn of the stack makes a new one on the other anchor
+    var restVertical = true
+    // the ratio constraints of this stack's growing children, each against the first, at 251 (D028)
+    var shares: [NSLayoutConstraint] = []
 
     // how many arranged views stand before the first child: the leading spacer, when there is one
     var leading: Int {
@@ -591,10 +608,12 @@ final class TermViewAppDelegate: NSObject, UIApplicationDelegate {
             view.translatesAutoresizingMaskIntoConstraints = false
             controller.view.addSubview(view)
             let guide = controller.view.safeAreaLayoutGuide
+            // the root IS the safe area: four edges, no inset of the host's own (D021). A screen draws its own gutter
             NSLayoutConstraint.activate([
-                view.topAnchor.constraint(equalTo: guide.topAnchor, constant: 24),
-                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
-                view.trailingAnchor.constraint(lessThanOrEqualTo: guide.trailingAnchor, constant: -24),
+                view.topAnchor.constraint(equalTo: guide.topAnchor),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
             ])
         }
         window.rootViewController = controller
@@ -646,7 +665,116 @@ enum nativeView {
 
     private static func make(_ tag: String, _ text: String) -> TermNode {
         nextKey += 1
-        return TermNode(key: nextKey, tag: tag, text: text)
+        let node = TermNode(key: nextKey, tag: tag, text: text)
+        holdContent(node)
+        // every container stack ends in a rest spacer that takes the room no child does (D028 point 4). Not a scroll's
+        // content stack (it would tie with the parent's, T019) and not a slot (it holds one hosting view, point 5)
+        if (node.kind == .container || node.kind == .sheet), let box = node.box {
+            let rest = makeSpacer(box, priority: 249)
+            box.addArrangedSubview(rest.view)
+            node.rest = rest.view
+            node.restHold = rest.hold
+            node.restVertical = vertical(box)
+        }
+        return node
+    }
+
+    // a view the host makes with no intrinsic size has no hugging in the layout (T018), so it prefers its content's
+    // size by a constraint: width and height held to zero at 250, which its content (required stack constraints, labels'
+    // compression resistance at 750) stops at the content's size, and a fill or a `width` gives way to. A scroll's frame
+    // is held to its content's height instead. `flex-grow` takes the hold off (D028 point 2). Every other kind has an
+    // intrinsic size and so its own hugging
+    private static func holdContent(_ node: TermNode) {
+        switch node.kind {
+        case .container, .sheet, .hosted:
+            node.view.translatesAutoresizingMaskIntoConstraints = false
+            node.holds = [
+                node.view.widthAnchor.constraint(equalToConstant: 0),
+                node.view.heightAnchor.constraint(equalToConstant: 0),
+            ]
+        case .scroll:
+            node.view.translatesAutoresizingMaskIntoConstraints = false
+            #if canImport(UIKit)
+            let scroll = node.view as! UIScrollView
+            let height = scroll.frameLayoutGuide.heightAnchor.constraint(equalTo: scroll.contentLayoutGuide.heightAnchor)
+            #endif
+            #if canImport(AppKit)
+            let height = node.view.heightAnchor.constraint(equalTo: node.inner!.heightAnchor)
+            #endif
+            node.holds = [node.view.widthAnchor.constraint(equalToConstant: 0), height]
+        default:
+            return
+        }
+        for hold in node.holds {
+            hold.priority = .init(250)
+            hold.isActive = true
+        }
+    }
+
+    // free room goes to the growing children, else to this stack's own rest spacer (D028, T019). Run whenever the
+    // children, the axis, the distribution or a child's growth change
+    private static func settle(_ node: TermNode) {
+        guard let box = node.box else { return }
+        let down = vertical(box)
+        // 1. the installed children that grow
+        let growing = node.children.filter { child in
+            child.view.superview === box && (Double(child.styles["flex-grow", default: ""].trimmingCharacters(in: .whitespaces)) ?? 0) > 0
+        }
+        // 2. growing siblings share the room in the ratio of their factors, each against the first, at 251
+        for share in node.shares {
+            share.isActive = false
+        }
+        node.shares = []
+        if let first = growing.first {
+            let firstGrow = Double(first.styles["flex-grow", default: ""].trimmingCharacters(in: .whitespaces)) ?? 1
+            for child in growing.dropFirst() {
+                let childGrow = Double(child.styles["flex-grow", default: ""].trimmingCharacters(in: .whitespaces)) ?? 1
+                let ratio = CGFloat(childGrow / firstGrow)
+                let share = down
+                    ? child.view.heightAnchor.constraint(equalTo: first.view.heightAnchor, multiplier: ratio)
+                    : child.view.widthAnchor.constraint(equalTo: first.view.widthAnchor, multiplier: ratio)
+                share.priority = .init(251)
+                share.isActive = true
+                node.shares.append(share)
+            }
+        }
+        // 3. the rest spacer: last, held on the stack's axis, stronger while a child grows
+        if let rest = node.rest {
+            if node.styles["justify-content"]?.trimmingCharacters(in: .whitespaces) == "space-between" {
+                // `.equalSpacing` would space it like a child
+                box.removeArrangedSubview(rest)
+                rest.removeFromSuperview()
+            } else {
+                if rest.superview !== box {
+                    box.addArrangedSubview(rest)
+                } else if box.arrangedSubviews.last !== rest {
+                    box.removeArrangedSubview(rest)
+                    rest.removeFromSuperview()
+                    box.addArrangedSubview(rest)
+                }
+                if node.restVertical != down {
+                    let old = node.restHold
+                    old?.isActive = false
+                    let hold = down ? rest.heightAnchor.constraint(equalToConstant: 0) : rest.widthAnchor.constraint(equalToConstant: 0)
+                    hold.priority = old?.priority ?? .init(249)
+                    hold.isActive = true
+                    node.restHold = hold
+                    node.restVertical = down
+                }
+                node.restHold?.priority = .init(growing.isEmpty ? 249 : 249.5)
+            }
+            // 4. no gap before the rest spacer
+            let arranged = box.arrangedSubviews
+            for (index, view) in arranged.enumerated() where view !== rest {
+                let before = index + 1 < arranged.count && arranged[index + 1] === rest
+                #if canImport(UIKit)
+                box.setCustomSpacing(before ? 0 : UIStackView.spacingUseDefault, after: view)
+                #endif
+                #if canImport(AppKit)
+                box.setCustomSpacing(before ? 0 : NSStackView.useDefaultSpacing, after: view)
+                #endif
+            }
+        }
     }
 
     static func createElement(_ tag: String) -> Any {
@@ -852,7 +980,18 @@ enum nativeView {
                 (node.view as? NSControl)?.isEnabled = value == "false"
                 #endif
                 #if canImport(UIKit)
-                (node.view as? UIControl)?.isEnabled = value == "false"
+                if let control = node.view as? UIControl {
+                    control.isEnabled = value == "false"
+                    // the host sets a control's traits itself (`TermNode.init`), which replaces the `.notEnabled` UIKit keeps
+                    // with `isEnabled`, so a disabled control would read as enabled to VoiceOver, to `accessibility-of` and to
+                    // a UI test's `isEnabled` (beat-term-0049). Nothing else writes a control's traits afterwards
+                    // (`adoptTraits` is for text), so this is the one place that keeps the two together
+                    if control.isEnabled {
+                        control.accessibilityTraits.remove(.notEnabled)
+                    } else {
+                        control.accessibilityTraits.insert(.notEnabled)
+                    }
+                }
                 #endif
             default:
                 break
@@ -955,7 +1094,9 @@ enum nativeView {
     //   justify-content start | space-between   its distribution along the axis
     //   padding         <n>px                   its insets
     //   width, height   <n>px                   a fixed size
-    //   flex-grow       <n>                     this child gives up its hugging along its parent's axis
+    //   flex-grow       <n>                     this child takes the free room along its parent's axis: its content hold
+    //                                           (250) comes off, siblings share in the ratio of their factors (251), and
+    //                                           the parent's rest spacer yields (249.5), as D028 and T019 say
     //
     // `display: flex` is how the web says "a stack", which every container here already is, so it is accepted and
     // means nothing more. Anything else is recorded in `unsupported` and reported, never dropped in silence.
@@ -1009,6 +1150,8 @@ enum nativeView {
                 stack.axis = .horizontal
                 #endif
             }
+            // the stack may have turned: its rest spacer is held on the new axis
+            settle(node)
             return
         case ("flex-direction", let stack?):
             #if canImport(AppKit)
@@ -1017,6 +1160,7 @@ enum nativeView {
             #if canImport(UIKit)
             stack.axis = value.hasPrefix("row") ? .horizontal : .vertical
             #endif
+            settle(node)
         case ("gap", let stack?):
             if let gap = points(value) { stack.spacing = gap; return }
         case ("align-items", let stack?):
@@ -1071,6 +1215,7 @@ enum nativeView {
             default:
                 unsupported.insert("\(property): \(value)")
             }
+            settle(node)
             return
         case ("padding", let stack?):
             if let inset = sides(value) {
@@ -1101,6 +1246,15 @@ enum nativeView {
                 bound.isActive = true
                 return
             }
+        // a button's words sit at the start of its box when it is wider than them (beat-term-0050: Back in its 88 point box)
+        case ("text-align", _) where node.kind == .button && (value == "left" || value == "start"):
+            #if canImport(UIKit)
+            (node.view as? UIButton)?.contentHorizontalAlignment = .leading
+            #endif
+            #if canImport(AppKit)
+            (node.view as? NSButton)?.alignment = .left
+            #endif
+            return
         // a scroll IS the platform's scroll view: the overflow the web needs to say is what this view already does
         case ("overflow", _) where node.kind == .scroll, ("overflow-y", _) where node.kind == .scroll:
             return
@@ -1110,18 +1264,27 @@ enum nativeView {
             return
         case ("flex-grow", _):
             if let grow = Double(value), grow > 0 {
+                // a growing child takes the free room (D028 point 3): its content hold comes off, so it is the one child
+                // along the axis that prefers nothing, and its parent settles (siblings in ratio at 251, the rest spacer
+                // at 249.5). Hugging 248 decides only for a growing view with an intrinsic size (a growing label)
+                for hold in node.holds {
+                    hold.isActive = false
+                }
                 #if canImport(AppKit)
-                node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
-                node.view.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+                node.view.setContentHuggingPriority(.defaultLow - 2, for: .horizontal)
+                node.view.setContentHuggingPriority(.defaultLow - 2, for: .vertical)
                 // a stack view holds its own size by a hugging priority of its own, which the content one above does not
                 // reach: an empty growing `div` (the vocabulary's spacer) stayed 0 wide (native-dom-0049)
-                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 1, for: .horizontal)
-                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 1, for: .vertical)
+                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 2, for: .horizontal)
+                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 2, for: .vertical)
                 #endif
                 #if canImport(UIKit)
-                node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
-                node.view.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+                node.view.setContentHuggingPriority(.defaultLow - 2, for: .horizontal)
+                node.view.setContentHuggingPriority(.defaultLow - 2, for: .vertical)
                 #endif
+                if let parent = node.parent {
+                    settle(parent)
+                }
                 return
             }
         default:
@@ -1442,7 +1605,11 @@ enum nativeView {
             let raw = cell?.accessibilityRole()?.rawValue
                 ?? (node.view.isAccessibilityElement() ? node.view.accessibilityRole()?.rawValue : nil)
                 ?? ""
-            let role = raw.hasPrefix("AX") ? raw.dropFirst(2).prefix(1).lowercased() + raw.dropFirst(3) : raw
+            var role = raw.hasPrefix("AX") ? raw.dropFirst(2).prefix(1).lowercased() + raw.dropFirst(3) : raw
+            // a disabled control says so, as UIKit's `notEnabled` trait does (beat-term-0049)
+            if let control = node.view as? NSControl, !control.isEnabled {
+                role += "+notEnabled"
+            }
             // the label the element carries, else a field's placeholder (which VoiceOver speaks as its name), else a
             // label's text
             let field = node.view as? NSTextField
@@ -1456,7 +1623,7 @@ enum nativeView {
             let traits = node.view.accessibilityTraits
             let named: [(UIAccessibilityTraits, String)] = [
                 (.button, "button"), (.link, "link"), (.header, "header"), (.staticText, "staticText"),
-                (.image, "image"), (.adjustable, "adjustable"),
+                (.image, "image"), (.adjustable, "adjustable"), (.notEnabled, "notEnabled"),
             ]
             let role = named.filter { traits.contains($0.0) }.map { $0.1 }.joined(separator: "+")
             // the label, else what VoiceOver speaks in its place: a field's placeholder, a button's title, a label's text
@@ -1692,6 +1859,25 @@ enum nativeView {
             let frame = node.view.convert(node.view.bounds, to: root)
             #endif
             return [frame.origin.x, frame.origin.y, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
+        }
+    }
+
+    // the window's safe area, `x,y,width,height` in the points `frameOf` answers in. On AppKit it is the content view
+    static func safeArea() -> String {
+        onMain {
+            #if canImport(AppKit)
+            guard let content = window?.contentView else { return "0,0,0,0" }
+            content.layoutSubtreeIfNeeded()
+            let frame = content.bounds
+            let top = content.isFlipped ? frame.origin.y : content.bounds.height - frame.origin.y - frame.height
+            return [frame.origin.x, top, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
+            #endif
+            #if canImport(UIKit)
+            guard let root = window?.rootViewController?.view else { return "0,0,0,0" }
+            root.layoutIfNeeded()
+            let frame = root.safeAreaLayoutGuide.layoutFrame
+            return [frame.origin.x, frame.origin.y, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
+            #endif
         }
     }
 
@@ -1936,7 +2122,7 @@ enum nativeView {
     }
 
     // a view that takes whatever room the children leave along the stack's axis, and holds nothing
-    private static func makeSpacer(_ stack: TermStack) -> TermPlatformView {
+    private static func makeSpacer(_ stack: TermStack, priority: Float = 1) -> (view: TermPlatformView, hold: NSLayoutConstraint) {
         let spacer = TermPlatformView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         #if canImport(AppKit)
@@ -1945,25 +2131,32 @@ enum nativeView {
         #if canImport(UIKit)
         let axis: NSLayoutConstraint.Axis = stack.axis
         #endif
-        spacer.setContentHuggingPriority(.init(1), for: axis)
-        spacer.setContentCompressionResistancePriority(.init(1), for: axis)
+        spacer.setContentHuggingPriority(.init(priority), for: axis)
+        spacer.setContentCompressionResistancePriority(.init(priority), for: axis)
+        // a view with no intrinsic size has no hugging at all, so its preference for zero must be a constraint, at its own
+        // priority: the free room then falls to the children that prefer least, a growing one or the stack's rest spacer
+        // (D028 point 1, T018). The hold is returned, since a rest spacer's priority rises and falls with its siblings
+        let hold = axis == .vertical ? spacer.heightAnchor.constraint(equalToConstant: 0) : spacer.widthAnchor.constraint(equalToConstant: 0)
+        hold.priority = .init(priority)
+        hold.isActive = true
         #if canImport(AppKit)
         spacer.setAccessibilityElement(false)
         #endif
         #if canImport(UIKit)
         spacer.isAccessibilityElement = false
         #endif
-        return spacer
+        return (spacer, hold)
     }
 
     // one spacer before the children (end), or one each side held to the same size (center)
     private static func addSpacers(_ node: TermNode, _ stack: TermStack, both: Bool) {
-        let first = makeSpacer(stack)
+        let first = makeSpacer(stack).view
         stack.insertArrangedSubview(first, at: 0)
         node.spacers = [first]
         if both {
-            let last = makeSpacer(stack)
-            stack.addArrangedSubview(last)
+            let last = makeSpacer(stack).view
+            // after the last child, and before the stack's own rest spacer when it is arranged (not under space-between)
+            stack.insertArrangedSubview(last, at: stack.arrangedSubviews.count - (node.rest?.superview === stack ? 1 : 0))
             node.spacers.append(last)
             #if canImport(AppKit)
             let row = stack.orientation == .horizontal
@@ -1992,22 +2185,31 @@ enum nativeView {
             child.adoptTraits()
             // the color and font the new parent passes down, as CSS inherits them
             restyleText(child)
-            if let drawing = parent.drawingAncestor {
-                drawing.refreshTitle()
-            } else if child.kind == .sheet {
-                // a dialog's content is never in the page: the platform presents it when it opens
-                return
-            } else if let stack = parent.box {
-                // last among the children, which is before a trailing spacer when the stack is centered
-                let installed = parent.children.filter { $0 !== child && $0.view.superview === stack }.count
-                stack.insertArrangedSubview(child.view, at: arrangedIndex(parent, installed: installed))
-                if child.kind == .divider {
-                    orient(child, across: stack)
-                }
-                if shouldFill(child, in: parent) {
-                    fill(child.view, in: stack)
-                }
+            // last among the children, which is before a trailing spacer when the stack is centered
+            let installed = parent.children.filter { $0 !== child && $0.view.superview === parent.box }.count
+            install(child, in: parent, installed: installed)
+        }
+    }
+
+    // THE ONE TAIL of `append`, `insertBefore` and `replace`, so the three cannot drift apart again (beat-term-0049: a
+    // node `replace` swapped in was never filled, because only the other two did it). A node under a drawing ancestor
+    // refreshes the ancestor's title, a dialog's content is never in the page (the platform presents it when it opens),
+    // and any other goes in as the `installed`-th installed child, a divider turned across its stack and a node that
+    // fills its stack's cross axis pinned to it
+    private static func install(_ child: TermNode, in parent: TermNode, installed: Int) {
+        if let drawing = parent.drawingAncestor {
+            drawing.refreshTitle()
+        } else if child.kind == .sheet {
+            return
+        } else if let stack = parent.box {
+            stack.insertArrangedSubview(child.view, at: arrangedIndex(parent, installed: installed))
+            if child.kind == .divider {
+                orient(child, across: stack)
             }
+            if shouldFill(child, in: parent) {
+                fill(child.view, in: stack)
+            }
+            settle(parent)
         }
     }
 
@@ -2026,19 +2228,7 @@ enum nativeView {
             parent.children.insert(child, at: index)
             child.adoptTraits()
             restyleText(child)
-            if let drawing = parent.drawingAncestor {
-                drawing.refreshTitle()
-            } else if child.kind == .sheet {
-                return
-            } else if let stack = parent.box {
-                stack.insertArrangedSubview(child.view, at: arrangedIndex(parent, installed: installedBefore))
-                if child.kind == .divider {
-                    orient(child, across: stack)
-                }
-                if shouldFill(child, in: parent) {
-                    fill(child.view, in: stack)
-                }
-            }
+            install(child, in: parent, installed: installedBefore)
         }
     }
 
@@ -2124,6 +2314,7 @@ enum nativeView {
         child.parent = nil
         child.view.removeFromSuperview()
         parent.drawingAncestor?.refreshTitle()
+        settle(parent)
     }
 
     // `new` takes `old`'s place under the same parent, at the same position
@@ -2139,11 +2330,7 @@ enum nativeView {
             fresh.parent = parent
             old.parent = nil
             old.view.removeFromSuperview()
-            if let drawing = parent.drawingAncestor {
-                drawing.refreshTitle()
-            } else if let stack = parent.box {
-                stack.insertArrangedSubview(fresh.view, at: arrangedIndex(parent, installed: installedBefore))
-            }
+            install(fresh, in: parent, installed: installedBefore)
         }
     }
 
@@ -2156,6 +2343,8 @@ enum nativeView {
             }
             node.children = []
             node.drawingAncestor?.refreshTitle()
+            // no child grows now: the rest spacer is back at 249
+            settle(node)
         }
     }
 
@@ -2200,7 +2389,8 @@ enum nativeView {
             NSLayoutConstraint.activate([
                 node.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
                 node.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-                node.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -20),
+                node.view.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
+                node.view.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
             ])
             made.contentView = content
             node.keep.append(made)
@@ -2220,7 +2410,8 @@ enum nativeView {
             NSLayoutConstraint.activate([
                 node.view.topAnchor.constraint(equalTo: guide.topAnchor, constant: 24),
                 node.view.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
-                node.view.trailingAnchor.constraint(lessThanOrEqualTo: guide.trailingAnchor, constant: -24),
+                node.view.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -24),
+                node.view.bottomAnchor.constraint(lessThanOrEqualTo: guide.bottomAnchor, constant: -24),
             ])
             made.modalPresentationStyle = .pageSheet
             // a swipe down dismisses a page sheet; the delegate reports it as `close`
@@ -2588,7 +2779,8 @@ enum nativeView {
     // ---- the app around the tree ----
 
     // a window whose content is a new root container, returned as the node to mount into. On iOS the window is
-    // built when the app launches; the root is ready at once either way
+    // built when the app launches; the root is ready at once either way. It is pinned to the window's safe area on four
+    // edges (the content view on macOS) and holds a trailing rest spacer for the free height (D021)
     // the window's root once `open-root` made it: what `page-body` answers in a native app, as a page's body is its
     // document's (native-dom-0014: a page written for the web mounts on it unchanged)
     static var root: TermNode?
@@ -2631,10 +2823,12 @@ enum nativeView {
             let content = NSView(frame: window.contentLayoutRect)
             root.view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(root.view)
+            // the root IS the content view: four edges, no inset of the host's own (D021). A screen draws its own gutter
             NSLayoutConstraint.activate([
-                root.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
-                root.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-                root.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
+                root.view.topAnchor.constraint(equalTo: content.topAnchor),
+                root.view.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                root.view.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                root.view.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             ])
             window.contentView = content
             if windowAway {
@@ -2866,7 +3060,8 @@ enum nativeView {
             }
             #endif
             #if canImport(UIKit)
-            guard let view = window?.rootViewController?.view else { return }
+            // the window itself, so a presented sheet is in the picture (D021)
+            guard let view = window else { return }
             let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
             let png = renderer.pngData { _ in view.drawHierarchy(in: view.bounds, afterScreenUpdates: true) }
             try? png.write(to: URL(fileURLWithPath: path))

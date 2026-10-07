@@ -183,18 +183,25 @@ task on-cleanup
 
 # push the effect, run it (so its reads subscribe), then pop. A disposed effect (live false) is skipped, so a
 # torn-down scope's effects never run again even though a written signal still holds them as observers briefly.
+# An effect tracks its OWN reads even when it is made or re-run inside `untrack` (Solid: a computation sets its own
+# listener), so the pause is lifted while it runs and put back after. Until 2026-10-07 the pause reached into it: the
+# hosts draw each route untracked, so every effect of every screen ran once, subscribed to nothing, and never redrew
+# (beat-term item 0067)
 task run-effect
   take effect, like effect
   fork test
     hook test
       read effect/live
     hook hold
+      save was-paused, read flags/paused
+      save flags/paused, false
       call push
         bind list, read running
         bind item, read effect
       call effect/run
       call pop
         bind list, read running
+      save flags/paused, read was-paused
     hook miss
       save skip, code 0
 
@@ -329,21 +336,25 @@ task batch
         make list
       save flags/batching, false
 
-# read signals in `body` without subscribing the running effect to them (Solid untrack)
+# read signals in `body` without subscribing the running effect to them (Solid untrack). The pause is put back as it
+# was, so an `untrack` inside another leaves the outer one paused. An effect made in `body` still tracks its own reads
+# (run-effect)
 task untrack
   head t
   take body
     like task
       like t
   like t
+  save was-paused, read flags/paused
   save flags/paused, true
   save result, call body
-  save flags/paused, false
+  save flags/paused, read was-paused
   send back, read result
 
 # run `body` once, untracked, for post-setup side effects (Solid onMount). Does not re-run on signal change.
 task on-mount
   take body, like task
+  save was-paused, read flags/paused
   save flags/paused, true
   call body
-  save flags/paused, false
+  save flags/paused, read was-paused

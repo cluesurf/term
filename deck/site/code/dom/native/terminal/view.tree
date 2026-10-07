@@ -1,0 +1,7 @@
+
+# The terminal host's view handle: memory's. The terminal host is the memory tree on every target (./dom bears
+# ../memory/dom), so the handle it holds is a `memory-element` whatever the build's target is. A file here that loaded
+# ../../view would get the PLATFORM's view, which in a node build is node's `page-element` view, a different form from
+# the one `create-element` answers, and the program would hold two (seam/decision/001, trap T007).
+
+bear ../memory/view

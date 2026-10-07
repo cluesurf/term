@@ -14,7 +14,7 @@ load ../logic/disclosure
 
 view drawer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <drawer>
     bind class, read class
@@ -22,7 +22,7 @@ view drawer
 
 view drawer-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -35,7 +35,7 @@ view drawer-trigger
 
 view drawer-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -54,7 +54,7 @@ view drawer-content
 
 view drawer-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <drawer-header>
     bind class, read class
@@ -62,7 +62,7 @@ view drawer-header
 
 view drawer-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <drawer-title>
     bind class, read class
@@ -70,7 +70,7 @@ view drawer-title
 
 view drawer-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <drawer-description>
     bind class, read class
@@ -78,7 +78,7 @@ view drawer-description
 
 view drawer-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <drawer-footer>
     bind class, read class
@@ -86,7 +86,7 @@ view drawer-footer
 
 view drawer-close
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>

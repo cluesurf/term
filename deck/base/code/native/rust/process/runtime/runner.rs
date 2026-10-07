@@ -68,17 +68,117 @@ mod runner {
         }
     }
 
+    // The signals an attached child waits through, as system(3) handles them, with no crate: INT and QUIT ignored (the
+    // terminal sends them to the whole foreground group, so the child gets each itself), TERM and HUP recorded in
+    // `ARRIVED` and passed on to the child by the poll. The numbers are the same on macOS and Linux: SIGHUP 1, SIGINT 2,
+    // SIGQUIT 3, SIGTERM 15. Installed AFTER the spawn, so the child, which exec has already run when `spawn` returns,
+    // keeps the default dispositions (an ignored signal would survive the exec). The dispositions in force before
+    // (`signal.tree`'s own handlers when its watch is on) come back when the child is gone.
+    #[cfg(unix)]
+    mod passing {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        // one bit per signal number that arrived and has not been passed on
+        static ARRIVED: AtomicU32 = AtomicU32::new(0);
+
+        const IGNORED: [i32; 2] = [2, 3];
+        const PASSED: [i32; 2] = [1, 15];
+        // `signal` answers this for a handler it could not set
+        const FAILED: usize = usize::MAX;
+        const DEFAULT: usize = 0;
+        const IGNORE: usize = 1;
+
+        extern "C" {
+            fn signal(signum: i32, handler: usize) -> usize;
+            fn siginterrupt(signum: i32, flag: i32) -> i32;
+            fn kill(pid: i32, signum: i32) -> i32;
+        }
+
+        extern "C" fn notice(signum: i32) {
+            ARRIVED.fetch_or(1 << signum, Ordering::SeqCst);
+        }
+
+        // the dispositions before: a signal and the handler it had
+        pub struct Held {
+            before: Vec<(i32, usize)>,
+        }
+
+        pub fn hold() -> Held {
+            ARRIVED.store(0, Ordering::SeqCst);
+            let mut before = Vec::new();
+            for signum in IGNORED {
+                before.push((signum, unsafe { signal(signum, IGNORE) }));
+            }
+            for signum in PASSED {
+                before.push((signum, unsafe { signal(signum, notice as usize) }));
+            }
+            Held { before }
+        }
+
+        // send the child each signal that arrived since the last call
+        pub fn pass(child: u32) {
+            let arrived = ARRIVED.swap(0, Ordering::SeqCst);
+            for signum in PASSED {
+                if arrived & (1 << signum) != 0 {
+                    unsafe { kill(child as i32, signum) };
+                }
+            }
+        }
+
+        // put each disposition back. A handler of the program's own (`signal.tree`'s) read a blocked terminal as an
+        // interrupted call, so it gets the flag back that `signal` takes off
+        pub fn release(held: Held) {
+            for (signum, handler) in held.before {
+                if handler == FAILED {
+                    continue;
+                }
+                unsafe {
+                    signal(signum, handler);
+                    if handler != DEFAULT && handler != IGNORE {
+                        siginterrupt(signum, 1);
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    mod passing {
+        pub struct Held;
+        pub fn hold() -> Held { Held }
+        pub fn pass(_child: u32) {}
+        pub fn release(_held: Held) {}
+    }
+
     // the command on this terminal: it reads the keyboard and writes as it goes; its exit code (128 plus the signal for
-    // a signal death), -1 when it could not start
+    // a signal death), -1 when it could not start. While it runs, INT and QUIT are ignored here and TERM and HUP sent to
+    // this process are passed to it (`passing`, as system(3) does). The wait is a poll of `try_wait` with a short sleep,
+    // so a recorded signal is passed within a few milliseconds
     pub async fn attached(
         command: String,
         argument_list: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
         directory: String,
         environment: Environment,
     ) -> i64 {
-        match shaped(&command, &argument_list, &directory, &environment).status() {
-            Ok(status) => finished(status).0,
-            Err(_) => -1,
+        let mut child = match shaped(&command, &argument_list, &directory, &environment).spawn() {
+            Ok(child) => child,
+            Err(_) => return -1,
+        };
+        let held = passing::hold();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Some(status),
+                Ok(None) => {
+                    passing::pass(child.id());
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(_) => break None,
+            }
+        };
+        passing::release(held);
+        match status {
+            Some(status) => finished(status).0,
+            None => -1,
         }
     }
 

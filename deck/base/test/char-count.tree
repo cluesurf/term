@@ -8,9 +8,6 @@ load ../code/text
   find text
   find char-count
 
-load ../code/number
-  find number
-
 test ascii-size
   want hold
     call is-equal

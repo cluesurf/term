@@ -43,7 +43,7 @@ load ../parser/diagnostic
   find diagnostic
   find span
 
-load ./import-scope
+load ../compile/import-scope
   find file-scope
   find targets-of
   find scope-of

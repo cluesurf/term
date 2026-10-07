@@ -13,7 +13,7 @@ load ../logic/disclosure
 
 view hover-card
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <hover-card>
     bind class, read class
@@ -21,7 +21,7 @@ view hover-card
 
 view hover-card-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -37,7 +37,7 @@ view hover-card-trigger
 
 view hover-card-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -55,7 +55,7 @@ view hover-card-content
 
 view hover-card-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <hover-card-item>
     bind role, text <menuitem>

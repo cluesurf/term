@@ -8,7 +8,7 @@ load @term/site/dom/dom
 
 view spinner
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <spinner>
     bind role, text <status>

@@ -61,6 +61,9 @@ load @term/mill/tree/code/note/mine
   find mark-guard
   find fork-guard
 
+load @term/mill/tree/code/find/mine
+  find find-query
+
 # `show <text>` is NOT listed. `compile/mill.ts` has no lowering for it, so it falls into the generic "an
 # unknown head is a call" path and becomes a call to something named `show`. Leaving it out here is what
 # reproduces that: the value alternation at the end takes it the same way.
@@ -126,6 +129,11 @@ mine flow
       site move
     mine form, like host
       site host
+    # `find pane` / `find one` / `find all` / `find read x` (find/mine.tree), before the fallback below: `mine seed`
+    # ends in "an unknown head is a call", which would read `find pane` as a call to a task named `find`. A `find`
+    # under a `load` never reaches this rule: it is the import, read by `mine load` alone
+    mine form, like find-query
+      site find
     # LAST. `mine seed` ends in a fallback that takes any headed group, so every alternative listed after it
     # is unreachable: `host m / call add ...` read as a call to `host`, `move x` as a call to `move`.
     mine form, like seed

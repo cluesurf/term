@@ -1,7 +1,7 @@
 /**
  * The property-testing engine: type-derived generators, shrinking,
  * and a runner that returns a counterexample. This is Layer 3 of the
- * Seed verification system (note/methodology/verification/
+ * Seed verification system (note/project/term/verification/
  * seed-verification-system.md) AND the verifier half of the synthesis
  * loop: it is what finds the hole and hands back the exact input that
  * breaks a claim.

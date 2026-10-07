@@ -1,0 +1,718 @@
+
+# The seam between the find engine and a driver (decision 002, spec section 9), and the messages sent over it. A message
+# is a JSON value built from the query as DATA: every field goes in as a JSON field, never as code, and the driver
+# answers data back. On node a driver is a child process started on first use and stopped at exit, JSON lines matched
+# by `id`. Which driver a find reaches is chosen by `mount` (find/tool), which swaps it in and out; `use-driver` is the
+# low-level choice under it. The platform side is selected at build time.
+#
+# The owner of a handle is `tool` on the wire and in the form (spec section 9, decision 004).
+
+load @term/base/native/{platform}/find/send
+  find choose-driver
+  find mount-driver
+  find run-driver-mounted
+  find has-driver-mount
+  find next-message-id
+  find exchange-line
+  find stop-drivers
+
+load @term/base/find/query
+  find find-query
+  find find-step
+  find find-test
+  find find-value
+  find find-operand
+  find find-back
+  find find-sort
+  find find-handle
+  find find-count
+
+load @term/base/find/error
+  find find-failed
+
+load @term/base/json
+  find parse, name json-parse
+  find stringify, name json-stringify
+  find get-field, name json-get-field
+  find as-text, name json-as-text
+  find as-boolean, name json-as-boolean
+  find as-number, name json-as-number
+  find json-kind
+  find array-size, name json-array-size
+  find array-item, name json-array-item
+  find make-object, name json-make-object
+  find set-field, name json-set-field
+  find make-array, name json-make-array
+  find push-item, name json-push-item
+  find from-text, name json-from-text
+  find from-number, name json-from-number
+  find from-boolean, name json-from-boolean
+  find make-null, name json-make-null
+
+load @term/base/list
+  find list
+  find length
+  find push
+  find get
+
+# the driver every find reaches from now on: a command and its arguments, run as an argv and never through a shell
+task use-driver
+  take command, like text
+  take argument-list
+    like list
+      like text
+  call choose-driver
+    read command
+    read argument-list
+
+# mount a tool's driver: answers what was mounted before, to give back to `restore-mount`
+task swap-mount
+  take tool, like dynamic
+  take command, like text
+  take argument-list
+    like list
+      like text
+  like dynamic
+  send back
+    call mount-driver
+      read tool
+      read command
+      read argument-list
+
+# run `work`, then put back the context `swap-mount` answered, also when `work` raises (the raise goes on, unchanged)
+task run-mounted
+  mark async
+  take work
+    like task
+      mark async
+  take before, like dynamic
+  call run-driver-mounted
+    read work
+    read before
+
+# whether a tool is mounted now
+task has-mount
+  like boolean
+  send back
+    call has-driver-mount
+
+task message-id
+  like number
+  send back
+    call next-message-id
+
+# send one JSON line, answer the line the driver sent back for it
+task exchange
+  mark async
+  take line, like text
+  like text
+  send back
+    call exchange-line
+      read line
+
+# stop every driver started so far
+task stop-all
+  call stop-drivers
+
+task value-json
+  mark private
+  take value, like find-value
+  like dynamic
+  fork case, read value
+    case text
+      link content
+      send back
+        call json-from-text
+          read content
+    case number
+      link content
+      send back
+        call json-from-number
+          read content
+    case flag
+      link content
+      send back
+        call json-from-boolean
+          read content
+    case void
+      send back
+        call json-make-null
+
+# an operand: `{"self": name}` reads a property of the component, `{"value": v}` is a value
+task operand-json
+  mark private
+  take operand, like find-operand
+  like dynamic
+  save out
+    call json-make-object
+  fork case, read operand
+    case self
+      link label
+      call json-set-field
+        read out
+        text <self>
+        call json-from-text
+          read label
+    case value
+      link content
+      call json-set-field
+        read out
+        text <value>
+        call value-json
+          read content
+  send back, read out
+
+# a test: `{"form": have|lack, name, value}`, `{"form": hold, name, a, b}` or `{"form": meet, kind, test: [...]}`
+task test-json
+  mark private
+  take piece, like find-test
+  like dynamic
+  save out
+    call json-make-object
+  fork case, read piece
+    case have
+      call json-set-field
+        read out
+        text <form>
+        call json-from-text
+          text <have>
+      call json-set-field
+        read out
+        text <name>
+        call json-from-text
+          read name
+      call json-set-field
+        read out
+        text <value>
+        call value-json
+          read value
+    case lack
+      call json-set-field
+        read out
+        text <form>
+        call json-from-text
+          text <lack>
+      call json-set-field
+        read out
+        text <name>
+        call json-from-text
+          read name
+      call json-set-field
+        read out
+        text <value>
+        call value-json
+          read value
+    case hold
+      call json-set-field
+        read out
+        text <form>
+        call json-from-text
+          text <hold>
+      call json-set-field
+        read out
+        text <name>
+        call json-from-text
+          read name
+      call json-set-field
+        read out
+        text <a>
+        call operand-json
+          read a
+      call json-set-field
+        read out
+        text <b>
+        call operand-json
+          read b
+    case meet
+      link mode
+      link members
+      call json-set-field
+        read out
+        text <form>
+        call json-from-text
+          text <meet>
+      call json-set-field
+        read out
+        text <kind>
+        call json-from-text
+          read mode
+      save inner
+        call json-make-array
+      walk members
+        take one
+        call json-push-item
+          read inner
+          call test-json
+            read one
+      call json-set-field
+        read out
+        text <test>
+        read inner
+  send back, read out
+
+task step-json
+  mark private
+  take step, like find-step
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <kind>
+    call json-from-text
+      read step/kind
+  call json-set-field
+    read out
+    text <like>
+    call json-from-text
+      read step/like
+  call json-set-field
+    read out
+    text <turn>
+    call json-from-text
+      read step/turn
+  call json-set-field
+    read out
+    text <depth>
+    call json-from-text
+      read step/depth
+  save tests
+    call json-make-array
+  walk step/test
+    take one
+    call json-push-item
+      read tests
+      call test-json
+        read one
+  call json-set-field
+    read out
+    text <test>
+    read tests
+  send back, read out
+
+task back-json
+  mark private
+  take part, like find-back
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <name>
+    call json-from-text
+      read part/name
+  call json-set-field
+    read out
+    text <from>
+    call operand-json
+      read part/from
+  send back, read out
+
+task sort-json
+  mark private
+  take rank, like find-sort
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <name>
+    call json-from-text
+      read rank/name
+  call json-set-field
+    read out
+    text <fall>
+    call json-from-boolean
+      read rank/fall
+  send back, read out
+
+# the query as a JSON value: count, base, path, back, sort, size, head and sift. `wait` and `line` stay in the engine
+task query-json
+  take query, like find-query
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <count>
+    call json-from-text
+      call to-text
+        read query/count
+  call json-set-field
+    read out
+    text <base>
+    call step-json
+      read query/base
+  save path
+    call json-make-array
+  walk query/path
+    take one
+    call json-push-item
+      read path
+      call step-json
+        read one
+  call json-set-field
+    read out
+    text <path>
+    read path
+  save kept
+    call json-make-array
+  walk query/back
+    take one
+    call json-push-item
+      read kept
+      call back-json
+        read one
+  call json-set-field
+    read out
+    text <back>
+    read kept
+  save order
+    call json-make-array
+  walk query/sort
+    take one
+    call json-push-item
+      read order
+      call sort-json
+        read one
+  call json-set-field
+    read out
+    text <sort>
+    read order
+  call json-set-field
+    read out
+    text <size>
+    call json-from-number
+      read query/size
+  call json-set-field
+    read out
+    text <head>
+    call json-from-number
+      read query/head
+  save unique
+    call json-make-array
+  walk query/sift
+    take one
+    call json-push-item
+      read unique
+      call json-from-text
+        read one
+  call json-set-field
+    read out
+    text <sift>
+    read unique
+  send back, read out
+
+task handle-json
+  take handle, like find-handle
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <tool>
+    call json-from-text
+      read handle/tool
+  call json-set-field
+    read out
+    text <id>
+    call json-from-text
+      read handle/id
+  call json-set-field
+    read out
+    text <kind>
+    call json-from-text
+      read handle/kind
+  send back, read out
+
+task handle-of
+  mark private
+  take value, like dynamic
+  like find-handle
+  send back
+    make find-handle
+      bind tool
+        call json-as-text
+          call json-get-field
+            read value
+            text <tool>
+      bind id
+        call json-as-text
+          call json-get-field
+            read value
+            text <id>
+      bind kind
+        call json-as-text
+          call json-get-field
+            read value
+            text <kind>
+
+# what a driver read, as a value: a text, a number, a flag, or nothing for anything else
+task value-of
+  mark private
+  take value, like dynamic
+  like find-value
+  save kind
+    call json-kind
+      read value
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <text>
+    hook hold
+      send back
+        make text
+          bind value
+            call json-as-text
+              read value
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <number>
+    hook hold
+      send back
+        make number
+          bind value
+            call json-as-number
+              read value
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <boolean>
+    hook hold
+      send back
+        make flag
+          bind value
+            call json-as-boolean
+              read value
+  send back
+    make void
+
+# a request with its op and a fresh id, ready for fields
+task make-request
+  mark private
+  take op, like text
+  like dynamic
+  save out
+    call json-make-object
+  call json-set-field
+    read out
+    text <id>
+    call json-from-number
+      call message-id
+  call json-set-field
+    read out
+    text <op>
+    call json-from-text
+      read op
+  send back, read out
+
+# send a request and read the answer. An answer that is not `ok` raises `find-failed` with the driver's words
+task ask
+  mark async
+  mark private
+  take request, like dynamic
+  like dynamic
+  save answer
+    call json-parse
+      call exchange
+        call json-stringify
+          read request
+  fork test
+    hook test
+      call json-as-boolean
+        call json-get-field
+          read answer
+          text <ok>
+    hook hold
+      send back, read answer
+  save error
+    call json-get-field
+      read answer
+      text <error>
+  halt find-failed
+    bind thing, text <driver>
+    bind kind
+      call json-as-text
+        call json-get-field
+          read error
+          text <kind>
+    bind detail
+      call json-as-text
+        call json-get-field
+          read error
+          text <detail>
+
+# the backend the driver answers for
+task find-hello
+  mark async
+  like text
+  save answer
+    call ask
+      call make-request
+        text <hello>
+  send back
+    call json-as-text
+      call json-get-field
+        read answer
+        text <tool>
+
+# the query parts the driver executes itself (`base`, `link`, `have`, `lack`, `hold`, `meet`, `sort`, ...): the
+# engine pushes those down and evaluates the rest in Term (spec section 4.9)
+task find-parts
+  mark async
+  like list
+    like text
+  save answer
+    call ask
+      call make-request
+        text <hello>
+  save parts
+    call json-get-field
+      read answer
+      text <part>
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call json-array-size
+        read parts
+    hook next
+      take site, name at
+      call push
+        bind list, read out
+        bind item
+          call json-as-text
+            call json-array-item
+              read parts
+              read at
+  send back, read out
+
+# the hits of a query, at most `limit` (zero is no limit), in the driver's order. `base` is where the first step
+# starts: none is the backend's own top
+task find-hits
+  mark async
+  take query, like find-query
+  take limit, like number
+  take base
+    like list
+      like find-handle
+  like list
+    like find-handle
+  save request
+    call make-request
+      text <find>
+  save from
+    call json-make-array
+  walk base
+    take one
+    call json-push-item
+      read from
+      call handle-json
+        read one
+  call json-set-field
+    read request
+    text <from>
+    read from
+  call json-set-field
+    read request
+    text <query>
+    call query-json
+      read query
+  call json-set-field
+    read request
+    text <limit>
+    call json-from-number
+      read limit
+  save answer
+    call ask
+      read request
+  save hits
+    call json-get-field
+      read answer
+      text <hits>
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call json-array-size
+        read hits
+    hook next
+      take site, name at
+      call push
+        bind list, read out
+        bind item
+          call handle-of
+            call json-array-item
+              read hits
+              read at
+  send back, read out
+
+# the value of a property of a found thing, through the driver's `read` op
+task find-read
+  mark async
+  take handle, like find-handle
+  take name, like text
+  like find-value
+  save request
+    call make-request
+      text <read>
+  call json-set-field
+    read request
+    text <handle>
+    call handle-json
+      read handle
+  call json-set-field
+    read request
+    text <name>
+    call json-from-text
+      read name
+  save answer
+    call ask
+      read request
+  send back
+    call value-of
+      call json-get-field
+        read answer
+        text <value>
+
+# perform `name` on a found thing, with `take` as its text arguments. Answers nothing
+task find-call
+  mark async
+  take handle, like find-handle
+  take name, like text
+  take take
+    like list
+      like text
+  save request
+    call make-request
+      text <call>
+  call json-set-field
+    read request
+    text <handle>
+    call handle-json
+      read handle
+  call json-set-field
+    read request
+    text <name>
+    call json-from-text
+      read name
+  save arguments
+    call json-make-array
+  walk take
+    take one
+    call json-push-item
+      read arguments
+      call json-from-text
+        read one
+  call json-set-field
+    read request
+    text <take>
+    read arguments
+  call ask
+    read request

@@ -19,6 +19,9 @@ load @term/mill/tree/code/tool/flow/mint
 load @term/mill/tree/code/wait/mint
   find wait
 
+load @term/mill/tree/code/find/mint
+  find find-query
+
 load @term/mill/tree/code/bind/mint
   find bind
 
@@ -60,6 +63,8 @@ mint seed
     site term
   case meet, mint seed-meet
     site meet
+  case find, mint find-query
+    site find
   case wait, mint seed-wait
     site wait
   case open, mint seed-call-open

@@ -11,7 +11,7 @@ load @term/site/dom/dom
 
 view breadcrumb
   take host, like view
-  take class
+  take class, like text
   view nav
     bind data-slot, text <breadcrumb>
     bind aria-label, text <breadcrumb>
@@ -20,7 +20,7 @@ view breadcrumb
 
 view breadcrumb-list
   take host, like view
-  take class
+  take class, like text
   view ol
     bind data-slot, text <breadcrumb-list>
     bind class, read class
@@ -28,7 +28,7 @@ view breadcrumb-list
 
 view breadcrumb-item
   take host, like view
-  take class
+  take class, like text
   view li
     bind data-slot, text <breadcrumb-item>
     bind class, read class
@@ -36,8 +36,8 @@ view breadcrumb-item
 
 view breadcrumb-link
   take host, like view
-  take class
-  take href
+  take class, like text
+  take href, like text
   view a
     bind data-slot, text <breadcrumb-link>
     bind href, read href
@@ -46,7 +46,7 @@ view breadcrumb-link
 
 view breadcrumb-page
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <breadcrumb-page>
     bind role, text <link>
@@ -56,7 +56,7 @@ view breadcrumb-page
 
 view breadcrumb-separator
   take host, like view
-  take class
+  take class, like text
   view li
     bind data-slot, text <breadcrumb-separator>
     bind role, text <presentation>

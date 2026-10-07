@@ -91,6 +91,9 @@ load ./bind
 load ./render-names
   find render-names
 
+load ./view-lower
+  find runtime-bound
+
 load ./lowered-members
   find list-length-tasks
 
@@ -165,6 +168,8 @@ form emit-facts
   link plain-records, like hash, like text, like boolean
   link env, like text
   link hmr, like boolean
+  # the render runtime names as the build bound them (D020), for a view's zone: empty where the build split no name
+  link runtime, like list, like runtime-bound
   # the analyses' answers about nodes, each asked of the face
   link is-proven
     like task
@@ -2297,11 +2302,15 @@ task emit-statement
       link guard-body
       link guard-catch
       # the handler is written first, as the original computed it before the body
-      save handler, < catch \{\}>
+      # an integer overflow is a stop (D15): every catch passes `__TermStop` on first, and the class rides in with the int
+      # prelude, so a guard asks for that prelude
+      save st/int-used, true
+      save handler, < catch (__stop: any) \{ if (__stop instanceof __TermStop) throw __stop \}>
       sift guard-catch
         case some
           link clause
-          save handler, < catch ({to-camel(clause/name)}: any) {emit-block(clause/body, depth, st, facts)}>
+          save caught, to-camel(clause/name)
+          save handler, < catch ({caught}: any) \{ if ({caught} instanceof __TermStop) throw {caught};{substring(emit-block(clause/body, depth, st, facts), 1)}>
         case none
           save nothing, 0
       back <try {emit-block(guard-body, depth, st, facts)}{handler}>
@@ -3682,6 +3691,25 @@ form zone-names
   link event, like text
   link show, like text
   link each, like text
+  link append, like text
+  link open-scope, like text
+  link close-scope, like text
+  link make-signal, like text
+
+# what the build called a render runtime name (D020): the bound one, else the name itself. The same lookup as
+# view-lower.tree's `bound-of-name`, which is private to the lowering and read by the per-module emit here and in
+# module-emit.tree
+task runtime-bound-name
+  take runtime, like list, like runtime-bound
+  take name, like text
+  like text
+
+  walk runtime
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one/bound
+  back name
 
 task zone-next
   take zone, like zone-state
@@ -3823,7 +3851,7 @@ task zone-attach
           save part, zone-next(zone)
           push(out, <const {part} = {names/element}("seed-part")>)
           push(out, zone-show(part, view, zone, names, st, facts))
-          push(out, <append({parent}, {part})>)
+          push(out, <{names/append}({parent}, {part})>)
           push(collect, part)
         miss
           push(out, zone-show(parent, view, zone, names, st, facts))
@@ -3833,7 +3861,7 @@ task zone-attach
           save part, zone-next(zone)
           push(out, <const {part} = {names/element}("seed-part")>)
           push(out, zone-each(part, view, zone, names, st, facts))
-          push(out, <append({parent}, {part})>)
+          push(out, <{names/append}({parent}, {part})>)
           push(collect, part)
         miss
           push(out, zone-each(parent, view, zone, names, st, facts))
@@ -3841,7 +3869,7 @@ task zone-attach
       save nothing, 0
     miss
       save ref, zone-build(view, out, zone, names, st, facts)
-      push(out, <append({parent}, {ref})>)
+      push(out, <{names/append}({parent}, {ref})>)
       fork test, collecting
         hold
           push(collect, ref)
@@ -3912,13 +3940,17 @@ task emit-zone
       save render, render-names()
       save names
         make zone-names
-          bind element, to-camel(render/element)
-          bind text, to-camel(render/text)
-          bind dynamic, to-camel(render/dynamic)
-          bind attribute, to-camel(render/attribute)
-          bind event, to-camel(render/event)
-          bind show, to-camel(render/show)
-          bind each, to-camel(render/each)
+          bind element, to-camel(runtime-bound-name(facts/runtime, render/element))
+          bind text, to-camel(runtime-bound-name(facts/runtime, render/text))
+          bind dynamic, to-camel(runtime-bound-name(facts/runtime, render/dynamic))
+          bind attribute, to-camel(runtime-bound-name(facts/runtime, render/attribute))
+          bind event, to-camel(runtime-bound-name(facts/runtime, render/event))
+          bind show, to-camel(runtime-bound-name(facts/runtime, render/show))
+          bind each, to-camel(runtime-bound-name(facts/runtime, render/each))
+          bind append, to-camel(runtime-bound-name(facts/runtime, <append>))
+          bind open-scope, to-camel(runtime-bound-name(facts/runtime, <open-scope>))
+          bind close-scope, to-camel(runtime-bound-name(facts/runtime, <close-scope>))
+          bind make-signal, to-camel(runtime-bound-name(facts/runtime, <make-signal>))
       save zone
         make zone-state
           bind counter, 0
@@ -3937,7 +3969,7 @@ task emit-zone
       fork test, facts/hmr
         hold
           push(lines, <const __seed = (hot && hot.data.signals && hot.data.signals[{name}]) || \{\}>)
-          push(lines, <const __scope = openScope()>)
+          push(lines, <const __scope = {names/open-scope}()>)
       walk view-body
         take child
         sift child
@@ -3958,7 +3990,7 @@ task emit-zone
                         save init, emit-expression(get(call-args, 0), 0, st, facts)
                   miss
                     save nothing, 0
-                push(lines, <const {to-camel(save-name)} = makeSignal({key} in __seed ? __seed[{key}] : {init})>)
+                push(lines, <const {to-camel(save-name)} = {names/make-signal}({key} in __seed ? __seed[{key}] : {init})>)
               miss
                 push(lines, <const {to-camel(save-name)} = {emit-expression(save-value, 0, st, facts)}>)
           miss
@@ -3977,7 +4009,7 @@ task emit-zone
             zone-attach(child, host, lines, facts/hmr, roots, zone, names, st, facts)
       fork test, facts/hmr
         hold
-          push(lines, <closeScope()>)
+          push(lines, <{names/close-scope}()>)
           save entries, make list
           walk signals
             take signal

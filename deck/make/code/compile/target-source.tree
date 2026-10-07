@@ -1,0 +1,376 @@
+# ONE program's complete source for one backend, from a compile that succeeded: the runtime shims the program docks
+# (`nativePrelude`), then the backend's emit. What `term make --emit <target>` writes (call/code/emit.ts) and what the
+# browser worker shows (call/code/browser/worker.ts), so the two cannot say different things about the same program.
+#
+# Browser-safe: no `fs`, no `path`. The caller hands over how to read a runtime shim, from disk or from a snapshot.
+#
+#   node     TypeScript, ESM, with the shims the program docks in front
+#   rust     one `.rs` file for `rustc`
+#   swift    one `.swift` file for `swiftc`
+#   kotlin   one `.kt` file for `kotlinc`, every import hoisted to the top
+#
+# Ported from compile/emit-target.ts (self-hosting, 2026-10-07), which stays as the face. The decisions:
+#   - THE EMITTERS ARE HANDED IN. The prelude (compile/native.ts, which reads shims through the caller's reader, closed
+#     over by the face), the join of a prelude and the compile's TypeScript, each emitter and Kotlin's import hoist are
+#     TypeScript today, so this module asks for each as a task and holds what is its own: which target runs what, how the
+#     texts are put together, and how a program is cut into one file per module
+#   - the targets are two text forms: every target, and the three native ones a split by module is written for (the
+#     original's `Exclude<EmitTarget, 'node'>`)
+#   - a pair of file name and text is a `file-text`, and the files of a program a list of them
+#   - a regular expression is written out by character. `^import .+$` and `^(package|import) .+$` over lines, with the
+#     `m` flag, read a line as ending at any of \n \r U+2028 U+2029, and `.+` needs one unit beyond the keyword. `[^A-Za-z0-9]`
+#     over a text is applied per UTF-16 unit, so a character past U+FFFF is two underscores. The hash is the original's,
+#     over units, `((hash * 33) ^ unit) >>> 0` from 5381, written in base 36
+#   - `trimEnd` is JavaScript's: the white space and line ends `whitespace-code` lists, which the stdlib's `trim-end` leaves out in part (it keeps U+FEFF)
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find split
+  find substring
+  find char-code-at
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/text/number
+  find to-radix
+
+load @term/base/bit
+  find bitwise-exclusive-or
+
+load ../compile/node
+  find statement
+
+load ../fixing
+  find units-of
+  find units-text
+
+load ./unit-split
+  find split-units
+
+load ./main-entry
+  find whitespace-code
+
+# every target
+form emit-target-name
+  mark text
+  case node
+  case rust
+  case swift
+  case kotlin
+
+# the targets a program can be split by module for
+form native-target-name
+  mark text
+  case rust
+  case swift
+  case kotlin
+
+# a file's name and its text
+form file-text
+  link name, like text
+  link text, like text
+
+# the program as files: the file a toolchain starts from, and every file, that one first
+form unit-files
+  link main, like text
+  link files, like list, like file-text
+
+task list-emit-targets
+  like list, like text
+
+  save out, make list
+  push(out, <node>)
+  push(out, <rust>)
+  push(out, <swift>)
+  push(out, <kotlin>)
+  back out
+
+task is-emit-target
+  take value, like text
+  like boolean
+
+  walk list-emit-targets()
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the source for one target. `typescript` is the compile's own TypeScript, which the `node` target uses as it is; the
+# native targets emit from `program`. The compile must have been run with `env` set to the same target, because the
+# env decides which `{platform}` modules the program was built from
+task emit-target
+  take program, like list, like statement
+  take typescript, like text
+  take target, like emit-target-name
+  take prelude-of
+    like task
+      take program, like list, like statement
+      take target, like emit-target-name
+      like text
+  take join-prelude
+    like task
+      take prelude, like text
+      take typescript, like text
+      like text
+  take emit-rust
+    like task
+      take program, like list, like statement
+      like text
+  take emit-swift
+    like task
+      take program, like list, like statement
+      like text
+  take emit-kotlin
+    like task
+      take program, like list, like statement
+      like text
+  take hoist-imports
+    like task
+      take source, like text
+      like text
+  like text
+
+  save prelude, prelude-of(program, target)
+  sift target
+    case node
+      back join-prelude(prelude, typescript)
+    case rust
+      save emitted, emit-rust(program)
+      back <{prelude}\n{emitted}>
+    case swift
+      save emitted, emit-swift(program)
+      back <{prelude}\n{emitted}>
+    case kotlin
+      save emitted, emit-kotlin(program)
+      back hoist-imports(<{prelude}\n{emitted}>)
+
+# THE SAME PROGRAM AS FILES, ONE PER TERM MODULE (compile/unit-split, note/term/plan/incremental-best-in-class.md,
+# step 15): every decision still made over the whole program, and each module's statements in a file of their own
+# beside one shared file, so an edit to a module changes that module's file alone and the toolchain's incremental
+# build redoes what it holds. `main` is the file a toolchain starts from:
+#
+#   rust     main.rs, the runtime and every `include!("u_<module>.rs")`: one crate, one namespace, as the one file was
+#   swift    Term.swift and U_<module>.swift, one module: every file of it shares one namespace
+#   kotlin   Term.kt and U_<module>.kt, one package, every file with every import hoisted
+#
+# `emit-rust`, `emit-swift` and `emit-kotlin` are asked for the program written as units
+task emit-target-units
+  take program, like list, like statement
+  take target, like native-target-name
+  take prelude-of
+    like task
+      take program, like list, like statement
+      take target, like emit-target-name
+      like text
+  take emit-rust
+    like task
+      take program, like list, like statement
+      like text
+  take emit-swift
+    like task
+      take program, like list, like statement
+      like text
+  take emit-kotlin
+    like task
+      take program, like list, like statement
+      like text
+  take hoist-imports
+    like task
+      take source, like text
+      like text
+  like unit-files
+
+  save prelude, prelude-of(program, to-emit-target(target))
+  sift target
+    case rust
+      save emitted, emit-rust(program)
+      save cut, split-units(<{prelude}\n{emitted}>)
+      save named, make list
+      walk cut/units
+        take one
+        push(named, make-file(<u_{unit-name(one/file)}.rs>, one/text))
+      save includes, make list
+      walk named
+        take one
+        push(includes, <include!("{one/name}");>)
+      save main, <{js-trim-end(cut/shared)}\n\n{join(includes, <\n>)}\n>
+      save files, make list
+      push(files, make-file(<main.rs>, main))
+      walk named
+        take one
+        push(files, one)
+      back make-unit-files(<main.rs>, files)
+    case swift
+      save emitted, emit-swift(program)
+      save cut, split-units(<{prelude}\n{emitted}>)
+      save imports, import-lines(cut/shared, false)
+      save files, make list
+      push(files, make-file(<Term.swift>, cut/shared))
+      walk cut/units
+        take one
+        push(files, make-file(<U_{unit-name(one/file)}.swift>, <{imports}{one/text}>))
+      back make-unit-files(<Term.swift>, files)
+    case kotlin
+      save emitted, emit-kotlin(program)
+      save cut, split-units(hoist-imports(<{prelude}\n{emitted}>))
+      save imports, import-lines(cut/shared, true)
+      save files, make list
+      push(files, make-file(<Term.kt>, cut/shared))
+      walk cut/units
+        take one
+        push(files, make-file(<U_{unit-name(one/file)}.kt>, <{imports}{one/text}>))
+      back make-unit-files(<Term.kt>, files)
+
+# JavaScript's `trimEnd`
+task js-trim-end
+  take text, like text
+  like text
+  mark private
+
+  save end, text/length
+  walk test
+    hook test, and(is-above(end, 0), whitespace-code(char-code-at(text, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back substring(text, 0, end)
+
+task to-emit-target
+  take target, like native-target-name
+  like emit-target-name
+  mark private
+
+  sift target
+    case rust
+      back make rust
+    case swift
+      back make swift
+    case kotlin
+      back make kotlin
+
+task make-file
+  take name, like text
+  take text, like text
+  like file-text
+  mark private
+
+  back
+    make file-text
+      bind name, name
+      bind text, text
+
+task make-unit-files
+  take main, like text
+  take files, like list, like file-text
+  like unit-files
+  mark private
+
+  back
+    make unit-files
+      bind main, main
+      bind files, files
+
+# a module's file name: the end of its path in identifier characters, and a short hash of the whole path, so two
+# modules of one name in two folders never meet and the name stays readable (a Kotlin file names a JVM class)
+task unit-name
+  take file, like text
+  like text
+  mark private
+
+  save stripped, file
+  fork test, ends-with(file, <.tree>)
+    hold
+      save stripped, substring(file, 0, subtract(file/length, 5))
+  save parts, split(stripped, </>)
+  save first, 0
+  fork test, is-above(parts/length, 3)
+    hold
+      save first, subtract(parts/length, 3)
+  save kept, make list
+  save at, first
+  walk test
+    hook test, is-below(at, parts/length)
+    hook hold
+      push(kept, get(parts, at))
+      save at, add(at, 1)
+  save pieces, make list
+  walk units-of(join(kept, <_>))
+    take unit
+    push(pieces, identifier-unit(unit))
+  save hash, 5381
+  walk units-of(file)
+    take unit
+    save product, modulo(multiply(hash, 33), 4294967296)
+    save hash, bitwise-exclusive-or(product, unit)
+  back <{join(pieces, <>)}_{to-radix(hash, 36)}>
+
+# a UTF-16 unit as `[^A-Za-z0-9]` replaced by `_` leaves it
+task identifier-unit
+  take unit, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(unit, 48), is-maximum(unit, 57))
+    hold
+      back rune-to-text(unit)
+  fork test, and(is-minimum(unit, 65), is-maximum(unit, 90))
+    hold
+      back rune-to-text(unit)
+  fork test, and(is-minimum(unit, 97), is-maximum(unit, 122))
+    hold
+      back rune-to-text(unit)
+  back <_>
+
+# the import lines of a file, each unit file's head: a Swift or Kotlin file sees only the modules it imports itself. A
+# line is a stretch between line ends (\n, \r, U+2028, U+2029), and one counts when it starts with its keyword and a
+# space and holds at least one unit more. `with-package` also takes `package` lines
+task import-lines
+  take text, like text
+  take with-package, like boolean
+  like text
+  mark private
+
+  save units, units-of(text)
+  save lines, make list
+  save from, 0
+  save at, 0
+  walk test
+    hook test, is-minimum(units/length, at)
+    hook hold
+      save ended, is-equal(at, units/length)
+      fork test, is-equal(ended, false)
+        hold
+          save unit, get(units, at)
+          save ended, or(or(is-equal(unit, 10), is-equal(unit, 13)), or(is-equal(unit, 8232), is-equal(unit, 8233)))
+      fork test, ended
+        hold
+          save line, units-text(units, from, at)
+          fork test, import-line(line, with-package)
+            hold
+              push(lines, line)
+          save from, add(at, 1)
+      save at, add(at, 1)
+  fork test, is-above(lines/length, 0)
+    hold
+      back <{join(lines, <\n>)}\n\n>
+  back <>
+
+task import-line
+  take line, like text
+  take with-package, like boolean
+  like boolean
+  mark private
+
+  fork test, and(starts-with(line, <import >), is-above(line/length, 7))
+    hold
+      back true
+  fork test, with-package
+    hold
+      back and(starts-with(line, <package >), is-above(line/length, 8))
+  back false

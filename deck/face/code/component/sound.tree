@@ -14,8 +14,8 @@ load @term/site/dom/dom
 
 view sound
   take host, like view
-  take src
-  take label
+  take src, like text
+  take label, like text
   view figure
     bind data-slot, text <sound>
     view audio

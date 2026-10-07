@@ -1,0 +1,7 @@
+
+# The toolkit DOM's view handle: the runtime's own native view object, opaque to Term and forwarded to `native-view`, so
+# `dynamic`: it crossed a native boundary. The other backends define their own `view` beside this one, and the build
+# bears the one for its target through ../../view.
+
+form view
+  link handle, like dynamic, mark private

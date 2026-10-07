@@ -1757,10 +1757,11 @@ task kt-expr
     case unary
       link unary-op
       link operand
-      # `-Long.MIN_VALUE` is MIN_VALUE again on the JVM: negateExact stops instead
+      # `-Long.MIN_VALUE` is MIN_VALUE again on the JVM: termNegate stops instead
       fork test, and(is-equal(to-text(unary-op), <->), is-equal(expression-kind(operand), <number>))
         hold
-          back <Math.negateExact({long-of(operand, st, facts)})>
+          needs-add(<stop>, st)
+          back <termNegate({long-of(operand, st, facts)})>
       back <{to-text(unary-op)}{kt-expr(operand, st, facts)}>
     case binary
       back kt-binary(node, st, facts)
@@ -1866,19 +1867,21 @@ task kt-binary
       save op-text, to-text(binary-op)
       save numbers, and(is-equal(expression-kind(left), <number>), is-equal(expression-kind(right), <number>))
       # a sum, difference or product of two numbers is the integer one or the program stops: `Math.*Exact` throws
+      # past i64 it is a STOP (TermStop, an Error no guard catches), never a Term exception (D15)
       save exact, <>
       fork test, is-equal(op-text, <+>)
         hold
-          save exact, <addExact>
+          save exact, <termAdd>
       fork test, is-equal(op-text, <->)
         hold
-          save exact, <subtractExact>
+          save exact, <termSubtract>
       fork test, is-equal(op-text, <*>)
         hold
-          save exact, <multiplyExact>
+          save exact, <termMultiply>
       fork test, and(and(is-unequal(exact, <>), numbers), and(not(facts/is-proven(node)), not(st/unchecked-ints)))
         hold
-          back <Math.{exact}({long-of(left, st, facts)}, {long-of(right, st, facts)})>
+          needs-add(<stop>, st)
+          back <{exact}({long-of(left, st, facts)}, {long-of(right, st, facts)})>
       # `Long.MIN_VALUE / -1` wraps on the JVM; termDivide stops on it as every backend does
       fork test, and(is-equal(op-text, </>), numbers)
         hold
@@ -3457,7 +3460,8 @@ task kt-statement
                       save sum, <{old} + {step}>
                       fork test, is-equal(value-kind, <number>)
                         hold
-                          save sum, <Math.addExact({old}, {step})>
+                          needs-add(<stop>, st)
+                          save sum, <termAdd({old}, {step})>
                       save map-text, kt-expr(update/map, st, facts)
                       save key-text-value, key-text(expression-type(update/map), kt-expr(update/key, st, facts), st, facts)
                       back <{map-text}.compute({key-text-value}) \{ _, __v -\> {sum} \}>
@@ -3492,8 +3496,9 @@ task kt-statement
     case guard
       link guard-body
       link guard-catch
-      # a coroutine's cancellation and the VM's own failures pass through
-      save pass-on, <{pad(add(depth, 1))}if (thrown is kotlin.coroutines.cancellation.CancellationException || thrown is VirtualMachineError) throw thrown>
+      # a coroutine's cancellation, the VM's own failures and an arithmetic stop pass through
+      needs-add(<stop>, st)
+      save pass-on, <{pad(add(depth, 1))}if (thrown is kotlin.coroutines.cancellation.CancellationException || thrown is VirtualMachineError || thrown is TermStop) throw thrown>
       save handler, <catch (thrown: Throwable) \{\n{pass-on}\n{pad(depth)}\}>
       sift guard-catch
         case some

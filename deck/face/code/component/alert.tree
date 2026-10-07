@@ -11,8 +11,8 @@ load @term/site/dom/dom
 
 view alert
   take host, like view
-  take class
-  take variant
+  take class, like text
+  take variant, like text
   view div
     bind data-slot, text <alert>
     bind data-variant, read variant
@@ -22,7 +22,7 @@ view alert
 
 view alert-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-title>
     bind class, read class
@@ -30,7 +30,7 @@ view alert-title
 
 view alert-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-description>
     bind class, read class

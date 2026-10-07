@@ -15,6 +15,9 @@ load @term/mill/tree/code/form/case/mint
 load @term/mill/tree/code/fuse/mint
   find fuse
 
+load @term/mill/tree/code/find/mint
+  find find-query
+
 load @term/mill/tree/code/halt/mint
   find halt
 
@@ -105,6 +108,8 @@ mint flow
     site move
   case host
     site host
+  case find, mint find-query
+    site find
 
 mint show
   case seed

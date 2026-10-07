@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view command
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <command>
     bind class, read class
@@ -18,7 +18,7 @@ view command
 
 view command-list
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <command-list>
     bind class, read class
@@ -26,7 +26,7 @@ view command-list
 
 view command-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <command-group>
     bind class, read class
@@ -34,7 +34,7 @@ view command-group
 
 view command-empty
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <command-empty>
     bind class, read class
@@ -42,7 +42,7 @@ view command-empty
 
 view command-separator
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <command-separator>
     bind class, read class
@@ -50,7 +50,7 @@ view command-separator
 
 view command-input
   take host, like view
-  take class
+  take class, like text
   view input
     bind data-slot, text <command-input>
     bind type, text <text>
@@ -58,8 +58,8 @@ view command-input
 
 view command-item
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view div
     bind data-slot, text <command-item>
     bind role, text <option>

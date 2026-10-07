@@ -4,13 +4,16 @@
 // "unresolved reference 'currentTimeMillis'" (deck/test/code/model-check.tree, 2026-10-05). compile/kotlin.ts emits
 // such a name with a `Term` prefix, at the declaration and every reference. Held through kotlinc and RUN against
 // TypeScript's answer, with a stand-in for a shim appended (the prelude is not part of `emitKotlin`).
+// The same holds for `Exception`, which every program loading @term/base/exception declares as `data class Exception<P>`
+// (T046, D026), so a first scan, with no kotlinc, fails every bare `Exception` in a type position of a shim under
+// deck/base/code/native (`kotlin.Exception` is the spelling).
 // Run: npx tsx test/compile/kotlin-shadowed-class.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { dirname, join, relative } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
@@ -29,6 +32,49 @@ function ok(name: string, holds: boolean, detail = ''): void {
     console.log(`FAIL  ${name}${detail ? `\n        ${detail}` : ''}`)
   }
 }
+
+// every `.kt` under deck/base/code/native, found without a glob
+const nativeRoot = join(dirname(fileURLToPath(import.meta.url)), '../../deck/base/code/native')
+
+const kotlinFilesOf = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const path = join(dir, entry.name)
+
+    return entry.isDirectory() ? kotlinFilesOf(path) : entry.name.endsWith('.kt') ? [path] : []
+  })
+
+// a bare `Exception` (no `.` or word character before it, none after it, so `kotlin.Exception`, `java.lang.Exception`
+// and `IOException` pass) after `:`, `is`, `as` or `as?`, or inside `<...>`
+const bareException = /(?:[:<]\s*|\b(?:is|as\??)\s+)(?<![\w.])Exception\b(?![\w.(])/
+
+const bareExceptionAt = (line: string): boolean => {
+  const code = line.replace(/\/\/.*$/, '')
+
+  return !/^\s*(?:\/?\*)/.test(code) && bareException.test(code)
+}
+
+// the scan's own rule: each spelling it must flag, each it must let pass
+const flagged = ['} catch (e: Exception) {', 'x as? Exception', 'if (x is Exception)', 'val f: Exception? = null', 'List<Exception>']
+const passed = ['} catch (e: kotlin.Exception) {', '} catch (e: java.lang.Exception) {', 'catch (e: IOException)', 'catch (e: Throwable)', '// catch (e: Exception)', 'throw RuntimeException("x")']
+
+ok('the scan flags a bare Exception in each type position', flagged.every(bareExceptionAt), flagged.filter(line => !bareExceptionAt(line)).join(' | '))
+ok('the scan passes kotlin.Exception, java.lang.Exception, Throwable, longer names and comments', passed.every(line => !bareExceptionAt(line)), passed.filter(bareExceptionAt).join(' | '))
+
+const shims = kotlinFilesOf(nativeRoot)
+
+ok(`the scan reads the Kotlin shims (${shims.length})`, shims.length > 0, nativeRoot)
+
+for (const file of shims) {
+  readFileSync(file, 'utf8')
+    .split('\n')
+    .forEach((line, index) => {
+      if (bareExceptionAt(line)) {
+        ok(`${relative(nativeRoot, file)}:${index + 1} spells kotlin.Exception`, false, line.trim())
+      }
+    })
+}
+
+ok('no shim names a bare Exception in a type position', shims.every(file => !readFileSync(file, 'utf8').split('\n').some(bareExceptionAt)))
 
 const text = `form system
   link steps, like integer

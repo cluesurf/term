@@ -1,6 +1,6 @@
 /**
  * Emit a structured gap from the live checker. Phase A of the
- * synthesis design (note/methodology/verification/synthesis.md): turn
+ * synthesis design (note/project/term/verification/synthesis.md): turn
  * each checker diagnostic into a `CheckerGap` - the single, machine-
  * and AI-readable description of a verification hole that every
  * proposer (mechanical fix, CEGIS, AI) consumes.

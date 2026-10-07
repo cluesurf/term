@@ -1,11 +1,14 @@
 // The entry rule of `term make --target uikit` and `--target compose` (beat-term-0017, spec D008): the program starts at
 // the file the manifest's `boot` line names, at its `boot` task, else at `app.tree` beside the manifest, at its `main`.
-// Four fixture apps, each printing one line `entry <name>` from the task it started:
+// Six fixture apps, each printing one line `entry <name>` from the task it started. `both` and `suffix` are item 0042's:
+// MANIFEST_BOOT_NO_LAUNCH=1 runs every emit check and skips the simulator launches (their `want`/`never` pairs).
 //
 //   booted     deck.tree `boot ./code/boot`, code/boot.tree `task boot`, AND an app.tree `task main`: the manifest wins
 //   legacy     a deck.tree with no `boot` line, an app.tree `task main`: the fallback
 //   main-only  `boot ./code/boot` whose file holds only `task main`: the older entry task
 //   neither    `boot ./code/boot` whose file holds a task named `start` only: refused, naming the `boot` task
+//   both       `boot ./code/boot` whose file holds `task boot` and `task main`: `boot` runs, `main` never
+//   suffix     `boot ./code/boot.tree`: the same entry, the path spelled with its extension
 //
 // UIKit: makeUikit emits the Swift whose start line is read back; booted and legacy are then built for the simulator,
 // installed, and launched with `simctl launch --console`, whose own output names the entry that ran. Compose: the
@@ -18,9 +21,14 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { simulator } from '@term/call/code/cask'
 import { makeCompose } from '@term/call/code/compose'
 import { makeUikit, uikitIdentity } from '@term/call/code/uikit'
+import { holdDeviceSync } from './shared/device-hold'
+import { bootedSimulator } from './shared/simulator'
+
+// MANIFEST_BOOT_NO_LAUNCH=1 emits and reads the Swift of every fixture and never builds for, installs on or launches the
+// simulator, so a run can go beside another job that holds it. The launch checks then print `skip`, never `ok`
+const NO_LAUNCH = process.env.MANIFEST_BOOT_NO_LAUNCH === '1'
 
 let pass = 0
 let fail = 0
@@ -37,15 +45,22 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const HERE = mkdtempSync(join(tmpdir(), 'term-manifest-boot-'))
 
-// a program whose started task prints `entry <said>` and exits 0, the toolkit's own way (test/compile/uikit-make.ts)
-function program(task: string, said: string): string {
-  return `load @term/site/code/dom/native/toolkit/dom
+const LOADS = `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find after-launch
   find run-app
   find exit-app
   find say
+`
 
+// a program whose started task prints `entry <said>` and exits 0, the toolkit's own way (test/compile/uikit-make.ts).
+// More pairs of task and printed line add more tasks to the same file
+function program(task: string, said: string, ...more: [string, string][]): string {
+  return [LOADS, started(task, said), ...more.map(([t, w]) => started(t, w))].join('')
+}
+
+function started(task: string, said: string): string {
+  return `
 task ${task}
   save root
     call open-root
@@ -62,9 +77,10 @@ task ${task}
 `
 }
 
-function manifest(name: string, boot: boolean): string {
+// `boot` is the manifest line's path, or undefined for a manifest with no `boot` line
+function manifest(name: string, boot: string | undefined): string {
   return `deck @cluesurf/${name}
-  mark <0.0.2>${boot ? '\n  boot ./code/boot' : ''}
+  mark <0.0.2>${boot ? `\n  boot ${boot}` : ''}
 
 load @term/site
   mark <0.0.x>
@@ -84,21 +100,33 @@ function fixture(name: string, files: Record<string, string>): string {
 }
 
 const booted = fixture('bootedapp', {
-  'deck.tree': manifest('bootedapp', true),
+  'deck.tree': manifest('bootedapp', './code/boot'),
   'code/boot.tree': program('boot', 'boot'),
   'app.tree': program('main', 'app-main'),
 })
 const legacy = fixture('legacyapp', {
-  'deck.tree': manifest('legacyapp', false),
+  'deck.tree': manifest('legacyapp', undefined),
   'app.tree': program('main', 'main'),
+  // never named by the manifest: an entry that went looking for a boot file by name would start it
+  'code/boot.tree': program('boot', 'stray-boot'),
 })
 const mainOnly = fixture('mainonlyapp', {
-  'deck.tree': manifest('mainonlyapp', true),
+  'deck.tree': manifest('mainonlyapp', './code/boot'),
   'code/boot.tree': program('main', 'main-only'),
 })
 const neither = fixture('neitherapp', {
-  'deck.tree': manifest('neitherapp', true),
+  'deck.tree': manifest('neitherapp', './code/boot'),
   'code/boot.tree': program('start', 'start'),
+})
+// both tasks in the boot file: `boot` wins, `main` never runs
+const both = fixture('bothapp', {
+  'deck.tree': manifest('bothapp', './code/boot'),
+  'code/boot.tree': program('boot', 'boot', ['main', 'main']),
+})
+// the boot line spells the file's extension
+const suffix = fixture('suffixapp', {
+  'deck.tree': manifest('suffixapp', './code/boot.tree'),
+  'code/boot.tree': program('boot', 'boot'),
 })
 
 console.log(`fixtures under ${HERE}`)
@@ -115,16 +143,16 @@ async function uikit(): Promise<void> {
     return
   }
 
-  const found = simulator()
-  const launched: { root: string; want: string; never: string }[] = [
-    { root: booted, want: 'entry boot', never: 'entry app-main' },
-    { root: legacy, want: 'entry main', never: 'entry app-main' },
+  const found = NO_LAUNCH ? { missing: 'MANIFEST_BOOT_NO_LAUNCH is set' } : bootedSimulator()
+  const launched: { root: string; want: string; never: string; call: string }[] = [
+    { root: booted, want: 'entry boot', never: 'entry app-main', call: 'boot()' },
+    { root: legacy, want: 'entry main', never: 'entry stray-boot', call: 'main()' },
+    { root: both, want: 'entry boot', never: 'entry main', call: 'boot()' },
   ]
 
-  // booted and legacy: emitted, built for a device, then built for the simulator and launched
-  for (const { root, want, never } of launched) {
+  // booted, legacy and both: emitted, built for a device, then built for the simulator and launched
+  for (const { root, want, never, call } of launched) {
     const { name, identifier } = uikitIdentity(root)
-    const call = root === booted ? 'boot()' : 'main()'
 
     try {
       await makeUikit({ root, team: '' })
@@ -134,7 +162,7 @@ async function uikit(): Promise<void> {
     }
 
     const start = startOf(swiftOf(root))
-    ok(`uikit ${name}: the emitted start line calls ${call}`, start.includes(call) && !(root === booted && start.includes('main()')), start)
+    ok(`uikit ${name}: the emitted start line calls ${call}`, start.includes(call) && !(call === 'boot()' && start.includes('main()')), start)
 
     if ('missing' in found) {
       console.log(`skip  uikit ${name}: the simulator (${found.missing})`)
@@ -155,10 +183,12 @@ async function uikit(): Promise<void> {
       continue
     }
 
-    spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
-    spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
+    // the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
+    const release = holdDeviceSync('simulator', `manifest-boot uikit ${name}`)
 
     try {
+      spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
+      spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
       spawnSync('xcrun', ['simctl', 'install', found.udid, app], { stdio: 'ignore' })
       const ran = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, identifier], { encoding: 'utf8', timeout: 120_000 })
       const lines = `${ran.stdout ?? ''}${ran.stderr ?? ''}`.split('\n').map(line => line.trim())
@@ -167,6 +197,7 @@ async function uikit(): Promise<void> {
     } finally {
       spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
       spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
+      release()
     }
   }
 
@@ -177,6 +208,15 @@ async function uikit(): Promise<void> {
     ok('uikit main-only: the emitted start line calls main()', start.includes('main()') && !start.includes('boot()'), start)
   } catch (e) {
     ok('uikit main-only: makeUikit builds', false, String((e as Error).message ?? e))
+  }
+
+  // suffix: a boot line that spells `.tree`, emitted and not launched
+  try {
+    await makeUikit({ root: suffix, team: '' })
+    const start = startOf(swiftOf(suffix))
+    ok('uikit suffix: the emitted start line calls boot()', start.includes('boot()') && !start.includes('main()'), start)
+  } catch (e) {
+    ok('uikit suffix: makeUikit builds', false, String((e as Error).message ?? e))
   }
 
   // neither: refused, naming the `boot` task
@@ -217,6 +257,18 @@ async function compose(): Promise<void> {
 
   if (first !== undefined) {
     ok('compose booted: the emitted driver is `fun main() { boot() }`', first.includes('fun main() { boot() }') && !first.includes('fun main() { main_() }'), first.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+  }
+
+  const third = await emittedKotlin(both)
+
+  if (third !== undefined) {
+    ok('compose both: the emitted driver is `fun main() { boot() }`', third.includes('fun main() { boot() }') && !third.includes('fun main() { main_() }'), third.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+  }
+
+  const fourth = await emittedKotlin(mainOnly)
+
+  if (fourth !== undefined) {
+    ok('compose main-only: the emitted driver is `fun main() { main_() }`', fourth.includes('fun main() { main_() }') && !fourth.includes('fun main() { boot() }'), fourth.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
   }
 
   const second = await emittedKotlin(legacy)

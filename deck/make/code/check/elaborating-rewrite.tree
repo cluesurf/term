@@ -319,7 +319,27 @@ task rewrite-once
     miss
       back make none
 
-# a term rewritten to a fixed point by the rules, the first that fires each round, at most `fuel` rewrites
+# is the rule's left side one of its own holes? Such a rule matches every term
+task left-is-hole
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  save lhs, rule/lhs
+  sift lhs
+    case var
+      link lhs-index
+      back is-hole(lhs-index, rule/binder-count, 0, rule/holes)
+    miss
+      back false
+
+# A term rewritten to a fixed point by the rules, the first that fires each round, at most `fuel` rewrites.
+#
+# A rule whose left side is one of its own holes is skipped. It matches every term, so no fixed point by it exists, and
+# one whose right side holds that hole twice doubles the term at each rewrite: `ac-rewrite-fix` rewrites 200 times
+# between its steps, so one such rule took the whole heap. The original did the same; this is a fix, not a port
+# (pair-elaborating `diverged hole-rule`, test/check/rewrite-hole-rule.ts, 2026-10-07). One rewrite by such a rule,
+# `rewrite-once`, still fires, which is what `cite` uses to see a goal as an instance of it
 task rewrite-with-lemmas
   take target, like kernel-term
   take rules, like list, like rewrite-rule
@@ -334,6 +354,9 @@ task rewrite-with-lemmas
       save progressed, false
       walk rules
         take rule
+        fork test, left-is-hole(rule)
+          hold
+            turn next
         sift rewrite-once(current, rule)
           case some
             link next

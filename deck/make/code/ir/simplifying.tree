@@ -2382,6 +2382,7 @@ task simplify-expression
     case unary
       link unary-op
       link operand-of
+      save unary-span, span
       save operand, simplify-expression(operand-of, state)
       sift unary-op
         case not
@@ -2389,7 +2390,7 @@ task simplify-expression
           sift operand
             case boolean
               link truth
-              back boolean-of(not(truth), span)
+              back boolean-of(not(truth), unary-span)
             # !!x -> x
             case unary
               link inner-op

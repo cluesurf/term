@@ -11,8 +11,8 @@ load @term/site/dom/dom
 
 view badge
   take host, like view
-  take class
-  take variant
+  take class, like text
+  take variant, like text
   view span
     bind data-slot, text <badge>
     bind data-variant, read variant

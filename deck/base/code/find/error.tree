@@ -1,0 +1,41 @@
+
+# What a find raises (spec section 12). Cardinality is decided in the engine, never in a driver.
+
+load @term/base/exception
+  find absence
+  find excess
+  find refusal
+
+# a `find one` that found nothing. `thing` is the kind, `line` the source line
+form find-none
+  like absence
+    bind note, <Not found>
+    link line
+      like text
+      need false
+
+# a `find one` that found several: `actual` is how many
+form find-many
+  like excess
+    bind note, <Expected one>
+    link line
+      like text
+      need false
+
+# a driver that answered `ok: false`, or none: `kind` is the driver's error kind, `detail` its words
+form find-failed
+  like refusal
+    bind note, <Driver refused>
+    link kind, like text
+    link detail, like text
+
+# a find that ran with no tool mounted (spec section 8.1): the entry chooses a tool, the engine never does
+form find-unmounted
+  like refusal
+    bind note, <find needs a tool. Mount the task that runs it: call mount / bind tool, call here>
+
+# a part of a query that neither the backend nor the engine can run: `detail` names it
+form find-cannot
+  like refusal
+    bind note, <Cannot find>
+    link detail, like text

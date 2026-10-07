@@ -20,7 +20,7 @@ load ../logic/disclosure
 
 view checkbox
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>

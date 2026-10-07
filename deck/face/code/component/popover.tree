@@ -23,7 +23,7 @@ load ../logic/disclosure
 
 view popover
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <popover>
     bind class, read class
@@ -31,7 +31,7 @@ view popover
 
 view popover-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -47,7 +47,7 @@ view popover-trigger
 
 view popover-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test

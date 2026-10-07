@@ -1,0 +1,295 @@
+
+# Grammar for `find`, the general query construct (note/project/term/find/spec.md section 3). `find` is a statement
+# in any task body and a value anywhere a seed goes. Modeled on `look-element` (../look/mine), which reads the same
+# word as a CSS selector under `base style`.
+#
+#   find pane                       shorthand: find one / base pane
+#     have title, <server>
+#   find one | find all | find some explicit cardinality, `base` first, then a `link` per step of one path
+#     base app
+#       have name, <Terminal>
+#     link window
+#     back title
+#     sort rise, name title
+#     size 10
+#   find read <value>               the context is a value
+#   find pane, name server          `, name <word>` binds the result
+#     wait <10s>
+#
+# Constraints belong to the component they are under: `have`, `lack`, `hold` and `meet` under a `base` or a `link`.
+# `meet and|or|lack` composes holds, haves and other meets (research/meet-lack.md: `meet lack` is NOT, and `want`
+# is not part of the query).
+#
+# NEVER A RULE NAMED `find`. load/mine.tree defines `mine find` (the import binding under a `load`) and many roots
+# load it by that name, so every rule here carries the `find-` prefix. Under a `load`, `find` is still the import:
+# that rule is reached only inside `mine load`, which never tries these.
+
+load @term/mill/tree/code/seed/mine
+  find seed
+  find seed-read
+
+load @term/mill/tree/code/bind/mine
+  find bind
+
+load @term/mill/tree/code/tool/flow/mine
+  find flow
+
+# The rule every caller names (flow and seed, as a statement and as a value). One head, two shapes: the EXPLICIT one
+# (`find one|all|some|read`) first, then the SHORTHAND `find <kind>`, which takes any other word.
+mine find-query
+  mine any
+    mine form, like find-explicit
+      site explicit
+    mine form, like find-short
+      site short
+
+# `find one`, `find all`, `find some`, `find read <value>`, then an optional `, name <word>`, then the path, the
+# constraints, the query parts, the deadline and the body in the order they were written.
+#
+# ONE ORDERED LIST for everything after the name. A nested `find` is a statement like any other, so it arrives
+# through `flow` (whose arm for it is `find-query` again) and keeps its place between the operations around it: a
+# nested find between two operations has to run between them, and the mint reads one site at a time, so a second
+# site for nested finds would lose that order. The union alternatives (`find all` over `find one`s) are told from
+# nested finds by the lowering, which can see the count.
+#
+# The order of the alternatives matters. `base`, `link`, `have`, `hold`, `meet`, `back`, `sort`, `size`, `head`,
+# `sift` and `wait` come before `flow`: the fallback at the end of `flow` reads any headed group as a call, and would
+# take `link pane` as a call to a task named `link`. `find-take` needs its `like`, so `take first` (a call to the
+# task `take`) is still a call.
+#
+# `find read <value>` keeps its value in `site from` (spec section 5), so `base` means one thing only.
+mine find-explicit
+  mine term, term find
+    mine any
+      mine form, like find-one
+        site count
+      mine form, like find-all
+        site count
+      mine form, like find-some
+        site count
+      mine form, like seed-read
+        site from
+    mine maybe
+      mine term, term name
+        mine term
+          site name
+    mine list
+      mine any
+        mine form, like find-take
+          site take
+        mine form, like find-base
+          site base
+        mine form, like find-link
+          site link
+        mine form, like find-have
+          site have
+        mine form, like find-hold
+          site hold
+        mine form, like find-meet
+          site meet
+        mine form, like find-back
+          site back
+        mine form, like find-sort
+          site sort
+        mine form, like find-size
+          site size
+        mine form, like find-head
+          site head
+        mine form, like find-sift
+          site sift
+        mine form, like find-wait
+          site wait
+        mine form, like flow
+          site flow
+
+# `find pane`: sugar for `find one / base pane`. The constraints written under it are the BASE's, so the mint moves
+# `have`, `hold` and `meet` into the `find-base` it makes (spec section 4.1), and the one shape is the one
+# `find one / base pane` mints. `base` is not matched here, so a `base` under the shorthand falls to `flow` and the
+# lowering refuses it (spec section 3.4); a `link` is matched, for the same refusal.
+mine find-short
+  mine term, term find
+    mine term
+      site kind
+    mine maybe
+      mine term, term name
+        mine term
+          site name
+    mine list
+      mine any
+        mine form, like find-take
+          site take
+        mine form, like find-link
+          site link
+        mine form, like find-have
+          site have
+        mine form, like find-hold
+          site hold
+        mine form, like find-meet
+          site meet
+        mine form, like find-back
+          site back
+        mine form, like find-sort
+          site sort
+        mine form, like find-size
+          site size
+        mine form, like find-head
+          site head
+        mine form, like find-sift
+          site sift
+        mine form, like find-wait
+          site wait
+        mine form, like flow
+          site flow
+
+# the cardinality words, each a form so the minted count is never empty (spec section 5, `make one` of section 6.2)
+mine find-one
+  mine term, term one
+
+mine find-all
+  mine term, term all
+
+mine find-some
+  mine term, term some
+
+# `take <name>, like <type>`: an input of a named query. The `like` is required, so `take first` stays a call.
+mine find-take
+  mine term, term take
+    mine term
+      site name
+    mine term, term like
+      mine term
+        site like
+
+# `base <kind or source>[, like <relation>]`: where the path starts, with the constraints of the base under it. A
+# source is a path (`base ./src`).
+mine find-base
+  mine term, term base
+    mine any
+      mine term
+        site kind
+      mine path
+        site kind
+    mine maybe
+      mine term, term like
+        mine term
+          site like
+    mine list
+      mine any
+        mine form, like find-have
+          site have
+        mine form, like find-hold
+          site hold
+        mine form, like find-meet
+          site meet
+
+# `link <kind>[, like <relation>]`: one step of ONE path, with the constraints of that step under it. Links are
+# siblings, so a `link` under a `link` is not matched here (it falls to `flow` and the lowering refuses it).
+mine find-link
+  mine term, term link
+    mine term
+      site kind
+    mine maybe
+      mine term, term like
+        mine term
+          site like
+    mine list
+      mine any
+        mine form, like find-have
+          site have
+        mine form, like find-hold
+          site hold
+        mine form, like find-meet
+          site meet
+
+# `have <property>, <value>` and `lack <property>, <value>`: the head word is kept in `site mode`, so the one rule
+# serves both. The value is a plain seed expression (`have title, read name` is evaluated when the query is built).
+mine find-have
+  mine any
+    mine term, term have
+      site mode
+      mine term
+        site name
+      mine form, like seed
+        site bond
+    mine term, term lack
+      site mode
+      mine term
+        site name
+      mine form, like seed
+        site bond
+
+# `hold <predicate>` with its operands as `bind` lines: `hold is-equal / bind a, read self/status / bind b, text <x>`.
+mine find-hold
+  mine term, term hold
+    mine term
+      site name
+    mine list
+      mine form, like bind
+        site bind
+
+# `meet and`, `meet or`, `meet lack` over holds, haves and other meets, nested freely. The marker word is captured,
+# so one rule serves the three and a `meet` of any other word is not matched here.
+mine find-meet
+  mine term, term meet
+    mine any
+      mine term, term and
+        site mode
+      mine term, term or
+        site mode
+      mine term, term lack
+        site mode
+    mine list
+      mine any
+        mine form, like find-hold
+          site hold
+        mine form, like find-meet
+          site meet
+        mine form, like find-have
+          site have
+
+# `back <name>` with an optional expression, on the line (`back given, read self/first-name`) or indented
+# (`back count` over `call count`).
+mine find-back
+  mine term, term back
+    mine term
+      site name
+    mine maybe
+      mine form, like seed
+        site seed
+
+# `sort rise|fall, name <field>`
+mine find-sort
+  mine term, term sort
+    mine any
+      mine term, term rise
+        site order
+      mine term, term fall
+        site order
+    mine term, term name
+      mine term
+        site name
+
+# `size <n>` and `head <n>`: any seed (`size 50`, `size read limit`)
+mine find-size
+  mine term, term size
+    mine form, like seed
+      site seed
+
+mine find-head
+  mine term, term head
+    mine form, like seed
+      site seed
+
+# `sift <field>`: a bare field word. A `sift` with anything under the word is the match statement of `fork`, never
+# this.
+mine find-sift
+  mine term, term sift
+    mine word
+      site name
+
+# `wait <10s>`: ONE text literal. `wait f(x)` is the await prefix (seed/mine.tree `seed-wait`) and a call is not a
+# text literal, so it is never matched here and falls through to `flow`. Trap t007.
+mine find-wait
+  mine term, term wait
+    mine text
+      site value

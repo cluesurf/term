@@ -1,0 +1,235 @@
+# A CLDR number pattern read into the parts the formatter uses (decision D7, term/decisions-2026-10/locale, spec.md 2.1 and
+# 2.4). `read-pattern(<#,##0.00 ¤>)` is the prefix (empty), the suffix (` ¤`), the primary grouping size 3, the secondary
+# size 3 and one minimum integer digit. `#,##,##0.###` is primary 3 and secondary 2, so `1234567` groups as `12,34,567`.
+#
+# A pattern is the characters `# 0 , .` in one run, with the affix text before the run (the prefix) and after it (the
+# suffix). CLDR 48 holds 22 distinct standard patterns, none with a quote, a percent sign or an exponent, so those are
+# not read: the affixes are copied as written, with `-` standing for the locale's minus sign, `+` for its plus sign and
+# `¤` for the currency symbol (`expand-affix`). A pattern with a `;` has the negative subpattern after it, which the
+# caller splits off and reads the same way (only its affixes count).
+
+mark unstable
+
+load @term/base/text
+  find split
+  find replace-all
+  find char-count
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/list
+  find length
+  find get
+
+form number-pattern
+  link prefix, like text
+  link suffix, like text
+  link primary, like number
+  link secondary, like number
+  link minimum-integer, like number
+
+# whether a code point is one of the four characters of a pattern's number run: `#` `0` `,` `.`
+task is-number-rune
+  mark private
+  take rune, like number
+  like boolean
+  send back
+    call or
+      call or
+        call is-equal
+          read rune
+          code 35
+        call is-equal
+          read rune
+          code 48
+      call or
+        call is-equal
+          read rune
+          code 44
+        call is-equal
+          read rune
+          code 46
+
+# the pattern text in its three parts: the prefix, the number run, the suffix
+task read-pattern
+  take pattern, like text
+  like number-pattern
+  save runes
+    call to-runes
+      read pattern
+  save prefix, text <>
+  save middle, text <>
+  save suffix, text <>
+  save stage, code 0
+  walk list, read runes
+    hook next
+      take site, name rune
+      save piece
+        call rune-to-text
+          read rune
+      fork test
+        hook test
+          call and
+            call is-number-rune
+              read rune
+            call is-below
+              read stage
+              code 2
+        hook hold
+          save stage, code 1
+          save middle, text <{middle}{piece}>
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read stage
+                code 0
+            hook hold
+              save prefix, text <{prefix}{piece}>
+            hook miss
+              save stage, code 2
+              save suffix, text <{suffix}{piece}>
+  save whole
+    call get
+      call split
+        read middle
+        text <.>
+      code 0
+  save segments
+    call split
+      read whole
+      text <,>
+  save count
+    call length
+      read segments
+  save primary, code 0
+  fork test
+    hook test
+      call is-above
+        read count
+        code 1
+    hook hold
+      save primary
+        call char-count
+          call get
+            read segments
+            call subtract
+              read count
+              code 1
+  save secondary, read primary
+  fork test
+    hook test
+      call is-above
+        read count
+        code 2
+    hook hold
+      save secondary
+        call char-count
+          call get
+            read segments
+            call subtract
+              read count
+              code 2
+  send back
+    make number-pattern
+      bind prefix, read prefix
+      bind suffix, read suffix
+      bind primary, read primary
+      bind secondary, read secondary
+      bind minimum-integer
+        call char-count
+          call replace-all
+            call replace-all
+              read whole
+              text <#>
+              text <>
+            text <,>
+            text <>
+
+# an affix with the locale's marks written in: `-` is the minus sign, `+` the plus sign, `¤` the symbol. The symbol is
+# written last, so a symbol that holds a `-` is left alone
+task expand-affix
+  take affix, like text
+  take minus, like text
+  take plus, like text
+  take symbol, like text
+  like text
+  send back
+    call replace-all
+      call replace-all
+        call replace-all
+          read affix
+          text <->
+          read minus
+        text <+>
+        read plus
+      text <¤>
+      read symbol
+
+# the groups of `digits` from the right, `size` digits each, the leftmost group shorter
+task group-head
+  mark private
+  take digits, like text
+  take size, like number
+  take mark, like text
+  like text
+  save count
+    call char-count
+      read digits
+  fork test
+    hook test
+      call is-maximum
+        read count
+        read size
+    hook hold
+      send back, read digits
+  save cut
+    call subtract
+      read count
+      read size
+  send back
+    text <{group-head(substring(digits, 0, cut), size, mark)}{mark}{substring(digits, cut)}>
+
+# the whole part of a number with `mark` between its groups: the first group from the right is `primary` digits, the
+# others `secondary`, and nothing is grouped unless at least `minimum` digits stand before the first group (CLDR's
+# minimumGroupingDigits, which is why Spanish writes `1234` and `12.345`)
+task group-digits
+  take digits, like text
+  take primary, like number
+  take secondary, like number
+  take minimum, like number
+  take mark, like text
+  like text
+  save count
+    call char-count
+      read digits
+  fork test
+    hook test
+      call or
+        call is-below
+          read primary
+          code 1
+        call is-below
+          read count
+          call add
+            read primary
+            read minimum
+    hook hold
+      send back, read digits
+  save size, read secondary
+  fork test
+    hook test
+      call is-below
+        read size
+        code 1
+    hook hold
+      save size, read primary
+  save cut
+    call subtract
+      read count
+      read primary
+  send back
+    text <{group-head(substring(digits, 0, cut), size, mark)}{mark}{substring(digits, cut)}>

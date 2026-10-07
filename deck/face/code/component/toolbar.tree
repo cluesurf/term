@@ -13,7 +13,7 @@ load ../logic/registry
 
 view toolbar
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toolbar>
     bind role, text <toolbar>
@@ -22,7 +22,7 @@ view toolbar
 
 view toolbar-button
   take host, like view
-  take class
+  take class, like text
   take registry, like signal
   take key
   view button
@@ -37,7 +37,7 @@ view toolbar-button
 
 view toolbar-separator
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toolbar-separator>
     bind role, text <separator>

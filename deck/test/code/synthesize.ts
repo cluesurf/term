@@ -4,7 +4,7 @@
  * verifier hand back counterexamples that carve away the wrong-program
  * space until a correct program remains.
  *
- * This is Level 3 of the synthesis design (note/methodology/
+ * This is Level 3 of the synthesis design (note/project/term/
  * verification/synthesis.md), and the runnable proof that "the verifier
  * figures out what code to add" is real: you give it the spec (what
  * correct means) and a grammar (the shape of allowed code), and it

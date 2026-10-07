@@ -14,7 +14,7 @@ load ../logic/disclosure
 
 view sheet
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sheet>
     bind class, read class
@@ -22,7 +22,7 @@ view sheet
 
 view sheet-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -35,7 +35,7 @@ view sheet-trigger
 
 view sheet-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -54,7 +54,7 @@ view sheet-content
 
 view sheet-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sheet-header>
     bind class, read class
@@ -62,7 +62,7 @@ view sheet-header
 
 view sheet-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sheet-title>
     bind class, read class
@@ -70,7 +70,7 @@ view sheet-title
 
 view sheet-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sheet-description>
     bind class, read class
@@ -78,7 +78,7 @@ view sheet-description
 
 view sheet-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sheet-footer>
     bind class, read class
@@ -86,7 +86,7 @@ view sheet-footer
 
 view sheet-close
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>

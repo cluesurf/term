@@ -9,7 +9,7 @@ load @term/site/dom/dom
 
 view input-otp
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <input-otp>
     bind class, read class
@@ -17,7 +17,7 @@ view input-otp
 
 view input-otp-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <input-otp-group>
     bind class, read class
@@ -25,7 +25,7 @@ view input-otp-group
 
 view input-otp-slot
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <input-otp-slot>
     bind class, read class
@@ -33,7 +33,7 @@ view input-otp-slot
 
 view input-otp-separator
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <input-otp-separator>
     bind class, read class

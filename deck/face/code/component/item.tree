@@ -8,7 +8,7 @@ load @term/site/dom/dom
 
 view item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item>
     bind class, read class
@@ -16,7 +16,7 @@ view item
 
 view item-media
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item-media>
     bind class, read class
@@ -24,7 +24,7 @@ view item-media
 
 view item-content
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item-content>
     bind class, read class
@@ -32,7 +32,7 @@ view item-content
 
 view item-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item-title>
     bind class, read class
@@ -40,7 +40,7 @@ view item-title
 
 view item-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item-description>
     bind class, read class
@@ -48,7 +48,7 @@ view item-description
 
 view item-actions
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <item-actions>
     bind class, read class

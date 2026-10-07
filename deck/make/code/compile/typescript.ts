@@ -199,6 +199,8 @@ function makeEmitter(
   reuse: Reuse = { tasks: new Map(), sites: new WeakSet(), forms: new Set(), locals: new WeakMap(), writeBacks: new WeakSet() },
   // the tasks whose every self call is a tail call, each to those returns (backend.ts, `tailTasks`)
   tailCalls: Map<string, WeakSet<object>> = new Map(),
+  // the render runtime's names as the build bound them (D020), for a view's zone
+  runtime: { name: string; bound: string }[] = [],
 ) {
   // each task's text cursors and redeclared `let`s, asked once per task
   const cursorsOf = new WeakMap<object, TextCursors>()
@@ -252,6 +254,7 @@ function makeEmitter(
     plainRecords: flags(copies.plain),
     env,
     hmr,
+    runtime,
     isProven: (node: object) => provenSteps.has(node as Expression),
     loopGuardOf: (node: object) => boxed(loopGuards.get(node as Statement)),
     isFastIn: (node: object, loop: object) => loopGuards.get(loop as Statement)?.fast?.includes(node) ?? false,
@@ -334,6 +337,9 @@ export function emitTypeScript(
     // `value` that were never bound (2026-10-05, found by `stdlib emit-types` on the separate build). The forms, their
     // fields, tags and texts, the handle types and the tasks' parameters come from here as well as `program`
     context?: Program
+    // the render runtime's names as the build bound them (D020): a view's zone calls these, a name the build split by
+    // file under the one render.tree reaches
+    runtime?: { name: string; bound: string }[]
   },
 ): string {
   const env = options?.env ?? 'node'
@@ -385,6 +391,7 @@ export function emitTypeScript(
     fillTasks(lowered),
     recordReuse(lowered),
     tailTasks(lowered),
+    options?.runtime ?? [],
   )
 
   // the wake entries, each its text: an entry with a `ref` is a declared kind's constant, its `base` the constant's live

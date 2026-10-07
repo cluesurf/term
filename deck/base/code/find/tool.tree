@@ -1,0 +1,84 @@
+
+# The tool contract (spec section 7) and mounting (section 8, decisions 001 and 004). A tool is what a find is mounted
+# into: a VALUE of the form `find-tool`, built with `make`, never a keyword. It declares the kinds it can find, the
+# query parts it executes itself (what a driver answers in `hello`), the tool it runs inside, and the driver it speaks
+# to: `driver` is the command and `argument` its arguments, run as an argv and never through a shell.
+#
+# `mount` is how a program reaches a driver: it makes a tool the context of every find its `work` runs, and the engine
+# never picks one (trap t011). A find with no tool mounted raises `find-unmounted`, see `require-mounted`.
+
+load @term/base/find/send
+  find swap-mount
+  find run-mounted
+  find has-mount
+
+load @term/base/find/error
+  find find-unmounted
+
+load @term/base/list
+  find list
+
+# how a capability is performed (spec section 11): the app's own API, the accessibility tree, or synthetic input
+form find-rung
+  mark text
+  case meaning
+  case access
+  case input
+
+form find-call-support
+  link name, like text
+  link rung, like find-rung
+  link mark, like text
+
+form find-kind-support
+  link name, like text
+  link have
+    like list
+      like text
+  link like
+    like list
+      like text
+  link call
+    like list
+      like find-call-support
+
+form find-tool
+  link name, like text
+  link kind
+    like list
+      like find-kind-support
+  link part
+    like list
+      like text
+  link base, like text
+  link driver, like text
+  link argument
+    like list
+      like text
+
+# Run `work` with `tool` as the context of every find it runs, then restore the context that was there before, also
+# when `work` raises. An inner mount wins inside its own `work`.
+task mount
+  mark async
+  take tool, like find-tool
+  take work
+    like task
+      mark async
+  save before
+    call swap-mount
+      read tool
+      read tool/driver
+      read tool/argument
+  call run-mounted
+    read work
+    read before
+
+# raised by a find when no tool is mounted
+task require-mounted
+  fork test
+    hook test
+      call has-mount
+    hook hold
+      send back
+  halt find-unmounted
+    bind thing, text <tool>

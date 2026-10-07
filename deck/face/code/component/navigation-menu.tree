@@ -14,7 +14,7 @@ load ../logic/disclosure
 
 view navigation-menu
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <navigation-menu>
     bind class, read class
@@ -22,7 +22,7 @@ view navigation-menu
 
 view navigation-menu-list
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <navigation-menu-list>
     bind class, read class
@@ -30,7 +30,7 @@ view navigation-menu-list
 
 view navigation-menu-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <navigation-menu-item>
     bind class, read class
@@ -38,7 +38,7 @@ view navigation-menu-item
 
 view navigation-menu-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -54,7 +54,7 @@ view navigation-menu-trigger
 
 view navigation-menu-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -71,8 +71,8 @@ view navigation-menu-content
 
 view navigation-menu-link
   take host, like view
-  take class
-  take href
+  take class, like text
+  take href, like text
   view a
     bind data-slot, text <navigation-menu-link>
     bind href, read href

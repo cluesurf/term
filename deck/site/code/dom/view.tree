@@ -2,6 +2,10 @@
 # The render runtime's host-node handle: an opaque wrapper around a platform node (a browser Element via bind, or an
 # in-memory record on the server). Every native impl stores its concrete node in `handle`; the render runtime and apps
 # only ever pass a `view` around, never a host primitive.
+#
+# The form is defined once per backend, with the same public shape (one `mark private` field, `handle`) and the handle
+# typed as what that backend stores: native/node/view (a page-element), native/memory/view (a memory-element),
+# native/browser/view and native/toolkit/view (dynamic), and native/view for any other env. The build bears the one for
+# its target, so a read through a handle needs no retype at the point of the read.
 
-form view
-  link handle, mark private
+bear @term/site/dom/native/{platform}/view

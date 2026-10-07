@@ -697,6 +697,10 @@ task attach
       push(out/items, statement-of(call-of(<children>, one-arg(variable-of(parent, at)), at), at))
     case save
       push(out/items, let-of(name, read(value), at))
+    case call
+      # `call f(x)` in a view body is a STATEMENT that runs as the view is built (a signal write, an `on-cleanup`, an
+      # effect). A bare call in markup is a `read` node, the dynamic text of its value, so the head tells them apart
+      push(out/items, statement-of(value, at))
     case element
       fork test, and(is-component(state, name), not(forced))
         hold

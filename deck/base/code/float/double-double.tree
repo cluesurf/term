@@ -1,0 +1,196 @@
+# Error-free float transformations and double-double arithmetic, the arithmetic every correctly rounded transcendental
+# stands on (note/project/term/decisions-2026-10/float/spec.md 2.2 and 4.2). A double-double is an unevaluated sum
+# `high + low` of two floats, with |low| at most half an ulp of `high`.
+#
+# Every operation is plain float `+ - *` in a fixed order and nothing else: no fused multiply-add anywhere (spec.md
+# 2.2), so every backend computes the same bits, and a disagreement between backends is a compiler defect that
+# reassociates or contracts float operations (spec.md 7.4), never a math one. test/stdlib/float-bits.ts holds it.
+#
+# two-sum is exact for every pair of finite floats whose sum does not overflow. fast-two-sum is exact when
+# |a| >= |b|. two-product is Dekker's: `high + low` equals a * b exactly in round to nearest, provided neither input
+# nor the product comes near overflow (inputs below about 2^996) and the error term does not underflow (the product's
+# exponent above about -969). The double-double add and multiply are the accurate ones of Joldes, Muller and Popescu
+# (2017, "Tight and rigorous error bounds for basic building blocks of double-word arithmetic"): relative error below
+# 3 * 2^-106 for the add and 5 * 2^-106 for the multiply, which the test checks against BigInt.
+
+mark unstable
+
+load @term/base/float
+  find to-decimal
+
+form double-double
+  link high, like float
+  link low, like float
+
+# a + b as an unevaluated pair: high is the rounded sum, low the exact rounding error (Knuth)
+task two-sum
+  take a, like float
+  take b, like float
+  like double-double
+  host sum
+    call add
+      read a
+      read b
+  host gap
+    call subtract
+      read sum
+      read a
+  host leftover
+    call add
+      call subtract
+        read a
+        call subtract
+          read sum
+          read gap
+      call subtract
+        read b
+        read gap
+  send back
+    make double-double
+      bind high, read sum
+      bind low, read leftover
+
+# the same pair for |a| >= |b|, in three operations (Dekker)
+task fast-two-sum
+  take a, like float
+  take b, like float
+  like double-double
+  host sum
+    call add
+      read a
+      read b
+  host gap
+    call subtract
+      read sum
+      read a
+  send back
+    make double-double
+      bind high, read sum
+      bind low
+        call subtract
+          read b
+          read gap
+
+# a split into two floats of at most 26 significant bits each, so that high + low = a exactly (Veltkamp, constant
+# 2^27 + 1 = 134217729)
+task split-float
+  take a, like float
+  like double-double
+  host scaled
+    call multiply
+      call to-decimal
+        code 134217729
+      read a
+  host high
+    call subtract
+      read scaled
+      call subtract
+        read scaled
+        read a
+  send back
+    make double-double
+      bind high, read high
+      bind low
+        call subtract
+          read a
+          read high
+
+# a * b as an unevaluated pair: high is the rounded product, low the exact rounding error (Dekker)
+task two-product
+  take a, like float
+  take b, like float
+  like double-double
+  host product
+    call multiply
+      read a
+      read b
+  host x
+    call split-float
+      read a
+  host y
+    call split-float
+      read b
+  host leftover
+    call add
+      call add
+        call add
+          call subtract
+            call multiply
+              read x/high
+              read y/high
+            read product
+          call multiply
+            read x/high
+            read y/low
+        call multiply
+          read x/low
+          read y/high
+      call multiply
+        read x/low
+        read y/low
+  send back
+    make double-double
+      bind high, read product
+      bind low, read leftover
+
+# x + y for two double-doubles (AccurateDWPlusDW)
+task double-double-add
+  take x, like double-double
+  take y, like double-double
+  like double-double
+  host heads
+    call two-sum
+      read x/high
+      read y/high
+  host lows
+    call two-sum
+      read x/low
+      read y/low
+  host carried
+    call add
+      read heads/low
+      read lows/high
+  host first
+    call fast-two-sum
+      read heads/high
+      read carried
+  host leftover
+    call add
+      read lows/low
+      read first/low
+  send back
+    call fast-two-sum
+      read first/high
+      read leftover
+
+# x * y for two double-doubles (DWTimesDW3, with the fused multiply-add written as a product then a sum)
+task double-double-multiply
+  take x, like double-double
+  take y, like double-double
+  like double-double
+  host heads
+    call two-product
+      read x/high
+      read y/high
+  host small
+    call multiply
+      read x/low
+      read y/low
+  host cross
+    call add
+      call multiply
+        read x/high
+        read y/low
+      read small
+  host leftover
+    call add
+      read heads/low
+      call add
+        call multiply
+          read x/low
+          read y/high
+        read cross
+  send back
+    call fast-two-sum
+      read heads/high
+      read leftover

@@ -1,0 +1,508 @@
+# The CLDR number data of one locale, read out of the generated tables in ./cldr (decision D7, term/decisions-2026-10/locale,
+# spec.md 2.1 and 4.3). `find-locale(<de-ch>)` is the record of `de-CH`: its decimal and group marks, the ten digits of its
+# default numbering system, its decimal and currency patterns, its minimumGroupingDigits and the ordinal of its parent.
+# `currency-symbol` walks `parent` for a symbol, and `currency-digits` answers a currency's minor digits.
+#
+# The record layout, the order of the fields and the pool are written by task/term/cldr-make.ts and described at the top of
+# ./cldr, which is the one place the layout is stated: this file reads it by the constants ./cldr exports.
+
+mark unstable
+
+load ./cldr
+  find locale-find
+  find locale-record
+  find symbol-find
+  find symbol-record
+  find digits-find
+  find digits-record
+  find pool-hex
+  find locale-tag-width
+  find locale-fields-at
+  find locale-field-width
+  find locale-pad
+  find spacing-before
+  find spacing-after
+
+load @term/base/text
+  find substring
+  find split
+  find replace-all
+  find pad-left
+  find pad-right
+  find to-lower-case
+  find to-upper-case
+  find last-index-of
+  find char-count
+  find char-at
+
+load @term/base/text/number
+  find parse-integer
+  find to-radix
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/list
+  find length
+  find get
+
+# one locale's number data. Every text is the locale's own flattened value, an empty text where it has none
+form locale
+  link index, like number
+  link tag, like text
+  link parent, like number
+  link minimum-grouping, like number
+  link decimal, like text
+  link group, like text
+  link minus, like text
+  link plus, like text
+  link infinity, like text
+  link nan, like text
+  link currency-decimal, like text
+  link currency-group, like text
+  link digits, like text
+  link decimal-pattern, like text
+  link currency-pattern, like text
+  link currency-alpha-pattern, like text
+
+# `count` code points written as six hex digits each
+task decode
+  mark private
+  take hex, like text
+  take count, like number
+  like text
+  save out, text <>
+  walk size
+    bind base, code 0
+    bind head
+      read count
+    hook next
+      take site, name at
+      save point
+        call parse-integer
+          call substring
+            read hex
+            call multiply
+              read at
+              code 6
+            call multiply
+              call add
+                read at
+                code 1
+              code 6
+          code 16
+      save out, text <{out}{rune-to-text(point)}>
+  send back, read out
+
+# the text a six character pool field (four hex digits of offset, two of length) names
+task pool-text
+  mark private
+  take field, like text
+  like text
+  save count
+    call parse-integer
+      call substring
+        read field
+        code 4
+        code 6
+      code 16
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back, text <>
+  save offset
+    call parse-integer
+      call substring
+        read field
+        code 0
+        code 4
+      code 16
+  send back
+    call decode
+      call pool-hex
+        read offset
+        read count
+      read count
+
+# the text of pool field number `position` of a locale record
+task field-of
+  mark private
+  take record, like text
+  take position, like number
+  like text
+  save from
+    call add
+      read locale-fields-at
+      call multiply
+        read position
+        read locale-field-width
+  send back
+    call pool-text
+      call substring
+        read record
+        read from
+        call add
+          read from
+          read locale-field-width
+
+# the locale at `index` of the sorted table
+task read-locale
+  take index, like number
+  like locale
+  save record
+    call locale-record
+      read index
+  save after, read locale-tag-width
+  save parent
+    call parse-integer
+      call substring
+        read record
+        read after
+        call add
+          read after
+          code 4
+      code 16
+  fork test
+    hook test
+      call is-equal
+        read parent
+        code 65535
+    hook hold
+      save parent
+        call subtract
+          code 0
+          code 1
+  send back
+    make locale
+      bind index, read index
+      bind tag
+        call replace-all
+          call substring
+            read record
+            code 0
+            read locale-tag-width
+          read locale-pad
+          text <>
+      bind parent, read parent
+      bind minimum-grouping
+        call parse-integer
+          call substring
+            read record
+            call add
+              read after
+              code 4
+            call add
+              read after
+              code 5
+      bind decimal
+        call field-of
+          read record
+          code 0
+      bind group
+        call field-of
+          read record
+          code 1
+      bind minus
+        call field-of
+          read record
+          code 2
+      bind plus
+        call field-of
+          read record
+          code 3
+      bind infinity
+        call field-of
+          read record
+          code 4
+      bind nan
+        call field-of
+          read record
+          code 5
+      bind currency-decimal
+        call field-of
+          read record
+          code 6
+      bind currency-group
+        call field-of
+          read record
+          code 7
+      bind digits
+        call field-of
+          read record
+          code 8
+      bind decimal-pattern
+        call field-of
+          read record
+          code 9
+      bind currency-pattern
+        call field-of
+          read record
+          code 10
+      bind currency-alpha-pattern
+        call field-of
+          read record
+          code 11
+
+# one subtag in its canonical case: the language lower case, a two letter region upper case, a three digit region as it
+# is, a four letter script in title case, anything else lower case
+task subtag-case
+  mark private
+  take part, like text
+  take at, like number
+  like text
+  save size
+    call char-count
+      read part
+  fork test
+    hook test
+      call is-equal
+        read at
+        code 0
+    hook hold
+      send back
+        call to-lower-case
+          read part
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 2
+    hook hold
+      send back
+        call to-upper-case
+          read part
+  save first
+    call char-at
+      read part
+      code 0
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 3
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call to-upper-case
+              read first
+            call to-lower-case
+              read first
+        hook hold
+          send back
+            call to-upper-case
+              read part
+      send back
+        call to-lower-case
+          read part
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 4
+    hook hold
+      send back
+        text <{to-upper-case(first)}{to-lower-case(substring(part, 1))}>
+  send back
+    call to-lower-case
+      read part
+
+# the tag in canonical case with `_` read as `-` and every extension (`-u-`, `-x-`, any singleton and what follows it)
+# dropped: `de_ch-u-nu-latn` is `de-CH`
+task canonical-tag
+  take tag, like text
+  like text
+  save parts
+    call split
+      call replace-all
+        read tag
+        text <_>
+        text <->
+      text <->
+  save out, text <>
+  walk size
+    bind base, code 0
+    bind head
+      call length
+        read parts
+    hook next
+      take site, name at
+      save part
+        call get
+          read parts
+          read at
+      fork test
+        hook test
+          call and
+            call is-above
+              read at
+              code 0
+            call is-equal
+              call char-count
+                read part
+              code 1
+        hook hold
+          halt
+      save piece
+        call subtag-case
+          read part
+          read at
+      fork test
+        hook test
+          call is-equal
+            read at
+            code 0
+        hook hold
+          save out, read piece
+        hook miss
+          save out, text <{out}-{piece}>
+  send back, read out
+
+# the index of `tag` in the table, or with its last subtag cut until one is there, else -1
+task find-candidate
+  mark private
+  take tag, like text
+  like number
+  save at
+    call locale-find
+      call pad-right
+        read tag
+        read locale-tag-width
+        read locale-pad
+  fork test
+    hook test
+      call is-minimum
+        read at
+        code 0
+    hook hold
+      send back, read at
+  save cut
+    call last-index-of
+      read tag
+      text <->
+  fork test
+    hook test
+      call is-below
+        read cut
+        code 0
+    hook hold
+      send back
+        call subtract
+          code 0
+          code 1
+  send back
+    call find-candidate
+      call substring
+        read tag
+        code 0
+        read cut
+
+# the locale `tag` names (spec.md 2.1): the tag in canonical case, then with its last subtag removed until a locale of
+# that name exists, then `und`, the root
+task find-locale
+  take tag, like text
+  like locale
+  save at
+    call find-candidate
+      call canonical-tag
+        read tag
+  fork test
+    hook test
+      call is-below
+        read at
+        code 0
+    hook hold
+      save at
+        call locale-find
+          call pad-right
+            text <und>
+            read locale-tag-width
+            read locale-pad
+  send back
+    call read-locale
+      read at
+
+# the symbol of currency `code` in `at` or the nearest parent that writes one, an empty text when none does (the caller
+# then writes the ISO code)
+task currency-symbol
+  take at, like locale
+  take code, like text
+  like text
+  save head
+    call pad-left
+      call to-radix
+        read at/index
+        code 16
+      code 4
+      text <0>
+  save found
+    call symbol-find
+      text <{head}{to-upper-case(code)}>
+  fork test
+    hook test
+      call is-minimum
+        read found
+        code 0
+    hook hold
+      send back
+        call pool-text
+          call substring
+            call symbol-record
+              read found
+            code 7
+            code 13
+  fork test
+    hook test
+      call is-below
+        read at/parent
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call currency-symbol
+      call read-locale
+        read at/parent
+      read code
+
+# the minor digits of currency `code`: its own from CLDR's currencyData, else the DEFAULT 2
+task currency-digits
+  take code, like text
+  like number
+  save found
+    call digits-find
+      call to-upper-case
+        read code
+  fork test
+    hook test
+      call is-below
+        read found
+        code 0
+    hook hold
+      send back, code 2
+  send back
+    call parse-integer
+      call substring
+        call digits-record
+          read found
+        code 3
+        code 4
+
+# the text CLDR's currencySpacing inserts between a currency sign and a digit that meet, before the number and after it
+task spacing-between
+  take after, like boolean
+  like text
+  fork test
+    hook test
+      read after
+    hook hold
+      send back
+        call decode
+          read spacing-after
+          code 1
+  send back
+    call decode
+      read spacing-before
+      code 1

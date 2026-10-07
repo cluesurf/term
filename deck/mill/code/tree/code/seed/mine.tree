@@ -23,6 +23,9 @@ load @term/mill/tree/code/tool/flow/mine
 load @term/mill/tree/code/wait/mine
   find wait
 
+load @term/mill/tree/code/find/mine
+  find find-query
+
 load @term/mill/tree/code/bind/mine
   find bind
 
@@ -70,6 +73,10 @@ mine seed
       site term
     mine form, like seed-meet
       site meet
+    # `find all / link pane` in a value position (`save panes, find all`), BEFORE the bare-head fallback, which would
+    # read `find all` as a call to something named `find` (find/mine.tree)
+    mine form, like find-query
+      site find
     # BEFORE the bare-head fallback, which would read `wait f(x)` as a call to something named `wait`
     mine form, like seed-wait
       site wait

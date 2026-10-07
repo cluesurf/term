@@ -35,6 +35,12 @@ load ../parser/diagnostic
 form type
   mark tag, name kind
   case number
+    # the width word a `like u8` (or u16, u32, u64, i8, i16, i32, i64) was written with, at any depth under a `like`;
+    # absent for `number`, `integer`, `size` and every other number word (decision/001-a-width-is-part-of-the-number-type).
+    # Only a pass that compares types structurally reads it, so every backend still sees a number
+    link width
+      like text
+      need false
   # a 64-bit floating-point number, distinct from the integer `number`
   case float
   case boolean
@@ -85,6 +91,15 @@ task number-type
   like type
 
   back make number
+
+# a number that carries the width word it was written with (`u8`), for a `like` at any depth
+task width-number-type
+  take word, like text
+  like type
+
+  back
+    make number
+      bind width, word
 
 task float-type
   like type

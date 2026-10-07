@@ -11,9 +11,14 @@ load @term/site/dom/dom
   find view
   find append
 
+# one phoneme: its IPA or script glyph and its description
+form phoneme
+  link symbol, like text
+  link label, like text
+
 view phoneme-chart
   take host, like view
-  take sounds
+  take sounds, like list, like phoneme
   view div
     bind data-slot, text <phoneme-chart>
     walk list, read sounds

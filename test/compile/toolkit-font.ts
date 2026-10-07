@@ -4,7 +4,7 @@
 // and says what the PLATFORM reports for each text's face: NSFont/UIFont's own family name on Apple, and on Android the
 // family the host handed the TextView, since a Typeface cannot name itself.
 //
-// The face is mesh/site/word.surf/home/public/text/CrowMark.otf, ClueSurf's own (note/legalities/fonts.md). macOS and
+// The face is mesh/site/word.surf/home/public/text/CrowMark.otf, ClueSurf's own (note/project/legal/fonts.md). macOS and
 // the simulator read it by path; the emulator cannot, so the APK carries it as an asset and the program reads
 // `asset:CrowMark.otf`. FONT_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-font.ts
 

@@ -2384,13 +2384,16 @@ task by-cases
     fork test, is-equal(ways/length, 0)
       hold
         back true
-    # ONE way left is FORCED: its facts hold, and the goal is asked again with them
+    # ONE way left is FORCED: its facts hold, and the goal is asked again with them. The answer is FINAL, never
+    # backtracked: a forced way's facts follow from what is known, adding facts never loses a proof, and every other
+    # instance is still in `rest` for that call. Backtracking here (`turn next` on a failure) walked every ORDER of the
+    # forced instances at no cost to `depth`, factorial, past every timeout on a refused goal (test/check/universal.ts "a
+    # tighter limit is refused", 2026-10-07). With this AND every case refutation paid from the proof budget (holds.ts
+    # refutedByProducts), that case is refused in about 25 s. The five invalid-proof induction failures seen beside it
+    # are not this change's: they fail with the backtracking restored too (decisions-2026-10 item 0018)
     fork test, is-equal(ways/length, 1)
       hold
-        fork test, decided(state, calls, expr, known, rest, said, focus, get(ways, 0), depth)
-          hold
-            back true
-        turn next
+        back decided(state, calls, expr, known, rest, said, focus, get(ways, 0), depth)
     save every-way, true
     walk ways
       take one-way

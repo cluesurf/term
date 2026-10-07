@@ -22,7 +22,7 @@ load @term/site/dom/dom
 # aligns each row (including the partial last row) on its own, the one layout CSS Grid cannot do without subgrid hacks.
 view grid
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <grid>
     bind class, read class
@@ -35,7 +35,7 @@ view grid
 # config class as `.grid-cq-* .cell`, so the bare `.cell` / `.row` names never leak to other components).
 view grid-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <grid-item>
     bind class, text <cell>

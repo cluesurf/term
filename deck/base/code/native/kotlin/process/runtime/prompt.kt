@@ -26,7 +26,7 @@ object prompt {
   suspend fun lineRead(tool: Tool): String = withContext(Dispatchers.IO) {
     try {
       tool.reader.readLine() ?: ""
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }

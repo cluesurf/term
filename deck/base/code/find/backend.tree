@@ -1,0 +1,42 @@
+mark draft
+
+# Shelved by term-find-0065: superseded by find/tool.tree (decision 004). To delete.
+# The backend contract (spec section 7): a backend is a VALUE of the form `find-backend`, built with `make`, never a
+# keyword. It declares the kinds it can find, the query parts it executes itself (what a driver answers in `hello`),
+# the backend it runs inside, and the driver it speaks to. The form is `find-backend`, not `find-tool`: the user's
+# word is backend and the handle already names its `backend` (item 0061). The registry and mounting are item 0011.
+
+# how a capability is performed (spec section 11): the app's own API, the accessibility tree, or synthetic input
+form find-rung
+  mark text
+  case meaning
+  case access
+  case input
+
+form find-call-support
+  link name, like text
+  link rung, like find-rung
+  link mark, like text
+
+form find-kind-support
+  link name, like text
+  link have
+    like list
+      like text
+  link like
+    like list
+      like text
+  link call
+    like list
+      like find-call-support
+
+form find-backend
+  link name, like text
+  link kind
+    like list
+      like find-kind-support
+  link part
+    like list
+      like text
+  link base, like text
+  link driver, like text

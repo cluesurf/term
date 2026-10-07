@@ -13,7 +13,7 @@ load ../logic/disclosure
 
 view dropdown-menu
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <dropdown-menu>
     bind class, read class
@@ -21,7 +21,7 @@ view dropdown-menu
 
 view dropdown-menu-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -37,7 +37,7 @@ view dropdown-menu-trigger
 
 view dropdown-menu-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -55,7 +55,7 @@ view dropdown-menu-content
 
 view dropdown-menu-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <dropdown-menu-item>
     bind role, text <menuitem>

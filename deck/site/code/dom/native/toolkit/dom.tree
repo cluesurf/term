@@ -509,6 +509,12 @@ task frame-of
     call native-view/frame-of
       read node/handle
 
+# the window's safe area, `x,y,width,height` in the points `frame-of` answers in
+task safe-area
+  like text
+  send back
+    call native-view/safe-area
+
 # for tests (native-dom-0008): a look property as the platform holds it, read off the view, never off the table
 task style-of
   take node, like view

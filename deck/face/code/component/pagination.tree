@@ -9,7 +9,7 @@ load @term/site/dom/dom
 
 view pagination
   take host, like view
-  take class
+  take class, like text
   view nav
     bind data-slot, text <pagination>
     bind role, text <navigation>
@@ -19,7 +19,7 @@ view pagination
 
 view pagination-content
   take host, like view
-  take class
+  take class, like text
   view ul
     bind data-slot, text <pagination-content>
     bind class, read class
@@ -27,7 +27,7 @@ view pagination-content
 
 view pagination-item
   take host, like view
-  take class
+  take class, like text
   view li
     bind data-slot, text <pagination-item>
     bind class, read class
@@ -35,8 +35,8 @@ view pagination-item
 
 view pagination-link
   take host, like view
-  take class
-  take href
+  take class, like text
+  take href, like text
   view a
     bind data-slot, text <pagination-link>
     bind href, read href

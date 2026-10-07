@@ -2899,17 +2899,21 @@ task arity-statement
 task bind-runtime
   take state, like walk-state
   take names, like list, like text
+  take given, like text
   like list, like runtime-bound
   mark private
 
-  save render, <>
-  walk state/program
-    take one
-    save file, file-of(one)
-    fork test, ends-with(file, </view/render.tree>)
-      hold
-        save render, file
-        halt
+  # the build's resolver names the file (compile.ts). Without one, the first file ending `/view/render.tree`
+  save render, given
+  fork test, is-equal(render, <>)
+    hold
+      walk state/program
+        take one
+        save file, file-of(one)
+        fork test, ends-with(file, </view/render.tree>)
+          hold
+            save render, file
+            halt
   save before, state/file
   save out, make list
   walk names
@@ -2940,6 +2944,7 @@ task disambiguate
   take program, like list, like statement
   take scopes, like list, like file-scope
   take runtime, like list, like text
+  take render, like text
   take entry, like text
   like disambiguated
 
@@ -2951,7 +2956,7 @@ task disambiguate
   bind-natives-apart(state)
   bind-by-import(state, entry)
   arity-pass(state, entry)
-  save bound, bind-runtime(state, runtime)
+  save bound, bind-runtime(state, runtime, render)
   back
     make disambiguated
       bind program, state/program

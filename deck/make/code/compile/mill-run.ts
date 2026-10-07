@@ -31,6 +31,7 @@ import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import * as port from '@term/make/code/compile/mill-running'
+import * as lowering from '@term/make/code/compile/find-lower'
 
 // a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node it
 // came from, so a consumer's diagnostic points at the line in the file, and the CST `node` itself, so a built AST
@@ -215,4 +216,23 @@ export function runMint(
   const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
 
   return mintedOf(port.runMint(mints, name, match as never, from), new WeakMap())
+}
+
+// what the lowering of a find could not do: a code and a message, at the span of the find (decision 005)
+export type FindProblem = { code: string; message: string; span?: Span }
+
+// `runMint` for the CODE role, with every `find` in what it minted lowered to the core forms the bridge builds
+// (compile/find-lower.tree `lower-finds`, note/project/term/find/decision/005). The one place a find is lowered: the
+// find mint passes its slots through, and this pass runs over the minted values before anything reads them. A value
+// with no find in it comes back as the same object it was, so a program without a find mints as it always did.
+export function runCodeMint(
+  mints: MintGrammar,
+  name: string,
+  match: MillMatch,
+  node?: Node,
+): { values: Minted[]; problems: FindProblem[] } {
+  const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
+  const lowered = lowering.lowerFinds(port.runMint(mints, name, match as never, from) as never)
+
+  return { values: mintedOf(lowered.values as never, new WeakMap()), problems: lowered.problems as FindProblem[] }
 }

@@ -626,6 +626,10 @@ export function compile(
           }
         : undefined,
       options?.library,
+      undefined,
+      undefined,
+      // the render runtime's own file, found as the build finds any load, so an app's own `view/render.tree` is not it
+      options?.resolve?.('@term/site/view/render', source.file)?.file,
     )
 
     const spelled = compiled.ok ? entryWarnings(source, sources, parsed) : []
@@ -870,6 +874,9 @@ export function compileProgram(
   // the files whose modules are emitted, when not every file's. A separate unit's program holds the stubs of its whole
   // closure, each under its own file, and their modules belong to the units that own them (compile/separate.ts)
   emitOnly?: Set<string>,
+  // the file of the render runtime (@term/site/view/render) as the build's resolver finds it, which names the runtime
+  // for the view lowering's name binding. Absent, the binding looks for a file ending `/view/render.tree`
+  renderFile?: string,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -1010,7 +1017,7 @@ export function compileProgram(
 
   program = pending.program
 
-  const ambiguities = disambiguateOverloads(program, scope, naming ?? file, ZONE_RENDER_RUNTIME)
+  const ambiguities = disambiguateOverloads(program, scope, naming ?? file, ZONE_RENDER_RUNTIME, renderFile ?? '')
 
   if (ambiguities.length) {
     return { ok: false, diagnostics: ambiguities }
@@ -1019,6 +1026,9 @@ export function compileProgram(
   // the render runtime names as the build bound them (a name two files define is split by file, D020): the view
   // lowering, the prune's pins and the checker's lowered copy all use these
   const runtimeNames = [...runtimeBound].map(([name, bound]) => ({ name, bound }))
+  // the ones the build renamed (render's `make-text`, when the entry defines a `make-text` too, is `make-text__in0_0`):
+  // the lowering calls them, nothing written does, so the simplifier would take a forwarder of them for dead
+  const renamedRuntime = runtimeNames.filter(p => p.bound !== p.name).map(p => p.bound)
 
   // the chosen implementations, BEFORE names are bound, so the twins and the dispatch are checked like any task
   if (selected) {
@@ -1457,7 +1467,7 @@ export function compileProgram(
       ok: true,
       program: tsProgram,
       typescript: '',
-      modules: emitModules(tsProgram, modulesUrl, emitOnly),
+      modules: emitModules(tsProgram, modulesUrl, emitOnly, runtimeNames),
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,
@@ -1489,9 +1499,16 @@ export function compileProgram(
   // IR pass: simplify (forwarder inlining + constant folding + algebraic identities). Entry-module roots are preserved
   // even if unreferenced; only internal (imported) pass-through wrappers are inlined away. The returned program (which
   // the native backends emit from) keeps native trait calls; the TypeScript string is built from the dictionary clone.
-  const optimized = simplify(program, roots)
+  //
+  // A program with a `view` is lowered after this pass into calls of the render runtime under their bound names, and a
+  // `view` counts only the plain names, so a renamed runtime name is a root too (beat-term-0055, review 0045)
+  const simplifyRoots =
+    roots && renamedRuntime.length > 0 && program.some(statement => statement.form === 'view')
+      ? new Set([...roots, ...renamedRuntime])
+      : roots
+  const optimized = simplify(program, simplifyRoots)
   const tsOptimized = hasTraitGenerics
-    ? simplify(tsProgram, roots)
+    ? simplify(tsProgram, simplifyRoots)
     : optimized
 
   // View lowering: rewrite every `view` into a plain `function` over the render

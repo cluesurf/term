@@ -1,0 +1,767 @@
+# `find-one`, `find-all` and `find-some` of @term/base/find against a fake driver (test/find/fake-driver.js, a JSON
+# tree in memory), through the node driver host: a child process, JSON lines. The fake logs each `find` and `call` it
+# receives to a file, which a test reads back with `cat`, so what reached the driver is a fact on disk. The fake does
+# not advertise `hold` or `meet`, so the tests of those run in Term (find/test) over the hits.
+#
+# Run from deck/base: the paths are relative to it. Every test names its own log, so each starts its own driver.
+
+load @term/base/find
+  find find-one
+  find find-all
+  find find-some
+
+load @term/base/find/query
+  find find-query
+  find find-step
+  find find-test
+  find find-value
+  find find-operand
+  find find-count
+  find find-back
+
+load @term/base/find/kind
+  find pane
+  find run
+
+load @term/base/find/tool
+  find find-tool
+  find mount
+
+load @term/base/find/send
+  find has-mount
+
+load @term/base/find/error
+  find find-none
+  find find-many
+  find find-unmounted
+
+load @term/base/process/run
+  find run, name run-process
+
+load @term/base/duration
+  find from-seconds
+
+load @term/base/text
+  find contains, name text-contains
+  find char-count
+  find split
+  find ends-with
+
+load @term/base/environment
+  find directory
+
+load @term/base/list
+  find list
+  find push
+  find length
+  find get
+
+load @term/base/json
+  find parse
+  find get-field
+  find as-text
+  find array-item
+
+# the folder of deck/base from where the tests run: the package's own folder under `term test`, the Term root under
+# the gate
+task base-folder
+  like text
+  fork test
+    hook test
+      call ends-with
+        call directory
+        text <deck/base>
+    hook hold
+      send back, text <.>
+  fork test
+    hook test
+      call ends-with
+        call directory
+        text <deck/term>
+    hook hold
+      send back, text <deck/base>
+  send back, text <.>
+
+task log-path
+  take log, like text
+  like text
+  save folder
+    call base-folder
+  send back, text <{folder}/tmp/{log}>
+
+# the fake tool: a value of `find-tool` whose driver is the fake on the shared tree, logging to `log`. Each test
+# mounts it around its body
+task memory-tool
+  take log, like text
+  like find-tool
+  save folder
+    call base-folder
+  save arguments
+    make list
+  call arguments/push
+    text <{folder}/test/find/fake-driver.js>
+  call arguments/push
+    text <{folder}/test/find/tree.json>
+  call arguments/push
+    call log-path
+      read log
+  send back
+    make find-tool
+      bind name, text <memory>
+      bind kind
+        make list
+      bind part
+        make list
+      bind base, text <>
+      bind driver, text <node>
+      bind argument, read arguments
+
+# what the fake logged
+task logged
+  mark async
+  take log, like text
+  like text
+  save arguments
+    make list
+  call arguments/push
+    call log-path
+      read log
+  save result
+    call run-process
+      text </bin/cat>
+      read arguments
+  send back, read result/output
+
+task title-test
+  mark private
+  take title, like text
+  like find-test
+  send back
+    make have
+      bind name, text <title>
+      bind value
+        make text
+          bind value, read title
+
+# a query for panes with these tests
+task pane-query
+  take count, like find-count
+  take tests
+    like list
+      like find-test
+  like find-query
+  send back
+    make find-query
+      bind count, read count
+      bind base
+        make find-step
+          bind kind, text <pane>
+          bind like, text <>
+          bind turn, text <>
+          bind depth, text <>
+          bind test, read tests
+      bind path
+        make list
+      bind union
+        make list
+      bind back
+        make list
+      bind sort
+        make list
+      bind size, code 0
+      bind head, code 0
+      bind sift
+        make list
+      bind wait
+        call from-seconds
+          code 0
+      bind line, text <find pane>
+
+task title-query
+  take count, like find-count
+  take title, like text
+  like find-query
+  save tests
+    make list
+  call tests/push
+    call title-test
+      read title
+  send back
+    call pane-query
+      read count
+      read tests
+
+# the body of a find that does nothing with the hit
+task leave
+  mark async
+  take it, like unknown
+
+# the body `run <npm dev>`
+task type-npm
+  mark async
+  take it, like unknown
+  call run
+    read it
+    text <npm dev>
+
+# how a `find one` of the query ends: the hit, none, or many with the count
+task outcome-of
+  mark async
+  take query, like find-query
+  like text
+  fork
+    mark unsafe
+    call find-one
+      read query
+      bind body, read leave
+    send back, text <hit>
+  halt take
+    take problem
+    fork case, read problem
+      case find-none
+        send back, text <none>
+      case find-many
+        send back, text <many {actual}>
+      hook miss
+        send back, text <other>
+
+test <find-one with one hit>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-one-hit.log>
+    bind work
+      task body
+        mark async
+        call verdict/push
+          call is-equal
+            call outcome-of
+              call title-query
+                make one
+                text <server>
+            text <hit>
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <find-one with no hit raises find-none>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-one-none.log>
+    bind work
+      task body
+        mark async
+        call verdict/push
+          call is-equal
+            call outcome-of
+              call title-query
+                make one
+                text <nowhere>
+            text <none>
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <find-one with two hits raises find-many and reports 2>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-one-many.log>
+    bind work
+      task body
+        mark async
+        call verdict/push
+          call is-equal
+            call outcome-of
+              call title-query
+                make one
+                text <shell>
+            text <many 2>
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <find-one asks the driver for at most 2 hits>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-one-limit.log>
+    bind work
+      task body
+        mark async
+        call outcome-of
+          call title-query
+            make one
+            text <shell>
+        call verdict/push
+          call text-contains
+            call logged
+              text <find-one-limit.log>
+            text <"limit":2>
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <find-some is true with a hit, false without, and asks for 1>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-some.log>
+    bind work
+      task body
+        mark async
+        save yes
+          call find-some
+            call title-query
+              make some
+              text <shell>
+        save no
+          call find-some
+            call title-query
+              make some
+              text <nowhere>
+        call verdict/push
+          call and
+            call and
+              read yes
+              call not
+                read no
+            call text-contains
+              call logged
+                text <find-some.log>
+              text <"limit":1>
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <find-all answers every hit and none is an empty list>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-all.log>
+    bind work
+      task body
+        mark async
+        save two
+          call find-all
+            call title-query
+              make all
+              text <shell>
+            bind body, read leave
+        save zero
+          call find-all
+            call title-query
+              make all
+              text <nowhere>
+            bind body, read leave
+        call verdict/push
+          call and
+            call is-equal
+              call length
+                read two
+              code 2
+            call is-equal
+              call length
+                read zero
+              code 0
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <run reaches the driver with the exact text>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-run.log>
+    bind work
+      task body
+        mark async
+        call find-one
+          call title-query
+            make one
+            text <server>
+          bind body, read type-npm
+        save sent
+          call logged
+            text <find-run.log>
+        call verdict/push
+          call and
+            call text-contains
+              read sent
+              text <"name":"run">
+            call text-contains
+              read sent
+              text <"take":["npm dev"]>
+  want hold
+    call get
+      read verdict
+      code 0
+
+# a hold is-equal on a property: the fake does not advertise `hold`, so find/test decides it over the hits
+test <hold is-equal is decided in Term and reaches only the matching hit>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-hold.log>
+    bind work
+      task body
+        mark async
+        save tests
+          make list
+        call tests/push
+          make hold
+            bind name, text <is-equal>
+            bind a
+              make self
+                bind name, text <index>
+            bind b
+              make value
+                bind value
+                  make number
+                    bind value, code 2
+        call find-one
+          call pane-query
+            make one
+            read tests
+          bind body, read type-npm
+        save sent
+          call logged
+            text <find-hold.log>
+        call verdict/push
+          call and
+            call text-contains
+              read sent
+              text <"id":"p2">
+            call text-contains
+              read sent
+              text <"limit":0>
+  want hold
+    call get
+      read verdict
+      code 0
+
+# a meet lack over a hold, with a have the driver executes: the busy shell
+test <meet lack is decided in Term and reaches only the matching hit>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-meet.log>
+    bind work
+      task body
+        mark async
+        save inner
+          make list
+        call inner/push
+          make hold
+            bind name, text <is-equal>
+            bind a
+              make self
+                bind name, text <state>
+            bind b
+              make value
+                bind value
+                  make text
+                    bind value, text <idle>
+        save tests
+          make list
+        call tests/push
+          call title-test
+            text <shell>
+        call tests/push
+          make meet
+            bind kind, text <lack>
+            bind test, read inner
+        call find-one
+          call pane-query
+            make one
+            read tests
+          bind body, read type-npm
+        save sent
+          call logged
+            text <find-meet.log>
+        call verdict/push
+          call text-contains
+            read sent
+            text <"id":"p4">
+  want hold
+    call get
+      read verdict
+      code 0
+
+# the text of one field of a `back` record
+task field-text
+  take record
+    like hash
+      like text
+      like find-value
+  take name, like text
+  like text
+  fork test
+    hook test
+      call not
+        call record/has
+          read name
+    hook hold
+      send back, text <missing>
+  save got
+    call record/get
+      read name
+  fork case, read got
+    case text
+      link content
+      send back, read content
+    case number
+      send back, text <number>
+    case flag
+      send back, text <flag>
+    case void
+      send back, text <void>
+
+test <back hands the body a record of the properties read>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-back.log>
+    bind work
+      task body
+        mark async
+        save query
+          call title-query
+            make one
+            text <server>
+        call query/back/push
+          make find-back
+            bind name, text <title>
+            bind from
+              make self
+                bind name, text <title>
+        save found
+          call find-one
+            read query
+            bind body, read leave
+        call verdict/push
+          call is-equal
+            call field-text
+              read found
+              text <title>
+            text <server>
+  want hold
+    call get
+      read verdict
+      code 0
+
+# a line with quotes and a newline, typed into the pane
+task type-awkward
+  mark async
+  take it, like unknown
+  call run
+    read it
+    text <echo "hi there"\nsecond \\ line>
+
+# a literal `\n` is a newline: three characters
+test <the awkward line holds quotes and one newline>
+  want hold
+    call is-equal
+      call char-count
+        text <a\nb>
+      code 3
+
+# the text the driver received for the awkward line, read back from its log: the quotes and the newline arrive as the
+# same characters, as one JSON string, and are never interpreted
+test <run reaches the driver with quotes and a newline intact>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <find-awkward.log>
+    bind work
+      task body
+        mark async
+        call find-one
+          call title-query
+            make one
+            text <server>
+          bind body, read type-awkward
+        save lines
+          call split
+            call logged
+              text <find-awkward.log>
+            text <\n>
+        save sent
+          call parse
+            call get
+              read lines
+              code 1
+        save taken
+          call as-text
+            call array-item
+              call get-field
+                read sent
+                text <take>
+              code 0
+        call verdict/push
+          call and
+            call is-equal
+              read taken
+              text <echo "hi there"\nsecond \\ line>
+            call text-contains
+              call get
+                read lines
+                code 1
+              text <\\n>
+  want hold
+    call get
+      read verdict
+      code 0
+
+# how a `find-some` ends with nothing mounted: the error the engine raises, never a default tool
+task unmounted-outcome
+  mark async
+  take query, like find-query
+  like text
+  fork
+    mark unsafe
+    call find-some
+      read query
+    send back, text <hit>
+  halt take
+    take problem
+    fork case, read problem
+      case find-unmounted
+        send back, text <unmounted>
+      hook miss
+        send back, text <other {problem/note}>
+
+# a mount whose work raises `find-many`: the raise passes through the mount and out of it
+task raise-mounted
+  mark async
+  like text
+  fork
+    mark unsafe
+    call mount
+      bind tool
+        call memory-tool
+          text <find-restore.log>
+      bind work
+        task body
+          mark async
+          call find-one
+            call title-query
+              make one
+              text <shell>
+            bind body, read leave
+    send back, text <no raise>
+  halt take
+    take problem
+    send back, text <raised>
+
+# a find that makes one find, for the nesting test
+task find-once
+  mark async
+  call find-some
+    call title-query
+      make some
+      text <shell>
+
+test <a find with nothing mounted raises find-unmounted>
+  want hold
+    call and
+      call is-equal
+        call unmounted-outcome
+          call title-query
+            make some
+            text <shell>
+        text <unmounted>
+      call not
+        call has-mount
+
+test <a nested mount wins, and the outer tool is back after it>
+  save verdict
+    make list
+  call mount
+    bind tool
+      call memory-tool
+        text <mount-outer.log>
+    bind work
+      task body
+        mark async
+        call find-once
+        call mount
+          bind tool
+            call memory-tool
+              text <mount-inner.log>
+          bind work
+            task inner
+              mark async
+              call find-once
+        call find-once
+        save outer
+          call split
+            call logged
+              text <mount-outer.log>
+            text <"op":"find">
+        save inner
+          call split
+            call logged
+              text <mount-inner.log>
+            text <"op":"find">
+        call verdict/push
+          call and
+            call is-equal
+              call length
+                read outer
+              code 3
+            call is-equal
+              call length
+                read inner
+              code 2
+  want hold
+    call get
+      read verdict
+      code 0
+
+test <the context is restored after work raises>
+  save outcome
+    call raise-mounted
+  want hold
+    call and
+      call is-equal
+        read outcome
+        text <raised>
+      call and
+        call not
+          call has-mount
+        call is-equal
+          call unmounted-outcome
+            call title-query
+              make some
+              text <shell>
+          text <unmounted>

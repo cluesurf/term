@@ -17,6 +17,7 @@ load ./node
   find type
   find binary-op
   find number-type
+  find width-number-type
   find float-type
   find boolean-type
   find string-type
@@ -57,6 +58,11 @@ task type-of-word
 
   sift primitive-of(name)
     case number
+      # a width word keeps itself on the number it makes (D12, decision/001), so `like list, like u8` is an array of
+      # `number` carrying `u8`. u128 and i128 have no range and stay plain
+      fork test, one-of(name, <u8 u16 u32 u64 i8 i16 i32 i64>)
+        hold
+          back width-number-type(name)
       back number-type()
     case float
       back float-type()

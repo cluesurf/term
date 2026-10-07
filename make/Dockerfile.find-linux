@@ -1,0 +1,32 @@
+# The Linux desktop `term find` is tried against: AT-SPI, a session bus and a window manager, in an X11 session
+# (Xvfb and openbox) or a Wayland one (sway on its headless backend). Built and run on the work droplet by
+# `pnpm term:find-linux` (task/term/cask/find-linux.ts), never on the laptop. Dockerfile.linux has Xvfb only, which is
+# why this is a second image.
+#
+#   pnpm term:find-linux --session x11 -- <command>
+#   pnpm term:find-linux --session wayland -- <command>
+#
+# The entrypoint, find-linux-session.sh, starts the bus, the accessibility bus, the display server and the window
+# manager, runs the one command given, and stops them. The apps in it: gnome-text-editor (GTK4, answers AT-SPI once the
+# bus is on) and find-linux-qt.py (a Qt6 window with push buttons, answering only with QT_LINUX_ACCESSIBILITY_ALWAYS_ON).
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      dbus dbus-x11 dbus-user-session at-spi2-core \
+      python3 python3-gi gir1.2-atspi-2.0 python3-pyqt6 \
+      xvfb xauth x11-utils openbox wmctrl \
+      sway \
+      gnome-text-editor adwaita-icon-theme dconf-gsettings-backend \
+      procps \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY find-linux-session.sh /usr/local/bin/find-linux-session
+COPY find-linux-walk.py /usr/local/bin/find-linux-walk
+COPY find-linux-qt.py /usr/local/bin/find-linux-qt
+RUN chmod 755 /usr/local/bin/find-linux-session /usr/local/bin/find-linux-walk /usr/local/bin/find-linux-qt
+
+ENTRYPOINT ["/usr/local/bin/find-linux-session"]

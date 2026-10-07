@@ -1,0 +1,276 @@
+
+# Builder for `find`. For now it only PASSES THE RAW SLOTS THROUGH, one form per rule with the slot names of
+# ./mine, so the parse is observable (test/compile/find-grammar.ts reads them back). The lowering to ordinary Term
+# calls into `@term/base/find` replaces these forms (note/project/term/find/task/0007-desugar.md): every refusal of
+# spec section 3.4 is made there. Until then the bridge reports a `find` it is handed as a form it does not build
+# yet, which is the honest answer for a construct nothing lowers.
+#
+# ONE SHAPE. The shorthand `find pane` is sugar for `find one / base pane` and is minted as exactly that: the
+# `find-short` mint makes the count and the base itself, so the two spellings read the same from here on (spec
+# section 4.1).
+
+load @term/mill/tree/code/seed/mint
+  find seed
+  find seed-read
+
+load @term/mill/tree/code/bind/mint
+  find bind
+
+load @term/mill/tree/code/tool/flow/mint
+  find flow
+
+mint find-query
+  case explicit, mint find-explicit
+    site explicit
+  case short, mint find-short
+    site short
+
+mint find-explicit
+  case count
+    site count
+  case from, mint seed-read
+    site from
+  case name
+    site name
+  case take, mint find-take
+    site take
+  case base, mint find-base
+    site base
+  case link, mint find-link
+    site link
+  case have, mint find-have
+    site have
+  case hold, mint find-hold
+    site hold
+  case meet, mint find-meet
+    site meet
+  case back, mint find-back
+    site back
+  case sort, mint find-sort
+    site sort
+  case size, mint find-size
+    site size
+  case head, mint find-head
+    site head
+  case sift, mint find-sift
+    site sift
+  case wait, mint find-wait
+    site wait
+  case flow, mint flow
+    site flow
+  hook make
+    make find-query
+      bind count, read count
+      bind from, read from
+      bind name, read name
+      bind take, read take
+      bind base, read base
+      bind link, read link
+      bind have, read have
+      bind hold, read hold
+      bind meet, read meet
+      bind back, read back
+      bind sort, read sort
+      bind size, read size
+      bind head, read head
+      bind sift, read sift
+      bind wait, read wait
+      bind flow, read flow
+
+# the shorthand: `count` is `one`, the kind is the base's, and the constraints written under it are the base's
+mint find-short
+  case kind
+    site kind
+  case name
+    site name
+  case take, mint find-take
+    site take
+  case link, mint find-link
+    site link
+  case have, mint find-have
+    site have
+  case hold, mint find-hold
+    site hold
+  case meet, mint find-meet
+    site meet
+  case back, mint find-back
+    site back
+  case sort, mint find-sort
+    site sort
+  case size, mint find-size
+    site size
+  case head, mint find-head
+    site head
+  case sift, mint find-sift
+    site sift
+  case wait, mint find-wait
+    site wait
+  case flow, mint flow
+    site flow
+  hook make
+    make find-query
+      bind count
+        make one
+      bind name, read name
+      bind take, read take
+      bind base
+        make find-base
+          bind kind, read kind
+          bind have, read have
+          bind hold, read hold
+          bind meet, read meet
+      bind link, read link
+      bind back, read back
+      bind sort, read sort
+      bind size, read size
+      bind head, read head
+      bind sift, read sift
+      bind wait, read wait
+      bind flow, read flow
+
+mint find-one
+  hook make
+    make one
+
+mint find-all
+  hook make
+    make all
+
+mint find-some
+  hook make
+    make some
+
+mint find-take
+  case name
+    site name
+  case like
+    site like
+  hook make
+    make find-take
+      bind name, read name
+      bind like, read like
+
+mint find-base
+  case kind
+    site kind
+  case like
+    site like
+  case have, mint find-have
+    site have
+  case hold, mint find-hold
+    site hold
+  case meet, mint find-meet
+    site meet
+  hook make
+    make find-base
+      bind kind, read kind
+      bind like, read like
+      bind have, read have
+      bind hold, read hold
+      bind meet, read meet
+
+mint find-link
+  case kind
+    site kind
+  case like
+    site like
+  case have, mint find-have
+    site have
+  case hold, mint find-hold
+    site hold
+  case meet, mint find-meet
+    site meet
+  hook make
+    make find-link
+      bind kind, read kind
+      bind like, read like
+      bind have, read have
+      bind hold, read hold
+      bind meet, read meet
+
+mint find-have
+  case mode
+    site mode
+  case name
+    site name
+  case bond, mint seed
+    site bond
+  hook make
+    make find-have
+      bind mode, read mode
+      bind name, read name
+      bind bond, read bond
+
+mint find-hold
+  case name
+    site name
+  case bind, mint bind
+    site bind
+  hook make
+    make find-hold
+      bind name, read name
+      bind bind, read bind
+
+mint find-meet
+  case mode
+    site mode
+  case hold, mint find-hold
+    site hold
+  case meet, mint find-meet
+    site meet
+  case have, mint find-have
+    site have
+  hook make
+    make find-meet
+      bind mode, read mode
+      bind hold, read hold
+      bind meet, read meet
+      bind have, read have
+
+mint find-back
+  case name
+    site name
+  case seed, mint seed
+    site seed
+  hook make
+    make find-back
+      bind name, read name
+      bind seed, read seed
+
+mint find-sort
+  case order
+    site order
+  case name
+    site name
+  hook make
+    make find-sort
+      bind order, read order
+      bind name, read name
+
+mint find-size
+  case seed, mint seed
+    site seed
+  hook make
+    make find-size
+      bind seed, read seed
+
+mint find-head
+  case seed, mint seed
+    site seed
+  hook make
+    make find-head
+      bind seed, read seed
+
+mint find-sift
+  case name
+    site name
+  hook make
+    make find-sift
+      bind name, read name
+
+mint find-wait
+  case value
+    site value
+  hook make
+    make find-wait
+      bind value, read value

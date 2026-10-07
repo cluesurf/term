@@ -1,0 +1,720 @@
+# Natural numbers of any size, as lists of 32-bit limbs, least significant first (note/project/term/decisions-2026-10/float
+# spec.md 2.3 and 4.3, and the locale project's Schubfach in text/format/digits.tree, which needed the first of them).
+# A limb is a number in 0 .. 4294967295. A TypeScript `number` is exact only to 2^53, so no product of two limbs may ever
+# be formed: each is split into 16-bit halves, and no intermediate value here passes 2^53 on any backend, which is why the
+# same program gives the same answer on TypeScript, Rust, Swift and Kotlin. A list is the number its limbs spell, and a
+# limb past the end reads as zero, so two lists of different lengths compare and add as the numbers they are. A result may
+# carry zero limbs at its high end.
+#
+# `multiply-wide-small`, `divide-wide-small` and `remainder-wide-small` take a factor or divisor below 2^20 (1,048,576),
+# so a limb times it, and a remainder times 2^32 plus a limb, stay under 2^53.
+#
+# This file holds what the shortest-digits algorithm reads. The float project's `dint64_t` operations (float item
+# 0004) are written beside it in the same limbs and the same arithmetic: nothing here is a second path.
+
+mark unstable
+
+load @term/base/list
+  find list
+  find get
+  find set
+  find length
+
+load @term/base/text
+  find substring
+
+host limb-base, code 4294967296
+
+# the limb at `index`, zero past the end
+task limb-at
+  take value, like list
+  take index, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read index
+        read value/length
+    hook hold
+      send back
+        call get
+          read value
+          read index
+  send back, code 0
+
+# the number `value` (at most 2^53 - 1) as two limbs
+task make-wide
+  take value, like number
+  like list
+    like number
+  save out, make list
+  call out/push
+    call modulo
+      read value
+      read limb-base
+  call out/push
+    call divide
+      read value
+      read limb-base
+  send back, read out
+
+# a list of `count` zero limbs
+task make-zeros
+  take count, like number
+  like list
+    like number
+  save out, make list
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read i
+    hook test
+      call is-below
+        read i
+        read count
+    hook step
+      call out/push
+        code 0
+      save i
+        call add
+          read i
+          code 1
+  send back, read out
+
+# the sum of two
+task add-wide
+  take left, like list
+  take right, like list
+  like list
+    like number
+  save count, read left/length
+  fork test
+    hook test
+      call is-above
+        read right/length
+        read count
+    hook hold
+      save count, read right/length
+  save out, make list
+  save carry, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read i
+    hook test
+      call is-below
+        read i
+        read count
+    hook step
+      save total
+        call add
+          call add
+            call limb-at
+              read left
+              read i
+            call limb-at
+              read right
+              read i
+          read carry
+      call out/push
+        call modulo
+          read total
+          read limb-base
+      save carry
+        call divide
+          read total
+          read limb-base
+      save i
+        call add
+          read i
+          code 1
+  call out/push
+    read carry
+  send back, read out
+
+# the product of two: every pair of limbs is multiplied from 16-bit halves, the low and the high 32 bits of the pair's
+# product added into the columns they belong to, and the carries run once at the end. A column holds at most two sums
+# of 32-bit values per pair, so it stays far below 2^53
+task multiply-wide
+  take left, like list
+  take right, like list
+  like list
+    like number
+  save count
+    call add
+      read left/length
+      read right/length
+  save columns
+    call make-zeros
+      read count
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read left/length
+        read i
+    hook test
+      call is-below
+        read i
+        read left/length
+    hook step
+      save a
+        call get
+          read left
+          read i
+      save a-low
+        call modulo
+          read a
+          code 65536
+      save a-high
+        call divide
+          read a
+          code 65536
+      save j, code 0
+      walk test
+        down
+          call subtract
+            read right/length
+            read j
+        hook test
+          call is-below
+            read j
+            read right/length
+        hook step
+          save b
+            call get
+              read right
+              read j
+          save b-low
+            call modulo
+              read b
+              code 65536
+          save b-high
+            call divide
+              read b
+              code 65536
+          save low-times-low
+            call multiply
+              read a-low
+              read b-low
+          save cross
+            call add
+              call multiply
+                read a-high
+                read b-low
+              call multiply
+                read a-low
+                read b-high
+          # the product's low 32 bits: (cross mod 2^16) * 2^16 + low-times-low, taken mod 2^32
+          save low-part
+            call modulo
+              call add
+                call multiply
+                  call modulo
+                    read cross
+                    code 65536
+                  code 65536
+                read low-times-low
+              read limb-base
+          # its high 32 bits: high-times-high + (cross + low-times-low div 2^16) div 2^16
+          save high-part
+            call add
+              call multiply
+                read a-high
+                read b-high
+              call divide
+                call add
+                  read cross
+                  call divide
+                    read low-times-low
+                    code 65536
+                code 65536
+          save at
+            call add
+              read i
+              read j
+          call set
+            read columns
+            read at
+            call add
+              call get
+                read columns
+                read at
+              read low-part
+          call set
+            read columns
+            call add
+              read at
+              code 1
+            call add
+              call get
+                read columns
+                call add
+                  read at
+                  code 1
+              read high-part
+          save j
+            call add
+              read j
+              code 1
+      save i
+        call add
+          read i
+          code 1
+  save out, make list
+  save carry, code 0
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      save total
+        call add
+          call get
+            read columns
+            read k
+          read carry
+      call out/push
+        call modulo
+          read total
+          read limb-base
+      save carry
+        call divide
+          read total
+          read limb-base
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# the product of `value` and a factor below 2^20
+task multiply-wide-small
+  take value, like list
+  take factor, like number
+  like list
+    like number
+  save out, make list
+  save carry, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read value/length
+        read i
+    hook test
+      call is-below
+        read i
+        read value/length
+    hook step
+      save total
+        call add
+          call multiply
+            call get
+              read value
+              read i
+            read factor
+          read carry
+      call out/push
+        call modulo
+          read total
+          read limb-base
+      save carry
+        call divide
+          read total
+          read limb-base
+      save i
+        call add
+          read i
+          code 1
+  call out/push
+    read carry
+  send back, read out
+
+# the quotient of `value` by a divisor from 1 to 2^20, rounded down
+task divide-wide-small
+  take value, like list
+  take divisor, like number
+  like list
+    like number
+  save count, read value/length
+  save out
+    call make-zeros
+      read count
+  save rest, code 0
+  save n, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read n
+    hook test
+      call is-below
+        read n
+        read count
+    hook step
+      save at
+        call subtract
+          call subtract
+            read count
+            read n
+          code 1
+      save total
+        call add
+          call multiply
+            read rest
+            read limb-base
+          call get
+            read value
+            read at
+      call set
+        read out
+        read at
+        call divide
+          read total
+          read divisor
+      save rest
+        call modulo
+          read total
+          read divisor
+      save n
+        call add
+          read n
+          code 1
+  send back, read out
+
+# what is left after dividing `value` by a divisor from 1 to 2^20
+task remainder-wide-small
+  take value, like list
+  take divisor, like number
+  like number
+  save rest, code 0
+  save n, code 0
+  walk test
+    down
+      call subtract
+        read value/length
+        read n
+    hook test
+      call is-below
+        read n
+        read value/length
+    hook step
+      save at
+        call subtract
+          call subtract
+            read value/length
+            read n
+          code 1
+      save rest
+        call modulo
+          call add
+            call multiply
+              read rest
+              read limb-base
+            call get
+              read value
+              read at
+          read divisor
+      save n
+        call add
+          read n
+          code 1
+  send back, read rest
+
+# -1, 0 or 1 as `left` is below, equal to or above `right`
+task compare-wide
+  take left, like list
+  take right, like list
+  like number
+  save count, read left/length
+  fork test
+    hook test
+      call is-above
+        read right/length
+        read count
+    hook hold
+      save count, read right/length
+  save answer, code 0
+  save n, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read n
+    hook test
+      call and
+        call is-equal
+          read answer
+          code 0
+        call is-below
+          read n
+          read count
+    hook step
+      save at
+        call subtract
+          call subtract
+            read count
+            read n
+          code 1
+      save x
+        call limb-at
+          read left
+          read at
+      save y
+        call limb-at
+          read right
+          read at
+      fork test
+        hook test
+          call is-below
+            read x
+            read y
+        hook hold
+          save answer
+            call subtract
+              code 0
+              code 1
+        hook test
+          call is-above
+            read x
+            read y
+        hook hold
+          save answer, code 1
+      save n
+        call add
+          read n
+          code 1
+  send back, read answer
+
+# `value` shifted right by `count` bits, rounded down. A limb shifts down by 2^bits and takes the low `bits` bits of the
+# next limb above it up into its own top, and the same two numbers serve a shift of zero bits (a divisor of 1, and the
+# next limb's bits taken mod 1, which is none)
+task shift-wide-right
+  take value, like list
+  take count, like number
+  like list
+    like number
+  save drop
+    call divide
+      read count
+      code 32
+  save bits
+    call modulo
+      read count
+      code 32
+  save power, code 1
+  save n, code 0
+  walk test
+    down
+      call subtract
+        read bits
+        read n
+    hook test
+      call is-below
+        read n
+        read bits
+    hook step
+      save power
+        call multiply
+          read power
+          code 2
+      save n
+        call add
+          read n
+          code 1
+  save above
+    call divide
+      read limb-base
+      read power
+  save out, make list
+  save i, read drop
+  walk test
+    down
+      call subtract
+        read value/length
+        read i
+    hook test
+      call is-below
+        read i
+        read value/length
+    hook step
+      call out/push
+        call add
+          call divide
+            call limb-at
+              read value
+              read i
+            read power
+          call multiply
+            call modulo
+              call limb-at
+                read value
+                call add
+                  read i
+                  code 1
+              read power
+            read above
+      save i
+        call add
+          read i
+          code 1
+  send back, read out
+
+# whether any of the low `count` bits of `value` is set
+task has-low-bits
+  take value, like list
+  take count, like number
+  like boolean
+  save whole
+    call divide
+      read count
+      code 32
+  save bits
+    call modulo
+      read count
+      code 32
+  save power, code 1
+  save n, code 0
+  walk test
+    down
+      call subtract
+        read bits
+        read n
+    hook test
+      call is-below
+        read n
+        read bits
+    hook step
+      save power
+        call multiply
+          read power
+          code 2
+      save n
+        call add
+          read n
+          code 1
+  save found, false
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read whole
+        read i
+    hook test
+      call is-below
+        read i
+        read whole
+    hook step
+      fork test
+        hook test
+          call is-above
+            call limb-at
+              read value
+              read i
+            code 0
+        hook hold
+          save found, true
+      save i
+        call add
+          read i
+          code 1
+  fork test
+    hook test
+      call is-above
+        call modulo
+          call limb-at
+            read value
+            read whole
+          read power
+        code 0
+    hook hold
+      save found, true
+  send back, read found
+
+# whether every limb is zero
+task is-wide-zero
+  take value, like list
+  like boolean
+  save found, true
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read value/length
+        read i
+    hook test
+      call is-below
+        read i
+        read value/length
+    hook step
+      fork test
+        hook test
+          call is-above
+            call get
+              read value
+              read i
+            code 0
+        hook hold
+          save found, false
+      save i
+        call add
+          read i
+          code 1
+  send back, read found
+
+# the decimal digits of `value`, six at a time, the leading group unpadded and every other padded to six
+task write-wide
+  take value, like list
+  like text
+  fork test
+    hook test
+      call is-wide-zero
+        read value
+    hook hold
+      send back, text <0>
+  save out, text <>
+  save rest, read value
+  walk test
+    hook test
+      call is-equal
+        call is-wide-zero
+          read rest
+        false
+    hook step
+      save group
+        call remainder-wide-small
+          read rest
+          code 1000000
+      save rest
+        call divide-wide-small
+          read rest
+          code 1000000
+      fork test
+        hook test
+          call is-wide-zero
+            read rest
+        hook hold
+          save out, text <{group}{out}>
+        hook miss
+          # 1,000,000 plus the group is seven digits starting with 1, so dropping the 1 pads the group to six
+          save seven
+            call add
+              read group
+              code 1000000
+          save padded
+            call substring
+              text <{seven}>
+              code 1
+          save out, text <{padded}{out}>
+  send back, read out

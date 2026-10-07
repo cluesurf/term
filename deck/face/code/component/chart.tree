@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view chart
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <chart>
     bind role, text <img>
@@ -19,7 +19,7 @@ view chart
 
 view chart-tooltip
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <chart-tooltip>
     bind class, read class
@@ -27,7 +27,7 @@ view chart-tooltip
 
 view chart-legend
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <chart-legend>
     bind class, read class

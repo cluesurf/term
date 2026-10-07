@@ -190,6 +190,63 @@ task run
   send back, text <{{early}}|{{late}}>
 `
 
+// A `call` in a view body is a STATEMENT that runs as the view is built (beat-term-0068, trap T022): compile/view-lower.tree
+// `attach` had no `case call`, so the call was emitted as an empty text node and never ran. Here the view writes its own
+// signal before the text that reads it, so the text is 7 only when the call ran, and 0 when it was dropped.
+const CALL_WANT = '<main><span>7</span></main>'
+const CALL_PROGRAM = `load @term/site/code/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+
+load @term/site/code/view/render
+  find make-element
+  find make-text
+  find make-dynamic-text
+  find attach-event
+  find show
+
+load @term/site/code/dom/dom
+  find view
+  find append
+
+load @term/site/code/dom/native/memory/dom
+  find create-element
+  find serialize
+
+task shown
+  take count, like signal number
+  like text
+  save value
+    call read-signal
+      bind self, read count
+  send back, text <{{value}}>
+
+view seven
+  take host, like view
+  save count
+    call make-signal
+      bind value, code 0
+  call write-signal
+    bind self, read count
+    bind value, code 7
+  view span
+    read
+      call shown
+        read count
+
+task run
+  like text
+  save root
+    call create-element
+      bind tag, text <main>
+  call seven
+    read root
+  send back
+    call serialize
+      read root
+`
+
 // A device trait as a signal (native-dom-0012): a view shows the colour scheme, the platform changes it, and only the
 // node that read it is rewritten. The change comes through the memory host's `change-trait`, the way a platform's
 // notification would reach the watcher.
@@ -509,7 +566,7 @@ function pinned(env: NativeEnv): Resolver {
   const base = projectResolver(ROOT, env)
 
   return (importPath, fromFile) =>
-    base(importPath.replace(/native\/\{platform\}\/(dom|device)$/, 'native/memory/$1'), fromFile)
+    base(importPath.replace(/native\/\{platform\}\/(dom|device|view)$/, 'native/memory/$1'), fromFile)
 }
 
 const readRuntime = (file: string): string | undefined =>
@@ -522,6 +579,7 @@ type Case = { name: string; program: string; want: string; portable?: boolean }
 const CASES: Case[] = [
   { name: 'render calls', program: PROGRAM, want: WANT },
   { name: 'view dsl', program: DSL_PROGRAM, want: DSL_WANT },
+  { name: 'view call statement', program: CALL_PROGRAM, want: CALL_WANT },
   { name: 'device trait', program: DEVICE_PROGRAM, want: DEVICE_WANT },
   { name: 'owned branch', program: OWNED_PROGRAM, want: OWNED_WANT, portable: true },
   { name: 'owned items', program: LIST_PROGRAM, want: LIST_WANT, portable: true },

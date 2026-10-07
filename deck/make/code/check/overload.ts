@@ -28,8 +28,10 @@ export function disambiguateOverloads(
   scope?: ImportScope,
   entry?: string,
   runtime: string[] = [],
+  // the render runtime's file, from the build's resolver. Empty, the binding finds it by the path ending `/view/render.tree`
+  render = '',
 ): Diagnostic[] {
-  const answer = disambiguate(program, scopeList(scope), runtime, entry ?? '')
+  const answer = disambiguate(program, scopeList(scope), runtime, render, entry ?? '')
 
   program.splice(0, program.length, ...(answer.program as Program))
   overloadGroups.clear()

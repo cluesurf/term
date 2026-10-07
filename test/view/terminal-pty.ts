@@ -339,7 +339,7 @@ const APPS: App[] = [
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/dom$/, 'native/terminal/dom'), fromFile)
+  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
 }
 
 // the screen a stream of output leaves: printable code points at the cursor, CR, LF, and the three controls the app

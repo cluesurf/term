@@ -13,7 +13,7 @@ object walkFile {
     withContext(Dispatchers.IO) {
       try {
         Files.createDirectories(Paths.get(path))
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -35,7 +35,7 @@ object walkFile {
             }
           }
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         return@withContext out
       }
 
@@ -55,7 +55,7 @@ object walkFile {
             out.add(WalkEntry(child.toString(), kindOf(child), level))
           }
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         return@withContext out
       }
 
@@ -76,7 +76,7 @@ object walkFile {
     val entries =
       try {
         Files.newDirectoryStream(at).use { it.toList() }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         return
       }
 

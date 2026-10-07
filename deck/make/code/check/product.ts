@@ -104,6 +104,13 @@ export function workSpent(): number {
   return work.spent
 }
 
+// work done OUTSIDE the exact simplex that the budget must still see: the case split's product refutations
+// (check/universal.tree `by-cases`), each building products of its facts before any pivot. Counted only, never timed, so
+// a goal still stops at the same place on every machine
+export function spendWork(units: number): void {
+  work.spent += units
+}
+
 const now = (): number => Date.now()
 const linearOf = (linear: LinearMode | undefined): port.Maybe<string[]> =>
   linear ? { form: 'some', value: linear.multipliers } : { form: 'none' }

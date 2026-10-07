@@ -1,0 +1,25 @@
+
+# The portable kinds (spec section 7.2): each a form holding a `find-handle`, each capability a task whose first
+# parameter is that form. So `find button / run <x>` is an ordinary type error on `run(button, ...)`. First milestone:
+# `pane`, which `run` types a line into.
+
+load @term/base/find/query
+  find find-handle
+
+load @term/base/find/send
+  find find-call
+
+form pane
+  link handle, like find-handle
+
+# type `line` into the pane, as the pane's backend does it (the driver appends the line ending)
+task run
+  mark async
+  take pane, like pane
+  take line, like text
+  call find-call
+    bind handle, read pane/handle
+    bind name, text <run>
+    bind take
+      make list
+        read line

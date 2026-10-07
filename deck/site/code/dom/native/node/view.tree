@@ -1,0 +1,29 @@
+
+# The server DOM's view handle: a `page-element`, the in-memory record `./dom` builds. Typed here so a read through the
+# handle (`node/handle/children`) is a read of a list, and the seam on by default has nothing to refuse. The other
+# backends define their own `view` beside this one (../memory/view, ../browser/view, ../toolkit/view, ../view), and the
+# build bears the one for its target through ../../view.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+form view
+  link handle, like page-element, mark private
+
+# one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
+form page-element
+  mark shared
+  link tag, like text
+  link text, like text
+  link value, like text
+  link attributes, like list
+  link styles, like list
+  link classes, like list
+  link children, like list
+  link listeners, like list
+  link parent
+    like maybe
+      like view

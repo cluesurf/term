@@ -198,7 +198,7 @@ object http2 {
       val private =
         try {
           java.security.KeyFactory.getInstance("RSA").generatePrivate(spec)
-        } catch (error: Exception) {
+        } catch (error: kotlin.Exception) {
           java.security.KeyFactory.getInstance("EC").generatePrivate(spec)
         }
       val store = java.security.KeyStore.getInstance("PKCS12")
@@ -206,7 +206,7 @@ object http2 {
       store.setKeyEntry("term", private, PASSWORD.toCharArray(), chain)
 
       store
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       System.err.println("http2 tls: certificate or key did not parse")
 
       null

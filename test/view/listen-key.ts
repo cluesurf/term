@@ -110,7 +110,7 @@ ${PRESSED.map(key => `  call press-key\n    read root\n    text <${key}>`).join(
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/dom$/, 'native/terminal/dom'), fromFile)
+  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-listen-key-'))

@@ -15,7 +15,7 @@ load ../logic/selection
 
 view calendar
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar>
     bind class, read class
@@ -23,7 +23,7 @@ view calendar
 
 view calendar-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-header>
     bind class, read class
@@ -31,7 +31,7 @@ view calendar-header
 
 view calendar-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-title>
     bind class, read class
@@ -39,7 +39,7 @@ view calendar-title
 
 view calendar-nav
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-nav>
     bind class, read class
@@ -47,7 +47,7 @@ view calendar-nav
 
 view calendar-grid
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-grid>
     bind role, text <grid>
@@ -56,7 +56,7 @@ view calendar-grid
 
 view calendar-row
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-row>
     bind role, text <row>
@@ -65,7 +65,7 @@ view calendar-row
 
 view calendar-cell
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <calendar-cell>
     bind role, text <gridcell>
@@ -74,7 +74,7 @@ view calendar-cell
 
 view calendar-day
   take host, like view
-  take class
+  take class, like text
   take control
   take value
   view button

@@ -43,7 +43,7 @@ object aio {
   suspend fun fileRead(path: String): String = withContext(Dispatchers.IO) {
     try {
       Files.readString(at(path))
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }
@@ -51,7 +51,7 @@ object aio {
   suspend fun fileReadBytes(path: String): ByteArray = withContext(Dispatchers.IO) {
     try {
       Files.readAllBytes(at(path))
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ByteArray(0)
     }
   }
@@ -64,7 +64,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         Files.write(at(path), data)
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -79,7 +79,7 @@ object aio {
           StandardOpenOption.CREATE,
           StandardOpenOption.APPEND,
         )
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -94,7 +94,7 @@ object aio {
         } else {
           Files.copy(at(from), at(to), StandardCopyOption.REPLACE_EXISTING)
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -119,7 +119,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         Files.move(at(from), at(to), StandardCopyOption.REPLACE_EXISTING)
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -135,7 +135,7 @@ object aio {
         } else {
           Files.deleteIfExists(at(path))
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -163,7 +163,7 @@ object aio {
         "link" -> Files.isSymbolicLink(at(path))
         else -> Files.exists(at(path))
       }
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       false
     }
   }
@@ -178,7 +178,7 @@ object aio {
         } else {
           Files.createSymbolicLink(at(to), at(from))
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -187,7 +187,7 @@ object aio {
   suspend fun linkRead(path: String): String = withContext(Dispatchers.IO) {
     try {
       Files.readSymbolicLink(at(path)).toString()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }
@@ -215,7 +215,7 @@ object aio {
       }
 
       mode
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       0L
     }
   }
@@ -229,7 +229,7 @@ object aio {
           at(path),
           PosixFilePermissions.fromString(octalToText(octal)),
         )
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -249,7 +249,7 @@ object aio {
   suspend fun ownerUser(path: String): Long = withContext(Dispatchers.IO) {
     try {
       (Files.getAttribute(at(path), "unix:uid") as Number).toLong()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       0L
     }
   }
@@ -257,7 +257,7 @@ object aio {
   suspend fun ownerGroup(path: String): Long = withContext(Dispatchers.IO) {
     try {
       (Files.getAttribute(at(path), "unix:gid") as Number).toLong()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       0L
     }
   }
@@ -267,7 +267,7 @@ object aio {
       try {
         Files.setAttribute(at(path), "unix:uid", user.toInt())
         Files.setAttribute(at(path), "unix:gid", group.toInt())
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -283,7 +283,7 @@ object aio {
         } else {
           Files.createTempFile(prefix, suffix).toString()
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         ""
       }
     }
@@ -315,7 +315,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         file.channel.close()
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -332,7 +332,7 @@ object aio {
 
       file.at += count.toLong()
       String(buffer.array(), 0, count, Charsets.UTF_8)
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }
@@ -343,7 +343,7 @@ object aio {
       val count = file.channel.write(java.nio.ByteBuffer.wrap(bytes), file.at)
       file.at += count.toLong()
       count.toLong()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       0L
     }
   }
@@ -358,7 +358,7 @@ object aio {
             "end" -> file.channel.size() - offset
             else -> maxOf(0L, offset)
           }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -368,7 +368,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         file.channel.force(false)
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -379,7 +379,7 @@ object aio {
       try {
         file.channel.truncate(maxOf(0L, size))
         file.at = minOf(file.at, maxOf(0L, size))
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -414,7 +414,7 @@ object aio {
       }
 
       String(buffer.array(), 0, count, Charsets.UTF_8)
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }
@@ -423,7 +423,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         stream.channel.close()
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -444,7 +444,7 @@ object aio {
         val bytes = data.toByteArray(Charsets.UTF_8)
         val count = stream.channel.write(java.nio.ByteBuffer.wrap(bytes), stream.at)
         stream.at += count.toLong()
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }
@@ -454,7 +454,7 @@ object aio {
     withContext(Dispatchers.IO) {
       try {
         stream.channel.close()
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         null
       }
     }

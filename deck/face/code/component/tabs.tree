@@ -21,7 +21,7 @@ load ../logic/selection
 
 view tabs
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <tabs>
     bind class, read class
@@ -29,7 +29,7 @@ view tabs
 
 view tabs-list
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <tabs-list>
     bind role, text <tablist>
@@ -38,7 +38,7 @@ view tabs-list
 
 view tabs-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   take value
   view button
@@ -62,7 +62,7 @@ view tabs-trigger
 
 view tabs-content
   take host, like view
-  take class
+  take class, like text
   take control
   take value
   fork test

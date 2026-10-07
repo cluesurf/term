@@ -8,7 +8,7 @@ load @term/site/dom/dom
 
 view empty
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <empty>
     bind class, read class
@@ -16,7 +16,7 @@ view empty
 
 view empty-media
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <empty-media>
     bind class, read class
@@ -24,7 +24,7 @@ view empty-media
 
 view empty-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <empty-title>
     bind class, read class
@@ -32,7 +32,7 @@ view empty-title
 
 view empty-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <empty-description>
     bind class, read class
@@ -40,7 +40,7 @@ view empty-description
 
 view empty-content
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <empty-content>
     bind class, read class

@@ -1,0 +1,11 @@
+{
+  "backend": "memory",
+  "part": ["base", "link", "have", "lack"],
+  "node": [
+    { "id": "w1", "kind": "window", "parent": null, "prop": { "title": "main" } },
+    { "id": "p1", "kind": "pane", "parent": "w1", "prop": { "title": "server", "index": 1, "state": "idle" } },
+    { "id": "p2", "kind": "pane", "parent": "w1", "prop": { "title": "editor", "index": 2, "state": "busy" } },
+    { "id": "p3", "kind": "pane", "parent": "w1", "prop": { "title": "shell", "index": 3, "state": "idle" } },
+    { "id": "p4", "kind": "pane", "parent": "w1", "prop": { "title": "shell", "index": 4, "state": "busy" } }
+  ]
+}

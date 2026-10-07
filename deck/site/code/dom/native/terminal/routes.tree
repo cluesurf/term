@@ -11,7 +11,7 @@
 #   mount-routes   the root, the first draw, the redraw on every move, and the back key. Hand the root to
 #                  `run-terminal` (./app) to own a real terminal, or paint it (./paint) to read it
 
-load ../../view
+load ./view
   find view
 
 load ../memory/dom
@@ -22,6 +22,10 @@ load ../memory/dom
 load ../../../view/reactive
   find make-effect
   find untrack
+
+load ../../../view/render
+  find make-branch-slot
+  find rebuild
 
 load ../../../view/navigation
   find start-navigation
@@ -39,6 +43,8 @@ task mount-routes
     call create-element
       text <main>
   call start-navigation
+  # each place drawn in an owner of its own, disposed when the app moves (the toolkit host's, beat-term item 0067)
+  save place, call make-branch-slot
   call make-effect
     task render
       save path
@@ -46,13 +52,21 @@ task mount-routes
       save drawn
         call untrack
           task draw
-            like number
-            call clear
-              read root
-            call route
-              read root
-              read path
-            send back, code 0
+            like view
+            send back
+              call rebuild
+                bind slot, read place
+                bind build
+                  task build
+                    like view
+                    call clear
+                      read root
+                    # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
+                    # that moves a captured text does not build on Rust (E0507)
+                    call route
+                      read root
+                      call current-path
+                    send back, read root
   save drop
     call listen-key
       task went-back

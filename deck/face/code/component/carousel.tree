@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view carousel
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <carousel>
     bind class, read class
@@ -18,7 +18,7 @@ view carousel
 
 view carousel-content
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <carousel-content>
     bind class, read class
@@ -26,7 +26,7 @@ view carousel-content
 
 view carousel-item
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <carousel-item>
     bind class, read class
@@ -34,8 +34,8 @@ view carousel-item
 
 view carousel-previous
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <carousel-previous>
@@ -46,8 +46,8 @@ view carousel-previous
 
 view carousel-next
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <carousel-next>

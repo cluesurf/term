@@ -14,9 +14,9 @@ load @term/site/dom/dom
 
 view glyph
   take host, like view
-  take class
-  take symbol
-  take name
+  take class, like text
+  take symbol, like text
+  take name, like text
   view div
     bind data-slot, text <glyph>
     bind class, read class

@@ -1,0 +1,664 @@
+# The shortest decimal digits that read back as a float, the same on every backend (decision D7, term/decisions-2026-10/locale).
+# `shortest-digits(1.005)` is the digits `1005` and the exponent -3 (the value is the digits times ten to the exponent),
+# which is what ECMA-402 rounds, so 1.005 to two places is 1.01 where the exact binary value would give 1.00.
+#
+# Written in Term from the float's own bits, by Schubfach (Raffaello Giulietti, "The Schubfach way to render doubles",
+# 2020), so no host's text is ever read and every backend gives the same digits: the fewest that read back as the same
+# float, the one closest to the float among those, and a tie to the even digit, which is what ECMAScript's Number
+# toString writes (a host formatter differs: Rust breaks an exact tie upward, Kotlin writes at least two digits).
+#
+# The float is c times 2^q (c below 2^53). The rounding interval Rv around it is half a unit in the last place each
+# side (a quarter below a power of two), closed when c is even and open when odd (reading a decimal back rounds half to
+# even). With k the power of ten that makes one unit of 10^k no wider than that interval, the three numbers
+# 4c, 4c - 2 (or 4c - 1 below a power of two) and 4c + 2, times 2^q / 10^k, are computed by one product with a 126-bit
+# power of ten, `g(k)`, rounded UP at the 127th bit and with the bits below it folded into a final odd bit, so the answer
+# is exact where the true value is exact and otherwise never lands on a boundary it should not (the proof is the
+# paper's, section 9). From them: s is the quotient, the ten-times-coarser candidates are tried first, then s and s + 1.
+#
+# Two places follow the paper and differ from Java's `Double.toString`, which Giulietti's reference code writes: the
+# step to a ten-times-coarser candidate is tried from s = 10 (Java wants two digits at least, so it starts at 100), and a
+# product that is exactly an integer is read as exact (the reference folds the product's excess into its odd bit and
+# its tests absorb that, ours compares the exact boundary). Both are held by test/stdlib/float-digits.ts against
+# JavaScript's own text on 20,000 floats on every backend.
+#
+# The powers of ten are digits-table.tree, written by `pnpm term:digits-table --commit`. Wide products are
+# ../../float/wide.tree, 32-bit limbs with every limb product split into 16-bit halves, so nothing here ever passes
+# 2^53 and TypeScript's numbers are exact.
+#
+# `digits` holds no leading and no trailing zero (zero is `0` with exponent 0). A float that is not finite has
+# `finite` false and `digits` its name, `NaN` or `Infinity`. `negative` is the sign bit, so negative zero is negative.
+
+mark unstable
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/list
+  find length
+  find get
+  find set
+
+load @term/base/text
+  find char-at
+  find char-count
+  find substring
+
+load @term/base/float/bits
+  find float-high-word
+  find float-low-word
+
+load @term/base/float/wide
+  find make-wide
+  find add-wide
+  find multiply-wide
+  find multiply-wide-small
+  find divide-wide-small
+  find shift-wide-right
+  find compare-wide
+  find has-low-bits
+  find limb-at
+  find write-wide
+
+load @term/base/text/format/digits-table
+  find power-limb-0
+  find power-limb-1
+  find power-limb-2
+  find power-limb-3
+
+form float-digits
+  link negative, like boolean
+  link finite, like boolean
+  link digits, like text
+  link exponent, like number
+
+# division rounded toward minus infinity, by a positive divisor
+task floor-quotient
+  mark private
+  take value, like number
+  take divisor, like number
+  like number
+  save q
+    call divide
+      read value
+      read divisor
+  fork test
+    hook test
+      call is-above
+        call multiply
+          read q
+          read divisor
+        read value
+    hook hold
+      send back
+        call subtract
+          read q
+          code 1
+  send back, read q
+
+# floor(e log10 2), by the integer approximation 661971961083 / 2^41, exact for every |e| up to 1650
+task floor-log10-pow2
+  mark private
+  take e, like number
+  like number
+  send back
+    call floor-quotient
+      call multiply
+        read e
+        code 661971961083
+      code 2199023255552
+
+# floor(e log2 10), by 913124641741 / 2^38, exact for every |e| up to 1233
+task floor-log2-pow10
+  mark private
+  take e, like number
+  like number
+  send back
+    call floor-quotient
+      call multiply
+        read e
+        code 913124641741
+      code 274877906944
+
+# floor(log10(3/4 * 2^e)), by (661971961083 e - 274743187321) / 2^41, for the float just above a power of two, whose
+# interval is a quarter wide below
+task floor-log10-three-quarters-pow2
+  mark private
+  take e, like number
+  like number
+  send back
+    call floor-quotient
+      call subtract
+        call multiply
+          read e
+          code 661971961083
+        code 274743187321
+      code 2199023255552
+
+# 2^count
+task two-to
+  mark private
+  take count, like number
+  like number
+  save out, code 1
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read i
+    hook test
+      call is-below
+        read i
+        read count
+    hook step
+      save out
+        call multiply
+          read out
+          code 2
+      save i
+        call add
+          read i
+          code 1
+  send back, read out
+
+# g(k) as four 32-bit limbs, least significant first, from the four texts of ten digits per power
+task read-power
+  mark private
+  take k, like number
+  like list
+    like number
+  save at
+    call multiply
+      call add
+        read k
+        code 324
+      code 10
+  save end
+    call add
+      read at
+      code 10
+  save out, make list
+  call out/push
+    call parse-integer
+      call substring
+        read power-limb-0
+        read at
+        read end
+  call out/push
+    call parse-integer
+      call substring
+        read power-limb-1
+        read at
+        read end
+  call out/push
+    call parse-integer
+      call substring
+        read power-limb-2
+        read at
+        read end
+  call out/push
+    call parse-integer
+      call substring
+        read power-limb-3
+        read at
+        read end
+  send back, read out
+
+# floor(scaled * g / 2^127), with its lowest bit set when anything below was left over: the value rounded to odd. A true
+# integer comes out exact. g is rounded up, so a product whose true value is an integer still carries a little excess,
+# below 2^64, at the bottom of its 127 low bits: that happens only for k from 1 to 23 (5^k must divide 4c + 2, which is
+# below 2^55 and 5^24 is not), and there only the bits from 2^64 up are leftovers. Every other k has no integer to
+# land on and every nonzero low bit is left over.
+task round-odd
+  mark private
+  take power, like list
+  take scaled, like list
+  take k, like number
+  like list
+    like number
+  save product
+    call multiply-wide
+      read scaled
+      read power
+  save out
+    call shift-wide-right
+      read product
+      code 127
+  save left-over, false
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read k
+          code 1
+        call is-maximum
+          read k
+          code 23
+    hook hold
+      save left-over
+        call or
+          call is-above
+            call limb-at
+              read product
+              code 2
+            code 0
+          call is-above
+            call modulo
+              call limb-at
+                read product
+                code 3
+              code 2147483648
+            code 0
+    hook miss
+      save left-over
+        call has-low-bits
+          read product
+          code 127
+  fork test
+    hook test
+      call and
+        read left-over
+        call is-equal
+          call modulo
+            call get
+              read out
+              code 0
+            code 2
+          code 0
+    hook hold
+      call set
+        read out
+        code 0
+        call add
+          call get
+            read out
+            code 0
+          code 1
+  send back, read out
+
+# whether `value` plus `odd` is at most `limit`
+task is-within
+  mark private
+  take value, like list
+  take odd, like number
+  take limit, like list
+  like boolean
+  send back
+    call is-maximum
+      call compare-wide
+        call add-wide
+          read value
+          call make-wide
+            read odd
+        read limit
+      code 0
+
+# the shortest digits of c times 2^q, a float of the given sign (c from 1 to 2^53 - 1, q from -1074 to 971)
+task shortest-of
+  mark private
+  take negative, like boolean
+  take q, like number
+  take c, like number
+  like float-digits
+  save odd
+    call modulo
+      read c
+      code 2
+  # a float just above a power of two has half the room below it, the one case of unequal spacing
+  save regular
+    call or
+      call is-unequal
+        read c
+        code 4503599627370496
+      call is-equal
+        read q
+        call subtract
+          code 0
+          code 1074
+  save k, code 0
+  save edge, code 2
+  fork test
+    hook test
+      read regular
+    hook hold
+      save k
+        call floor-log10-pow2
+          read q
+    hook miss
+      save k
+        call floor-log10-three-quarters-pow2
+          read q
+      save edge, code 3
+  save h
+    call add
+      call add
+        read q
+        call floor-log2-pow10
+          call subtract
+            code 0
+            read k
+      code 2
+  save power
+    call read-power
+      read k
+  save factor
+    call two-to
+      read h
+  save cb
+    call multiply-wide-small
+      call make-wide
+        read c
+      code 4
+  save cbl
+    call add-wide
+      call multiply-wide-small
+        call make-wide
+          call subtract
+            read c
+            code 1
+        code 4
+      call make-wide
+        read edge
+  save cbr
+    call add-wide
+      read cb
+      call make-wide
+        code 2
+  save vb
+    call round-odd
+      read power
+      call multiply-wide-small
+        read cb
+        read factor
+      read k
+  save vbl
+    call round-odd
+      read power
+      call multiply-wide-small
+        read cbl
+        read factor
+      read k
+  save vbr
+    call round-odd
+      read power
+      call multiply-wide-small
+        read cbr
+        read factor
+      read k
+  save s
+    call shift-wide-right
+      read vb
+      code 2
+  save found, false
+  save chosen
+    call make-wide
+      code 0
+  # the candidates ten times coarser, 10 floor(s / 10) and ten more, the only ones that can have fewer digits
+  fork test
+    hook test
+      call is-minimum
+        call compare-wide
+          read s
+          call make-wide
+            code 10
+        code 0
+    hook hold
+      save coarse
+        call multiply-wide-small
+          call divide-wide-small
+            read s
+            code 10
+          code 10
+      save coarse-up
+        call add-wide
+          read coarse
+          call make-wide
+            code 10
+      save coarse-in
+        call is-within
+          read vbl
+          read odd
+          call multiply-wide-small
+            read coarse
+            code 4
+      save coarse-up-in
+        call is-maximum
+          call compare-wide
+            call add-wide
+              call multiply-wide-small
+                read coarse-up
+                code 4
+              call make-wide
+                read odd
+            read vbr
+          code 0
+      fork test
+        hook test
+          call is-unequal
+            read coarse-in
+            read coarse-up-in
+        hook hold
+          save found, true
+          fork test
+            hook test
+              read coarse-in
+            hook hold
+              save chosen, read coarse
+            hook miss
+              save chosen, read coarse-up
+  fork test
+    hook test
+      call is-equal
+        read found
+        false
+    hook hold
+      save up
+        call add-wide
+          read s
+          call make-wide
+            code 1
+      save down-in
+        call is-within
+          read vbl
+          read odd
+          call multiply-wide-small
+            read s
+            code 4
+      save up-in
+        call is-maximum
+          call compare-wide
+            call add-wide
+              call multiply-wide-small
+                read up
+                code 4
+              call make-wide
+                read odd
+            read vbr
+          code 0
+      fork test
+        hook test
+          call is-unequal
+            read down-in
+            read up-in
+        hook hold
+          fork test
+            hook test
+              read down-in
+            hook hold
+              save chosen, read s
+            hook miss
+              save chosen, read up
+        hook miss
+          # both lie in Rv: the closer to the float, and the even one when they are equally close
+          save order
+            call compare-wide
+              read vb
+              call multiply-wide-small
+                call add-wide
+                  read s
+                  read up
+                code 2
+          fork test
+            hook test
+              call or
+                call is-below
+                  read order
+                  code 0
+                call and
+                  call is-equal
+                    read order
+                    code 0
+                  call is-equal
+                    call modulo
+                      call limb-at
+                        read s
+                        code 0
+                      code 2
+                    code 0
+            hook hold
+              save chosen, read s
+            hook miss
+              save chosen, read up
+  # no leading or trailing zero: the zeros come off the end of the written digits and into the exponent
+  save written
+    call write-wide
+      read chosen
+  save end
+    call char-count
+      read written
+  save zeros, code 0
+  walk test
+    down
+      call subtract
+        read end
+        code 1
+    hook test
+      call and
+        call is-above
+          read end
+          code 1
+        call is-equal
+          call char-at
+            read written
+            call subtract
+              read end
+              code 1
+          text <0>
+    hook step
+      save end
+        call subtract
+          read end
+          code 1
+      save zeros
+        call add
+          read zeros
+          code 1
+  send back
+    make float-digits
+      bind negative, read negative
+      bind finite, true
+      bind digits
+        call substring
+          read written
+          code 0
+          read end
+      bind exponent
+        call add
+          read k
+          read zeros
+
+# the shortest digits of `value`, as JavaScript writes them
+task shortest-digits
+  take value, like float
+  like float-digits
+  save high
+    call float-high-word
+      read value
+  save low
+    call float-low-word
+      read value
+  save negative
+    call is-minimum
+      read high
+      code 2147483648
+  save biased
+    call modulo
+      call divide
+        read high
+        code 1048576
+      code 2048
+  save fraction
+    call add
+      call multiply
+        call modulo
+          read high
+          code 1048576
+        code 4294967296
+      read low
+  fork test
+    hook test
+      call is-equal
+        read biased
+        code 2047
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read fraction
+            code 0
+        hook hold
+          send back
+            make float-digits
+              bind negative, read negative
+              bind finite, false
+              bind digits, text <Infinity>
+              bind exponent, code 0
+      send back
+        make float-digits
+          bind negative, false
+          bind finite, false
+          bind digits, text <NaN>
+          bind exponent, code 0
+  fork test
+    hook test
+      call and
+        call is-equal
+          read biased
+          code 0
+        call is-equal
+          read fraction
+          code 0
+    hook hold
+      send back
+        make float-digits
+          bind negative, read negative
+          bind finite, true
+          bind digits, text <0>
+          bind exponent, code 0
+  save q, code 0
+  save c, code 0
+  fork test
+    hook test
+      call is-equal
+        read biased
+        code 0
+    hook hold
+      save q
+        call subtract
+          code 0
+          code 1074
+      save c, read fraction
+    hook miss
+      save q
+        call subtract
+          read biased
+          code 1075
+      save c
+        call add
+          read fraction
+          code 4503599627370496
+  send back
+    call shortest-of
+      read negative
+      read q
+      read c

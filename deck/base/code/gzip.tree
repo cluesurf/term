@@ -23,7 +23,7 @@ load @term/base/bit
 
 load @term/base/list
   find list
-  find size
+  find length, name list-length
   find get
 
 load @term/base/hash
@@ -107,7 +107,7 @@ task byte-at
           code 0
         call is-below
           read at
-          call size
+          call list-length
             read data
     hook hold
       send back
@@ -563,7 +563,7 @@ task table-place
   walk test
     down
       call subtract
-        call size
+        call list-length
           read table
         read k
     hook test
@@ -572,7 +572,7 @@ task table-place
           call add
             read k
             code 1
-          call size
+          call list-length
             read table
         call is-maximum
           call byte-at
@@ -657,7 +657,7 @@ task match-length
   like number
   save most
     call subtract
-      call size
+      call list-length
         read data
       read at
   fork test
@@ -755,7 +755,7 @@ task deflate-fixed
       bind distance-extra
         call distance-extra
   save n
-    call size
+    call list-length
       read data
   # the last place each three-byte key was seen, and for each place the one before it with the same key
   save head
@@ -1000,12 +1000,12 @@ task gzip
     call crc-32
       read input
       code 0
-      call size
+      call list-length
         read input
   call put-word-32
     read out
     call bitwise-and
-      call size
+      call list-length
         read input
       code 4294967295
   send back
@@ -1149,7 +1149,7 @@ task huffman
           code 1
   save symbols
     call filled
-      call size
+      call list-length
         read lengths
       code 0
   save symbol, code 0
@@ -1353,7 +1353,7 @@ task inflate-codes
               call refuse-gzip
                 read reader/at
                 text <a length code is out of range>
-          save length
+          save copy-length
             call add
               call byte-at
                 read length-bases
@@ -1393,7 +1393,7 @@ task inflate-codes
             hook test
               call is-above
                 read distance
-                call size
+                call list-length
                   read out
             hook hold
               call refuse-gzip
@@ -1401,19 +1401,19 @@ task inflate-codes
                 text <a distance reaches before the start>
           save from
             call subtract
-              call size
+              call list-length
                 read out
               read distance
           save k, code 0
           walk test
             down
               call subtract
-                read length
+                read copy-length
                 read k
             hook test
               call is-below
                 read k
-                read length
+                read copy-length
             hook step
               call out/push
                 call byte-at
@@ -1426,7 +1426,7 @@ task inflate-codes
                   read k
                   code 1
   send back
-    call size
+    call list-length
       read out
 
 task fixed-tables
@@ -1599,7 +1599,7 @@ task dynamic-tables
     hook test
       call and
         call is-below
-          call size
+          call list-length
             read lengths
           read total
         call is-below
@@ -1635,7 +1635,7 @@ task dynamic-tables
               fork test
                 hook test
                   call is-equal
-                    call size
+                    call list-length
                       read lengths
                     code 0
                 hook hold
@@ -1646,7 +1646,7 @@ task dynamic-tables
                 call byte-at
                   read lengths
                   call subtract
-                    call size
+                    call list-length
                       read lengths
                     code 1
               save repeat
@@ -1680,7 +1680,7 @@ task dynamic-tables
             hook test
               call is-above
                 call add
-                  call size
+                  call list-length
                     read lengths
                   read repeat
                 read total
@@ -1801,7 +1801,7 @@ task inflate
             code 0
           save at
             read reader/at
-          save length
+          save stored-length
             call add
               call byte-at
                 read data
@@ -1831,7 +1831,7 @@ task inflate
             hook test
               call is-unequal
                 call add
-                  read length
+                  read stored-length
                   read check
                 code 65535
             hook hold
@@ -1845,8 +1845,8 @@ task inflate
                   call add
                     read at
                     code 4
-                  read length
-                call size
+                  read stored-length
+                call list-length
                   read data
             hook hold
               call refuse-gzip
@@ -1856,12 +1856,12 @@ task inflate
           walk test
             down
               call subtract
-                read length
+                read stored-length
                 read k
             hook test
               call is-below
                 read k
-                read length
+                read stored-length
             hook step
               call out/push
                 call byte-at
@@ -1880,7 +1880,7 @@ task inflate
               call add
                 read at
                 code 4
-              read length
+              read stored-length
         hook test
           call is-equal
             read kind
@@ -1919,7 +1919,7 @@ task inflate
   save reader/held
     code 0
   send back
-    call size
+    call list-length
       read out
 
 task word-32-at
@@ -2012,7 +2012,7 @@ task gunzip
     call to-byte-list
       read data
   save n
-    call size
+    call list-length
       read input
   save out
     make list
@@ -2158,7 +2158,7 @@ task gunzip
           bind buffer, code 0
           bind held, code 0
       save start
-        call size
+        call list-length
           read out
       call inflate
         read input
@@ -2186,7 +2186,7 @@ task gunzip
             call crc-32
               read out
               read start
-              call size
+              call list-length
                 read out
         hook hold
           call refuse-gzip
@@ -2202,7 +2202,7 @@ task gunzip
                 code 4
             call bitwise-and
               call subtract
-                call size
+                call list-length
                   read out
                 read start
               code 4294967295

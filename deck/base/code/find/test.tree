@@ -1,0 +1,307 @@
+
+# Predicates evaluated in Term (spec section 4.9). A backend advertises which query parts it executes; the engine pushes
+# those down and decides the rest here, over the hits, by reading each property through the driver's `read` op. `have`
+# is `hold is-equal` of the property and the value, `lack` is its negation, `hold` names a comparison, and `meet` is
+# AND (`and`), OR (`or`) or NOT (`lack`, of all its tests together).
+
+load @term/base/find/query
+  find find-test
+  find find-value
+  find find-operand
+  find find-handle
+
+load @term/base/find/send
+  find find-read
+
+load @term/base/find/error
+  find find-cannot
+
+load @term/base/list
+  find list
+  find push
+  find length
+
+# a value as one text that tells two values apart: equal values give equal keys, values of another form never do
+task value-key
+  mark private
+  take value, like find-value
+  like text
+  fork case, read value
+    case text
+      link content
+      send back, text <t:{content}>
+    case number
+      link content
+      send back, text <n:{content}>
+    case flag
+      link content
+      send back, text <f:{content}>
+    case void
+      send back, text <v>
+
+task value-is-number
+  mark private
+  take value, like find-value
+  like boolean
+  fork case, read value
+    case text
+      send back, false
+    case number
+      send back, true
+    case flag
+      send back, false
+    case void
+      send back, false
+
+task value-is-void
+  mark private
+  take value, like find-value
+  like boolean
+  fork case, read value
+    case text
+      send back, false
+    case number
+      send back, false
+    case flag
+      send back, false
+    case void
+      send back, true
+
+task value-number
+  mark private
+  take value, like find-value
+  like float
+  fork case, read value
+    case text
+      send back, code 0
+    case number
+      link content
+      send back, read content
+    case flag
+      send back, code 0
+    case void
+      send back, code 0
+
+# what an operand stands for on one hit: a property read through the driver, or the value written in the query
+task operand-value
+  mark async
+  take operand, like find-operand
+  take hit, like find-handle
+  like find-value
+  fork case, read operand
+    case self
+      link label
+      send back
+        call find-read
+          read hit
+          read label
+    case value
+      link content
+      send back, read content
+
+# the comparisons a `hold` names. Ordering is for numbers: two values that are not both numbers are never above or
+# below each other
+task compare-values
+  mark private
+  take name, like text
+  take a, like find-value
+  take b, like find-value
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-equal>
+    hook hold
+      send back
+        call is-equal
+          call value-key
+            read a
+          call value-key
+            read b
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-void>
+    hook hold
+      send back
+        call value-is-void
+          read a
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-present>
+    hook hold
+      send back
+        call not
+          call value-is-void
+            read a
+  save ordered
+    call and
+      call value-is-number
+        read a
+      call value-is-number
+        read b
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-above>
+    hook hold
+      send back
+        call and
+          read ordered
+          call is-above
+            call value-number
+              read a
+            call value-number
+              read b
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-below>
+    hook hold
+      send back
+        call and
+          read ordered
+          call is-below
+            call value-number
+              read a
+            call value-number
+              read b
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-minimum>
+    hook hold
+      send back
+        call and
+          read ordered
+          call is-minimum
+            call value-number
+              read a
+            call value-number
+              read b
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <is-maximum>
+    hook hold
+      send back
+        call and
+          read ordered
+          call is-maximum
+            call value-number
+              read a
+            call value-number
+              read b
+  halt find-cannot
+    bind thing, text <hold>
+    bind detail
+      text <hold {name} is not a comparison find knows>
+
+# whether one test holds on one hit
+task find-holds
+  mark async
+  take piece, like find-test
+  take hit, like find-handle
+  like boolean
+  fork case, read piece
+    case have
+      send back
+        call compare-values
+          text <is-equal>
+          call find-read
+            read hit
+            read name
+          read value
+    case lack
+      send back
+        call not
+          call compare-values
+            text <is-equal>
+            call find-read
+              read hit
+              read name
+            read value
+    case hold
+      send back
+        call compare-values
+          read name
+          call operand-value
+            read a
+            read hit
+          call operand-value
+            read b
+            read hit
+    case meet
+      link mode
+      link members
+      save all-held, true
+      save one-held, false
+      walk members
+        take one
+        save got
+          call find-holds
+            read one
+            read hit
+        fork test
+          hook test
+            read got
+          hook hold
+            save one-held, true
+          hook miss
+            save all-held, false
+      fork test
+        hook test
+          call is-equal
+            read mode
+            text <and>
+        hook hold
+          send back, read all-held
+      fork test
+        hook test
+          call is-equal
+            read mode
+            text <or>
+        hook hold
+          send back, read one-held
+      fork test
+        hook test
+          call is-equal
+            read mode
+            text <lack>
+        hook hold
+          send back
+            call not
+              read all-held
+      halt find-cannot
+        bind thing, text <meet>
+        bind detail, text <meet takes and, or or lack>
+
+# whether every test holds on one hit
+task find-all-hold
+  mark async
+  take tests
+    like list
+      like find-test
+  take hit, like find-handle
+  like boolean
+  walk tests
+    take one
+    save got
+      call find-holds
+        read one
+        read hit
+    fork test
+      hook test
+        call not
+          read got
+      hook hold
+        send back, false
+  send back, true

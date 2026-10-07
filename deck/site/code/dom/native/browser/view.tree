@@ -1,0 +1,7 @@
+
+# The browser DOM's view handle: a platform DOM node, so `dynamic`: it crossed a native boundary and `./dom` retypes each
+# read of it. The other backends define their own `view` beside this one, and the build bears the one for its target
+# through ../../view.
+
+form view
+  link handle, like dynamic, mark private

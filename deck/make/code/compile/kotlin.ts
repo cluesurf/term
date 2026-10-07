@@ -386,11 +386,21 @@ const KOTLIN_HELPERS = {
   error: 'class SeedError(message: String) : RuntimeException(message)',
   text: KOTLIN_TEXT,
   number: KOTLIN_NUMBER,
-  // integer division that stops where the JVM wraps (`Long.MIN_VALUE / -1`). A zero divisor raises the `defect`
-  // TypeScript raises (`__termIntStop`), so a guard catches the same exception on both. The JVM's own
-  // ArithmeticException reached a guard as `failure`
+  // an integer step past i64 is a STOP (D15): TermStop is an Error, not a TermException, so no guard hands it to a
+  // handler (the guard's pass-on rethrows it) and the process ends naming excess or shortage. The JVM's own
+  // ArithmeticException from `Math.*Exact` is turned into it here. The sign of the overflowed result names the side
+  stop: [
+    'class TermStop(message: String) : Error(message)',
+    'fun termAdd(a: Long, b: Long): Long = try { Math.addExact(a, b) } catch (e: ArithmeticException) { throw TermStop(if (a < 0L) "shortage: a number past -9223372036854775808" else "excess: a number past 9223372036854775807") }',
+    'fun termSubtract(a: Long, b: Long): Long = try { Math.subtractExact(a, b) } catch (e: ArithmeticException) { throw TermStop(if (a < 0L) "shortage: a number past -9223372036854775808" else "excess: a number past 9223372036854775807") }',
+    'fun termMultiply(a: Long, b: Long): Long = try { Math.multiplyExact(a, b) } catch (e: ArithmeticException) { throw TermStop(if ((a < 0L) != (b < 0L)) "shortage: a number past -9223372036854775808" else "excess: a number past 9223372036854775807") }',
+    'fun termNegate(a: Long): Long = try { Math.negateExact(a) } catch (e: ArithmeticException) { throw TermStop("excess: a number past 9223372036854775807") }',
+  ].join('\n\n'),
+  // integer division that stops where the JVM wraps (`Long.MIN_VALUE / -1`, a stop through termNegate). A zero divisor
+  // raises the `defect` TypeScript raises (`__termIntStop`), so a guard catches the same exception on both. The JVM's
+  // own ArithmeticException reached a guard as `failure`
   divide: [
-    'fun termDivide(a: Long, b: Long): Long = if (b == 0L) throw termByZero() else if (b == -1L) Math.negateExact(a) else a / b',
+    'fun termDivide(a: Long, b: Long): Long = if (b == 0L) throw termByZero() else if (b == -1L) termNegate(a) else a / b',
     'fun termByZero(): TermException = TermException("@term/base", "defect", "Invalid", "", System.currentTimeMillis(), null, null)',
   ].join('\n\n'),
   // an integer remainder, raising the same `defect` on a zero divisor
@@ -956,6 +966,11 @@ export function emitKotlin(
   }
 
   const needs = new Set<string>(st.needs.keys())
+
+  // termDivide stops through termNegate
+  if (needs.has('divide')) {
+    needs.add('stop')
+  }
 
   // the form walkers raise SeedError on a mismatch
   if (fillSpecs.size > 0 || meltSpecs.size > 0) {

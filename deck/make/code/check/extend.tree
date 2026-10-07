@@ -719,7 +719,10 @@ task resolve-extension
             push(params-out, param)
 
   # pins: inherited first, then this form's, later winning
-  save pins-out, pins-of(base)
+  save pins-out, make list
+  walk pins-of(base)
+    take inherited-pin
+    push(pins-out, copy-pin(inherited-pin))
   save base-chain, chain-of(base)
   save above, make list
   fork test, is-equal(base-chain/length, 0)
@@ -751,12 +754,12 @@ task resolve-extension
       take one
       fork test, and(not(placed), is-equal(one/name, pin/name))
         hold
-          save pins-out/{k}, pin
+          save pins-out/{k}, copy-pin(pin)
           save placed, true
       save k, add(k, 1)
     fork test, not(placed)
       hold
-        push(pins-out, pin)
+        push(pins-out, copy-pin(pin))
 
   save chain-out, base-chain
   push(chain-out, base-name)
@@ -870,6 +873,14 @@ task copy-field
   save field, copy-form-field(given)
   save field/type, field-type
   back field
+
+# a pin that stands at one place (D011 rule 8): a new record holding a copy of the value. Natively both are free
+task copy-pin
+  take given, like field-value
+  like field-value
+  mark private
+
+  back new-field(given/name, copy-expression(given/value))
 
 # the root every exception descends from
 task exception-form

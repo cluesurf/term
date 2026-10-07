@@ -39,7 +39,7 @@ object grip {
   fun gripClose(file: Grip) {
     try {
       file.file.close()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       Unit
     }
   }
@@ -52,7 +52,7 @@ object grip {
       val count = file.file.read(buffer)
 
       if (count <= 0) "" else String(buffer, 0, count, Charsets.UTF_8)
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       ""
     }
   }
@@ -62,7 +62,7 @@ object grip {
       val bytes = data.toByteArray(Charsets.UTF_8)
       file.file.write(bytes)
       bytes.size.toLong()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       0L
     }
 
@@ -75,7 +75,7 @@ object grip {
           else -> maxOf(0L, offset)
         }
       file.file.seek(maxOf(0L, at))
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       Unit
     }
   }
@@ -83,7 +83,7 @@ object grip {
   fun gripFlush(file: Grip) {
     try {
       file.file.fd.sync()
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       Unit
     }
   }
@@ -95,7 +95,7 @@ object grip {
       if (file.file.filePointer > size) {
         file.file.seek(maxOf(0L, size))
       }
-    } catch (error: Exception) {
+    } catch (error: kotlin.Exception) {
       Unit
     }
   }

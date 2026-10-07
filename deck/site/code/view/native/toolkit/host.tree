@@ -19,6 +19,9 @@ load @term/site/dom/native/toolkit/dom
 load @term/site/view/reactive
   find make-effect
   find untrack
+load @term/site/view/render
+  find make-branch-slot
+  find rebuild
 load @term/site/view/navigation
   find start-navigation
   find current-path
@@ -46,7 +49,9 @@ task mount-app
       read app-height
   call start-navigation
   # one draw per place: the effect reads the current path and nothing else, and draws the route untracked, so a signal
-  # the page reads keeps its own effects (the browser host does the same)
+  # the page reads keeps its own effects (the browser host does the same). Each place is drawn in an owner of its own,
+  # disposed when the app moves, so the screen left behind stops updating and its cleanups run (beat-term item 0067)
+  save place, call make-branch-slot
   call make-effect
     task render
       save path
@@ -54,13 +59,21 @@ task mount-app
       save drawn
         call untrack
           task draw
-            like number
-            call clear
-              read root
-            call route
-              read root
-              read path
-            send back, code 0
+            like view
+            send back
+              call rebuild
+                bind slot, read place
+                bind build
+                  task build
+                    like view
+                    call clear
+                      read root
+                    # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
+                    # that moves a captured text does not build on Rust (E0507)
+                    call route
+                      read root
+                      call current-path
+                    send back, read root
   call on-back
     task went-back
       like boolean

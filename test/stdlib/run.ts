@@ -763,7 +763,7 @@ task ll-empty
       make empty
 `
 
-// bag (multiset, keeps duplicates) and ordered-set (dedup, keeps order), both array-backed
+// bag (multiset, keeps duplicates), array-backed. The dedup, insertion-ordered set is `set` (the SET programs above)
 const BAG = `load @term/base/code/list/bag
   find bag
 
@@ -780,30 +780,6 @@ task bag-size
   send back
     call length
       read b
-`
-
-const ORDERED_SET = `load @term/base/code/list/ordered-set
-  find ordered-set
-
-task oset-size
-  like number
-  save s
-    make ordered-set
-  save s
-    call insert
-      read s
-      code 1
-  save s
-    call insert
-      read s
-      code 1
-  save s
-    call insert
-      read s
-      code 2
-  send back
-    call length
-      read s
 `
 
 // list breadth: sum (loop), index-of, take-first / drop-first, flatten — all native-backed or pure-loop
@@ -1143,13 +1119,6 @@ async function main(): Promise<void> {
   expect(
     'bag/insert keeps duplicates (multiset size)',
     bg.bagSize(),
-    2,
-  )
-
-  const os = await loadProgram(ORDERED_SET)
-  expect(
-    'ordered-set/insert dedups (size counts uniques)',
-    os.osetSize(),
     2,
   )
 

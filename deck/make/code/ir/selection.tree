@@ -51,6 +51,9 @@ load ../compile/node
   find twin
   find type
 
+load ../check/admission
+  find is-test-twin
+
 load ../compile/node-reach
   find reach-statements
 
@@ -271,7 +274,8 @@ task expose-twins
   save shown, make list
   walk twins
     take one
-    fork test, or(not(tasks/has(one/of)), is-above(one/knobs/length, 0))
+    # a test twin is not claimed equivalent, so admission has nothing to compare it with
+    fork test, or(is-test-twin(one), or(not(tasks/has(one/of)), is-above(one/knobs/length, 0)))
       hold
         turn next
     save reference, tasks/get(one/of)

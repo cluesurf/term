@@ -14,7 +14,7 @@ load ../logic/disclosure
 
 view sidebar
   take host, like view
-  take class
+  take class, like text
   take control
   view div
     bind data-slot, text <sidebar>
@@ -26,7 +26,7 @@ view sidebar
 
 view sidebar-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -40,7 +40,7 @@ view sidebar-trigger
 
 view sidebar-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sidebar-header>
     bind class, read class
@@ -48,7 +48,7 @@ view sidebar-header
 
 view sidebar-content
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sidebar-content>
     bind class, read class
@@ -56,7 +56,7 @@ view sidebar-content
 
 view sidebar-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sidebar-footer>
     bind class, read class
@@ -64,7 +64,7 @@ view sidebar-footer
 
 view sidebar-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <sidebar-group>
     bind class, read class
@@ -72,7 +72,7 @@ view sidebar-group
 
 view sidebar-menu
   take host, like view
-  take class
+  take class, like text
   view ul
     bind data-slot, text <sidebar-menu>
     bind class, read class
@@ -80,7 +80,7 @@ view sidebar-menu
 
 view sidebar-menu-item
   take host, like view
-  take class
+  take class, like text
   view li
     bind data-slot, text <sidebar-menu-item>
     bind class, read class

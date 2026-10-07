@@ -12,6 +12,10 @@
 //
 // `scope` is what collectModules returned beside the sources. Without one (a single file, no resolver), only the
 // arity tells definitions apart, as in `compile`.
+//
+// The order of the steps and what stops it is Term, check/module-binding.tree (self-hosting, 2026-10-07). This face
+// closes each step over the scope and the entry, and writes the bound program back into the one it was handed, as a
+// harness reads it there.
 
 import type { Program } from '@term/make/code/compile/node'
 import type { ImportScope } from '@term/make/code/compile/load'
@@ -20,39 +24,30 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { bindFormsByImport } from '@term/make/code/check/scope'
 import { extendForms } from '@term/make/code/check/extend'
 import { disambiguateOverloads } from '@term/make/code/check/overload'
+import * as binding from '@term/make/code/check/module-binding'
 
 // each top-level definition of one module knows its file: the module scope splits a name by it, and a diagnostic
 // names it
 export function stampModule(program: Program, file: string): void {
-  for (const node of program) {
-    node.span.file = file
-  }
+  binding.stampModule(program, file)
 }
 
 // the module scope in `compileProgram`'s order: forms split and bound by import, then extended (an exception form
 // gets its fields and every raise is filled), then tasks split and bound by import. The first refusal of any step,
 // or none
 export function bindModules(program: Program, scope: ImportScope | undefined, entry: string): Diagnostic[] {
-  const forms = bindFormsByImport(program, scopeList(scope), entry)
+  const scopes = scopeList(scope)
+  const bound = binding.bindModules(
+    program,
+    current => bindFormsByImport(current, scopes, entry),
+    current => extendForms(current, entry, []),
+    current => disambiguateOverloads(current, scope, entry),
+  )
 
   // a harness reads the program it handed in, so the bound one is written back into it
-  if (forms.program !== program) {
-    program.splice(0, program.length, ...forms.program)
+  if (bound.program !== program) {
+    program.splice(0, program.length, ...bound.program)
   }
 
-  if (forms.diagnostics.length) {
-    return forms.diagnostics
-  }
-
-  const extended = extendForms(program, entry, [])
-
-  if (extended.program !== program) {
-    program.splice(0, program.length, ...extended.program)
-  }
-
-  if (extended.diagnostics.length) {
-    return extended.diagnostics
-  }
-
-  return disambiguateOverloads(program, scope, entry)
+  return bound.diagnostics
 }

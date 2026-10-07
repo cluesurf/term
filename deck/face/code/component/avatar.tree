@@ -11,7 +11,7 @@ load @term/site/dom/dom
 
 view avatar
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <avatar>
     bind class, read class
@@ -19,9 +19,9 @@ view avatar
 
 view avatar-image
   take host, like view
-  take class
-  take src
-  take alt
+  take class, like text
+  take src, like text
+  take alt, like text
   view img
     bind data-slot, text <avatar-image>
     bind src, read src
@@ -30,7 +30,7 @@ view avatar-image
 
 view avatar-fallback
   take host, like view
-  take class
+  take class, like text
   view span
     bind data-slot, text <avatar-fallback>
     bind class, read class

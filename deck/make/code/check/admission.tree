@@ -30,6 +30,10 @@ load @term/base/ordering
   find ordering
   find from-texts
 
+load @term/base/text
+  find index-of
+  find starts-with
+
 load ../parser/diagnostic
   find diagnostic
   find diagnose
@@ -72,6 +76,32 @@ task twin-task-name
   like text
 
   back <twin:{given/of}:{given/name}>
+
+# a TEST TWIN: a twin declared in a file under its package's `test/` directory (spec, term/decisions-2026-10/mocks §2.1).
+# It stands in for a task in a test and is not claimed equivalent, so it is admitted by its signature alone: the
+# refusals that say it could not stand in at all stay (unknown task, signature, ease word, a cycle of twins) and the
+# three that say it might not AGREE go (a task that is not pure, a twin that is not pure, a twin that may not end), with
+# the refusal of an impure `hook test`. The same rule as check/private.tree `test-of`, asked of the twin's own file: a
+# file path with a `test/` segment. A file the build knows no path for is never a test twin
+task is-test-file
+  take file, like text
+  like boolean
+
+  fork test, starts-with(file, <test/>)
+    hold
+      back true
+  back is-minimum(index-of(file, </test/>), 0)
+
+task is-test-twin
+  take given, like twin
+  like boolean
+
+  sift given/span/file
+    case some
+      link own
+      back is-test-file(own)
+    case none
+      back false
 
 task add-text
   take values, like list, like text
@@ -407,6 +437,10 @@ task check-twins
             save nothing, 0
       walk checked
         take one
+        # a test twin is not claimed to agree, so none of the three refusals below applies to it
+        fork test, is-test-twin(one)
+          hold
+            turn next
         save name, twin-task-name(one)
         fork test, not(contains(pure, one/of))
           hold
@@ -441,6 +475,9 @@ task check-twins
         fork test, not(contains(pure, guard-name))
           hold
             save one, guards/get(guard-name)
+            fork test, is-test-twin(one)
+              hold
+                turn next
             save kind, make guard-impure
             refuse(refused, kind, one, <a `hook test` of `{one/name}` is not pure>)
   # a cycle through twins: a twin of A calls B, and a twin of B calls A (directly or further round). A twin calling its

@@ -53,7 +53,11 @@ const runner = {
       }
     }),
   // the command on this terminal: it reads the keyboard and writes as it goes (a password prompt, a progress bar),
-  // and the answer is its exit code (128 plus the signal for a signal death), -1 when it could not start
+  // and the answer is its exit code (128 plus the signal for a signal death), -1 when it could not start. While it
+  // runs this process does what system(3) does: it ignores INT and QUIT (the terminal's ctrl-c and ctrl-backslash
+  // reach the child through the foreground group, so it gets each once) and passes TERM and HUP, sent to this process
+  // alone, on to the child. The handlers go in after the spawn, so the child keeps the default dispositions, and come
+  // out when the child ends
   attached: (
     command: string,
     argumentList: string[],
@@ -63,8 +67,31 @@ const runner = {
     new Promise(resolve => {
       try {
         const child = spawn(command, argumentList, { ...runnerOptions(directory, environment), stdio: 'inherit' })
-        child.on('error', () => resolve(-1))
-        child.on('close', (code: number | null, name: string | null) => resolve(closeCode(code, name)))
+        const forward = (name: NodeJS.Signals) => () => {
+          child.kill(name)
+        }
+        const handlers: [NodeJS.Signals, () => void][] = [
+          ['SIGINT', () => {}],
+          ['SIGQUIT', () => {}],
+          ['SIGTERM', forward('SIGTERM')],
+          ['SIGHUP', forward('SIGHUP')],
+        ]
+        for (const [name, handler] of handlers) {
+          process.on(name, handler)
+        }
+        const release = () => {
+          for (const [name, handler] of handlers) {
+            process.off(name, handler)
+          }
+        }
+        child.on('error', () => {
+          release()
+          resolve(-1)
+        })
+        child.on('close', (code: number | null, name: string | null) => {
+          release()
+          resolve(closeCode(code, name))
+        })
       } catch {
         resolve(-1)
       }

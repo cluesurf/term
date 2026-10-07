@@ -23,7 +23,7 @@ load @term/base/native/{platform}/signal
   find watch-signals
   find leave-after-signal
 
-load ../../view
+load ./view
   find view
 
 load ./screen

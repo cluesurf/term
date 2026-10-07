@@ -2,6 +2,11 @@
 # boot, and a deck tells it anything that only exists once the program runs. `hive-roll` reads the roster, `hive-hear`
 # subscribes. One per Term context. The compiler emits `wake-hive`, which calls `hive-wake` once per deck with the
 # deck's static entries, and `boot` calls that first. See note/term/hive/05-hive.md.
+#
+# The roster keeps every entry of every kind as `hive-entry unknown`, because its kinds carry different payloads and a
+# form arm over an `unknown` is refused. The three kinds the language itself writes (`exception`, `tell`, `dock`) are
+# also kept in a typed list each, filled by `hive-wake-typed`, and read back through `hive-exceptions`, `hive-tells`
+# and `hive-docks`, so a reader gets the payload as a record without a cast.
 
 mark unstable
 
@@ -11,11 +16,49 @@ load @term/base/list
 
 # one entry on one kind. `base` holds the entry's own record (an exception's declaration, a tell, a route).
 form hive-entry
+  head t
   link host, like text
   link kind, like text
   link name, like text
   link site, like text
-  link base, like unknown
+  link base, like t
+
+# the payload of a static `exception` entry, filled from the roll's exception declaration
+form exception-roll
+  # the exception this one is like (the roll's `like`)
+  link like, like text
+  # the chain of exceptions it is like, nearest first (the roll's `chain`)
+  link chain
+    like list
+      like text
+  # the declared `note`, empty when the roll has none
+  link note, like text
+  # the extra fields it declares, each a field name and its type text (the roll's `link`)
+  link link
+    like list
+      like pair
+        head text
+        head text
+
+# the payload of a static `tell` entry, filled from the roll's tell
+form tell-roll
+  # what a customer sees (the tell's `note`)
+  link note, like text
+  # the tell's `hint`, empty when unset
+  link hint, like text
+  # the exception fields the tell shows (the tell's `link`)
+  link link
+    like list
+      like text
+  # the tell's `alias`, empty when unset
+  link alias, like text
+
+# the payload of a static `dock` entry, a route
+form dock-roll
+  # the forms the route halts on (the dock's `halt`)
+  link halt
+    like list
+      like text
 
 # a deck that has arrived
 form hive-deck
@@ -26,7 +69,7 @@ form hive-deck
 form hive-ear
   link kind, like text
   link work, like task
-    take entry, like hive-entry
+    take entry, like hive-entry unknown
 
 form hive
   link deck
@@ -34,7 +77,16 @@ form hive
       like hive-deck
   link roll
     like list
-      like hive-entry
+      like hive-entry unknown
+  link exceptions
+    like list
+      like hive-entry exception-roll
+  link tells
+    like list
+      like hive-entry tell-roll
+  link docks
+    like list
+      like hive-entry dock-roll
   link ear
     like list
       like hive-ear
@@ -43,6 +95,9 @@ host hive
   make hive
     bind deck, make list
     bind roll, make list
+    bind exceptions, make list
+    bind tells, make list
+    bind docks, make list
     bind ear, make list
 
 # a deck arrives with its static entries. Idempotent on the deck name: a deck that arrives twice is one deck.
@@ -50,7 +105,7 @@ task hive-wake
   take name, like text
   take roll
     like list
-      like hive-entry
+      like hive-entry unknown
   walk list
     read hive/deck
     hook next
@@ -74,16 +129,92 @@ task hive-wake
       call hive-tell
         read entry
   call hive-tell
+    call make-entry
+      read name
+      text <deck>
+      read name
+      text <>
+      read name
+
+# one entry with its payload boxed as `unknown`. The payload is a parameter declared `unknown`, so every backend boxes it
+# at the call and the entry is a `hive-entry unknown` on every backend, never an entry of the payload's own type.
+task make-entry
+  mark private
+  take host, like text
+  take kind, like text
+  take name, like text
+  take site, like text
+  take base, like unknown
+  like hive-entry unknown
+  save made
     make hive-entry
-      bind host, read name
-      bind kind, text <deck>
+      bind host, read host
+      bind kind, read kind
       bind name, read name
-      bind site, text <>
-      bind base, read name
+      bind site, read site
+      bind base, read base
+  send back, read made
+
+# a deck's static exception, tell and dock entries, with their payloads typed. Called right after `hive-wake` for the
+# same deck. Each entry is kept in its typed list and also told as a `hive-entry unknown` of the same fields, so
+# `hive-roll`, `hive-hear` and `hive-clear` see it as they see every other kind.
+task hive-wake-typed
+  take name, like text
+  take exceptions
+    like list
+      like hive-entry exception-roll
+  take tells
+    like list
+      like hive-entry tell-roll
+  take docks
+    like list
+      like hive-entry dock-roll
+  walk list
+    read exceptions
+    hook next
+      take site, name entry
+      call push
+        read hive/exceptions
+        read entry
+      call hive-tell
+        call make-entry
+          read entry/host
+          read entry/kind
+          read entry/name
+          read entry/site
+          read entry/base
+  walk list
+    read tells
+    hook next
+      take site, name entry
+      call push
+        read hive/tells
+        read entry
+      call hive-tell
+        call make-entry
+          read entry/host
+          read entry/kind
+          read entry/name
+          read entry/site
+          read entry/base
+  walk list
+    read docks
+    hook next
+      take site, name entry
+      call push
+        read hive/docks
+        read entry
+      call hive-tell
+        call make-entry
+          read entry/host
+          read entry/kind
+          read entry/name
+          read entry/site
+          read entry/base
 
 # a deck reports one entry now. Every ear on its kind, and every ear on `tell`, hears it.
 task hive-tell
-  take entry, like hive-entry
+  take entry, like hive-entry unknown
   call push
     read hive/roll
     read entry
@@ -104,7 +235,8 @@ task hive-tell
           call ear/work
             read entry
 
-# forget every entry of one kind: a registry a process fills again (the test kind, before a second run)
+# forget every entry of one kind: a registry a process fills again (the test kind, before a second run). A typed list
+# of that kind is emptied too.
 task hive-clear
   take kind, like text
   save kept
@@ -123,6 +255,30 @@ task hive-clear
             read kept
             read entry
   save hive/roll, read kept
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <exception>
+    hook hold
+      save hive/exceptions
+        make list
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <tell>
+    hook hold
+      save hive/tells
+        make list
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <dock>
+    hook hold
+      save hive/docks
+        make list
 
 # read the roster: every entry of one kind, from one deck when `host` is given
 task hive-roll
@@ -132,7 +288,7 @@ task hive-roll
     like text
     fall text <>
   like list
-    like hive-entry
+    like hive-entry unknown
   save out
     make list
   walk list
@@ -158,12 +314,99 @@ task hive-roll
             read entry
   send back, read out
 
+# the static exception declarations, in the order they were woken, from one deck when `host` is given
+task hive-exceptions
+  take
+    host
+    like text
+    fall text <>
+  like list
+    like hive-entry exception-roll
+  save out
+    make list
+  walk list
+    read hive/exceptions
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call or
+            call is-equal
+              read host
+              text <>
+            call is-equal
+              read entry/host
+              read host
+        hook hold
+          call push
+            read out
+            read entry
+  send back, read out
+
+# the static tells, in the order they were woken, from one deck when `host` is given
+task hive-tells
+  take
+    host
+    like text
+    fall text <>
+  like list
+    like hive-entry tell-roll
+  save out
+    make list
+  walk list
+    read hive/tells
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call or
+            call is-equal
+              read host
+              text <>
+            call is-equal
+              read entry/host
+              read host
+        hook hold
+          call push
+            read out
+            read entry
+  send back, read out
+
+# the routes, in the order they were woken, from one deck when `host` is given
+task hive-docks
+  take
+    host
+    like text
+    fall text <>
+  like list
+    like hive-entry dock-roll
+  save out
+    make list
+  walk list
+    read hive/docks
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call or
+            call is-equal
+              read host
+              text <>
+            call is-equal
+              read entry/host
+              read host
+        hook hold
+          call push
+            read out
+            read entry
+  send back, read out
+
 # subscribe to one kind. `deck` fires when a deck wakes, `exception` when one is raised anywhere, `tell` on every
 # entry of any kind.
 task hive-hear
   take kind, like text
   take work, like task
-    take entry, like hive-entry
+    take entry, like hive-entry unknown
   call push
     read hive/ear
     make hive-ear

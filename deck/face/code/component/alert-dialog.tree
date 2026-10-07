@@ -14,7 +14,7 @@ load ../logic/disclosure
 
 view alert-dialog
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-dialog>
     bind class, read class
@@ -22,7 +22,7 @@ view alert-dialog
 
 view alert-dialog-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -35,7 +35,7 @@ view alert-dialog-trigger
 
 view alert-dialog-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -54,7 +54,7 @@ view alert-dialog-content
 
 view alert-dialog-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-dialog-header>
     bind class, read class
@@ -62,7 +62,7 @@ view alert-dialog-header
 
 view alert-dialog-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-dialog-title>
     bind class, read class
@@ -70,7 +70,7 @@ view alert-dialog-title
 
 view alert-dialog-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-dialog-description>
     bind class, read class
@@ -78,7 +78,7 @@ view alert-dialog-description
 
 view alert-dialog-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <alert-dialog-footer>
     bind class, read class
@@ -86,7 +86,7 @@ view alert-dialog-footer
 
 view alert-dialog-close
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>

@@ -16,6 +16,9 @@ load @term/site/dom/page
 load @term/site/view/reactive
   find make-effect
   find untrack
+load @term/site/view/render
+  find make-branch-slot
+  find rebuild
 load @term/site/view/navigation
   find start-navigation
   find current-path
@@ -32,7 +35,10 @@ task host
   call start-navigation
   # one draw per place. The effect reads the current path and nothing else; the route is drawn untracked, so a signal
   # the page itself reads keeps its own effects and does not draw the whole page again. On first load this replaces
-  # the SSR markup with the client-rendered, reactive tree (the takeover); on a move it swaps the page in place.
+  # the SSR markup with the client-rendered, reactive tree (the takeover); on a move it swaps the page in place. Each
+  # place is drawn in an owner of its own, disposed when the app moves, so the page left behind stops updating and its
+  # cleanups run (beat-term item 0067)
+  save place, call make-branch-slot
   call make-effect
     task render
       save path
@@ -40,13 +46,21 @@ task host
       save drawn
         call untrack
           task draw
-            like number
-            call clear
-              read body
-            call route
-              read body
-              read path
-            send back, code 0
+            like view
+            send back
+              call rebuild
+                bind slot, read place
+                bind build
+                  task build
+                    like view
+                    call clear
+                      read body
+                    # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
+                    # that moves a captured text does not build on Rust (E0507)
+                    call route
+                      read body
+                      call current-path
+                    send back, read body
   # the person moved the address themselves (back, forward, a same-origin link): the contract follows, and the effect
   # above draws where it now is
   call listen-pop

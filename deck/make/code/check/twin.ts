@@ -5,11 +5,13 @@
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Program, Twin } from '@term/make/code/compile/node'
-import { checkTwins as checkTwinsIn, easeWords, twinTaskName } from '@term/make/code/check/admission'
+import { checkTwins as checkTwinsIn, easeWords, isTestTwin, twinTaskName } from '@term/make/code/check/admission'
 import { proves } from '@term/make/code/check/refine'
 import { bindsGiven } from '@term/make/code/check/totality'
 
-export { twinTaskName }
+// a twin declared under its package's test/: admitted by its signature alone (mocks spec 2.1)
+// a twin declared under its package's test/: admitted by its signature alone (mocks spec 2.1)
+export { isTestTwin, twinTaskName }
 
 // the relaxations Term defines, each with its decision procedure in note/term/optimize/words.md
 export const EASE = new Set(easeWords())

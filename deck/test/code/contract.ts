@@ -1,6 +1,6 @@
 /**
  * Contracts and refinement checking: Layers 1-2 of the system
- * (note/methodology/verification/seed-verification-system.md). A
+ * (note/project/term/verification/seed-verification-system.md). A
  * `Contract` is a function's specification - parameter refinements
  * (preconditions on inputs) plus a postcondition on the result.
  *

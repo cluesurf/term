@@ -1,0 +1,8 @@
+
+# The find mill: `find` as a statement and as a value in the code role. Grammar in ./mine, builder in ./mint. Every
+# rule is named `find-<part>`, never `find`: load/mine.tree owns a rule named `find` (the import binding under a
+# `load`), and the root mine.tree loads it by that name. Spec: note/project/term/find/spec.md section 3.
+
+mill find
+  bind mine, load ./mine
+  bind mint, load ./mint

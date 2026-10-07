@@ -1,0 +1,57 @@
+# A float's bits as two 32-bit words, the only native primitives the correctly rounded transcendentals stand on
+# (note/project/term/decisions-2026-10/float/spec.md 2.3 and 4.1). A word is a number in 0 .. 4294967295, so it is exact
+# on TypeScript (a JavaScript number holds 2^53) and on the 64-bit native integers. The high word is bits 63 to 32 (sign,
+# exponent, the top 20 mantissa bits), the low word bits 31 to 0. 1.0 is high word 1072693248, low word 0.
+#
+# TypeScript reads the words through one shared Float64Array with a Uint32Array over its buffer, made once on first use.
+# Index 1 is the high word on a little-endian host, which every platform Term runs on is, and
+# test/stdlib/float-bits.ts asserts `float-high-word 1.0` is 1072693248, which fails on any other host. A NaN carries no
+# payload through JavaScript, so the words of a NaN are the canonical quiet NaN's, 2146959360 and 0 (spec.md 2.4).
+
+mark unstable
+
+# bits 63 to 32 of the float
+bind float-high-word
+  take value, like float
+  like number
+  case node
+    text <(function (v, w) \{ w[0][0] = v; return w[1][1] \})($value, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case browser
+    text <(function (v, w) \{ w[0][0] = v; return w[1][1] \})($value, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case rust
+    text <((($value) as f64).to_bits() \>\> 32) as i64>
+  case swift
+    text <Int(($value).bitPattern \>\> 32)>
+  case kotlin
+    text <(($value).toRawBits() ushr 32)>
+
+# bits 31 to 0 of the float
+bind float-low-word
+  take value, like float
+  like number
+  case node
+    text <(function (v, w) \{ w[0][0] = v; return w[1][0] \})($value, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case browser
+    text <(function (v, w) \{ w[0][0] = v; return w[1][0] \})($value, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case rust
+    text <((($value) as f64).to_bits() & 4294967295) as i64>
+  case swift
+    text <Int(($value).bitPattern & 4294967295)>
+  case kotlin
+    text <(($value).toRawBits() and 4294967295L)>
+
+# the float whose bits are `high` over `low`, each a number in 0 .. 4294967295
+bind float-from-words
+  take high, like number
+  take low, like number
+  like float
+  case node
+    text <(function (h, l, w) \{ w[1][1] = h; w[1][0] = l; return w[0][0] \})($high, $low, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case browser
+    text <(function (h, l, w) \{ w[1][1] = h; w[1][0] = l; return w[0][0] \})($high, $low, ((globalThis as any).__termWords ??= (function () \{ const f = new Float64Array(1); return [f, new Uint32Array(f.buffer)] \})()))>
+  case rust
+    text <f64::from_bits(((($high) as u64) \<\< 32) | (($low) as u64))>
+  case swift
+    text <Double(bitPattern: (UInt64($high) \<\< 32) | UInt64($low))>
+  case kotlin
+    text <Double.fromBits((($high) shl 32) or ($low))>

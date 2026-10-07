@@ -18,7 +18,7 @@ load @term/site/dom/dom
 
 view modal
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <modal>
     bind class, read class
@@ -26,8 +26,8 @@ view modal
 
 view modal-trigger
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <modal-trigger>
@@ -37,8 +37,8 @@ view modal-trigger
 
 view modal-overlay
   take host, like view
-  take class
-  take state
+  take class, like text
+  take state, like text
   view div
     bind data-slot, text <modal-overlay>
     bind data-state, read state
@@ -46,8 +46,8 @@ view modal-overlay
 
 view modal-content
   take host, like view
-  take class
-  take state
+  take class, like text
+  take state, like text
   view div
     bind data-slot, text <modal-content>
     bind data-state, read state
@@ -58,7 +58,7 @@ view modal-content
 
 view modal-header
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <modal-header>
     bind class, read class
@@ -66,7 +66,7 @@ view modal-header
 
 view modal-title
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <modal-title>
     bind class, read class
@@ -74,7 +74,7 @@ view modal-title
 
 view modal-description
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <modal-description>
     bind class, read class
@@ -82,7 +82,7 @@ view modal-description
 
 view modal-footer
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <modal-footer>
     bind class, read class
@@ -90,8 +90,8 @@ view modal-footer
 
 view modal-close
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <modal-close>

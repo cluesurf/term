@@ -1,0 +1,50 @@
+
+# The in-memory DOM's view handle: a `memory-element`, the record `./dom` builds. Typed here so a node is read through
+# its handle with no retype, on every backend (on Swift an untyped handle is `Any`, which has no fields). The other
+# backends define their own `view` beside this one, and the build bears the one for its target through ../../view.
+#
+# `memory-element/children` holds `view` and `parent` holds a `view`, so the two forms name each other: they stay in
+# this one file, since across files that would be a load cycle.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+form view
+  link handle, like memory-element, mark private
+
+form memory-element
+  mark shared
+  link key, like number
+  link tag, like text
+  link text, like text
+  link value, like text
+  link attributes
+    like list
+      like memory-pair
+  link styles
+    like list
+      like memory-pair
+  link classes
+    like list
+      like text
+  link children
+    like list
+      like view
+  link listeners
+    like list
+      like memory-listener
+  link parent
+    like maybe
+      like view
+
+form memory-pair
+  link name, like text
+  link value, like text
+
+form memory-listener
+  link event, like text
+  link handle
+    like task

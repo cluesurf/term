@@ -1,0 +1,103 @@
+
+# The IR of a find (spec section 6.1): ordinary Term data a driver reads and performs. A query is never script text.
+# It is built by the lowering of a `find` (item 0007) or by hand, and it is the same data for every backend.
+
+load @term/base/duration
+  find duration
+
+# how many a find answers: one raises when there are none or several, all answers a list that may be empty, some
+# answers whether there is at least one
+form find-count
+  mark text
+  case one
+  case all
+  case some
+
+# a value a test compares or a driver read: text, a number, a flag, or nothing
+form find-value
+  case text
+    link value, like text
+  case number
+    link value, like float
+  case flag
+    link value, like boolean
+  case void
+
+# what a predicate reads: a property of the component it sits under, or a value written in the query
+form find-operand
+  case self
+    link name, like text
+  case value
+    link value, like find-value
+
+# one test of a step: `have` and `lack` are a property against a value, `hold` is a comparison by name (is-equal,
+# is-above, is-below, is-minimum, is-maximum, is-void, is-present) over two operands, and `meet` composes tests: its
+# kind is `and`, `or` or `lack`
+form find-test
+  case have
+    link name, like text
+    link value, like find-value
+  case lack
+    link name, like text
+    link value, like find-value
+  case hold
+    link name, like text
+    link a, like find-operand
+    link b, like find-operand
+  case meet
+    link kind, like text
+    link test
+      like list
+        like find-test
+
+# one step of the path: the kind it finds (or, for a base, a source), the relation to the step before (empty is the
+# backend's natural one), the graph direction and depth (words pending, person item 0063) and the tests
+form find-step
+  link kind, like text
+  link like, like text
+  link turn, like text
+  link depth, like text
+  link test
+    like list
+      like find-test
+
+# one field of what comes back: the name, and where it is read from
+form find-back
+  link name, like text
+  link from, like find-operand
+
+form find-sort
+  link name, like text
+  link fall, like boolean
+
+# `base` starts the path and `path` is every step after it. A union (item 0010) is a list of queries and has no base
+# of its own: its base is a step with an empty kind. `size` zero is no limit, `head` zero skips nothing, `wait` zero
+# does not wait
+form find-query
+  link count, like find-count
+  link base, like find-step
+  link path
+    like list
+      like find-step
+  link union
+    like list
+      like find-query
+  link back
+    like list
+      like find-back
+  link sort
+    like list
+      like find-sort
+  link size, like number
+  link head, like number
+  link sift
+    like list
+      like text
+  link wait, like duration
+  link line, like text
+
+# a found thing: the tool that owns it, the driver's opaque id for it and its kind
+form find-handle
+  link tool, like text
+  link id, like text
+  link kind, like text

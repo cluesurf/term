@@ -15,7 +15,7 @@ load ../logic/selection
 
 view toggle-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <toggle-group>
     bind role, text <group>
@@ -24,7 +24,7 @@ view toggle-group
 
 view toggle-group-item
   take host, like view
-  take class
+  take class, like text
   take control
   take value
   view button

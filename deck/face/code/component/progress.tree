@@ -11,8 +11,8 @@ load @term/site/dom/dom
 
 view progress
   take host, like view
-  take class
-  take value
+  take class, like text
+  take value, like text
   view div
     bind data-slot, text <progress>
     bind role, text <progressbar>
@@ -24,8 +24,8 @@ view progress
 
 view progress-indicator
   take host, like view
-  take class
-  take value
+  take class, like text
+  take value, like text
   view div
     bind data-slot, text <progress-indicator>
     bind data-value, read value

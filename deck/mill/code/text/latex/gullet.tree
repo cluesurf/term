@@ -498,7 +498,7 @@ task expand-once
       save arguments, consume-arguments(g, expansion/arguments, expansion/delimiters)
       fork test, is-above(expansion/arguments, 0)
         hold
-          save tokens, substitute(tokens, arguments)
+          save tokens, substitute(tokens, arguments, name)
       push-tokens(g, tokens)
       back
         make latex-expanded
@@ -533,10 +533,12 @@ task is-unexpandable
       back false
 
 # the arguments pasted in place of `#1` to `#9`, and `##` as `#`. The tokens are in reverse order, so a placeholder's
-# `#` comes after its digit
+# `#` comes after its digit. A placeholder past the arguments the macro takes (`\def\a#1{#2}`) is refused with TeX's
+# own message: KaTeX reads past its list there and crashes, which leaves no message of its to give
 task substitute
   take tokens, like list, like latex-token
   take arguments, like list, like list, like latex-token
+  take name, like text
   like list, like latex-token
   mark private
 
@@ -561,6 +563,9 @@ task substitute
               fork test, is-below(index, 1)
                 hold
                   refuse(digit, <Not a valid argument number>)
+              fork test, is-above(index, arguments/length)
+                hold
+                  refuse(digit, <Illegal parameter number in definition of {name}>)
               save before, out/slice(0, i)
               save after, out/slice(add(i, 2), out/length)
               save argument, get(arguments, subtract(index, 1))

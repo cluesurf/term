@@ -120,7 +120,7 @@ task run
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|device)$/, 'native/memory/$1'), fromFile)
+  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|device|view)$/, 'native/memory/$1'), fromFile)
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-handler-raise-'))

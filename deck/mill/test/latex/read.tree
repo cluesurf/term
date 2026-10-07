@@ -131,6 +131,7 @@ test <mistakes are where they were written>
   want hold, is-equal(shown(<\{x>), <error at 2: Expected '\}', got 'EOF'>)
   want hold, is-equal(shown(<x^2^3>), <error at 3: Double superscript>)
   want hold, is-equal(shown(<\\nope>), <error at 0: Undefined control sequence: \\nope>)
+  want hold, is-equal(shown(<\\def\\sq#1\{#2\}\\sq x>), <error at 11: Illegal parameter number in definition of \\sq>)
 
 test <input LaTeX would refuse is read, and warned of>
   want hold, is-equal(warned(<x^2>), <>)

@@ -3,7 +3,7 @@
  * compiled program is emitted to every backend; a backend that fails to
  * emit (throws, or produces nothing) for a program the others accept is
  * a backend bug. This is the highest-value correctness tool a multi-
- * backend compiler has (note/methodology/verification/techniques.md H),
+ * backend compiler has (note/project/term/verification/techniques.md H),
  * and it is unique to Seed's design.
  *
  * Running the emitted Rust/Kotlin/Swift needs their toolchains (absent

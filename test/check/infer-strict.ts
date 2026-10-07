@@ -1,5 +1,6 @@
-// THE TWO INFERENCE REFUSALS BEHIND THE STRICT SWITCH (check/strict.ts, decisions-2026-10.md, D10): a parameter no call
-// and no use gives a type, and a call several same-arity definitions fit equally. Off, both build as they always have.
+// THE TWO INFERENCE REFUSALS (check/strict.ts, decisions-2026-10.md, D10): a parameter no call and no use gives a type,
+// and a call several same-arity definitions fit equally. Decided 2026-10-07: the ambiguous call is refused by default
+// (TERM_INFER_AMBIGUOUS=0 turns it off), and the parameter waits behind the strict switch until its census is zero.
 // On, each is refused naming what to write. The census of what they would refuse across the repository is
 // `pnpm term:inference-census`.
 // Run: sh tmp/run-term-ts.sh test/check/infer-strict.ts
@@ -7,7 +8,7 @@
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { setInferStrict } from '@term/make/code/check/strict'
+import { setAmbiguousRefused, setInferStrict } from '@term/make/code/check/strict'
 
 let pass = 0
 let fail = 0
@@ -75,7 +76,15 @@ task use
 
 setInferStrict(false)
 ok('off: an unconstrained parameter builds', said(LONELY).length === 0, said(LONELY).join(' | '))
-ok('off: an ambiguous call builds', said(AMBIGUOUS).length === 0, said(AMBIGUOUS).join(' | '))
+// D10, decided 2026-10-07: the ambiguous-call refusal is on by default, the strict switch off
+ok(
+  'default: a call two definitions fit equally is refused, the strict switch off',
+  said(AMBIGUOUS).some(m => m.startsWith('ambiguous call: 2 definitions of "show"')),
+  said(AMBIGUOUS).join(' | '),
+)
+setAmbiguousRefused(false)
+ok('TERM_INFER_AMBIGUOUS=0: an ambiguous call builds', said(AMBIGUOUS).length === 0, said(AMBIGUOUS).join(' | '))
+setAmbiguousRefused(true)
 
 setInferStrict(true)
 ok(

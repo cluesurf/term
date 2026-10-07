@@ -10,7 +10,7 @@ load @term/site/dom/dom
 
 view resizable-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <resizable-group>
     bind class, read class
@@ -18,7 +18,7 @@ view resizable-group
 
 view resizable-panel
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <resizable-panel>
     bind class, read class
@@ -26,7 +26,7 @@ view resizable-panel
 
 view resizable-handle
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <resizable-handle>
     bind role, text <separator>

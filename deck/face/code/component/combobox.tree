@@ -19,7 +19,7 @@ load ../logic/disclosure
 
 view combobox
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <combobox>
     bind class, read class
@@ -27,7 +27,7 @@ view combobox
 
 view combobox-trigger
   take host, like view
-  take class
+  take class, like text
   take control
   view button
     bind type, text <button>
@@ -48,7 +48,7 @@ view combobox-trigger
 
 view combobox-content
   take host, like view
-  take class
+  take class, like text
   take control
   fork test
     hook test
@@ -65,8 +65,8 @@ view combobox-content
 
 view combobox-input
   take host, like view
-  take class
-  take input
+  take class, like text
+  take input, like task
   view input
     bind data-slot, text <combobox-input>
     bind type, text <text>
@@ -77,7 +77,7 @@ view combobox-input
 
 view combobox-empty
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <combobox-empty>
     bind role, text <presentation>
@@ -86,7 +86,7 @@ view combobox-empty
 
 view combobox-group
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <combobox-group>
     bind role, text <group>
@@ -95,7 +95,7 @@ view combobox-group
 
 view combobox-label
   take host, like view
-  take class
+  take class, like text
   view div
     bind data-slot, text <combobox-label>
     bind class, read class
@@ -103,8 +103,8 @@ view combobox-label
 
 view combobox-item
   take host, like view
-  take class
-  take press
+  take class, like text
+  take press, like task
   view button
     bind type, text <button>
     bind data-slot, text <combobox-item>
