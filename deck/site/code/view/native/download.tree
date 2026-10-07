@@ -1,0 +1,8 @@
+# download where there is none (beat-term-0004): the abstract module beside the env dirs, reached by every env with no
+# host (node, the server, the memory host, Rust, a browser). Conforms to ../download.
+
+task fetch-to-file
+  take url, like text
+  take path, like text
+  like text
+  send back, text <unavailable>

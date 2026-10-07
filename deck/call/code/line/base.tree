@@ -358,7 +358,7 @@ hook bind
   task bind
 
 hook self
-  note <The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back>
+  note <The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back, and skill, which teaches a coding agent its verbs>
   # Installed versions, the front, the default, and what runs here
   hook list
     task self-list
@@ -422,6 +422,9 @@ hook self
   # Move the front back to the previous version
   hook back
     task self-back
+  # Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md
+  hook skill
+    task self-skill
 
 # Install the newest release and move the front to it (term self update)
 hook update
@@ -505,6 +508,9 @@ hook scan
   # The .tree file to check
   take file
     like text
+  # Write the sure fixes into the file and scan again. A guess is offered, never written
+  take fix
+    like boolean
   task scan
 
 # Project memory: remember a fact, or recall facts
@@ -756,12 +762,17 @@ hook roll
   # Under each exception, one call path from every task that can raise it to the raise site
   take path
     like boolean
+  # What changed in what each task can reach and raise since a roll file (term roll --json > before.json)
+  # or a git ref. A task that gained a native module is a warning, so --strict makes it a gate
+  take diff
+    like text
   task roll
 
-# Shape Term data: a data file (long or compact) or JSON, printed as long form, compact (--pack) or
-# JSON (--json)
+# Shape Term data: a data file (long or compact), JSON or tree/code, printed as long form, compact
+# (--pack), JSON (--json) or tree/code (--code)
 hook mold
-  # A data .tree file, a .line stream, or a .json file (stdin when absent)
+  # A data file, long or compact (.tree or .line), a stream with --lines, or a .json file (stdin when
+  # absent)
   take file
     like text
   # Compact form, one entry per line
@@ -784,6 +795,12 @@ hook mold
     like boolean
   # Only report problems, exit 1 on any
   take check
+    like boolean
+  # tree/code bytes, Zstandard frames where smaller (to a file or a pipe)
+  take code
+    like boolean
+  # With --code: the canonical bytes, every frame uncompressed
+  take canonical
     like boolean
   task mold
 
@@ -856,9 +873,18 @@ hook hunt
 
 # Display information
 hook show
-  # What to show (code, deck, self)
+  # `mark` for this package's version (`code` is the old spelling), `tools` for the native toolchains,
+  # `kink` for what a diagnostic means, `name` for one name of the project with what surrounds it; omit
+  # for the toolchain version and platform
   take what
     like text
+  # With `kink`: a diagnostic's name or code (type-mismatch, 0007, L019), every one when left out. With
+  # `name`: the task, form or mask to show
+  take name
+    like text
+  # With `name`: the most tokens the answer may take, roughly four characters each (default 4000)
+  take budget
+    like number
   task show
 
 # Secrets and environment: run a command with a zone's values, and manage them

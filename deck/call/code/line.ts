@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { bannerText } from '@term/make/code/show'
-import { callShow } from '@term/call/code/show'
+import { callShow, termVersion } from '@term/call/code/show'
 import { callLoad } from '@term/call/code/load'
 import { callSave } from '@term/call/code/save'
 import { callZone } from '@term/call/code/zone'
@@ -115,19 +114,6 @@ const COMMANDS = [
   'fill',
 ]
 
-// the published version, read from this package's manifest at runtime (the bundled entry sits at host/line.js, so the
-// manifest is one directory up)
-function readVersion(): string {
-  try {
-    const manifest = JSON.parse(
-      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-    )
-
-    return String(manifest.version ?? '0.0.0')
-  } catch {
-    return '0.0.0'
-  }
-}
 
 function editDistance(a: string, b: string): number {
   const m = a.length
@@ -215,7 +201,7 @@ const cli = yargs(hideBin(process.argv))
   .option('raw', { type: 'boolean', description: "Pass a child process's output through untouched" })
   .option('source', { type: 'string', description: 'Show one service of a stream, without tags' })
   .option('all', { type: 'boolean', description: 'Show every problem and list entry past the cap' })
-  .middleware(argv => setOutput(argv as OutputFlags, readVersion()))
+  .middleware(argv => setOutput(argv as OutputFlags, termVersion()))
   .command('base', 'The base record system', yargs =>
     yargs
       .command('init', 'Create a repository here', {}, () => {
@@ -713,7 +699,7 @@ const cli = yargs(hideBin(process.argv))
         await callSelfBack({ root })
       })
       .command('skill', "Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md", {}, argv => {
-        callSelfSkill({ root, version: readVersion(), back: argv.back as string | undefined })
+        callSelfSkill({ root, version: termVersion(), back: argv.back as string | undefined })
       })
       .demandCommand(1, 'which self verb?'),
   )
@@ -808,7 +794,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('entry', {
           type: 'string',
-          description: 'The cask entry of the app (default cask.tree; app.tree for a Compose target)',
+          description: 'The cask entry of the app (default cask.tree; for a Compose or UIKit target, the file the boot line of deck.tree names, else app.tree)',
         })
         .option('url', {
           type: 'string',
@@ -1256,7 +1242,7 @@ const cli = yargs(hideBin(process.argv))
             'Develop a native app: a cask (its page on a dev server with hot swaps, the app pointed at it), or `compose` / `compose-android` (rebuilt and relaunched on each edit, on the screen it was on)',
         })
         .option('page', { type: 'string', description: 'The page entry of the cask app (default face/base.tree)' })
-        .option('entry', { type: 'string', description: 'The entry of the app (default cask.tree; app.tree for a Compose target)' }),
+        .option('entry', { type: 'string', description: 'The entry of the app (default cask.tree; for a Compose or UIKit target, the file the boot line of deck.tree names, else app.tree)' }),
     async argv => {
       // a Compose app (live-reload): no WebView to swap a page in, so each edit is a new build, relaunched where it was
       if (argv.target === 'compose' || argv.target === 'compose-android') {
@@ -1629,7 +1615,7 @@ const cli = yargs(hideBin(process.argv))
           description: 'With `name`: the most tokens the answer may take, roughly four characters each (default 4000)',
         }),
     async argv => {
-      await callShow({ root, what: argv.what, name: argv.name, budget: argv.budget, back: argv.back, version: readVersion() })
+      await callShow({ root, what: argv.what, name: argv.name, budget: argv.budget, back: argv.back, version: termVersion() })
     },
   )
   .command(
@@ -1669,7 +1655,7 @@ const cli = yargs(hideBin(process.argv))
 
     process.exit(usageFailure(msg || 'The command line was not understood.'))
   })
-  .version('version', 'Show the version number', readVersion())
+  .version('version', 'Show the version number', termVersion())
   .alias('version', 'v')
 
 async function main(): Promise<void> {
@@ -1702,7 +1688,7 @@ async function main(): Promise<void> {
 function usageFailure(message: string, next = 'term --hint'): number {
   // yargs refuses before the middleware runs, so the version is set here for the opening item. The flags were not
   // understood, so the run prints as the defaults say
-  setOutput({}, readVersion())
+  setOutput({}, termVersion())
   openRun({ verb: 'term', root })
   // yargs writes some refusals over several lines: the first is the subject, the rest message lines
   const [first = message, ...rest] = message.split('\n').map(line => line.trim()).filter(line => line !== '')

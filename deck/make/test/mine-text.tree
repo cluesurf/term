@@ -1,0 +1,157 @@
+# The text grammar engine (compile/mine-text.tree) on a grammar of its own, apart from `note`: sums of numbers in
+# groups. What it matches and names, ordered choice, repetition, where a failure is reported and what was wanted
+# there, the constructs it refuses when it is made, and a long text read in one linear pass.
+
+load @term/base/list
+  find get
+  find join
+
+load ../code/parser/tree
+  find parse
+
+load ../code/parser/token
+  find token-source
+
+load ../code/compile/feed-compile
+  find read-feed-mine-grammar
+
+load ../code/compile/mine-text
+  find mine-engine
+  find mine-match
+  find make-mine-engine
+  find run-mine
+  find match-text
+  find matches-named
+
+# the engine for a grammar's lines
+task engine-of
+  take lines, like list, like text
+  like mine-engine
+
+  save source
+    make token-source
+      bind file, <sums.tree>
+      bind text, join(lines, <\n>)
+  back make-mine-engine(read-feed-mine-grammar(parse(source)/tree), make hash)
+
+task sums
+  like mine-engine
+
+  save lines, make list
+  push(lines, <mine sum>)
+  push(lines, <  mine form, form term>)
+  push(lines, <  mine list>)
+  push(lines, <    mine char, text \<+\>>)
+  push(lines, <    mine form, form term>)
+  push(lines, <mine term>)
+  push(lines, <  mine any>)
+  push(lines, <    mine form, form number>)
+  push(lines, <    mine form, form group>)
+  push(lines, <mine number>)
+  push(lines, <  mine form, form digit>)
+  push(lines, <  mine list>)
+  push(lines, <    mine form, form digit>)
+  push(lines, <mine digit>)
+  push(lines, <  mine range>)
+  push(lines, <    bind base, text \<0\>>)
+  push(lines, <    bind head, text \<9\>>)
+  push(lines, <mine group>)
+  push(lines, <  mine char, text \<(\>>)
+  push(lines, <  mine form, form sum>)
+  push(lines, <  mine char, text \<)\>>)
+  back engine-of(lines)
+
+# the match of a run that matched, or an empty one that fails every check after it
+task matched-root
+  take found, like maybe, like mine-match
+  like mine-match
+
+  sift found
+    case some
+      back value
+    case none
+      back
+        make mine-match
+          bind rule, <>
+          bind start, -1
+          bind end, -1
+          bind children, make list
+
+# the numbers a sum matched, wherever they stand, as written
+task numbers-in
+  take match, like mine-match
+  take source, like text
+  like text
+
+  back join(collect-numbers(match, source), <,>)
+
+task collect-numbers
+  take match, like mine-match
+  take source, like text
+  like list, like text
+
+  save out, make list
+  walk match/children
+    take one
+    fork test, is-equal(one/rule, <number>)
+      hold
+        push(out, match-text(one, source))
+      miss
+        walk collect-numbers(one, source)
+          take inner
+          push(out, inner)
+  back out
+
+test <a grammar made into an engine refuses nothing it can run>
+  want hold, is-equal(sums()/refused/length, 0)
+
+test <the whole text matched, each rule a node named by the rule, each read where it stood>
+  host engine, sums()
+  host outcome, run-mine(engine, <sum>, <12+(3+45)+6>)
+  host root, matched-root(outcome/match)
+  want hold, and(outcome/ok, is-equal(numbers-in(root, <12+(3+45)+6>), <12,3,45,6>))
+  want hold, and(is-equal(root/rule, <sum>), and(is-equal(root/start, 0), is-equal(root/end, 11)))
+  want hold, is-equal(matches-named(root, <term>)/length, 3)
+
+test <ordered choice: a group is tried only where a number is not>
+  host outcome, run-mine(sums(), <term>, <(7)>)
+  want hold, outcome/ok
+
+test <a failure is where the run got furthest, with what was required there>
+  host outcome, run-mine(sums(), <sum>, <1+(2+>)
+  want hold, and(not(outcome/ok), is-equal(outcome/at, 5))
+
+test <a whole match followed by more is refused where the more begins>
+  host outcome, run-mine(sums(), <sum>, <1+2x>)
+  want hold, and(not(outcome/ok), and(is-equal(outcome/at, 3), is-equal(outcome/matched, 3)))
+
+test <a closing bracket left out is what was required>
+  host outcome, run-mine(sums(), <sum>, <(1+2>)
+  want hold, is-equal(join(outcome/expected, < >), <`)`>)
+
+test <a construct that reads bytes is refused when the engine is made, by name>
+  save lines, make list
+  push(lines, <mine header>)
+  push(lines, <  mine byte, code 0x89>)
+  host engine, engine-of(lines)
+  want hold, is-equal(engine/refused/length, 1)
+
+test <a rule the grammar does not define is refused when the engine is made>
+  save lines, make list
+  push(lines, <mine start>)
+  push(lines, <  mine form, form missing>)
+  host engine, engine-of(lines)
+  want hold, is-equal(engine/refused/length, 1)
+
+test <four thousand terms, nested and flat, in one pass: each rule read once at each place>
+  save parts, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, 2000)
+    hook hold
+      push(parts, <(1+23)>)
+      push(parts, <456>)
+      save k, add(k, 1)
+  host source, join(parts, <+>)
+  host outcome, run-mine(sums(), <sum>, source)
+  want hold, outcome/ok

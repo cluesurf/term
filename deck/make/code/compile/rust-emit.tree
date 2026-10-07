@@ -1429,8 +1429,10 @@ task plain-list
       save nothing, 0
   back <Vec::new()>
 
-# a value flowing into an `unknown` slot boxes, a literal integer pinned to `i64` and a list or a hash naming its own
-# type; a read or a call whose own type is unknown is already the boxed dynamic
+# A value flowing into an `unknown` slot boxes, a literal integer pinned to `i64` and a list or a hash naming its own
+# type. A read or a call whose own type is unknown is already the boxed dynamic, and so is one whose type is `dynamic`,
+# a native module's answer: a channel's `receive` hands back the `Rc<dyn Any>` it was sent, and boxing that again put
+# an `Rc` where the receiver's downcast wanted the message (test/compile/roundtrip.ts, the two Rust channel programs)
 task box-unknown
   take into, like maybe, like type
   take value, like expression
@@ -1444,7 +1446,7 @@ task box-unknown
       back rendered
   save form, form-of(value)
   save kind, kind-of-node(value)
-  fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), is-equal(kind, <unknown>))
+  fork test, and(or(or(is-equal(form, <variable>), is-equal(form, <member>)), or(is-equal(form, <call>), is-equal(form, <await>))), or(is-equal(kind, <unknown>), is-equal(kind, <dynamic>)))
     hold
       back rendered
   fork test, is-equal(form, <integer>)
@@ -4961,7 +4963,23 @@ task emit-assign
               fork test, and(and(or(is-equal(kind, <map>), is-equal(named, <hash>)), is-equal(op, <=>)), has-index)
                 hold
                   save key, <>
-                  fork test, and(facts/context/text-keys, is-text(expression-type(slot)))
+                  # a key is text when the map says so, which holds where the key's own type was never written
+                  # down: a local saved from a generic call (`save key, get(fields, 0)`)
+                  save text-key, is-text(expression-type(slot))
+                  sift expression-type(member-target)
+                    case some
+                      link known
+                      sift known
+                        case map
+                          link map-key
+                          fork test, is-text(make(some, map-key))
+                            hold
+                              save text-key, true
+                        miss
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+                  fork test, and(facts/context/text-keys, text-key)
                     hold
                       save key, <TermKey::from({str-of(slot, st, facts)})>
                     miss

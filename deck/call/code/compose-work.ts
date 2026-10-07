@@ -23,6 +23,7 @@ import { startKotlinWorker } from '@term/call/code/kotlin-worker'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import { closeRun, followChild, openRun, report } from '@term/call/code/output'
+import { findEntry } from '@term/call/code/boot'
 
 export type ComposeTarget = 'compose' | 'compose-android'
 
@@ -60,7 +61,8 @@ export function startComposeWork(input: {
   onEvent: (event: WorkEvent) => void
 }): ComposeWork {
   const root = resolve(input.root)
-  const entry = join(root, input.entry ?? 'app.tree')
+  // the file `--entry` names, else the manifest's `boot` line, else the older `app.tree` (compose.ts `makeCompose`)
+  const entry = findEntry(root, input.entry) ?? join(root, input.entry ?? 'app.tree')
   const out = join(root, 'host', input.target)
   const { identifier } = composeIdentity(root)
   const address = join(out, ADDRESS)

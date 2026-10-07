@@ -15,16 +15,32 @@ import { disambiguate } from '@term/make/code/check/disambiguate'
 // re-targets it once the argument types are known.
 export const overloadGroups = new Map<string, string[]>()
 
+// what each render runtime name the view lowering writes is called once the build has split names by file (D020): the
+// name -> the name render.tree itself reaches (`append` -> `append__in0_1` when @term/base/file and the dom both define
+// it). Filled here from the names the caller asks about, read by the view lowering (compile.ts, check/views.ts).
+export const runtimeBound = new Map<string, string>()
+
 // Returns the references it could not bind. `entry` is the file whose own definitions keep their names when a name is
-// split by file, because its roots and its exported API are called by them.
-export function disambiguateOverloads(program: Program, scope?: ImportScope, entry?: string): Diagnostic[] {
-  const answer = disambiguate(program, scopeList(scope), entry ?? '')
+// split by file, because its roots and its exported API are called by them. `runtime` names the render runtime's tasks
+// to bind (compile.ts passes them), and `runtimeBound` holds the answer.
+export function disambiguateOverloads(
+  program: Program,
+  scope?: ImportScope,
+  entry?: string,
+  runtime: string[] = [],
+): Diagnostic[] {
+  const answer = disambiguate(program, scopeList(scope), runtime, entry ?? '')
 
   program.splice(0, program.length, ...(answer.program as Program))
   overloadGroups.clear()
+  runtimeBound.clear()
 
   for (const group of answer.groups) {
     overloadGroups.set(group.name, group.members)
+  }
+
+  for (const pair of answer.runtime) {
+    runtimeBound.set(pair.name, pair.bound)
   }
 
   return answer.diagnostics

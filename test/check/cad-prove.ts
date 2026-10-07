@@ -70,7 +70,7 @@ function goal(
   cmp: 'is-above' | 'is-minimum',
   lhs: E,
 ): string {
-  const decls = vars.map(v => `  mark ${v}, like integer`).join('\n')
+  const decls = vars.map(v => `  seat ${v}, like integer`).join('\n')
 
   return `rule ${rule}\n${decls}\n  show hold\n    call ${cmp}\n${render(lhs, 6)}\n      code 0\n  calm hold\n`
 }

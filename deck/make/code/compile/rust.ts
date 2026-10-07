@@ -301,6 +301,16 @@ function emitRustPass(
   // Keyed `form/case`. A struct name some form already takes leaves its case as it was
   const payloads = new Map<string, string>()
   const takenNames = new Set(program.flatMap(n => (n.form === 'record-type' ? [pascal(n.name)] : [])))
+  // a field that holds the form INSIDE a type stored in place (`index: maybe latex-node` is `Maybe<LatexNode>`, an
+  // enum holding the node by value) is as recursive as one naming the form, and Rust refuses the enum the same way
+  // (E0072). It is no `recursiveFields` entry, since the `Rc` that wrapping writes would be around the `Maybe`, so the
+  // case takes the payload box instead, which makes the variant one pointer whatever its fields hold. A list, hash or
+  // set already holds its elements behind a pointer
+  const indirect = new Set(['list', 'hash', 'set'])
+  const holdsInPlace = (type: Type, form: string): boolean =>
+    type.kind === 'named' &&
+    !indirect.has(type.name) &&
+    (type.args ?? []).some(arg => (arg.kind === 'named' && arg.name === form) || holdsInPlace(arg, form))
 
   // A form the program clones (held by `Rc`) takes the same payload behind its `Rc`: `Link(Rc<ChainLink>)`, so a value
   // is one pointer and a clone one count, where `Link { value, next: Rc<Chain> }` was a 16-byte value copied with every
@@ -315,7 +325,10 @@ function emitRustPass(
     for (const v of node.variants) {
       const name = `${pascal(node.name)}${pascal(v.name)}`
 
-      if (v.fields.some(f => recursiveFields.has(`${v.name}/${f.name}`)) && !takenNames.has(name)) {
+      if (
+        v.fields.some(f => recursiveFields.has(`${v.name}/${f.name}`) || holdsInPlace(f.type, node.name)) &&
+        !takenNames.has(name)
+      ) {
         payloads.set(`${node.name}/${v.name}`, name)
       }
     }

@@ -73,7 +73,13 @@ function last(text: string): string {
 // ---- where each spelling lands ----
 
 ok('`role note, x + y` is a sibling of the name', tree('a x, role note, x + y') === '(a (x) (role (note) {line:x + y}))', tree('a x, role note, x + y'))
-ok('`role note x + y` nests under the name', tree('a x, role note x + y') === '(a (x) (role (note {line:x + y})))', tree('a x, role note x + y'))
+const spaced = parse({ file: 'scope.tree', text: 'a x, role note x + y' })
+
+ok(
+  '`role note x + y` is refused, naming the comma: a role scope follows a comma',
+  !spaced.ok && spaced.diagnostics.some(d => /a `role` scope follows a comma: `role note, x \+ y`/.test(d.message) && d.span.start.column === 14),
+  JSON.stringify(spaced.diagnostics.map(d => [d.message, d.span.start])),
+)
 ok('`role note(x + y)` in parentheses', tree('a role note(f(x) + y)') === '(a (role (note {paren:f(x) + y})))', tree('a role note(f(x) + y)'))
 ok(
   '`role note` over a block, its lines dedented and kept',

@@ -30,6 +30,7 @@ import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import {
   disambiguateOverloads,
   overloadGroups,
+  runtimeBound,
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
 import { bindFormsByImport } from '@term/make/code/check/scope'
@@ -1009,11 +1010,15 @@ export function compileProgram(
 
   program = pending.program
 
-  const ambiguities = disambiguateOverloads(program, scope, naming ?? file)
+  const ambiguities = disambiguateOverloads(program, scope, naming ?? file, ZONE_RENDER_RUNTIME)
 
   if (ambiguities.length) {
     return { ok: false, diagnostics: ambiguities }
   }
+
+  // the render runtime names as the build bound them (a name two files define is split by file, D020): the view
+  // lowering, the prune's pins and the checker's lowered copy all use these
+  const runtimeNames = [...runtimeBound].map(([name, bound]) => ({ name, bound }))
 
   // the chosen implementations, BEFORE names are bound, so the twins and the dispatch are checked like any task
   if (selected) {
@@ -1087,6 +1092,7 @@ export function compileProgram(
 
       for (const helper of ZONE_RENDER_RUNTIME) {
         pruneRoots.add(helper)
+        pruneRoots.add(runtimeBound.get(helper) ?? helper)
       }
     }
 
@@ -1470,7 +1476,7 @@ export function compileProgram(
       // keep the original program (views intact) for the editor's navigation /
       // find-references; lower only the copy that feeds the TS emitter.
       program,
-      typescript: emitTypeScript(lowerViews(program)),
+      typescript: emitTypeScript(lowerViews(program, runtimeNames)),
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,
@@ -1492,9 +1498,9 @@ export function compileProgram(
   // runtime (+ component calls / slots), so every backend emits components as
   // ordinary functions with no view-specific codegen. Runs last, after simplify,
   // exactly where the view emit used to happen. See code/compile/view-lower.ts.
-  const loweredProgram = lowerViews(optimized)
+  const loweredProgram = lowerViews(optimized, runtimeNames)
   const loweredTs = hasTraitGenerics
-    ? lowerViews(tsOptimized)
+    ? lowerViews(tsOptimized, runtimeNames)
     : loweredProgram
 
   // a member call on a list or a map that no native backend lowers, refused on Rust, Swift and Kotlin before anything is

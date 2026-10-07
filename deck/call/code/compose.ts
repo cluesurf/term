@@ -24,10 +24,12 @@ import { compile } from '@term/make/code/compile/compile'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { collectModules } from '@term/make/code/compile/load'
 import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
+import type { Program } from '@term/make/code/compile/node'
 import { checkScope } from '@term/call/code/scope'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
-import { entrySpelling } from '@term/make/code/compile/native-main'
+import { entryOf as entryTaskOf } from '@term/make/code/compile/native-main'
+import { findEntry } from '@term/call/code/boot'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
@@ -39,6 +41,18 @@ import * as plan from '@term/call/code/compose-plan'
 // prelude and flags checks, and what a failure is reported as. This face runs the compilers and tools.
 import { kotlinc } from '@term/call/code/kotlin-worker'
 import type { KotlinCompiler } from '@term/call/code/kotlin-worker'
+
+// the program's entry task as Kotlin spells it: `boot`, as every Term program's is, else the older `main` (`main_` in
+// Kotlin, compile/native-main.ts `entrySpelling`, which keeps `main` for the JVM's own start). THE ENTRY FILE'S OWN
+// first: a program may load a `boot` from another module and start at its own `main` (test/compile/blog-native.ts
+// loads the blog page's asynchronous `boot` and drives it from `main`), and the emitted text alone cannot tell the two
+function startTask(program: Program, file: string, kotlin: string): string {
+  const own = (name: string): boolean => program.some(s => s.form === 'function' && s.name === name && s.span.file === file)
+  const named = ['boot', 'main'].find(own)
+  const found = named ? entryTaskOf('kotlin', kotlin, named) : undefined
+
+  return found ?? entryTaskOf('kotlin', kotlin, 'boot') ?? entryTaskOf('kotlin', kotlin, 'main') ?? 'main_'
+}
 
 // the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
 function toolchainScript(): string {
@@ -241,9 +255,9 @@ export function buildCompose({
     return { form: 'failed', stage: 'scope', reason: refused }
   }
 
-  // the program's `task main` is spelled `main_` in Kotlin (compile/native-main.ts `entrySpelling`), which keeps `main`
-  // for the JVM's own start: this is that start, and it calls the program's
-  const kotlin = `${emitKotlin(result.program)}\nfun main() { ${entrySpelling('kotlin', 'main')}() }\n`
+  // the JVM's own start, which calls the program's entry
+  const emitted = emitKotlin(result.program)
+  const kotlin = `${emitted}\nfun main() { ${startTask(result.program, entry, emitted)}() }\n`
   const prelude = nativePrelude(result.program, 'compose', readRuntime, kotlin)
 
   // the Compose runtime and not the Android one: no Android class may reach a desktop build
@@ -356,7 +370,7 @@ export function buildComposeAndroid({
 
   const kotlin = emitKotlin(result.program)
   const prelude = nativePrelude(result.program, 'compose-android', readRuntime, kotlin)
-  const driver = ['class TermActivity : TermComposeActivity() {', `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`, '}'].join('\n')
+  const driver = ['class TermActivity : TermComposeActivity() {', `  override fun program() { ${startTask(result.program, entry, kotlin)}() }`, '}'].join('\n')
 
   // 1. the libraries and the compiler plugin
   const script = toolchainScript()
@@ -718,8 +732,9 @@ export function composeIdentity(root: string): { name: string; identifier: strin
   return { name: identity.name, identifier: identity.identifier }
 }
 
-// `term make --target compose|compose-android`: the app's entry (`app.tree` by default, a program with a `main` task
-// that opens a root, mounts its views and runs the app) built into `host/<target>/`
+// `term make --target compose|compose-android`: the app's entry (the file the manifest's `boot` line names, else the
+// older `app.tree`: a program with a `boot` task, or the older `main`, that opens a root, mounts its views and runs the
+// app) built into `host/<target>/`
 //
 // It prints through the terminal output library (code/output.ts): a `make` run with one `build` item for the target,
 // and a closing item. A failure is THROWN, as before, so a caller (test/compile/compose-make.ts) can read the reason;
@@ -727,11 +742,11 @@ export function composeIdentity(root: string): { name: string; identifier: strin
 // than as a bug in Term. `failure` names a missing toolchain (`environment`, exit 3 under section 18) for a `failRun`
 // that reads it; today's exits 1 either way.
 export async function makeCompose(input: { root: string; target: 'compose' | 'compose-android'; entry?: string }): Promise<{ app: string }> {
-  const entry = join(input.root, input.entry ?? 'app.tree')
+  const entry = findEntry(input.root, input.entry) ?? join(input.root, input.entry ?? 'app.tree')
   openRun({ verb: 'make', root: input.root, facts: [`--target ${input.target}`] })
 
   if (!existsSync(entry)) {
-    throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a Compose app is a program with a \`main\` task (--entry names another file)`, 'usage')
+    throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a Compose app is a program with a \`boot\` task, named by the \`boot\` line of deck.tree (--entry names another file)`, 'usage')
   }
 
   const { name, identifier } = composeIdentity(input.root)

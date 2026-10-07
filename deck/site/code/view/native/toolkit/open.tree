@@ -3,6 +3,8 @@
 
 dock load
   load <global:native-open>, name native-open
+  # the confirmed presentation the share sheet goes up by on iOS (native-present.swift)
+  load <global:native-present>, name native-present
 
 task hand-address
   take address, like text
@@ -18,4 +20,12 @@ task present-share
   send back
     call native-open/share
       read text
+      wait true
+
+task present-share-file
+  take path, like text
+  like text
+  send back
+    call native-open/share-file
+      read path
       wait true

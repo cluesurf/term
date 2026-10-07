@@ -32,4 +32,8 @@ object nativeOpen {
             "unavailable"
         }
     }
+
+    // a file is offered to another app only as a content:// address from a FileProvider the manifest declares, which
+    // the build does not write yet, so a file is not shared here (beat-term-0003)
+    suspend fun shareFile(path: String): String = "unavailable"
 }

@@ -1,0 +1,2498 @@
+# The LaTeX grammar: every character of a LaTeX math source is read here, and nowhere else
+# (note/term/mill/04-latex-grammar.md). The build runs it with the text grammar engine (deck/make/code/compile/
+# mine-text.tree) from the copy baked into ./grammar.tree, and the reader (./read.tree) reads what it matched by these
+# rule names.
+#
+# TeX is read in two layers, the way TeX itself reads it. THIS FILE IS THE FIRST: the source as TOKENS, a command
+# (`\frac`), a character (`x`, `é`), a run of space, a comment, a `\verb`. The second layer, which command takes how
+# many arguments and what a macro expands to, is the command table's (./table.tree, from KaTeX's registries) and the
+# reader's: it changes as the source defines macros, so no grammar of characters could say it.
+#
+# `tokens` follows KaTeX's lexer (src/Lexer.ts, its `tokenRegex`) alternative for alternative, in its order:
+#
+#   space            a run of space, tab, carriage return and line feed, which reads as one space
+#   control-space    `\` and a line break, or `\` and spaces and at most one line break: the command `\ `
+#   comment          `%` to the end of its line, the line feed with it
+#   character        any character but a control character, `\`, U+2028, U+2029 or one in the private use area,
+#                    with the combining marks after it
+#   verb             `\verb|...|` and `\verb*|...|`, to the same delimiter on the same line
+#   verb-wide        `\verb` with a delimiter outside printable ASCII, and the rest of its line
+#   control-word     `\` and letters or `@`, with the space after it, which belongs to no token
+#   control-symbol   `\` and any one character
+#
+# `\verb` closes with the character it opened with, which a grammar of fixed rules cannot say with one rule, so for a
+# printable ASCII delimiter it says it with one rule for each, at the end of this file: `\verb*` takes any printable
+# ASCII delimiter and `\verb` any but a letter and `*` (KaTeX's `\\verb\*([^]).*?\4` and `\\verb([^*a-zA-Z]).*?\5`).
+# Those rules are written by `pnpm term:latex-table --commit`, and its `--check` fails while they are not what it
+# writes. Any other delimiter is `verb-wide`, which the lexer closes.
+#
+# The rest are the small languages KaTeX reads out of an argument's text, each its own start rule: a size
+# (`size-text`, `size-search`, `graphic-number`), a color (`color-text`), a number (`whole-number`, `column-count`,
+# `integer-text`), and the attribute lists of `\htmlData` and `\includegraphics`.
+
+# ---- tokens ----
+
+mine tokens
+  mine list
+    mine form, form token
+
+mine token
+  mine any
+    mine form, form space
+    mine form, form control-space
+    mine form, form comment
+    mine form, form character
+    mine form, form verb
+    mine form, form verb-wide
+    mine form, form control-word
+    mine form, form control-symbol
+
+# inside `\url` and `\href`, where `%` is a character and starts no comment
+mine url-tokens
+  mine list
+    mine form, form url-token
+
+mine url-token
+  mine any
+    mine form, form space
+    mine form, form control-space
+    mine form, form character
+    mine form, form verb
+    mine form, form verb-wide
+    mine form, form control-word
+    mine form, form control-symbol
+
+mine space
+  mine form, form space-character
+  mine list
+    mine form, form space-character
+
+mine space-character
+  mine any
+    mine char, code 0x0020
+    mine char, code 0x000d
+    mine char, code 0x000a
+    mine char, code 0x0009
+
+# a space that is not a line break
+mine line-space
+  mine any
+    mine char, code 0x0020
+    mine char, code 0x000d
+    mine char, code 0x0009
+
+mine control-space
+  mine char, code 0x005c
+  mine any
+    mine char, code 0x000a
+    mine form, form line-space-run
+  mine list
+    mine form, form line-space
+
+mine line-space-run
+  mine form, form line-space
+  mine list
+    mine form, form line-space
+  mine maybe
+    mine char, code 0x000a
+
+mine comment
+  mine char, code 0x0025
+  mine list
+    mine not
+      mine char, code 0x000a
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+  mine maybe
+    mine char, code 0x000a
+
+mine character
+  mine form, form base-character
+  mine list
+    mine form, form combining-mark
+
+# what KaTeX's character class `[!-\[\]-‧‪-퟿豈-￿]` holds, and every character past U+FFFF
+mine base-character
+  mine any
+    mine range
+      bind base, code 0x0021
+      bind head, code 0x005b
+    mine range
+      bind base, code 0x005d
+      bind head, code 0x2027
+    mine range
+      bind base, code 0x202a
+      bind head, code 0xd7ff
+    mine range
+      bind base, code 0xf900
+      bind head, code 0xffff
+    mine range
+      bind base, code 0x10000
+      bind head, code 0x10ffff
+
+mine combining-mark
+  mine range
+    bind base, code 0x0300
+    bind head, code 0x036f
+
+mine verb
+  mine text, text <\\verb>
+  mine any
+    mine form, form verb-starred
+    mine form, form verb-plain
+
+mine verb-starred
+  mine char, code 0x002a
+  mine form, form verb-starred-body
+
+# `verb-starred-body`, `verb-plain` and one `verb-delimited-XXXX` with its `verb-content-XXXX` for each delimiter are
+# at the end of this file, written by `pnpm term:latex-table --commit`
+
+# `\verb` with a delimiter outside printable ASCII (`\verb§x§`, a tab, a line feed), which no rule can close, since a
+# rule cannot name a character it has read. This reads the opening, the delimiter and the rest of the line, and the
+# lexer closes it where the delimiter comes again (./lex.tree `close-verb`). A line with no second delimiter is the
+# command `\verb`, read by `verb-command`, as KaTeX reads it
+mine verb-wide
+  mine text, text <\\verb>
+  mine maybe
+    mine form, form verb-wide-starred
+  mine form, form verb-wide-delimiter
+  mine form, form verb-line
+
+mine verb-wide-starred
+  mine char, code 0x002a
+
+mine verb-wide-delimiter
+  mine any
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x001f
+    mine range
+      bind base, code 0x007f
+      bind head, code 0x10ffff
+
+# what `.` matches in KaTeX's pattern: anything but a line feed, a carriage return, U+2028 or U+2029
+mine verb-line
+  mine list
+    mine form, form verb-line-character
+
+mine verb-line-character
+  mine not
+    mine char, code 0x000a
+    mine char, code 0x000d
+    mine char, code 0x2028
+    mine char, code 0x2029
+  mine range
+    bind base, code 0x0000
+    bind head, code 0x10ffff
+
+# the command `\verb` and the space after it, where a delimiter past ASCII is never closed
+mine verb-command
+  mine form, form control-word
+
+mine control-word
+  mine char, code 0x005c
+  mine form, form command-name
+  mine list
+    mine form, form space-character
+
+mine command-name
+  mine form, form command-letter
+  mine list
+    mine form, form command-letter
+
+mine command-letter
+  mine any
+    mine range
+      bind base, text <a>
+      bind head, text <z>
+    mine range
+      bind base, text <A>
+      bind head, text <Z>
+    mine char, code 0x0040
+
+# any one character of the Basic Multilingual Plane after `\`, KaTeX's `\\[^\uD800-\uDFFF]`: a surrogate on its own is
+# none, so `\` before one is no token
+mine control-symbol
+  mine char, code 0x005c
+  mine any
+    mine range
+      bind base, code 0x0000
+      bind head, code 0xd7ff
+    mine range
+      bind base, code 0xe000
+      bind head, code 0xffff
+
+# ---- a size: `2em`, `-0.5 ex`, `.3mu` ----
+
+# what KaTeX accepts as a size written without braces, `\kern2em`, read a token at a time while the whole of it still
+# reads (src/Parser.ts `parseSizeGroup`): `^[-+]? *(?:$|\d+|\d+\.\d*|\.\d*) *[a-z]{0,2} *$`. Its group is no option:
+# after the sign the text ends, or a number follows, so `em` alone is no size
+mine size-text
+  mine maybe
+    mine form, form sign
+  mine form, form spaces
+  mine maybe
+    mine any
+      mine form, form whole-then-fraction
+      mine form, form bare-fraction
+    mine form, form spaces
+    mine maybe
+      mine form, form lower-letter
+      mine maybe
+        mine form, form lower-letter
+    mine form, form spaces
+
+mine whole-then-fraction
+  mine form, form digits
+  mine maybe
+    mine char, code 0x002e
+    mine list
+      mine form, form digit
+
+mine bare-fraction
+  mine char, code 0x002e
+  mine list
+    mine form, form digit
+
+# the first size anywhere in the text, as KaTeX's unanchored `([-+]?) *(\d+(?:\.\d*)?|\.\d+) *([a-z]{2})` finds it
+mine size-search
+  mine any
+    mine form, form size-found
+    mine form, form size-skip
+
+mine size-found
+  mine form, form measure
+  mine list
+    mine form, form any-character
+
+mine size-skip
+  mine form, form any-character
+  mine form, form size-search
+
+mine measure
+  mine maybe
+    mine form, form sign
+  mine form, form spaces
+  mine form, form amount
+  mine form, form spaces
+  mine form, form unit
+
+mine amount
+  mine any
+    mine form, form whole-then-fraction
+    mine form, form fraction-digits
+
+mine fraction-digits
+  mine char, code 0x002e
+  mine form, form digits
+
+mine unit
+  mine form, form lower-letter
+  mine form, form lower-letter
+
+# an `\includegraphics` size with no unit, which is in `bp`: `^[-+]? *(\d+(\.\d*)?|\.\d+)$`
+mine graphic-number
+  mine maybe
+    mine form, form sign
+  mine form, form spaces
+  mine form, form amount
+
+# ---- a color: `#f00`, `#ff0000`, `ff0000`, `red` ----
+
+# KaTeX's `^(#[a-f0-9]{3,4}|#[a-f0-9]{6}|#[a-f0-9]{8}|[a-f0-9]{6}|[a-z]+)$`, either case. After `#` the longest length
+# is tried first: digits left over fail the whole text, as they fail the regular expression, which has no other way to
+# read a `#`
+mine color-text
+  mine any
+    mine form, form hash-color
+    mine form, form hex-color
+    mine form, form named-color
+
+mine hash-color
+  mine char, code 0x0023
+  mine any
+    mine form, form hex-eight
+    mine form, form hex-six
+    mine form, form hex-four
+    mine form, form hex-three
+
+mine hex-eight
+  mine mark
+    bind width, code 8
+    mine form, form hex-digit
+
+mine hex-six
+  mine mark
+    bind width, code 6
+    mine form, form hex-digit
+
+mine hex-four
+  mine mark
+    bind width, code 4
+    mine form, form hex-digit
+
+mine hex-three
+  mine mark
+    bind width, code 3
+    mine form, form hex-digit
+
+# six hex digits written without `#`, followed by no letter and no digit, so `abcdefg` is a name
+mine hex-color
+  mine mark
+    bind width, code 6
+    mine form, form hex-digit
+  mine not
+    mine char, text <0>
+    mine char, text <1>
+    mine char, text <2>
+    mine char, text <3>
+    mine char, text <4>
+    mine char, text <5>
+    mine char, text <6>
+    mine char, text <7>
+    mine char, text <8>
+    mine char, text <9>
+    mine char, text <a>
+    mine char, text <b>
+    mine char, text <c>
+    mine char, text <d>
+    mine char, text <e>
+    mine char, text <f>
+    mine char, text <g>
+    mine char, text <h>
+    mine char, text <i>
+    mine char, text <j>
+    mine char, text <k>
+    mine char, text <l>
+    mine char, text <m>
+    mine char, text <n>
+    mine char, text <o>
+    mine char, text <p>
+    mine char, text <q>
+    mine char, text <r>
+    mine char, text <s>
+    mine char, text <t>
+    mine char, text <u>
+    mine char, text <v>
+    mine char, text <w>
+    mine char, text <x>
+    mine char, text <y>
+    mine char, text <z>
+    mine char, text <A>
+    mine char, text <B>
+    mine char, text <C>
+    mine char, text <D>
+    mine char, text <E>
+    mine char, text <F>
+    mine char, text <G>
+    mine char, text <H>
+    mine char, text <I>
+    mine char, text <J>
+    mine char, text <K>
+    mine char, text <L>
+    mine char, text <M>
+    mine char, text <N>
+    mine char, text <O>
+    mine char, text <P>
+    mine char, text <Q>
+    mine char, text <R>
+    mine char, text <S>
+    mine char, text <T>
+    mine char, text <U>
+    mine char, text <V>
+    mine char, text <W>
+    mine char, text <X>
+    mine char, text <Y>
+    mine char, text <Z>
+
+mine named-color
+  mine form, form latin-letter
+  mine list
+    mine form, form latin-letter
+
+# ---- numbers ----
+
+# `\newcommand{\x}[2]`'s count: `^\s*[0-9]+\s*$`
+mine whole-number
+  mine form, form script-spaces
+  mine form, form digits
+  mine form, form script-spaces
+
+# `\begin{alignat}{2}`'s count: `^[0-9]+$`
+mine column-count
+  mine form, form digits
+
+# what JavaScript's `parseInt` reads at the front of a text, which is how KaTeX reads `\@char{65}`: space, a sign,
+# then `0x` and hex digits or decimal digits, and anything at all after them
+mine integer-text
+  mine form, form script-spaces
+  mine maybe
+    mine form, form sign
+  mine any
+    mine form, form hex-integer
+    mine form, form digits
+  mine list
+    mine form, form any-character
+
+mine hex-integer
+  mine char, text <0>
+  mine any
+    mine char, text <x>
+    mine char, text <X>
+  mine list
+    mine form, form hex-digit
+
+# what JavaScript's `parseFloat` reads at the front of a text, which is how KaTeX reads `\arraystretch`: space, a
+# sign, digits with a point and an exponent, and anything after them
+mine float-text
+  mine form, form script-spaces
+  mine form, form float-number
+  mine list
+    mine form, form any-character
+
+mine float-number
+  mine maybe
+    mine form, form sign
+  mine form, form amount
+  mine maybe
+    mine form, form exponent
+
+mine exponent
+  mine any
+    mine char, text <e>
+    mine char, text <E>
+  mine maybe
+    mine form, form sign
+  mine form, form digits
+
+# ---- a url ----
+
+# `\url` and `\href` take `\` off before `#`, `$`, `%`, `&`, `~`, `_`, `^`, `{` and `}` (src/Parser.ts
+# `parseUrlGroup`)
+mine url-text
+  mine list
+    mine any
+      mine form, form url-escape
+      mine form, form any-character
+
+mine url-escape
+  mine char, code 0x005c
+  mine form, form url-escaped
+
+mine url-escaped
+  mine any
+    mine char, code 0x0023
+    mine char, code 0x0024
+    mine char, code 0x0025
+    mine char, code 0x0026
+    mine char, code 0x007e
+    mine char, code 0x005f
+    mine char, code 0x005e
+    mine char, code 0x007b
+    mine char, code 0x007d
+
+# A url's protocol, as KaTeX finds it before it trusts a link (src/utils.ts `protocolFromUrl`):
+# `^[\x00-\x20]*([^\\/#?]*?)(:|&#0*58|&#x0*3a|&colon)`, case insensitive. The scheme is as SHORT as it can be, so at
+# each character a separator is tried before the character is taken into the scheme. A url this does not read has no
+# protocol and is relative
+mine url-protocol
+  mine list
+    mine form, form url-blank
+  mine form, form url-scheme-search
+
+mine url-blank
+  mine range
+    bind base, code 0x0000
+    bind head, code 0x0020
+
+mine url-scheme-search
+  mine any
+    mine form, form url-separator-rest
+    mine form, form url-scheme-step
+
+mine url-scheme-step
+  mine form, form url-scheme-character
+  mine form, form url-scheme-search
+
+mine url-scheme-character
+  mine not
+    mine char, code 0x005c
+    mine char, code 0x002f
+    mine char, code 0x0023
+    mine char, code 0x003f
+  mine form, form any-character
+
+mine url-separator-rest
+  mine any
+    mine form, form url-colon
+    mine form, form url-entity-colon
+  mine list
+    mine form, form any-character
+
+mine url-colon
+  mine char, code 0x003a
+
+# `&#58`, `&#x3a` with any zeros before the digits, and `&colon`, a colon KaTeX refuses to read a scheme before
+mine url-entity-colon
+  mine char, code 0x0026
+  mine any
+    mine form, form url-decimal-colon
+    mine form, form url-hex-colon
+    mine form, form url-named-colon
+
+mine url-decimal-colon
+  mine char, code 0x0023
+  mine list
+    mine char, code 0x0030
+  mine text, text <58>
+
+mine url-hex-colon
+  mine char, code 0x0023
+  mine any
+    mine char, code 0x0078
+    mine char, code 0x0058
+  mine list
+    mine char, code 0x0030
+  mine char, code 0x0033
+  mine any
+    mine char, code 0x0061
+    mine char, code 0x0041
+
+mine url-named-colon
+  mine any
+    mine char, code 0x0063
+    mine char, code 0x0043
+  mine any
+    mine char, code 0x006f
+    mine char, code 0x004f
+  mine any
+    mine char, code 0x006c
+    mine char, code 0x004c
+  mine any
+    mine char, code 0x006f
+    mine char, code 0x004f
+  mine any
+    mine char, code 0x006e
+    mine char, code 0x004e
+
+# a scheme RFC 3986 allows, `^[a-zA-Z][a-zA-Z0-9+\-.]*$`
+mine url-scheme-name
+  mine form, form latin-letter
+  mine list
+    mine any
+      mine form, form latin-letter
+      mine form, form digit
+      mine char, code 0x002b
+      mine char, code 0x002d
+      mine char, code 0x002e
+
+# ---- attribute lists ----
+
+# `\htmlData{key=value, other=value}`: items between commas, `{,}` a comma inside one, each a key, `=` and a value
+mine data-attributes
+  mine form, form data-item
+  mine list
+    mine char, code 0x002c
+    mine form, form data-item
+
+mine data-item
+  mine any
+    mine form, form data-pair
+    mine form, form data-bare
+
+mine data-pair
+  mine form, form data-key
+  mine char, code 0x003d
+  mine form, form data-value
+
+mine data-key
+  mine list
+    mine any
+      mine form, form escaped-comma
+      mine form, form key-character
+
+mine data-value
+  mine list
+    mine any
+      mine form, form escaped-comma
+      mine form, form value-character
+
+# an item with no `=`, which KaTeX refuses
+mine data-bare
+  mine form, form data-value
+
+mine escaped-comma
+  mine text, text <\{,\}>
+
+mine key-character
+  mine not
+    mine char, code 0x002c
+    mine char, code 0x003d
+  mine form, form any-character
+
+mine value-character
+  mine not
+    mine char, code 0x002c
+  mine form, form any-character
+
+# `\includegraphics[width=2em, height=1em]`: items between commas, each a key and a value when it holds exactly one
+# `=`, and passed over when it does not
+mine graphic-attributes
+  mine form, form graphic-item
+  mine list
+    mine char, code 0x002c
+    mine form, form graphic-item
+
+mine graphic-item
+  mine any
+    mine form, form graphic-pair
+    mine form, form graphic-other
+
+mine graphic-pair
+  mine form, form graphic-part
+  mine char, code 0x003d
+  mine form, form graphic-part
+  mine not
+    mine char, code 0x003d
+
+mine graphic-part
+  mine list
+    mine form, form key-character
+
+mine graphic-other
+  mine list
+    mine form, form value-character
+
+# ---- characters ----
+
+mine sign
+  mine any
+    mine char, code 0x002b
+    mine char, code 0x002d
+
+mine spaces
+  mine list
+    mine char, code 0x0020
+
+mine digits
+  mine form, form digit
+  mine list
+    mine form, form digit
+
+mine digit
+  mine range
+    bind base, text <0>
+    bind head, text <9>
+
+mine hex-digit
+  mine any
+    mine form, form digit
+    mine range
+      bind base, text <a>
+      bind head, text <f>
+    mine range
+      bind base, text <A>
+      bind head, text <F>
+
+mine lower-letter
+  mine range
+    bind base, text <a>
+    bind head, text <z>
+
+mine latin-letter
+  mine any
+    mine range
+      bind base, text <a>
+      bind head, text <z>
+    mine range
+      bind base, text <A>
+      bind head, text <Z>
+
+# what JavaScript's `\s` matches
+mine script-spaces
+  mine list
+    mine any
+      mine char, code 0x0009
+      mine char, code 0x000a
+      mine char, code 0x000b
+      mine char, code 0x000c
+      mine char, code 0x000d
+      mine char, code 0x0020
+      mine char, code 0x00a0
+      mine char, code 0x1680
+      mine range
+        bind base, code 0x2000
+        bind head, code 0x200a
+      mine char, code 0x2028
+      mine char, code 0x2029
+      mine char, code 0x202f
+      mine char, code 0x205f
+      mine char, code 0x3000
+      mine char, code 0xfeff
+
+mine any-character
+  mine range
+    bind base, code 0x0000
+    bind head, code 0x10ffff
+
+# ---- the `\verb` delimiters: GENERATED by `pnpm term:latex-table --commit` from here to the end ----
+
+mine verb-starred-body
+  mine any
+    mine form, form verb-delimited-0020
+    mine form, form verb-delimited-0021
+    mine form, form verb-delimited-0022
+    mine form, form verb-delimited-0023
+    mine form, form verb-delimited-0024
+    mine form, form verb-delimited-0025
+    mine form, form verb-delimited-0026
+    mine form, form verb-delimited-0027
+    mine form, form verb-delimited-0028
+    mine form, form verb-delimited-0029
+    mine form, form verb-delimited-002a
+    mine form, form verb-delimited-002b
+    mine form, form verb-delimited-002c
+    mine form, form verb-delimited-002d
+    mine form, form verb-delimited-002e
+    mine form, form verb-delimited-002f
+    mine form, form verb-delimited-0030
+    mine form, form verb-delimited-0031
+    mine form, form verb-delimited-0032
+    mine form, form verb-delimited-0033
+    mine form, form verb-delimited-0034
+    mine form, form verb-delimited-0035
+    mine form, form verb-delimited-0036
+    mine form, form verb-delimited-0037
+    mine form, form verb-delimited-0038
+    mine form, form verb-delimited-0039
+    mine form, form verb-delimited-003a
+    mine form, form verb-delimited-003b
+    mine form, form verb-delimited-003c
+    mine form, form verb-delimited-003d
+    mine form, form verb-delimited-003e
+    mine form, form verb-delimited-003f
+    mine form, form verb-delimited-0040
+    mine form, form verb-delimited-0041
+    mine form, form verb-delimited-0042
+    mine form, form verb-delimited-0043
+    mine form, form verb-delimited-0044
+    mine form, form verb-delimited-0045
+    mine form, form verb-delimited-0046
+    mine form, form verb-delimited-0047
+    mine form, form verb-delimited-0048
+    mine form, form verb-delimited-0049
+    mine form, form verb-delimited-004a
+    mine form, form verb-delimited-004b
+    mine form, form verb-delimited-004c
+    mine form, form verb-delimited-004d
+    mine form, form verb-delimited-004e
+    mine form, form verb-delimited-004f
+    mine form, form verb-delimited-0050
+    mine form, form verb-delimited-0051
+    mine form, form verb-delimited-0052
+    mine form, form verb-delimited-0053
+    mine form, form verb-delimited-0054
+    mine form, form verb-delimited-0055
+    mine form, form verb-delimited-0056
+    mine form, form verb-delimited-0057
+    mine form, form verb-delimited-0058
+    mine form, form verb-delimited-0059
+    mine form, form verb-delimited-005a
+    mine form, form verb-delimited-005b
+    mine form, form verb-delimited-005c
+    mine form, form verb-delimited-005d
+    mine form, form verb-delimited-005e
+    mine form, form verb-delimited-005f
+    mine form, form verb-delimited-0060
+    mine form, form verb-delimited-0061
+    mine form, form verb-delimited-0062
+    mine form, form verb-delimited-0063
+    mine form, form verb-delimited-0064
+    mine form, form verb-delimited-0065
+    mine form, form verb-delimited-0066
+    mine form, form verb-delimited-0067
+    mine form, form verb-delimited-0068
+    mine form, form verb-delimited-0069
+    mine form, form verb-delimited-006a
+    mine form, form verb-delimited-006b
+    mine form, form verb-delimited-006c
+    mine form, form verb-delimited-006d
+    mine form, form verb-delimited-006e
+    mine form, form verb-delimited-006f
+    mine form, form verb-delimited-0070
+    mine form, form verb-delimited-0071
+    mine form, form verb-delimited-0072
+    mine form, form verb-delimited-0073
+    mine form, form verb-delimited-0074
+    mine form, form verb-delimited-0075
+    mine form, form verb-delimited-0076
+    mine form, form verb-delimited-0077
+    mine form, form verb-delimited-0078
+    mine form, form verb-delimited-0079
+    mine form, form verb-delimited-007a
+    mine form, form verb-delimited-007b
+    mine form, form verb-delimited-007c
+    mine form, form verb-delimited-007d
+    mine form, form verb-delimited-007e
+
+mine verb-plain
+  mine any
+    mine form, form verb-delimited-0020
+    mine form, form verb-delimited-0021
+    mine form, form verb-delimited-0022
+    mine form, form verb-delimited-0023
+    mine form, form verb-delimited-0024
+    mine form, form verb-delimited-0025
+    mine form, form verb-delimited-0026
+    mine form, form verb-delimited-0027
+    mine form, form verb-delimited-0028
+    mine form, form verb-delimited-0029
+    mine form, form verb-delimited-002b
+    mine form, form verb-delimited-002c
+    mine form, form verb-delimited-002d
+    mine form, form verb-delimited-002e
+    mine form, form verb-delimited-002f
+    mine form, form verb-delimited-0030
+    mine form, form verb-delimited-0031
+    mine form, form verb-delimited-0032
+    mine form, form verb-delimited-0033
+    mine form, form verb-delimited-0034
+    mine form, form verb-delimited-0035
+    mine form, form verb-delimited-0036
+    mine form, form verb-delimited-0037
+    mine form, form verb-delimited-0038
+    mine form, form verb-delimited-0039
+    mine form, form verb-delimited-003a
+    mine form, form verb-delimited-003b
+    mine form, form verb-delimited-003c
+    mine form, form verb-delimited-003d
+    mine form, form verb-delimited-003e
+    mine form, form verb-delimited-003f
+    mine form, form verb-delimited-0040
+    mine form, form verb-delimited-005b
+    mine form, form verb-delimited-005c
+    mine form, form verb-delimited-005d
+    mine form, form verb-delimited-005e
+    mine form, form verb-delimited-005f
+    mine form, form verb-delimited-0060
+    mine form, form verb-delimited-007b
+    mine form, form verb-delimited-007c
+    mine form, form verb-delimited-007d
+    mine form, form verb-delimited-007e
+
+mine verb-delimited-0020
+  mine char, code 0x0020
+  mine form, form verb-content-0020
+  mine char, code 0x0020
+
+mine verb-content-0020
+  mine list
+    mine not
+      mine char, code 0x0020
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0021
+  mine char, code 0x0021
+  mine form, form verb-content-0021
+  mine char, code 0x0021
+
+mine verb-content-0021
+  mine list
+    mine not
+      mine char, code 0x0021
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0022
+  mine char, code 0x0022
+  mine form, form verb-content-0022
+  mine char, code 0x0022
+
+mine verb-content-0022
+  mine list
+    mine not
+      mine char, code 0x0022
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0023
+  mine char, code 0x0023
+  mine form, form verb-content-0023
+  mine char, code 0x0023
+
+mine verb-content-0023
+  mine list
+    mine not
+      mine char, code 0x0023
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0024
+  mine char, code 0x0024
+  mine form, form verb-content-0024
+  mine char, code 0x0024
+
+mine verb-content-0024
+  mine list
+    mine not
+      mine char, code 0x0024
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0025
+  mine char, code 0x0025
+  mine form, form verb-content-0025
+  mine char, code 0x0025
+
+mine verb-content-0025
+  mine list
+    mine not
+      mine char, code 0x0025
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0026
+  mine char, code 0x0026
+  mine form, form verb-content-0026
+  mine char, code 0x0026
+
+mine verb-content-0026
+  mine list
+    mine not
+      mine char, code 0x0026
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0027
+  mine char, code 0x0027
+  mine form, form verb-content-0027
+  mine char, code 0x0027
+
+mine verb-content-0027
+  mine list
+    mine not
+      mine char, code 0x0027
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0028
+  mine char, code 0x0028
+  mine form, form verb-content-0028
+  mine char, code 0x0028
+
+mine verb-content-0028
+  mine list
+    mine not
+      mine char, code 0x0028
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0029
+  mine char, code 0x0029
+  mine form, form verb-content-0029
+  mine char, code 0x0029
+
+mine verb-content-0029
+  mine list
+    mine not
+      mine char, code 0x0029
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002a
+  mine char, code 0x002a
+  mine form, form verb-content-002a
+  mine char, code 0x002a
+
+mine verb-content-002a
+  mine list
+    mine not
+      mine char, code 0x002a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002b
+  mine char, code 0x002b
+  mine form, form verb-content-002b
+  mine char, code 0x002b
+
+mine verb-content-002b
+  mine list
+    mine not
+      mine char, code 0x002b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002c
+  mine char, code 0x002c
+  mine form, form verb-content-002c
+  mine char, code 0x002c
+
+mine verb-content-002c
+  mine list
+    mine not
+      mine char, code 0x002c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002d
+  mine char, code 0x002d
+  mine form, form verb-content-002d
+  mine char, code 0x002d
+
+mine verb-content-002d
+  mine list
+    mine not
+      mine char, code 0x002d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002e
+  mine char, code 0x002e
+  mine form, form verb-content-002e
+  mine char, code 0x002e
+
+mine verb-content-002e
+  mine list
+    mine not
+      mine char, code 0x002e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-002f
+  mine char, code 0x002f
+  mine form, form verb-content-002f
+  mine char, code 0x002f
+
+mine verb-content-002f
+  mine list
+    mine not
+      mine char, code 0x002f
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0030
+  mine char, code 0x0030
+  mine form, form verb-content-0030
+  mine char, code 0x0030
+
+mine verb-content-0030
+  mine list
+    mine not
+      mine char, code 0x0030
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0031
+  mine char, code 0x0031
+  mine form, form verb-content-0031
+  mine char, code 0x0031
+
+mine verb-content-0031
+  mine list
+    mine not
+      mine char, code 0x0031
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0032
+  mine char, code 0x0032
+  mine form, form verb-content-0032
+  mine char, code 0x0032
+
+mine verb-content-0032
+  mine list
+    mine not
+      mine char, code 0x0032
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0033
+  mine char, code 0x0033
+  mine form, form verb-content-0033
+  mine char, code 0x0033
+
+mine verb-content-0033
+  mine list
+    mine not
+      mine char, code 0x0033
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0034
+  mine char, code 0x0034
+  mine form, form verb-content-0034
+  mine char, code 0x0034
+
+mine verb-content-0034
+  mine list
+    mine not
+      mine char, code 0x0034
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0035
+  mine char, code 0x0035
+  mine form, form verb-content-0035
+  mine char, code 0x0035
+
+mine verb-content-0035
+  mine list
+    mine not
+      mine char, code 0x0035
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0036
+  mine char, code 0x0036
+  mine form, form verb-content-0036
+  mine char, code 0x0036
+
+mine verb-content-0036
+  mine list
+    mine not
+      mine char, code 0x0036
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0037
+  mine char, code 0x0037
+  mine form, form verb-content-0037
+  mine char, code 0x0037
+
+mine verb-content-0037
+  mine list
+    mine not
+      mine char, code 0x0037
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0038
+  mine char, code 0x0038
+  mine form, form verb-content-0038
+  mine char, code 0x0038
+
+mine verb-content-0038
+  mine list
+    mine not
+      mine char, code 0x0038
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0039
+  mine char, code 0x0039
+  mine form, form verb-content-0039
+  mine char, code 0x0039
+
+mine verb-content-0039
+  mine list
+    mine not
+      mine char, code 0x0039
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003a
+  mine char, code 0x003a
+  mine form, form verb-content-003a
+  mine char, code 0x003a
+
+mine verb-content-003a
+  mine list
+    mine not
+      mine char, code 0x003a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003b
+  mine char, code 0x003b
+  mine form, form verb-content-003b
+  mine char, code 0x003b
+
+mine verb-content-003b
+  mine list
+    mine not
+      mine char, code 0x003b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003c
+  mine char, code 0x003c
+  mine form, form verb-content-003c
+  mine char, code 0x003c
+
+mine verb-content-003c
+  mine list
+    mine not
+      mine char, code 0x003c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003d
+  mine char, code 0x003d
+  mine form, form verb-content-003d
+  mine char, code 0x003d
+
+mine verb-content-003d
+  mine list
+    mine not
+      mine char, code 0x003d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003e
+  mine char, code 0x003e
+  mine form, form verb-content-003e
+  mine char, code 0x003e
+
+mine verb-content-003e
+  mine list
+    mine not
+      mine char, code 0x003e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-003f
+  mine char, code 0x003f
+  mine form, form verb-content-003f
+  mine char, code 0x003f
+
+mine verb-content-003f
+  mine list
+    mine not
+      mine char, code 0x003f
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0040
+  mine char, code 0x0040
+  mine form, form verb-content-0040
+  mine char, code 0x0040
+
+mine verb-content-0040
+  mine list
+    mine not
+      mine char, code 0x0040
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0041
+  mine char, code 0x0041
+  mine form, form verb-content-0041
+  mine char, code 0x0041
+
+mine verb-content-0041
+  mine list
+    mine not
+      mine char, code 0x0041
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0042
+  mine char, code 0x0042
+  mine form, form verb-content-0042
+  mine char, code 0x0042
+
+mine verb-content-0042
+  mine list
+    mine not
+      mine char, code 0x0042
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0043
+  mine char, code 0x0043
+  mine form, form verb-content-0043
+  mine char, code 0x0043
+
+mine verb-content-0043
+  mine list
+    mine not
+      mine char, code 0x0043
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0044
+  mine char, code 0x0044
+  mine form, form verb-content-0044
+  mine char, code 0x0044
+
+mine verb-content-0044
+  mine list
+    mine not
+      mine char, code 0x0044
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0045
+  mine char, code 0x0045
+  mine form, form verb-content-0045
+  mine char, code 0x0045
+
+mine verb-content-0045
+  mine list
+    mine not
+      mine char, code 0x0045
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0046
+  mine char, code 0x0046
+  mine form, form verb-content-0046
+  mine char, code 0x0046
+
+mine verb-content-0046
+  mine list
+    mine not
+      mine char, code 0x0046
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0047
+  mine char, code 0x0047
+  mine form, form verb-content-0047
+  mine char, code 0x0047
+
+mine verb-content-0047
+  mine list
+    mine not
+      mine char, code 0x0047
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0048
+  mine char, code 0x0048
+  mine form, form verb-content-0048
+  mine char, code 0x0048
+
+mine verb-content-0048
+  mine list
+    mine not
+      mine char, code 0x0048
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0049
+  mine char, code 0x0049
+  mine form, form verb-content-0049
+  mine char, code 0x0049
+
+mine verb-content-0049
+  mine list
+    mine not
+      mine char, code 0x0049
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004a
+  mine char, code 0x004a
+  mine form, form verb-content-004a
+  mine char, code 0x004a
+
+mine verb-content-004a
+  mine list
+    mine not
+      mine char, code 0x004a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004b
+  mine char, code 0x004b
+  mine form, form verb-content-004b
+  mine char, code 0x004b
+
+mine verb-content-004b
+  mine list
+    mine not
+      mine char, code 0x004b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004c
+  mine char, code 0x004c
+  mine form, form verb-content-004c
+  mine char, code 0x004c
+
+mine verb-content-004c
+  mine list
+    mine not
+      mine char, code 0x004c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004d
+  mine char, code 0x004d
+  mine form, form verb-content-004d
+  mine char, code 0x004d
+
+mine verb-content-004d
+  mine list
+    mine not
+      mine char, code 0x004d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004e
+  mine char, code 0x004e
+  mine form, form verb-content-004e
+  mine char, code 0x004e
+
+mine verb-content-004e
+  mine list
+    mine not
+      mine char, code 0x004e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-004f
+  mine char, code 0x004f
+  mine form, form verb-content-004f
+  mine char, code 0x004f
+
+mine verb-content-004f
+  mine list
+    mine not
+      mine char, code 0x004f
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0050
+  mine char, code 0x0050
+  mine form, form verb-content-0050
+  mine char, code 0x0050
+
+mine verb-content-0050
+  mine list
+    mine not
+      mine char, code 0x0050
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0051
+  mine char, code 0x0051
+  mine form, form verb-content-0051
+  mine char, code 0x0051
+
+mine verb-content-0051
+  mine list
+    mine not
+      mine char, code 0x0051
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0052
+  mine char, code 0x0052
+  mine form, form verb-content-0052
+  mine char, code 0x0052
+
+mine verb-content-0052
+  mine list
+    mine not
+      mine char, code 0x0052
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0053
+  mine char, code 0x0053
+  mine form, form verb-content-0053
+  mine char, code 0x0053
+
+mine verb-content-0053
+  mine list
+    mine not
+      mine char, code 0x0053
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0054
+  mine char, code 0x0054
+  mine form, form verb-content-0054
+  mine char, code 0x0054
+
+mine verb-content-0054
+  mine list
+    mine not
+      mine char, code 0x0054
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0055
+  mine char, code 0x0055
+  mine form, form verb-content-0055
+  mine char, code 0x0055
+
+mine verb-content-0055
+  mine list
+    mine not
+      mine char, code 0x0055
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0056
+  mine char, code 0x0056
+  mine form, form verb-content-0056
+  mine char, code 0x0056
+
+mine verb-content-0056
+  mine list
+    mine not
+      mine char, code 0x0056
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0057
+  mine char, code 0x0057
+  mine form, form verb-content-0057
+  mine char, code 0x0057
+
+mine verb-content-0057
+  mine list
+    mine not
+      mine char, code 0x0057
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0058
+  mine char, code 0x0058
+  mine form, form verb-content-0058
+  mine char, code 0x0058
+
+mine verb-content-0058
+  mine list
+    mine not
+      mine char, code 0x0058
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0059
+  mine char, code 0x0059
+  mine form, form verb-content-0059
+  mine char, code 0x0059
+
+mine verb-content-0059
+  mine list
+    mine not
+      mine char, code 0x0059
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005a
+  mine char, code 0x005a
+  mine form, form verb-content-005a
+  mine char, code 0x005a
+
+mine verb-content-005a
+  mine list
+    mine not
+      mine char, code 0x005a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005b
+  mine char, code 0x005b
+  mine form, form verb-content-005b
+  mine char, code 0x005b
+
+mine verb-content-005b
+  mine list
+    mine not
+      mine char, code 0x005b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005c
+  mine char, code 0x005c
+  mine form, form verb-content-005c
+  mine char, code 0x005c
+
+mine verb-content-005c
+  mine list
+    mine not
+      mine char, code 0x005c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005d
+  mine char, code 0x005d
+  mine form, form verb-content-005d
+  mine char, code 0x005d
+
+mine verb-content-005d
+  mine list
+    mine not
+      mine char, code 0x005d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005e
+  mine char, code 0x005e
+  mine form, form verb-content-005e
+  mine char, code 0x005e
+
+mine verb-content-005e
+  mine list
+    mine not
+      mine char, code 0x005e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-005f
+  mine char, code 0x005f
+  mine form, form verb-content-005f
+  mine char, code 0x005f
+
+mine verb-content-005f
+  mine list
+    mine not
+      mine char, code 0x005f
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0060
+  mine char, code 0x0060
+  mine form, form verb-content-0060
+  mine char, code 0x0060
+
+mine verb-content-0060
+  mine list
+    mine not
+      mine char, code 0x0060
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0061
+  mine char, code 0x0061
+  mine form, form verb-content-0061
+  mine char, code 0x0061
+
+mine verb-content-0061
+  mine list
+    mine not
+      mine char, code 0x0061
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0062
+  mine char, code 0x0062
+  mine form, form verb-content-0062
+  mine char, code 0x0062
+
+mine verb-content-0062
+  mine list
+    mine not
+      mine char, code 0x0062
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0063
+  mine char, code 0x0063
+  mine form, form verb-content-0063
+  mine char, code 0x0063
+
+mine verb-content-0063
+  mine list
+    mine not
+      mine char, code 0x0063
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0064
+  mine char, code 0x0064
+  mine form, form verb-content-0064
+  mine char, code 0x0064
+
+mine verb-content-0064
+  mine list
+    mine not
+      mine char, code 0x0064
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0065
+  mine char, code 0x0065
+  mine form, form verb-content-0065
+  mine char, code 0x0065
+
+mine verb-content-0065
+  mine list
+    mine not
+      mine char, code 0x0065
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0066
+  mine char, code 0x0066
+  mine form, form verb-content-0066
+  mine char, code 0x0066
+
+mine verb-content-0066
+  mine list
+    mine not
+      mine char, code 0x0066
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0067
+  mine char, code 0x0067
+  mine form, form verb-content-0067
+  mine char, code 0x0067
+
+mine verb-content-0067
+  mine list
+    mine not
+      mine char, code 0x0067
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0068
+  mine char, code 0x0068
+  mine form, form verb-content-0068
+  mine char, code 0x0068
+
+mine verb-content-0068
+  mine list
+    mine not
+      mine char, code 0x0068
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0069
+  mine char, code 0x0069
+  mine form, form verb-content-0069
+  mine char, code 0x0069
+
+mine verb-content-0069
+  mine list
+    mine not
+      mine char, code 0x0069
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006a
+  mine char, code 0x006a
+  mine form, form verb-content-006a
+  mine char, code 0x006a
+
+mine verb-content-006a
+  mine list
+    mine not
+      mine char, code 0x006a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006b
+  mine char, code 0x006b
+  mine form, form verb-content-006b
+  mine char, code 0x006b
+
+mine verb-content-006b
+  mine list
+    mine not
+      mine char, code 0x006b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006c
+  mine char, code 0x006c
+  mine form, form verb-content-006c
+  mine char, code 0x006c
+
+mine verb-content-006c
+  mine list
+    mine not
+      mine char, code 0x006c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006d
+  mine char, code 0x006d
+  mine form, form verb-content-006d
+  mine char, code 0x006d
+
+mine verb-content-006d
+  mine list
+    mine not
+      mine char, code 0x006d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006e
+  mine char, code 0x006e
+  mine form, form verb-content-006e
+  mine char, code 0x006e
+
+mine verb-content-006e
+  mine list
+    mine not
+      mine char, code 0x006e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-006f
+  mine char, code 0x006f
+  mine form, form verb-content-006f
+  mine char, code 0x006f
+
+mine verb-content-006f
+  mine list
+    mine not
+      mine char, code 0x006f
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0070
+  mine char, code 0x0070
+  mine form, form verb-content-0070
+  mine char, code 0x0070
+
+mine verb-content-0070
+  mine list
+    mine not
+      mine char, code 0x0070
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0071
+  mine char, code 0x0071
+  mine form, form verb-content-0071
+  mine char, code 0x0071
+
+mine verb-content-0071
+  mine list
+    mine not
+      mine char, code 0x0071
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0072
+  mine char, code 0x0072
+  mine form, form verb-content-0072
+  mine char, code 0x0072
+
+mine verb-content-0072
+  mine list
+    mine not
+      mine char, code 0x0072
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0073
+  mine char, code 0x0073
+  mine form, form verb-content-0073
+  mine char, code 0x0073
+
+mine verb-content-0073
+  mine list
+    mine not
+      mine char, code 0x0073
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0074
+  mine char, code 0x0074
+  mine form, form verb-content-0074
+  mine char, code 0x0074
+
+mine verb-content-0074
+  mine list
+    mine not
+      mine char, code 0x0074
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0075
+  mine char, code 0x0075
+  mine form, form verb-content-0075
+  mine char, code 0x0075
+
+mine verb-content-0075
+  mine list
+    mine not
+      mine char, code 0x0075
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0076
+  mine char, code 0x0076
+  mine form, form verb-content-0076
+  mine char, code 0x0076
+
+mine verb-content-0076
+  mine list
+    mine not
+      mine char, code 0x0076
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0077
+  mine char, code 0x0077
+  mine form, form verb-content-0077
+  mine char, code 0x0077
+
+mine verb-content-0077
+  mine list
+    mine not
+      mine char, code 0x0077
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0078
+  mine char, code 0x0078
+  mine form, form verb-content-0078
+  mine char, code 0x0078
+
+mine verb-content-0078
+  mine list
+    mine not
+      mine char, code 0x0078
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-0079
+  mine char, code 0x0079
+  mine form, form verb-content-0079
+  mine char, code 0x0079
+
+mine verb-content-0079
+  mine list
+    mine not
+      mine char, code 0x0079
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-007a
+  mine char, code 0x007a
+  mine form, form verb-content-007a
+  mine char, code 0x007a
+
+mine verb-content-007a
+  mine list
+    mine not
+      mine char, code 0x007a
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-007b
+  mine char, code 0x007b
+  mine form, form verb-content-007b
+  mine char, code 0x007b
+
+mine verb-content-007b
+  mine list
+    mine not
+      mine char, code 0x007b
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-007c
+  mine char, code 0x007c
+  mine form, form verb-content-007c
+  mine char, code 0x007c
+
+mine verb-content-007c
+  mine list
+    mine not
+      mine char, code 0x007c
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-007d
+  mine char, code 0x007d
+  mine form, form verb-content-007d
+  mine char, code 0x007d
+
+mine verb-content-007d
+  mine list
+    mine not
+      mine char, code 0x007d
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff
+
+mine verb-delimited-007e
+  mine char, code 0x007e
+  mine form, form verb-content-007e
+  mine char, code 0x007e
+
+mine verb-content-007e
+  mine list
+    mine not
+      mine char, code 0x007e
+      mine char, code 0x000a
+      mine char, code 0x000d
+      mine char, code 0x2028
+      mine char, code 0x2029
+    mine range
+      bind base, code 0x0000
+      bind head, code 0x10ffff

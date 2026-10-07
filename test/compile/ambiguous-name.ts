@@ -126,8 +126,7 @@ task run-helper
   // native-dom-0036: a form's method calling a sibling by bare name, while another module has a top-level task of that
   // name at another arity. The top-level one used to take the call, refused as one argument too many inside box.tree
   const box = `form box
-  link items, like list
-    like text
+  link items, like list, like text
 
   task drop
     take self

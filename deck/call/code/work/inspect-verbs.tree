@@ -55,6 +55,8 @@ form mold-ask
   link check, like boolean
   link trees, like boolean
   link lines, like boolean
+  link code, like boolean
+  link canonical, like boolean
 
 form boot-ask
   link root, like text
@@ -128,6 +130,8 @@ task mold
   take check, like boolean
   take trees, like boolean
   take lines, like boolean
+  take code, like boolean
+  take canonical, like boolean
 
   like void
 
@@ -146,6 +150,8 @@ task mold
         bind check, read check
         bind trees, read trees
         bind lines, read lines
+        bind code, read code
+        bind canonical, read canonical
       wait true
   halt take
     take error

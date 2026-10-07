@@ -1,0 +1,27 @@
+# beat-term-0004.
+# A download: a URL's bytes written to a file, whatever they are. The stdlib's HTTP client answers text, and a song is
+# binary. URLSession on macOS and iOS; java.net's HttpURLConnection on Android and under Compose on the desktop.
+#
+#   download-file(url, path)   `downloaded <bytes>`, the file written (its folder made when it is not there);
+#                              `failed <status>` when the server answered a status other than 2xx; `failed 0` when no
+#                              answer came (no network, a refused or timed out connection, an address that is not one);
+#                              unavailable where there is no file system to write to
+#
+# A file at `path` is replaced only when the download succeeds, so a failed one leaves an earlier copy as it was. On
+# iOS a download from the local network (a laptop on the same Wi-Fi) asks the person's leave the first time, which the
+# build declares (NSLocalNetworkUsageDescription, deck/call/code/device-grant.tree).
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/download
+  find fetch-to-file
+
+task download-file
+  take url, like text
+  take path, like text
+  like text
+  send back
+    call fetch-to-file
+      read url
+      read path

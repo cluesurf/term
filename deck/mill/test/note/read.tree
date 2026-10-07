@@ -117,10 +117,14 @@ test <relations and sets read, for a lowering to give a meaning>
 
 test <mistakes are reported where they were written>
   want hold, is-equal(shown(<>), <error at 0: there is nothing to read here>)
-  want hold, is-equal(shown(<x +>), <error at 3: the expression ends where a value was expected>)
-  want hold, is-equal(shown(<(x + 1>), <error at 6: the expression ends before its `)`>)
+  want hold, is-equal(shown(<x +>), <error at 3: the expression ends where a value was wanted>)
+  # a group, or the interval `(x + 1, 5)` it could still be
+  want hold, is-equal(shown(<(x + 1>), <error at 6: the expression ends where `,` or `)` was wanted>)
   want hold, is-equal(shown(<x y>), <error at 2: `y` cannot follow the expression before it>)
-  want hold, is-equal(shown(<x @ y>), <error at 2: `@` is no part of the note grammar>)
-  want hold, is-equal(shown(<"open>), <error at 0: this text is never closed>)
+  want hold, is-equal(shown(<x @ y>), <error at 2: `@` cannot follow the expression before it>)
+  want hold, is-equal(shown(<"open>), <error at 5: the expression ends where `"` was wanted>)
   want hold, is-equal(shown(<0xffpx>), <error at 0: a quantity's number is written in decimal>)
-  want hold, is-equal(shown(<9.81m/s^x>), <error at 7: a unit's power is a whole number written straight after its `^`>)
+  want hold, is-equal(shown(<and>), <error at 0: `and` is an operator, and a value was expected here>)
+
+test <a unit's power is a whole number: `^` and a name after a unit is a power of the quantity, which lowering refuses>
+  want hold, is-equal(shown(<9.81m/s^x>), <(^ (quantity 9.81 m/s m^1 s^-1) x)>)

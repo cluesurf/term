@@ -97,6 +97,19 @@ export async function callShow(input: {
   }
 }
 
+// the published version of term itself, read from this package's manifest at runtime. The bundled entry sits at
+// host/line.js, so the manifest is one directory up. Here and not in line.ts so the Term verbs (work/app-verbs.tree)
+// can dock it: line.ts exports nothing, and loading it runs the whole CLI
+export function termVersion(): string {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+
+    return String(manifest.version ?? '0.0.0')
+  } catch {
+    return '0.0.0'
+  }
+}
+
 // The toolchains each backend calls, and the version each answers with, or `not found`. A missing `cargo` or
 // `swiftc` was first seen when a `--target` build called it (guides: basics/install, 2026-10-04). Asks each one for
 // its version, so it reports what is on the PATH now, and installs nothing

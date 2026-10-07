@@ -6,12 +6,19 @@ mod signals {
     // The handler only records the signal. `siginterrupt` clears SA_RESTART, which `signal` sets on macOS and on glibc,
     // so a read blocked on the terminal returns EINTR when one arrives: `read-input` answers empty text, and the rounds
     // ask `take` what woke them. The numbers are the same on macOS and Linux: SIGHUP 1, SIGTERM 15, SIGWINCH 28.
-    use std::sync::atomic::{AtomicI32, Ordering};
+    //
+    // The program runs on a thread of its own, not the main one (compile/main-entry.tree `native-main`, a thread with a
+    // large stack), and the kernel hands a signal sent to the process to any thread that does not block it, most often
+    // the main thread, parked in `join`. A read is interrupted only on the thread the signal lands on, so the handler
+    // passes a signal that landed elsewhere on to the thread that called `watch`, the one reading the terminal.
+    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
     // the last signal not yet taken, 0 for none
     static PENDING: AtomicI32 = AtomicI32::new(0);
     // the signal that ended the program, 0 while it runs
     static STOPPED: AtomicI32 = AtomicI32::new(0);
+    // the thread that watches (a `pthread_t`, the size of a pointer on macOS and Linux), 0 before `watch`
+    static WATCHER: AtomicUsize = AtomicUsize::new(0);
 
     const RESIZE: i32 = 28;
     const WATCHED: [i32; 3] = [1, 15, RESIZE];
@@ -28,13 +35,22 @@ mod signals {
         fn siginterrupt(signum: i32, flag: i32) -> i32;
         fn kill(pid: i32, signum: i32) -> i32;
         fn getpid() -> i32;
+        fn pthread_self() -> usize;
+        fn pthread_kill(thread: usize, signum: i32) -> i32;
     }
 
+    // `pthread_self` and `pthread_kill` are both safe to call in a handler
     #[cfg(unix)]
     extern "C" fn notice(signum: i32) {
         PENDING.store(signum, Ordering::SeqCst);
         if signum != RESIZE {
             STOPPED.store(signum, Ordering::SeqCst);
+        }
+        let watcher = WATCHER.load(Ordering::SeqCst);
+        unsafe {
+            if watcher != 0 && pthread_self() != watcher {
+                pthread_kill(watcher, signum);
+            }
         }
     }
 
@@ -42,6 +58,7 @@ mod signals {
     pub fn watch() -> bool {
         #[cfg(unix)]
         unsafe {
+            WATCHER.store(pthread_self(), Ordering::SeqCst);
             for signum in WATCHED {
                 signal(signum, notice as usize);
                 siginterrupt(signum, 1);

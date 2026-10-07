@@ -178,9 +178,16 @@ task head-kind
   mark private
   take root, like scan-node
   like text
-  save head
-    call head-of
-      read root
+  send back
+    call kind-of-head
+      call head-of
+        read root
+
+# what a head word stands for, `<>` for a word that is no data head: `host` or `h` is `host`, and so on
+task kind-of-head
+  mark private
+  take head, like text
+  like text
   fork test
     hook test
       call or
@@ -705,9 +712,16 @@ task read-items
         hook hold
           fork test
             hook test
+              # `list` over an empty `list` (or `mesh`) is the same tree as `list <key>`, and a list's items have no
+              # key, so a data head there is the first item, as a `true` or a `void` is. The compiler's reader holds
+              # the same rule (deck/make/code/compile/host-data.tree)
               call and
                 call key-is-word(read one)
-                call not(call is-scalar-word(call key-of(read one)))
+                call and
+                  call not(call is-scalar-word(call key-of(read one)))
+                  call is-equal
+                    call kind-of-head(call key-of(read one))
+                    text <>
             hook hold
               halt data-defect
                 bind rule

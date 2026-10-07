@@ -19,7 +19,7 @@ import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
-import { expandTemplates } from '@term/make/code/compile/template'
+import { collectTemplates, expandTemplates } from '@term/make/code/compile/template'
 import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
@@ -91,6 +91,22 @@ function frontEnd(env: Env, entry: string, roots: string[]): Program {
   const { sources, scope } = collectModules({ file: 'main.tree', text: entry }, withNativeEnv(env, resolver))
   const program: Program = []
 
+  // every module's templates, before any is expanded, as the build gathers them (compile/compile.ts): a `fuse` may
+  // name a template another module defines, which is how @term/base/integer/unsigned makes `to-u8` from
+  // integer/n.tree's `integer`. Expanding each file against its own templates alone left that fuse unexpanded, and
+  // the gzip writer's `to-u8` undefined on every native backend
+  const templates = new Map<string, ReturnType<typeof collectTemplates> extends Map<string, infer T> ? T : never>()
+
+  for (const unit of sources) {
+    const parsed = parse(unit)
+
+    if (parsed.ok) {
+      for (const [name, template] of collectTemplates(parsed.tree)) {
+        templates.set(name, template)
+      }
+    }
+  }
+
   for (const unit of sources) {
     const parsed = parse(unit)
 
@@ -98,7 +114,7 @@ function frontEnd(env: Env, entry: string, roots: string[]): Program {
       throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
     }
 
-    const built = mill(expandTemplates(parsed.tree), unit.file)
+    const built = mill(expandTemplates(parsed.tree, templates), unit.file)
 
     if (!built.ok) {
       throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)

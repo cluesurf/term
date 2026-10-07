@@ -1,115 +1,169 @@
-mark draft
-# The `note` grammar, stated in the mine vocabulary: a checked spec, not compiled code, as ../json/mine.tree is. The
-# reader that runs is ./read.tree, by hand, for the one thing this vocabulary cannot say: a QUANTITY is a number and a
-# REGISTERED unit (@term/base/unit `unit-table`), so `unit` below matches the registry's symbols, and `20foo` is a
-# mistake where this grammar alone would read `foo` as a name. note/term/mill/03-note-grammar.md is the prose.
+# The `note` grammar: ordinary notation, one expression (note/term/mill/03-note-grammar.md). This file IS the parser.
+# The build runs it with the text grammar engine (deck/make/code/compile/mine-text.tree), and the note reader
+# (./read.tree) reads what it matched by these rule names, so a change here is a change to what `note` reads.
 #
-# One expression, lowest precedence first. Each level is its operand and then any number of operator and operand
-# pairs: left to right, except `power`, whose exponent is itself a `unary`, so `2^3^2` is `2^(3^2)`. White space is
-# allowed between any two parts, and is MEANING in one place: inside a quantity's unit, where none may stand.
+# Lowest precedence first. Each level is its operand, then any number of operator and operand pairs, left to right,
+# except `power`, whose exponent is itself a `unary`, so `2^3^2` is `2^(3^2)`. White space is allowed between any two
+# parts, and is MEANING in one place: inside a quantity's unit, where none may stand. A word operator (`and`, `or`,
+# `not`, `in`, `union`, `intersect`) has a space after it, so it is never the start of a longer name.
+#
+# Two rules are the REGISTRY's: `registered-unit` and `currency-sign` are given when the grammar runs, from
+# @term/base/unit `unit-table`, each unit followed by no name character, longest symbol first. Stated here with one
+# entry each so the grammar reads on its own: the meter and the dollar.
+
+mine note
+  mine form, form space
+  mine form, form expression
+  mine form, form space
 
 mine expression
   mine form, form or
+
+# ---- the levels ----
 
 mine or
   mine form, form and
   mine list
     mine form, form space
-    mine any
-      mine text, text <or>
-      mine text, text <||>
+    mine form, form or-operator
     mine form, form space
     mine form, form and
+
+mine or-operator
+  mine any
+    mine text, text <||>
+    mine form, form word-or
+
+mine word-or
+  mine text, text <or>
+  mine form, form space-char
 
 mine and
   mine form, form relation
   mine list
     mine form, form space
-    mine any
-      mine text, text <and>
-      mine text, text <&&>
+    mine form, form and-operator
     mine form, form space
     mine form, form relation
+
+mine and-operator
+  mine any
+    mine text, text <&&>
+    mine form, form word-and
+
+mine word-and
+  mine text, text <and>
+  mine form, form space-char
 
 mine relation
   mine form, form comparison
   mine list
     mine form, form space
-    mine any
-      mine text, text <in>
-      mine char, text <∈>
-      mine text, text <-\>>
-      mine text, text <=\>>
-      mine char, text <~>
+    mine form, form relation-operator
     mine form, form space
     mine form, form comparison
+
+mine relation-operator
+  mine any
+    mine text, text <-\>>
+    mine text, text <=\>>
+    mine char, text <~>
+    mine char, text <∈>
+    mine form, form word-in
+
+mine word-in
+  mine text, text <in>
+  mine form, form space-char
 
 # a chain `0 < x < 10` reads as each pair, joined by `and`
 mine comparison
   mine form, form set-expression
   mine list
     mine form, form space
-    mine any
-      mine text, text <==>
-      mine text, text <!=>
-      mine text, text <\<=>
-      mine text, text <\>=>
-      mine char, text <=>
-      mine char, text <\<>
-      mine char, text <\>>
-      mine char, text <≤>
-      mine char, text <≥>
-      mine char, text <≠>
+    mine form, form comparison-operator
     mine form, form space
     mine form, form set-expression
+
+mine comparison-operator
+  mine any
+    mine text, text <==>
+    mine text, text <!=>
+    mine text, text <\<=>
+    mine text, text <\>=>
+    mine char, text <≤>
+    mine char, text <≥>
+    mine char, text <≠>
+    mine char, text <=>
+    mine char, text <\<>
+    mine char, text <\>>
 
 mine set-expression
   mine form, form range-expression
   mine list
     mine form, form space
-    mine any
-      mine text, text <union>
-      mine text, text <intersect>
-      mine char, text <\\>
-      mine char, text <∪>
-      mine char, text <∩>
+    mine form, form set-operator
     mine form, form space
     mine form, form range-expression
+
+mine set-operator
+  mine any
+    mine char, text <∪>
+    mine char, text <∩>
+    mine char, text <\\>
+    mine form, form word-union
+    mine form, form word-intersect
+
+mine word-union
+  mine text, text <union>
+  mine form, form space-char
+
+mine word-intersect
+  mine text, text <intersect>
+  mine form, form space-char
 
 # `1..10` holds both ends, `0..<100` leaves the end out
 mine range-expression
   mine form, form additive
   mine maybe
     mine form, form space
-    mine any
-      mine text, text <..\<>
-      mine text, text <..>
+    mine form, form range-operator
     mine form, form space
     mine form, form additive
+
+mine range-operator
+  mine any
+    mine text, text <..\<>
+    mine text, text <..>
 
 mine additive
   mine form, form product
   mine list
     mine form, form space
-    mine any
-      mine char, text <+>
-      mine char, text <->
+    mine form, form additive-operator
     mine form, form space
     mine form, form product
+
+mine additive-operator
+  mine any
+    mine char, text <+>
+    mine char, text <->
 
 mine product
   mine form, form unary
   mine list
     mine form, form space
-    mine any
-      mine char, text <*>
-      mine char, text </>
-      mine char, text <%>
-      mine char, text <×>
-      mine char, text <÷>
-      mine char, text <·>
+    mine form, form product-operator
     mine form, form space
     mine form, form unary
+
+mine product-operator
+  mine any
+    mine char, text <*>
+    mine char, text </>
+    mine char, text <%>
+    mine char, text <×>
+    mine char, text <÷>
+    mine char, text <·>
 
 mine unary
   mine any
@@ -117,24 +171,35 @@ mine unary
     mine form, form power
 
 mine signed
+  mine form, form unary-operator
+  mine form, form space
+  mine form, form unary
+
+mine unary-operator
   mine any
     mine char, text <->
     mine char, text <+>
     mine char, text <!>
     mine char, text <¬>
-    mine text, text <not>
-  mine form, form space
-  mine form, form unary
+    mine form, form word-not
 
+mine word-not
+  mine text, text <not>
+  mine form, form space-char
+
+# right to left, and the exponent may carry a sign: `2^-1`
 mine power
   mine form, form postfix
   mine maybe
     mine form, form space
-    mine char, text <^>
+    mine form, form power-operator
     mine form, form space
     mine form, form unary
 
-# a call and an index follow straight after, with nothing between: `f(x)`, `x[4]`. A member may be spaced: `a .b`
+mine power-operator
+  mine char, text <^>
+
+# a call and an index follow straight after: `f(x)`, `x[4]`, `a.b`
 mine postfix
   mine form, form primary
   mine list
@@ -156,7 +221,6 @@ mine index
   mine char, text <]>
 
 mine member
-  mine form, form space
   mine char, text <.>
   mine form, form name
 
@@ -171,19 +235,22 @@ mine items
       mine form, form expression
   mine form, form space
 
+# ---- primaries ----
+
 mine primary
   mine any
     mine form, form quantity
+    mine form, form unregistered-quantity
     mine form, form money
     mine form, form number
     mine form, form string
     mine form, form name
-    mine form, form interval
+    mine form, form closed-open-interval
+    mine form, form open-interval
     mine form, form group
     mine form, form list-literal
     mine form, form set-literal
 
-# `(x)`, and the intervals open at their start: `(0, 1)` holds neither end, `(0, 1]` its end
 mine group
   mine char, text <(>
   mine form, form space
@@ -191,10 +258,21 @@ mine group
   mine form, form space
   mine char, text <)>
 
-mine interval
-  mine any
-    mine char, text <(>
-    mine char, text <[>
+# `[0, 1)`: the start in, the end out. `[0, 1]` is a list
+mine closed-open-interval
+  mine char, text <[>
+  mine form, form space
+  mine form, form expression
+  mine form, form space
+  mine char, text <,>
+  mine form, form space
+  mine form, form expression
+  mine form, form space
+  mine char, text <)>
+
+# `(0, 1)` holds neither end, `(0, 1]` its end
+mine open-interval
+  mine char, text <(>
   mine form, form space
   mine form, form expression
   mine form, form space
@@ -203,10 +281,15 @@ mine interval
   mine form, form expression
   mine form, form space
   mine any
-    mine char, text <)>
-    mine char, text <]>
+    mine form, form open-end
+    mine form, form closed-end
 
-# `[1, 2, 3]`. `[0, 1]` is a list, and `[0, 1)` the interval
+mine open-end
+  mine char, text <)>
+
+mine closed-end
+  mine char, text <]>
+
 mine list-literal
   mine char, text <[>
   mine form, form items
@@ -217,74 +300,68 @@ mine set-literal
   mine form, form items
   mine char, text <\}>
 
-# ---- atoms ----
+# ---- quantities ----
 
 # A number and a REGISTERED unit: straight after it, or after spaces when the unit is a word. After the first unit,
-# UNIT MODE: `*` or `/` and another registered unit, and `^` and a whole power, nothing between any of them
+# UNIT MODE: `*` or `/` and another registered unit, and `^` and a whole power, nothing between any of them, so
+# `20MB/s` is one quantity and `20MB / s` a quantity divided by `s`
 mine quantity
   mine form, form number
   mine any
     mine form, form unit-expression
     mine form, form spaced-unit
 
-# `20 MB/s`: a space is allowed before a unit that is a word, and only there
+# `20 MB/s`: spaces are allowed before a unit that is a word, and only there, so `10 % 3` is a remainder
 mine spaced-unit
   mine list
-    mine char, code 0x0020
-  mine form, form word-unit-expression
+    mine form, form space-char
+  mine not
+    mine char, text <%>
+    mine char, text <°>
+  mine form, form unit-expression
 
 mine unit-expression
   mine form, form unit-power
   mine list
-    mine any
-      mine char, text <*>
-      mine char, text </>
+    mine form, form unit-operator
     mine form, form unit-power
 
-mine word-unit-expression
-  mine form, form word-unit
-  mine maybe
-    mine form, form unit-tail
-
-mine unit-tail
-  mine maybe
-    mine form, form exponent-of-unit
-  mine list
-    mine any
-      mine char, text <*>
-      mine char, text </>
-    mine form, form unit-power
+mine unit-operator
+  mine any
+    mine char, text <*>
+    mine char, text </>
 
 mine unit-power
-  mine form, form unit
+  mine form, form registered-unit
   mine maybe
-    mine form, form exponent-of-unit
+    mine form, form unit-exponent
 
-mine exponent-of-unit
+mine unit-exponent
   mine char, text <^>
   mine maybe
     mine char, text <->
   mine form, form digits
 
-# a registered unit's symbol (`m`, `MB`, `%`, `°`), as @term/base/unit `unit-table` lists them. Stated here as their
-# shape: the registry, not this rule, says which spellings are units
-mine unit
-  mine any
-    mine form, form word-unit
-    mine char, text <%>
-    mine char, text <°>
-
-mine word-unit
+# a number with a word straight after it that is no registered unit: read, so it is refused by the unit's name
+# (`20mb` is not twenty of anything), and never read as a product
+mine unregistered-quantity
+  mine form, form number
   mine form, form name
 
 # a currency's sign straight before the amount: `$20` is 20 USD
 mine money
-  mine any
-    mine char, text <$>
-    mine char, text <€>
-    mine char, text <£>
-    mine char, text <¥>
+  mine form, form currency-sign
   mine form, form number
+
+# the registry's: every registered unit's symbol, given when the grammar runs
+mine registered-unit
+  mine text, text <m>
+
+# the registry's: every currency's sign, given when the grammar runs
+mine currency-sign
+  mine char, text <$>
+
+# ---- atoms ----
 
 mine number
   mine any
@@ -300,6 +377,7 @@ mine radix-number
     mine char, text <B>
     mine char, text <o>
     mine char, text <O>
+  mine form, form hex-digit
   mine list
     mine any
       mine form, form hex-digit
@@ -312,14 +390,17 @@ mine decimal-number
     mine char, text <.>
     mine form, form digits
   mine maybe
+    mine form, form exponent
+
+mine exponent
+  mine any
+    mine char, text <e>
+    mine char, text <E>
+  mine maybe
     mine any
-      mine char, text <e>
-      mine char, text <E>
-    mine maybe
-      mine any
-        mine char, text <+>
-        mine char, text <->
-    mine form, form digits
+      mine char, text <+>
+      mine char, text <->
+  mine form, form digits
 
 mine digits
   mine form, form digit
@@ -373,10 +454,7 @@ mine string
   mine list
     mine any
       mine form, form string-escape
-      mine not
-        mine any
-          mine char, text <">
-          mine char, text <\\>
+      mine form, form string-char
   mine char, text <">
 
 mine string-escape
@@ -385,10 +463,21 @@ mine string-escape
     mine char, text <">
     mine char, text <\\>
 
+mine string-char
+  mine not
+    mine char, text <">
+    mine char, text <\\>
+  mine range
+    bind base, code 0x0001
+    bind head, code 0x10ffff
+
 mine space
   mine list
-    mine any
-      mine char, code 0x0020
-      mine char, code 0x0009
-      mine char, code 0x000a
-      mine char, code 0x000d
+    mine form, form space-char
+
+mine space-char
+  mine any
+    mine char, code 0x0020
+    mine char, code 0x0009
+    mine char, code 0x000a
+    mine char, code 0x000d

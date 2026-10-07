@@ -1,0 +1,24 @@
+# beat-term-0002.
+# A file the person picks: the system's document picker, from Files, iCloud Drive or another app's storage, and a copy
+# of what they chose in the app's temporary folder, so the app reads a file of its own and never a location it was lent.
+# UIDocumentPickerViewController on iOS, NSOpenPanel on macOS.
+#
+#   pick-file(kind)   `file <path>`, the copy (its last part the name the person saw); cancelled when they closed the
+#                     picker; unavailable where there is none (Android until its host is written, a browser, which
+#                     holds no file by path, a desktop JVM), or when it could not be put in front (iOS will not
+#                     present it over a share sheet that is still up), which is never read as a cancel
+#
+# `kind` is what the picker offers: `audio` (any sound file), `json`, or `any`. Any other word offers anything.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/files
+  find choose-file
+
+task pick-file
+  take kind, like text
+  like text
+  send back
+    call choose-file
+      read kind

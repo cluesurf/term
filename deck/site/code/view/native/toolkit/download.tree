@@ -1,0 +1,16 @@
+# download on the platform's own toolkit (beat-term-0004): URLSession on macOS and iOS, HttpURLConnection on Android and
+# under Compose on the desktop. Conforms to ../download. The runtime is native-download.swift and native-download.kt
+# (every Kotlin host: it uses java.net alone).
+
+dock load
+  load <global:native-download>, name native-download
+
+task fetch-to-file
+  take url, like text
+  take path, like text
+  like text
+  send back
+    call native-download/fetch
+      read url
+      read path
+      wait true

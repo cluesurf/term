@@ -1,0 +1,831 @@
+# THE TEXT GRAMMAR ENGINE: any mill text grammar, run over a text. A grammar is its `mine.tree`, read by the one reader
+# of the mine vocabulary (compile/feed-compile.tree `read-feed-mine-grammar`) to `feed-rule` values, and this engine
+# is what RUNS them, so a grammar written in the mill is the parser, with no reader written beside it by hand. The
+# `note` grammar is its first user (deck/mill/code/text/note, note/term/mill/03-note-grammar.md).
+#
+# What it reads to is generic: a tree of `mine-match`, one node for each rule a `mine form` reaches (named by its
+# `send` when it has one) and for each span capture, with where in the text it began and ended. A grammar's meaning
+# is read off that tree by the rule names, never by reading the text again.
+#
+# The semantics are the mine vocabulary's, as a PEG:
+#
+#   a rule's body, a `mine` group's children   a sequence: each in turn, all or nothing
+#   any           ordered choice: the first alternative that matches, and no other
+#   list          as many times as it matches, none included, each turn moving on
+#   maybe         once or not at all
+#   mark          exactly `width` times
+#   not           the next character is none of these, and nothing is read
+#   char, text    the character, the text, exactly
+#   range         one character from `base` to `head`
+#   until         every character up to the terminator, which is left
+#   span          the text its children read, as a node named by its `send`
+#
+# THE ENGINE IS MADE ONCE PER GRAMMAR (`make-mine-engine`), and a run is linear in the text:
+#
+#   - every rule's FIRST CHARACTERS are worked out once and kept, so an alternative that cannot begin with the next
+#     character is passed over without being tried
+#   - a run MEMOIZES each rule at each position (packrat), so no rule is read twice at one place, however often the
+#     ordered choices above it come back to it
+#
+# A construct that reads BYTES or computes (`byte`, `int`, `bytes`, `value`, `let`, `start`, `check`, a counted
+# `list`, a `maybe` with a `test`) belongs to the format grammars the feed compiler builds into readers, and is refused
+# when the engine is made, by name, rather than run wrongly.
+#
+# When a text does not match, the run says where it got furthest and what would have let it go on: the place a person
+# has to look at, which is rarely where the first alternative gave up. Browser-safe.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/float
+  find to-number
+
+load ./feed-compile
+  find feed-rule
+
+# one rule the text matched, or one span a grammar captured
+form mine-match
+  link rule, like text
+  link start, like number
+  link end, like number
+  link children, like list, like mine-match
+
+# where reading ended, -1 when it did not match, and the matches it made on the way
+form mine-step
+  link end, like number
+  link nodes, like list, like mine-match
+
+# the characters a rule can begin with, as intervals. `open` when it can begin with anything, or with nothing at all
+form mine-first
+  link open, like boolean
+  link low, like list, like number
+  link high, like list, like number
+
+# a grammar made ready to run: its rules, every rule's first characters, and what it holds that this engine refuses
+form mine-engine
+  mark shared
+  link rules, like hash, like text, like list, like feed-rule
+  link firsts, like hash, like text, like mine-first
+  link refused, like list, like text
+
+# one run over one text
+form mine-run
+  mark shared
+  link engine, like mine-engine
+  link runes, like list, like number
+  link memo, like hash, like text, like mine-step
+  link furthest, like number
+  # what was REQUIRED at the furthest place, and what was only HOPED for there: a try inside a `list` or a `maybe` is
+  # allowed to fail, so what it wanted is a continuation, not a mistake
+  link expected, like list, like text
+  link hoped, like list, like text
+  # how many `list` and `maybe` tries the run is inside
+  link quiet, like number
+
+# What a run gives: the match of the whole text, or where it got furthest and what was wanted there, the required
+# before the hoped for. `matched` is how far the start rule read, -1 when it read nothing, so a caller can tell a text
+# that went wrong inside from one that was whole and then went on
+form mine-outcome
+  link ok, like boolean
+  link match, like maybe, like mine-match
+  link at, like number
+  link expected, like list, like text
+  link matched, like number
+
+# ---- making an engine ----
+
+# The engine for a grammar, its rules as `read-feed-mine-grammar` read them. `extra` are rules given at run time,
+# each replacing the grammar's own rule of its name: a registry the grammar refers to by a rule (`registered-unit`)
+# rather than spelling out
+task make-mine-engine
+  take rules, like hash, like text, like list, like feed-rule
+  take extra, like hash, like text, like list, like feed-rule
+  like mine-engine
+
+  save all, make hash
+  walk rules/keys()
+    take name
+    save all/{name}, rules/get(name)
+  walk extra/keys()
+    take name
+    save all/{name}, extra/get(name)
+
+  save engine
+    make mine-engine
+      bind rules, all
+      bind firsts, make hash
+      bind refused, make list
+
+  walk all/keys()
+    take name
+    walk all/get(name)
+      take rule
+      refuse-unrun(engine, name, rule)
+      refuse-unknown(engine, name, rule)
+
+  # every first set, once, while nothing is running
+  walk all/keys()
+    take name
+    first-of-rule(engine, name, make list)
+  back engine
+
+# what this engine does not run, named with the rule it stands in
+task refuse-unrun
+  take engine, like mine-engine
+  take owner, like text
+  take rule, like feed-rule
+  mark private
+
+  save word, <>
+  sift rule
+    case byte
+      save word, <byte>
+    case int
+      save word, <int>
+    case bytes
+      save word, <bytes>
+    case value
+      save word, <value>
+    case let
+      save word, <let>
+    case start
+      save word, <start>
+    case check
+      save word, <check>
+    case list
+      link repeated
+      link counted
+      sift counted
+        case some
+          save word, <list with a count>
+        case none
+          save nothing, 0
+      walk repeated
+        take one
+        refuse-unrun(engine, owner, one)
+    case optional
+      link gate
+      link inner
+      sift gate
+        case some
+          save word, <maybe with a test>
+        case none
+          save nothing, 0
+      walk inner
+        take one
+        refuse-unrun(engine, owner, one)
+    case any
+      walk children
+        take one
+        refuse-unrun(engine, owner, one)
+    case mark
+      walk children
+        take one
+        refuse-unrun(engine, owner, one)
+    case span
+      walk children
+        take one
+        refuse-unrun(engine, owner, one)
+    miss
+      save nothing, 0
+  fork test, is-unequal(word, <>)
+    hold
+      push(engine/refused, <`mine {word}` in `{owner}` reads bytes or computes, which the text engine does not run>)
+
+# a reference to a rule the grammar does not have
+task refuse-unknown
+  take engine, like mine-engine
+  take owner, like text
+  take rule, like feed-rule
+  mark private
+
+  sift rule
+    case form
+      fork test, not(engine/rules/has(name))
+        hold
+          push(engine/refused, <`{owner}` names the rule `{name}`, which the grammar does not define>)
+    miss
+      walk children-of(rule)
+        take one
+        refuse-unknown(engine, owner, one)
+
+task children-of
+  take rule, like feed-rule
+  like list, like feed-rule
+  mark private
+
+  sift rule
+    case list
+      back children
+    case any
+      back children
+    case mark
+      back children
+    case optional
+      back children
+    case span
+      back children
+    miss
+      back make list
+
+# ---- first characters ----
+
+task open-first
+  like mine-first
+  mark private
+
+  back
+    make mine-first
+      bind open, true
+      bind low, make list
+      bind high, make list
+
+task first-between
+  take low, like number
+  take high, like number
+  like mine-first
+  mark private
+
+  save lows, make list
+  save highs, make list
+  push(lows, low)
+  push(highs, high)
+  back
+    make mine-first
+      bind open, false
+      bind low, lows
+      bind high, highs
+
+# a rule's first characters, kept on the engine. `visiting` is the rules being worked out, so a rule that begins with
+# itself (which no PEG can run) is open rather than endless
+task first-of-rule
+  take engine, like mine-engine
+  take name, like text
+  take visiting, like list, like text
+  like mine-first
+  mark private
+
+  fork test, engine/firsts/has(name)
+    hold
+      back engine/firsts/get(name)
+  fork test, or(not(engine/rules/has(name)), has-text(visiting, name))
+    hold
+      back open-first()
+  save deeper, make list
+  walk visiting
+    take one
+    push(deeper, one)
+  push(deeper, name)
+  save found, first-of-sequence(engine, engine/rules/get(name), deeper)
+  save engine/firsts/{name}, found
+  back found
+
+task first-of-sequence
+  take engine, like mine-engine
+  take rules, like list, like feed-rule
+  take visiting, like list, like text
+  like mine-first
+  mark private
+
+  fork test, is-equal(rules/length, 0)
+    hold
+      back open-first()
+  back first-of(engine, get(rules, 0), visiting)
+
+# Conservative: a rule that might read nothing is open, and so is one whose start this cannot say. Only a set that is
+# certainly closed lets an alternative be passed over
+task first-of
+  take engine, like mine-engine
+  take rule, like feed-rule
+  take visiting, like list, like text
+  like mine-first
+  mark private
+
+  sift rule
+    case char
+      back first-between(to-whole(literal), to-whole(literal))
+    case text
+      save runes, to-runes(literal)
+      fork test, is-equal(runes/length, 0)
+        hold
+          back open-first()
+      back first-between(get(runes, 0), get(runes, 0))
+    case range
+      back first-between(code-of(base), code-of(head))
+    case form
+      back first-of-rule(engine, name, visiting)
+    case span
+      back first-of-sequence(engine, children, visiting)
+    case mark
+      fork test, is-above(width, 0.0)
+        hold
+          back first-of-sequence(engine, children, visiting)
+      back open-first()
+    case any
+      save lows, make list
+      save highs, make list
+      walk children
+        take one
+        save inner, first-of(engine, one, visiting)
+        fork test, inner/open
+          hold
+            back open-first()
+        walk inner/low
+          take low
+          push(lows, low)
+        walk inner/high
+          take high
+          push(highs, high)
+      back
+        make mine-first
+          bind open, false
+          bind low, lows
+          bind high, highs
+    miss
+      back open-first()
+
+# whether a run of the rule with these first characters could begin with `code` (-1 at the end of the text)
+task may-begin
+  take first, like mine-first
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, first/open
+    hold
+      back true
+  save k, 0
+  walk first/low
+    take low
+    fork test, and(is-minimum(code, low), is-maximum(code, get(first/high, k)))
+      hold
+        back true
+    save k, add(k, 1)
+  back false
+
+# ---- running ----
+
+# Run the grammar from the rule `start` over the whole of `text`
+task run-mine
+  take engine, like mine-engine
+  take start, like text
+  take input, like text
+  like mine-outcome
+
+  save run
+    make mine-run
+      bind engine, engine
+      bind runes, to-runes(input)
+      bind memo, make hash
+      bind furthest, 0
+      bind expected, make list
+      bind hoped, make list
+      bind quiet, 0
+
+  save step, match-form(run, start, <>, 0)
+  fork test, and(is-minimum(step/end, 0), is-equal(step/end, run/runes/length))
+    hold
+      save root, get(step/nodes, 0)
+      back
+        make mine-outcome
+          bind ok, true
+          bind match, make(some, root)
+          bind at, run/runes/length
+          bind expected, make list
+          bind matched, step/end
+
+  # it matched less than the whole text: what stands after the match was not wanted
+  fork test, and(is-minimum(step/end, 0), is-above(step/end, run/furthest))
+    hold
+      save run/furthest, step/end
+      save run/expected, make list
+      save run/hoped, make list
+  save wanted, run/expected
+  fork test, is-equal(wanted/length, 0)
+    hold
+      save wanted, run/hoped
+  back
+    make mine-outcome
+      bind ok, false
+      bind match, make none
+      bind at, run/furthest
+      bind expected, wanted
+      bind matched, step/end
+
+task failed
+  like mine-step
+  mark private
+
+  back
+    make mine-step
+      bind end, -1
+      bind nodes, make list
+
+task step-to
+  take end, like number
+  take nodes, like list, like mine-match
+  like mine-step
+  mark private
+
+  back
+    make mine-step
+      bind end, end
+      bind nodes, nodes
+
+# a rule, once per position: what it read is kept, and named by `send` when the reference gives one
+task match-form
+  take run, like mine-run
+  take name, like text
+  take send, like text
+  take at, like number
+  like mine-step
+  mark private
+
+  save engine, run/engine
+  fork test, not(engine/rules/has(name))
+    hold
+      back failed()
+  fork test, not(may-begin(engine/firsts/get(name), rune-at(run/runes, at)))
+    hold
+      expect(run, at, name)
+      back failed()
+
+  save key, <{name}@{at}>
+  save inner, failed()
+  fork test, run/memo/has(key)
+    hold
+      save inner, run/memo/get(key)
+    miss
+      save inner, match-sequence(run, engine/rules/get(name), at)
+      save run/memo/{key}, inner
+  fork test, is-below(inner/end, 0)
+    hold
+      back failed()
+
+  save label, name
+  fork test, is-unequal(send, <>)
+    hold
+      save label, send
+  save nodes, make list
+  push(nodes, node-of(label, at, inner))
+  back step-to(inner/end, nodes)
+
+task node-of
+  take label, like text
+  take at, like number
+  take inner, like mine-step
+  like mine-match
+  mark private
+
+  back
+    make mine-match
+      bind rule, label
+      bind start, at
+      bind end, inner/end
+      bind children, inner/nodes
+
+task match-sequence
+  take run, like mine-run
+  take rules, like list, like feed-rule
+  take at, like number
+  like mine-step
+  mark private
+
+  save nodes, make list
+  save here, at
+  walk rules
+    take rule
+    save one, match-rule(run, rule, here)
+    fork test, is-below(one/end, 0)
+      hold
+        back failed()
+    walk one/nodes
+      take node
+      push(nodes, node)
+    save here, one/end
+  back step-to(here, nodes)
+
+task match-rule
+  take run, like mine-run
+  take rule, like feed-rule
+  take at, like number
+  like mine-step
+  mark private
+
+  # Every arm names its fields with `link`: `send`, `text` and `form` are cases of `feed-rule` itself, so a bare
+  # `send` in an arm could name the case and not the field
+  save runes, run/runes
+  sift rule
+    case form
+      link form-name
+      link form-send
+      back match-form(run, form-name, text-or-empty(form-send), at)
+
+    case span
+      link inner-rules
+      link span-send
+      save inner, match-sequence(run, inner-rules, at)
+      fork test, is-below(inner/end, 0)
+        hold
+          back failed()
+      save nodes, make list
+      push(nodes, node-of(span-send, at, inner))
+      back step-to(inner/end, nodes)
+
+    case any
+      link alternatives
+      link any-send
+      save code, rune-at(runes, at)
+      walk alternatives
+        take one
+        fork test, not(could-begin(run/engine, one, code))
+          hold
+            turn next
+        save tried, match-rule(run, one, at)
+        fork test, is-minimum(tried/end, 0)
+          hold
+            back captured(text-or-empty(any-send), at, tried)
+      back failed()
+
+    case list
+      link repeated
+      save nodes, make list
+      save here, at
+      save run/quiet, add(run/quiet, 1)
+      walk test
+        hook test, true
+        hook hold
+          save turn-step, match-sequence(run, repeated, here)
+          fork test, or(is-below(turn-step/end, 0), is-equal(turn-step/end, here))
+            hold
+              halt
+          walk turn-step/nodes
+            take node
+            push(nodes, node)
+          save here, turn-step/end
+      save run/quiet, subtract(run/quiet, 1)
+      back step-to(here, nodes)
+
+    case optional
+      link gate
+      link inner-rules
+      link optional-send
+      save run/quiet, add(run/quiet, 1)
+      save tried, match-sequence(run, inner-rules, at)
+      save run/quiet, subtract(run/quiet, 1)
+      fork test, is-minimum(tried/end, 0)
+        hold
+          back captured(text-or-empty(optional-send), at, tried)
+      back step-to(at, make list)
+
+    case mark
+      link width-of
+      link inner-rules
+      link mark-send
+      save nodes, make list
+      save here, at
+      save times, to-whole(width-of)
+      save k, 0
+      walk test
+        hook test, is-below(k, times)
+        hook hold
+          save turn-step, match-sequence(run, inner-rules, here)
+          fork test, is-below(turn-step/end, 0)
+            hold
+              back failed()
+          walk turn-step/nodes
+            take node
+            push(nodes, node)
+          save here, turn-step/end
+          save k, add(k, 1)
+      back captured(text-or-empty(mark-send), at, step-to(here, nodes))
+
+    case char
+      link code-literal
+      link char-send
+      fork test, is-equal(rune-at(runes, at), to-whole(code-literal))
+        hold
+          back captured(text-or-empty(char-send), at, step-to(add(at, 1), make list))
+      save one, make list
+      push(one, to-whole(code-literal))
+      expect(run, at, <`{from-runes(one)}`>)
+      back failed()
+
+    case text
+      link wanted-text
+      link text-send
+      save want, to-runes(wanted-text)
+      save k, 0
+      walk want
+        take code
+        fork test, is-unequal(rune-at(runes, add(at, k)), code)
+          hold
+            expect(run, at, <`{wanted-text}`>)
+            back failed()
+        save k, add(k, 1)
+      back captured(text-or-empty(text-send), at, step-to(add(at, want/length), make list))
+
+    case range
+      save code, rune-at(runes, at)
+      fork test, and(is-minimum(code, code-of(base)), is-maximum(code, code-of(head)))
+        hold
+          back step-to(add(at, 1), make list)
+      expect(run, at, <`{base}` to `{head}`>)
+      back failed()
+
+    case not
+      save code, rune-at(runes, at)
+      walk codes
+        take one
+        fork test, is-equal(code, to-whole(one))
+          hold
+            back failed()
+      back step-to(at, make list)
+
+    case until
+      link stop-code
+      link until-send
+      save here, at
+      walk test
+        hook test, and(is-below(here, runes/length), is-unequal(get(runes, here), to-whole(stop-code)))
+        hook hold
+          save here, add(here, 1)
+      back captured(text-or-empty(until-send), at, step-to(here, make list))
+
+    case send
+      back step-to(at, make list)
+
+    # a construct the engine refuses when it is made: never run
+    miss
+      back failed()
+
+# whether an alternative could begin with `code`: a reference by its rule's first characters, a character, a text or
+# a range by itself, and anything else is tried
+task could-begin
+  take engine, like mine-engine
+  take rule, like feed-rule
+  take code, like number
+  like boolean
+  mark private
+
+  sift rule
+    case form
+      fork test, engine/firsts/has(name)
+        hold
+          back may-begin(engine/firsts/get(name), code)
+      back true
+    case char
+      back is-equal(code, to-whole(literal))
+    case text
+      save runes, to-runes(literal)
+      fork test, is-equal(runes/length, 0)
+        hold
+          back true
+      back is-equal(code, get(runes, 0))
+    case range
+      back and(is-minimum(code, code-of(base)), is-maximum(code, code-of(head)))
+    miss
+      back true
+
+# a step wrapped as a node of its own when the rule carries a `send`
+task captured
+  take send, like text
+  take at, like number
+  take inner, like mine-step
+  like mine-step
+  mark private
+
+  fork test, or(is-equal(send, <>), is-below(inner/end, 0))
+    hold
+      back inner
+  save nodes, make list
+  push(nodes, node-of(send, at, inner))
+  back step-to(inner/end, nodes)
+
+# what would have let the run go on at `at`: kept for the furthest place reached only
+task expect
+  take run, like mine-run
+  take at, like number
+  take wanted, like text
+  mark private
+
+  fork test, is-below(at, run/furthest)
+    hold
+      back
+  fork test, is-above(at, run/furthest)
+    hold
+      save run/furthest, at
+      save run/expected, make list
+      save run/hoped, make list
+  fork test, is-above(run/quiet, 0)
+    hold
+      fork test, not(has-text(run/hoped, wanted))
+        hold
+          push(run/hoped, wanted)
+      back
+  fork test, not(has-text(run/expected, wanted))
+    hold
+      push(run/expected, wanted)
+
+# ---- reading a match ----
+
+# the text a match read
+task match-text
+  take match, like mine-match
+  take source, like text
+  like text
+
+  save runes, to-runes(source)
+  back from-runes(runes/slice(match/start, match/end))
+
+# the matches directly under `match` named `rule`, in order
+task matches-named
+  take match, like mine-match
+  take rule, like text
+  like list, like mine-match
+
+  save out, make list
+  walk match/children
+    take one
+    fork test, is-equal(one/rule, rule)
+      hold
+        push(out, one)
+  back out
+
+# the first match directly under `match` named `rule`
+task match-named
+  take match, like mine-match
+  take rule, like text
+  like maybe, like mine-match
+
+  walk match/children
+    take one
+    fork test, is-equal(one/rule, rule)
+      hold
+        back make(some, one)
+  back make none
+
+# ---- small readers ----
+
+task rune-at
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, runes/length))
+    hold
+      back get(runes, at)
+  back -1
+
+# a range bound is the character itself (compile/feed-compile.tree `code-text`)
+task code-of
+  take bound, like text
+  like number
+  mark private
+
+  save runes, to-runes(bound)
+  fork test, is-equal(runes/length, 0)
+    hold
+      back -1
+  back get(runes, 0)
+
+task to-whole
+  take value, like float
+  like number
+  mark private
+
+  back to-number(value)
+
+task text-or-empty
+  take given, like maybe, like text
+  like text
+  mark private
+
+  sift given
+    case some
+      back value
+    case none
+      back <>
+
+task has-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false

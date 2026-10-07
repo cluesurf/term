@@ -1,0 +1,203 @@
+# beat-term-0001.
+# Audio: one loop over segments of one file, one file played at a time, and the microphone recorded into a file until
+# it is stopped. AVAudioEngine schedules the loop's segments back to back on macOS and iOS, so the loop has no gap and
+# its wrap is the engine's own; AVAudioPlayer plays a file, and AVAudioRecorder records AAC into an .m4a.
+#
+#   the loop
+#     start-loop(path, segments, volume)   looping; unavailable (no such file, or not audio); invalid (no segment
+#                                          that holds a moment of the file); failed
+#     stop-loop()                          stopped
+#     restart-loop()                       looping, back at the start of the first segment; stopped when none runs
+#     set-loop-volume(volume)              the volume as it is now set, 0 to 100
+#     loop-state()                         `looping <segment> <ms>`, the segment playing (from 0) and the place in the
+#                                          file in milliseconds; or stopped
+#     watch-loop(handler)                  `looping` or `stopped` at once, then `wrap <n>` each time the loop comes back
+#                                          to its first segment (n from 1, counted since the loop started), `looping`
+#                                          when it starts again, `stopped` when it stops
+#
+#   a file at a time
+#     play-audio(paths, volume)            playing, the first path now and each after it when the one before ends;
+#                                          unavailable (a path that is not there); failed
+#     stop-audio()                         stopped
+#     watch-playback(handler)              `playing <path>` as each file starts, `done` when the last ends or it is
+#                                          stopped
+#
+#   the microphone
+#     start-recording(path)                recording; not-determined (ask first: request-permission microphone);
+#                                          denied; unavailable (no microphone); failed
+#     stop-recording()                     `audio <ms> <path>`, the recording's length and where it is; idle when none
+#                                          was recording
+#     watch-recording(handler)             `recording <ms> <level>` ten times a second, the level from 0.00 (silence) to
+#                                          1.00, and `idle` when it stops
+#
+#   audio-length(path)                     the file's length in milliseconds, or unavailable
+#
+# A volume is a whole percent, held to 0 through 100. A segment is a span of the file in milliseconds; one that ends
+# past the file ends with it. A path in an answer is the rest of the line, since it may hold a space. The loop and the
+# recorder share the platform's audio session, so a recording starts over a running loop without stopping it, and the
+# loop plays on the car's speakers over Bluetooth while the phone's microphone records.
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed sets above, so an app compares strings and no platform type ever reaches it.
+
+load ./native/{platform}/audio
+  find begin-loop
+  find end-loop
+  find again-loop
+  find level-loop
+  find state-loop
+  find follow-loop
+  find begin-playback
+  find end-playback
+  find follow-playback
+  find begin-recording
+  find end-recording
+  find follow-recording
+  find length-of
+
+load @term/base/list
+  find list
+  find push
+  find join
+
+# one span of a file, in milliseconds
+form audio-segment
+  link start, like number
+  link end, like number
+
+task start-loop
+  take path, like text
+  take segments
+    like list
+      like audio-segment
+  take volume, like number
+  like text
+  # the segments cross to the platform as `start-end` words, one space apart
+  save spans
+    make list
+  walk list, read segments
+    hook next
+      take site, name segment
+      call push
+        bind list, read spans
+        bind item, text <{segment/start}-{segment/end}>
+  send back
+    call begin-loop
+      read path
+      call join
+        read spans
+        text < >
+      call held-volume
+        read volume
+
+task stop-loop
+  like text
+  send back
+    call end-loop
+
+task restart-loop
+  like text
+  send back
+    call again-loop
+
+task set-loop-volume
+  take volume, like number
+  like text
+  send back
+    call level-loop
+      call held-volume
+        read volume
+
+task loop-state
+  like text
+  send back
+    call state-loop
+
+# the loop's events, as watch-battery's: any number of handlers on one subscription, each dropped by the task this
+# answers
+task watch-loop
+  take handler
+    like task
+      take value, like text
+  like task
+  send back
+    call follow-loop
+      read handler
+
+task play-audio
+  take paths
+    like list
+      like text
+  take volume, like number
+  like text
+  # one path a line: a path holds no line break
+  send back
+    call begin-playback
+      call join
+        read paths
+        text <\n>
+      call held-volume
+        read volume
+
+task stop-audio
+  like text
+  send back
+    call end-playback
+
+task watch-playback
+  take handler
+    like task
+      take value, like text
+  like task
+  send back
+    call follow-playback
+      read handler
+
+task start-recording
+  take path, like text
+  like text
+  send back
+    call begin-recording
+      read path
+
+task stop-recording
+  like text
+  send back
+    call end-recording
+
+task watch-recording
+  take handler
+    like task
+      take value, like text
+  like task
+  send back
+    call follow-recording
+      read handler
+
+task audio-length
+  take path, like text
+  like text
+  send back
+    call length-of
+      read path
+
+# a volume held to 0 through 100, the one rule every host is given it by
+task held-volume
+  mark private
+  take volume, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read volume
+        code 0
+    hook hold
+      send back, code 0
+  fork test
+    hook test
+      call is-above
+        read volume
+        code 100
+    hook hold
+      send back, code 100
+  send back, read volume

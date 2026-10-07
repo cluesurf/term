@@ -1,0 +1,5096 @@
+# The LaTeX reader (note/term/mill/04-latex-grammar.md): LaTeX math to the tree of ./form.tree, the same tree KaTeX's
+# parser builds. Three layers, as TeX and KaTeX have them:
+#
+#   ./lex.tree      the source as tokens, by running the grammar (./mine.tree); every character is read there
+#   ./gullet.tree   macros expanded, KaTeX's src/MacroExpander.ts
+#   this file       tokens to the tree, KaTeX's src/Parser.ts, its function handlers (src/functions/) and its
+#                   environments (src/environments/), each ported as KaTeX writes it
+#
+# What a command takes, how many arguments and of which kind, is the command table's (./table.tree, from KaTeX's
+# registries), never this file's. KaTeX's own regular expressions over an argument's text (a size, a color, a number,
+# an attribute list) are rules of the grammar here, run on that text.
+#
+# Reading stops at the first mistake and says where it is, as KaTeX's ParseError does. A command KaTeX gates behind
+# `trust` (`\href`, `\url`, `\includegraphics`, `\htmlClass` and the rest) is read as KaTeX reads it when trusted:
+# whether to show it is the renderer's to decide, not the reader's. Browser-safe.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find contains
+  find substring
+  find last-index-of
+  find trim
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/text/number
+  find parse-float
+  find parse-integer
+
+load ./compiled
+  find run-latex-grammar
+  find latex-match
+  find latex-match-text
+  find latex-match-named
+  find latex-matches-named
+
+load ./form
+  find latex-node
+  find latex-measure
+  find latex-column
+  find latex-row-tag
+  find latex-attribute
+  find latex-problem
+  find latex-options
+  find latex-macro
+  find latex-read
+  find latex-strict
+  find latex-warning
+  find latex-place
+
+load ./lex
+  find latex-mistake
+  find latex-table
+  find latex-token
+  find latex-function
+  find latex-report
+  find make-latex-table
+  find make-latex-lexer
+  find set-url
+  find token-at
+  find report-strict
+  find is-strict
+  find place-of
+
+load ./gullet
+  find latex-definition
+  find latex-gullet
+  find make-latex-gullet
+  find refuse
+  find begin-group
+  find end-group
+  find end-groups
+  find set-macro
+  find macro-of
+  find has-tag
+  find future
+  find pop-token
+  find push-token
+  find push-tokens
+  find consume-spaces
+  find scan-argument
+  find consume-argument
+  find expand-next-token
+  find expand-tokens
+  find expand-macro-text
+  find is-expandable
+
+# the parser's state, KaTeX's `Parser`
+form latex-parser
+  mark shared
+  link table, like latex-table
+  link gullet, like latex-gullet
+  link options, like latex-options
+  link mode, like text
+  link depth, like number
+  link next, like maybe, like latex-token
+  # where the last token taken ended, which is where a node built from what was read ends
+  link last-end, like number
+
+# a function's arguments as KaTeX's `parseArguments` hands them over: the ordinary ones, and an optional one per
+# place, none where it was left out
+form latex-arguments
+  link values, like list, like latex-node
+  link options, like list, like maybe, like latex-node
+
+# what every node has: KaTeX's type for it, where it stands, and its mode
+form latex-facts
+  link type, like text
+  link at, like number
+  link end, like number
+  link mode, like text
+
+# ---- reading ----
+
+# The options KaTeX starts from: inline math, equation numbers on the right, 1000 expansions, no macros, and a warning
+# kept for input LaTeX would refuse
+task latex-defaults
+  like latex-options
+
+  back
+    make latex-options
+      bind display, false
+      bind leqno, false
+      bind max-expand, 1000
+      bind color-is-text-color, false
+      bind macros, make list
+      bind strict, make warn
+
+# Read LaTeX math with KaTeX's tables, made once by `make-latex-table` and shared by every reading
+task read-latex
+  take source, like text
+  take table, like latex-table
+  take options, like latex-options
+  like latex-read
+
+  save report
+    make latex-report
+      bind strict, options/strict
+      bind warnings, make list
+  fork
+    mark unsafe
+    save nodes, parse-tree(source, table, options, report)
+    back
+      make latex-read
+        bind nodes, make(some, nodes)
+        bind problem, make none
+        bind warnings, report/warnings
+  halt take
+    take error
+    sift error
+      case latex-mistake
+        save problem
+          make latex-problem
+            bind at, at
+            bind end, end
+            bind message, reason
+        back
+          make latex-read
+            bind nodes, make none
+            bind problem, make(some, problem)
+            bind warnings, report/warnings
+      miss
+        save problem
+          make latex-problem
+            bind at, 0
+            bind end, 0
+            bind message, <the reader failed: {error/note}>
+        back
+          make latex-read
+            bind nodes, make none
+            bind problem, make(some, problem)
+            bind warnings, report/warnings
+
+# Read LaTeX math with KaTeX's defaults, the tables made for this one reading
+task read-latex-text
+  take source, like text
+  like latex-read
+
+  back read-latex(source, make-latex-table(), latex-defaults())
+
+# KaTeX's `parseTree`: the source read whole, and wrapped in its `\tag` when it gave one
+task parse-tree
+  take source, like text
+  take table, like latex-table
+  take options, like latex-options
+  take report, like latex-report
+  like list, like latex-node
+
+  save lexer, make-latex-lexer(table, source, report)
+  save g, make-latex-gullet(lexer, options/max-expand)
+  walk options/macros
+    take one
+    save definition
+      make definition-text
+        bind body, one/expansion
+    set-macro(g, one/name, make(some, definition), false)
+  save p
+    make latex-parser
+      bind table, table
+      bind gullet, g
+      bind options, options
+      bind mode, <math>
+      bind depth, 0
+      bind next, make none
+      bind last-end, 0
+
+  save tree, parse(p)
+  fork test, has-tag(g)
+    hold
+      fork test, not(options/display)
+        hold
+          refuse(token-at(<EOF>, 0, 0), <\\tag works only in display equations>)
+      save tag-tokens, make list
+      push(tag-tokens, token-at(<\\df@tag>, 0, 0))
+      save tag, subparse(p, tag-tokens)
+      save wrapped, make list
+      push(wrapped, make-tag(tree, tag))
+      back wrapped
+  back tree
+
+task make-tag
+  take body, like list, like latex-node
+  take tag, like list, like latex-node
+  like latex-node
+  mark private
+
+  back
+    make latex-tag
+      bind at, 0
+      bind end, 0
+      bind mode, <text>
+      bind body, body
+      bind tag, tag
+
+# KaTeX's `Parser.parse`
+task parse
+  take p, like latex-parser
+  like list, like latex-node
+
+  begin-group(p/gullet)
+  fork test, p/options/color-is-text-color
+    hold
+      save alias
+        make definition-text
+          bind body, <\\textcolor>
+      set-macro(p/gullet, <\\color>, make(some, alias), false)
+  # each reading has a gullet of its own, so nothing a mistake leaves open outlives it, and KaTeX's `finally` that
+  # closes the groups has nothing to protect
+  save body, parse-expression(p, false, <>)
+  expect(p, <EOF>, true)
+  end-group(p/gullet)
+  back body
+
+# KaTeX's `subparse`: tokens, in reverse order, read on their own, then the parser back where it was
+task subparse
+  take p, like latex-parser
+  take tokens, like list, like latex-token
+  like list, like latex-node
+
+  save old, p/next
+  consume(p)
+  push-token(p/gullet, token-at(<\}>, 0, 0))
+  push-tokens(p/gullet, tokens)
+  save body, parse-expression(p, false, <>)
+  expect(p, <\}>, true)
+  save p/next, old
+  back body
+
+# ---- tokens ----
+
+task fetch
+  take p, like latex-parser
+  like latex-token
+
+  sift p/next
+    case some
+      link token
+      back token
+    case none
+      save token, expand-next-token(p/gullet)
+      save p/next, make(some, token)
+      back token
+
+task consume
+  take p, like latex-parser
+
+  sift p/next
+    case some
+      link token
+      fork test, is-above(token/end, p/last-end)
+        hold
+          save p/last-end, token/end
+    case none
+      save nothing, 0
+  save p/next, make none
+
+task expect
+  take p, like latex-parser
+  take text, like text
+  take take-it, like boolean
+
+  save next, fetch(p)
+  fork test, is-unequal(next/text, text)
+    hold
+      refuse(next, <Expected '{text}', got '{next/text}'>)
+  fork test, take-it
+    hold
+      consume(p)
+
+task switch-mode
+  take p, like latex-parser
+  take mode, like text
+
+  save p/mode, mode
+  save p/gullet/mode, mode
+
+task consume-parser-spaces
+  take p, like latex-parser
+
+  walk test
+    hook test, is-equal(fetch(p)/text, < >)
+    hook hold
+      consume(p)
+
+task fail
+  take p, like latex-parser
+  take reason, like text
+
+  refuse(fetch(p), reason)
+
+# input LaTeX would refuse, reported as `strict` says, at `place` or, where KaTeX names none, where the reading stands
+task report-nonstrict
+  take p, like latex-parser
+  take code, like text
+  take message, like text
+  take place, like maybe, like latex-place
+
+  report-strict(p/gullet/lexer/report, code, message, place, p/last-end)
+
+# ---- expressions ----
+
+task is-end-of-expression
+  take text, like text
+  like boolean
+  mark private
+
+  back or(or(or(is-equal(text, <\}>), is-equal(text, <\\endgroup>)), or(is-equal(text, <\\end>), is-equal(text, <\\right>))), is-equal(text, <&>))
+
+# KaTeX's `parseExpression`: atoms until one ends it. `break-on` is the token that ends it too, `<>` for none, and
+# `break-on-infix` ends it at an infix command such as `\over`
+task parse-expression
+  take p, like latex-parser
+  take break-on-infix, like boolean
+  take break-on, like text
+  like list, like latex-node
+
+  save body, make list
+  walk test
+    hook test, true
+    hook hold
+      fork test, is-equal(p/mode, <math>)
+        hold
+          consume-parser-spaces(p)
+      save lex, fetch(p)
+      fork test, is-end-of-expression(lex/text)
+        hold
+          halt
+      fork test, and(is-unequal(break-on, <>), is-equal(lex/text, break-on))
+        hold
+          halt
+      fork test, and(break-on-infix, is-infix(p, lex/text))
+        hold
+          halt
+      sift parse-atom(p, break-on)
+        case none
+          halt
+        case some
+          link atom
+          fork test, is-equal(type-of(atom), <internal>)
+            hold
+              turn next
+          push(body, atom)
+  fork test, is-equal(p/mode, <text>)
+    hold
+      save body, form-ligatures(body)
+  back handle-infix-nodes(p, body)
+
+task is-infix
+  take p, like latex-parser
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, p/table/functions/has(name)
+    hold
+      back p/table/functions/get(name)/infix
+  back false
+
+# KaTeX's `handleInfixNodes`: `a \over b` is `\frac{a}{b}`, and a group holds one infix command at most
+task handle-infix-nodes
+  take p, like latex-parser
+  take body, like list, like latex-node
+  like list, like latex-node
+
+  save over, -1
+  save replace, <>
+  save k, 0
+  walk body
+    take node
+    sift node
+      case latex-infix
+        link at
+        link end
+        link replace-with
+        fork test, is-unequal(over, -1)
+          hold
+            refuse(token-at(<>, at, end), <only one infix operator per group>)
+        save over, k
+        save replace, replace-with
+      miss
+        save nothing, 0
+    save k, add(k, 1)
+  fork test, is-equal(over, -1)
+    hold
+      back body
+  save numer-body, body/slice(0, over)
+  save denom-body, body/slice(add(over, 1), body/length)
+  save numer, group-of(p, numer-body)
+  save denom, group-of(p, denom-body)
+  save values, make list
+  fork test, is-equal(replace, <\\\\abovefrac>)
+    hold
+      push(values, numer)
+      push(values, get(body, over))
+      push(values, denom)
+    miss
+      push(values, numer)
+      push(values, denom)
+  save out, make list
+  push(out, call-function(p, replace, values, make(list),token-of(get(body, over)), <>))
+  back out
+
+# a body as one group: the group itself when it is one, else a new one around it
+task group-of
+  take p, like latex-parser
+  take body, like list, like latex-node
+  like latex-node
+  mark private
+
+  fork test, is-equal(body/length, 1)
+    hold
+      save only, get(body, 0)
+      fork test, is-equal(type-of(only), <ordgroup>)
+        hold
+          back only
+  back
+    make latex-group
+      bind at, span-at(body)
+      bind end, span-end(body)
+      bind mode, p/mode
+      bind body, body
+      bind semisimple, make none
+
+# KaTeX's `handleSupSubscript`
+task handle-scripts
+  take p, like latex-parser
+  take name, like text
+  like latex-node
+
+  save symbol, fetch(p)
+  consume(p)
+  consume-parser-spaces(p)
+  walk test
+    hook test, true
+    hook hold
+      sift parse-group(p, name, <>)
+        case none
+          refuse(symbol, <Expected group after '{symbol/text}'>)
+        case some
+          link group
+          fork test, is-unequal(type-of(group), <internal>)
+            hold
+              back group
+  back group-of(p, make list)
+
+# KaTeX's `parseAtom`: a group, and the superscripts, subscripts, primes and limit controls after it
+task parse-atom
+  take p, like latex-parser
+  take break-on, like text
+  like maybe, like latex-node
+
+  save base, parse-group(p, <atom>, break-on)
+  sift base
+    case some
+      link known
+      fork test, is-equal(type-of(known), <internal>)
+        hold
+          back base
+    case none
+      save nothing, 0
+  fork test, is-equal(p/mode, <text>)
+    hold
+      back base
+
+  save sup, make none
+  save sub, make none
+  walk test
+    hook test, true
+    hook hold
+      consume-parser-spaces(p)
+      save lex, fetch(p)
+      fork test, or(is-equal(lex/text, <\\limits>), is-equal(lex/text, <\\nolimits>))
+        hold
+          save base, limit-control(base, is-equal(lex/text, <\\limits>), lex)
+          consume(p)
+          turn next
+      fork test, is-equal(lex/text, <^>)
+        hold
+          fork test, is-some-node(sup)
+            hold
+              refuse(lex, <Double superscript>)
+          save found, handle-scripts(p, <superscript>)
+          save sup, make(some, found)
+          turn next
+      fork test, is-equal(lex/text, <_>)
+        hold
+          fork test, is-some-node(sub)
+            hold
+              refuse(lex, <Double subscript>)
+          save found, handle-scripts(p, <subscript>)
+          save sub, make(some, found)
+          turn next
+      fork test, is-equal(lex/text, <'>)
+        hold
+          fork test, is-some-node(sup)
+            hold
+              refuse(lex, <Double superscript>)
+          save primes, make list
+          push(primes, prime-at(p, lex))
+          consume(p)
+          walk test
+            hook test, is-equal(fetch(p)/text, <'>)
+            hook hold
+              push(primes, prime-at(p, fetch(p)))
+              consume(p)
+          fork test, is-equal(fetch(p)/text, <^>)
+            hold
+              push(primes, handle-scripts(p, <superscript>))
+          save primed
+            make latex-group
+              bind at, lex/at
+              bind end, p/last-end
+              bind mode, p/mode
+              bind body, primes
+              bind semisimple, make none
+          save sup, make(some, primed)
+          turn next
+      fork test, p/table/scripts/has(lex/text)
+        hold
+          save first, p/table/scripts/get(lex/text)
+          save tokens, make list
+          push(tokens, token-at(first/value, lex/at, lex/end))
+          consume(p)
+          walk test
+            hook test, true
+            hook hold
+              save next, fetch(p)
+              fork test, not(p/table/scripts/has(next/text))
+                hold
+                  halt
+              save more, p/table/scripts/get(next/text)
+              fork test, is-unequal(more/sub, first/sub)
+                hold
+                  halt
+              tokens/unshift(token-at(more/value, next/at, next/end))
+              consume(p)
+          save inner, subparse(p, tokens)
+          save scripted
+            make latex-group
+              bind at, lex/at
+              bind end, p/last-end
+              bind mode, <math>
+              bind body, inner
+              bind semisimple, make none
+          fork test, first/sub
+            hold
+              save sub, make(some, scripted)
+            miss
+              save sup, make(some, scripted)
+          turn next
+      halt
+
+  fork test, and(not(is-some-node(sup)), not(is-some-node(sub)))
+    hold
+      back base
+  save at, p/last-end
+  sift base
+    case some
+      link known
+      save at, facts-of(known)/at
+    case none
+      save nothing, 0
+  save scripts
+    make latex-scripts
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind base, base
+      bind sup, sup
+      bind sub, sub
+  back make(some, scripts)
+
+task prime-at
+  take p, like latex-parser
+  take token, like latex-token
+  like latex-node
+  mark private
+
+  back
+    make latex-text-ord
+      bind at, token/at
+      bind end, token/end
+      bind mode, p/mode
+      bind text, <\\prime>
+
+# `\limits` and `\nolimits` after an operator
+task limit-control
+  take base, like maybe, like latex-node
+  take wanted, like boolean
+  take token, like latex-token
+  like maybe, like latex-node
+  mark private
+
+  sift base
+    case some
+      link known
+      sift known
+        case latex-op
+          save changed
+            make latex-op
+              bind at, at
+              bind end, end
+              bind mode, mode
+              bind limits, wanted
+              bind always-handle-sup-sub, make(some, true)
+              bind suppress-base-shift, suppress-base-shift
+              bind parent-is-sup-sub, parent-is-sup-sub
+              bind symbol, symbol
+              bind name, name
+              bind body, body
+          back make(some, changed)
+        case latex-operator-name
+          fork test, always-handle-sup-sub
+            hold
+              save changed
+                make latex-operator-name
+                  bind at, at
+                  bind end, end
+                  bind mode, mode
+                  bind body, body
+                  bind always-handle-sup-sub, always-handle-sup-sub
+                  bind limits, wanted
+                  bind parent-is-sup-sub, parent-is-sup-sub
+              back make(some, changed)
+          back base
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  refuse(token, <Limit controls must follow a math operator>)
+  back base
+
+task is-some-node
+  take value, like maybe, like latex-node
+  like boolean
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# KaTeX's `parseFunction`: a command the table names, its arguments read, and its handler run. None when the next
+# token names no function
+task parse-function
+  take p, like latex-parser
+  take break-on, like text
+  take name, like text
+  like maybe, like latex-node
+
+  save token, fetch(p)
+  save func, token/text
+  fork test, not(p/table/functions/has(func))
+    hold
+      back make none
+  save spec, p/table/functions/get(func)
+  consume(p)
+  fork test, and(and(is-unequal(name, <>), is-unequal(name, <atom>)), not(spec/in-argument))
+    hold
+      refuse(token, <Got function '{func}' with no arguments as {name}>)
+  fork test, and(is-equal(p/mode, <text>), not(spec/in-text))
+    hold
+      refuse(token, <Can't use function '{func}' in text mode>)
+  fork test, and(is-equal(p/mode, <math>), not(spec/in-math))
+    hold
+      refuse(token, <Can't use function '{func}' in math mode>)
+  save arguments, parse-arguments(p, func, spec)
+  save node, call-function(p, func, arguments/values, arguments/options, token, break-on)
+  back make(some, node)
+
+# KaTeX's `callFunction`: the handler the table names for the function, with its arguments
+task call-function
+  take p, like latex-parser
+  take name, like text
+  take values, like list, like latex-node
+  take options, like list, like maybe, like latex-node
+  take token, like latex-token
+  take break-on, like text
+  like latex-node
+
+  fork test, not(p/table/functions/has(name))
+    hold
+      refuse(token, <No function handler for {name}>)
+  save spec, p/table/functions/get(name)
+  back handle(p, spec/handler, name, values, options, token, break-on)
+
+# KaTeX's `parseArguments`, for a function or an environment
+task parse-arguments
+  take p, like latex-parser
+  take func, like text
+  take spec, like latex-function
+  like latex-arguments
+
+  save values, make list
+  save options, make list
+  save total, add(spec/arguments, spec/optional)
+  save i, 0
+  walk test
+    hook test, is-below(i, total)
+    hook hold
+      save type, <>
+      fork test, is-below(i, spec/argument-types/length)
+        hold
+          save type, get(spec/argument-types, i)
+      save optional, is-below(i, spec/optional)
+      fork test, and(spec/primitive, is-equal(type, <>))
+        hold
+          save type, <primitive>
+      # `\sqrt` reads a primitive argument when it was given no optional one
+      fork test, and(and(is-equal(spec/handler, <sqrt>), is-equal(i, 1)), not(is-some-node(get(options, 0))))
+        hold
+          save type, <primitive>
+      save arg, parse-group-of-type(p, <argument to '{func}'>, type, optional)
+      fork test, optional
+        hold
+          push(options, arg)
+        miss
+          sift arg
+            case some
+              link known
+              push(values, known)
+            case none
+              fail(p, <Null argument, please report this as a bug>)
+      save i, add(i, 1)
+  back
+    make latex-arguments
+      bind values, values
+      bind options, options
+
+# KaTeX's `parseGroupOfType`
+task parse-group-of-type
+  take p, like latex-parser
+  take name, like text
+  take type, like text
+  take optional, like boolean
+  like maybe, like latex-node
+
+  fork test, is-equal(type, <color>)
+    hold
+      back parse-color-group(p, optional)
+  fork test, is-equal(type, <size>)
+    hold
+      back parse-size-group(p, optional)
+  fork test, is-equal(type, <url>)
+    hold
+      back parse-url-group(p, optional)
+  fork test, or(is-equal(type, <math>), is-equal(type, <text>))
+    hold
+      back parse-argument-group(p, optional, type)
+  fork test, is-equal(type, <hbox>)
+    hold
+      sift parse-argument-group(p, optional, <text>)
+        case some
+          link group
+          save facts, facts-of(group)
+          save body, make list
+          push(body, group)
+          save styled
+            make latex-styling
+              bind at, facts/at
+              bind end, facts/end
+              bind mode, facts/mode
+              bind style, <text>
+              bind reset-font, make(some, true)
+              bind body, body
+          back make(some, styled)
+        case none
+          back make none
+  fork test, is-equal(type, <raw>)
+    hold
+      sift parse-string-group(p, optional)
+        case some
+          link token
+          save raw
+            make latex-raw
+              bind at, token/at
+              bind end, token/end
+              bind mode, <text>
+              bind value, token/text
+          back make(some, raw)
+        case none
+          back make none
+  fork test, is-equal(type, <primitive>)
+    hold
+      fork test, optional
+        hold
+          fail(p, <A primitive argument cannot be optional>)
+      save group, parse-group(p, name, <>)
+      sift group
+        case none
+          fail(p, <Expected group as {name}>)
+        case some
+          save nothing, 0
+      back group
+  fork test, or(is-equal(type, <original>), is-equal(type, <>))
+    hold
+      back parse-argument-group(p, optional, <>)
+  fail(p, <Unknown group type as {name}>)
+  back make none
+
+# KaTeX's `parseStringGroup`: an argument's tokens, expanded, as one text
+task parse-string-group
+  take p, like latex-parser
+  take optional, like boolean
+  like maybe, like latex-token
+
+  sift scan-argument(p/gullet, optional)
+    case none
+      back make none
+    case some
+      link argument
+      save texts, make list
+      walk test
+        hook test, is-unequal(fetch(p)/text, <EOF>)
+        hook hold
+          push(texts, fetch(p)/text)
+          consume(p)
+      consume(p)
+      save out, argument
+      save out/text, join(texts, <>)
+      back make(some, out)
+
+# KaTeX's `parseRegexGroup` for a size written without braces: the longest run of tokens whose text the grammar's
+# `size-text` still reads whole
+task parse-size-run
+  take p, like latex-parser
+  like latex-token
+
+  save first, fetch(p)
+  save text, <>
+  save end, first/end
+  walk test
+    hook test, true
+    hook hold
+      save next, fetch(p)
+      fork test, is-equal(next/text, <EOF>)
+        hold
+          halt
+      save longer, <{text}{next/text}>
+      fork test, not(run-latex-grammar(<size-text>, longer)/ok)
+        hold
+          halt
+      save text, longer
+      save end, next/end
+      consume(p)
+  fork test, is-equal(text, <>)
+    hold
+      refuse(first, <Invalid size: '{first/text}'>)
+  save out, token-at(text, first/at, end)
+  back out
+
+# KaTeX's `parseColorGroup`: `#f00`, `#ff0000`, `ff0000` (read as `#ff0000`) or a name
+task parse-color-group
+  take p, like latex-parser
+  take optional, like boolean
+  like maybe, like latex-node
+
+  sift parse-string-group(p, optional)
+    case none
+      back make none
+    case some
+      link res
+      save outcome, run-latex-grammar(<color-text>, res/text)
+      fork test, not(outcome/ok)
+        hold
+          refuse(res, <Invalid color: '{res/text}'>)
+      save color, res/text
+      sift outcome/match
+        case some
+          link found
+          fork test, is-some-match(latex-match-named(found, <hex-color>))
+            hold
+              save color, <#{res/text}>
+        case none
+          save nothing, 0
+      save node
+        make latex-color-token
+          bind at, res/at
+          bind end, res/end
+          bind mode, p/mode
+          bind color, color
+      back make(some, node)
+
+task is-some-match
+  take value, like maybe, like latex-match
+  like boolean
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# KaTeX's `parseSizeGroup`: a number and a unit, `2em`, `-0.5ex`. An empty mandatory size is `0pt` and blank, which is
+# how `\genfrac` and `\above` tell no bar size from a size of zero
+task parse-size-group
+  take p, like latex-parser
+  take optional, like boolean
+  like maybe, like latex-node
+
+  consume-spaces(p/gullet)
+  save found, make none
+  fork test, and(not(optional), is-unequal(future(p/gullet)/text, <\{>))
+    hold
+      save run, parse-size-run(p)
+      save found, make(some, run)
+    miss
+      save found, parse-string-group(p, optional)
+  sift found
+    case none
+      back make none
+    case some
+      link res
+      save blank, false
+      save text, res/text
+      fork test, and(not(optional), is-equal(text, <>))
+        hold
+          save text, <0pt>
+          save blank, true
+      save measure, measure-of(p, text, res, <Invalid size: '{text}'>, <Invalid unit: '>, <'>)
+      save node
+        make latex-size
+          bind at, res/at
+          bind end, res/end
+          bind mode, p/mode
+          bind value, measure
+          bind is-blank, blank
+      back make(some, node)
+
+# the first size in a text, KaTeX's `([-+]?) *(\d+(?:\.\d*)?|\.\d+) *([a-z]{2})`, as the grammar's `size-search` finds
+# it, held to a unit KaTeX knows. A unit it does not know is named between `unit-before` and `unit-after`
+task measure-of
+  take p, like latex-parser
+  take text, like text
+  take token, like latex-token
+  take bad-size, like text
+  take unit-before, like text
+  take unit-after, like text
+  like latex-measure
+
+  save outcome, run-latex-grammar(<size-search>, text)
+  sift outcome/match
+    case none
+      refuse(token, bad-size)
+    case some
+      link found
+      sift find-match(found, <measure>)
+        case none
+          refuse(token, bad-size)
+        case some
+          link measure
+          save measured, measure-value(measure, text)
+          fork test, not(is-valid-unit(measured/unit))
+            hold
+              refuse(token, <{unit-before}{measured/unit}{unit-after}>)
+          back measured
+  back zero-measure()
+
+task zero-measure
+  like latex-measure
+  mark private
+
+  back
+    make latex-measure
+      bind amount, 0.0
+      bind unit, <pt>
+
+# a `measure` match as a number and a unit: the sign and the digits as written, `.5` and `5.` read as JavaScript reads
+# them
+task measure-value
+  take measure, like latex-match
+  take text, like text
+  like latex-measure
+
+  save sign, <>
+  sift latex-match-named(measure, <sign>)
+    case some
+      link found
+      save sign, latex-match-text(found, text)
+    case none
+      save nothing, 0
+  save amount, <0>
+  sift latex-match-named(measure, <amount>)
+    case some
+      link found
+      save amount, latex-match-text(found, text)
+    case none
+      save nothing, 0
+  save unit, <>
+  sift latex-match-named(measure, <unit>)
+    case some
+      link found
+      save unit, latex-match-text(found, text)
+    case none
+      save nothing, 0
+  back
+    make latex-measure
+      bind amount, number-of(sign, amount)
+      bind unit, unit
+
+# a sign and digits with at most one point as a float: `.5` is 0.5 and `5.` is 5
+task number-of
+  take sign, like text
+  take digits, like text
+  like float
+
+  save written, digits
+  fork test, starts-with(written, <.>)
+    hold
+      save written, <0{written}>
+  fork test, ends-with-point(written)
+    hold
+      save written, substring(written, 0, subtract(char-length(written), 1))
+  fork test, is-equal(sign, <->)
+    hold
+      save written, <-{written}>
+  back parse-float(written)
+
+task ends-with-point
+  take text, like text
+  like boolean
+  mark private
+
+  save parts, split(text, <>)
+  fork test, is-equal(parts/length, 0)
+    hold
+      back false
+  back is-equal(get(parts, subtract(parts/length, 1)), <.>)
+
+task char-length
+  take text, like text
+  like number
+  mark private
+
+  back split(text, <>)/length
+
+# the match named `rule` anywhere under `match`, first in reading order
+task find-match
+  take match, like latex-match
+  take rule, like text
+  like maybe, like latex-match
+
+  walk match/children
+    take one
+    fork test, is-equal(one/rule, rule)
+      hold
+        back make(some, one)
+    sift find-match(one, rule)
+      case some
+        link found
+        back make(some, found)
+      case none
+        save nothing, 0
+  back make none
+
+# KaTeX's `validUnit` (src/units.ts)
+task is-valid-unit
+  take unit, like text
+  like boolean
+
+  walk split(<pt mm cm in bp pc dd cc nd nc sp px ex em mu>, < >)
+    take one
+    fork test, is-equal(one, unit)
+      hold
+        back true
+  back false
+
+# KaTeX's `parseUrlGroup`: the argument read while `%` is a character and `~` no macro, and `\` taken off before the
+# characters a url escapes
+task parse-url-group
+  take p, like latex-parser
+  take optional, like boolean
+  like maybe, like latex-node
+
+  set-url(p/gullet/lexer, true)
+  save res, parse-string-group(p, optional)
+  set-url(p/gullet/lexer, false)
+  sift res
+    case none
+      back make none
+    case some
+      link token
+      save node
+        make latex-url
+          bind at, token/at
+          bind end, token/end
+          bind mode, p/mode
+          bind url, unescaped-url(p, token/text)
+      back make(some, node)
+
+task unescaped-url
+  take p, like latex-parser
+  take text, like text
+  like text
+  mark private
+
+  save outcome, run-latex-grammar(<url-text>, text)
+  save parts, make list
+  sift outcome/match
+    case some
+      link found
+      walk found/children
+        take one
+        fork test, is-equal(one/rule, <url-escape>)
+          hold
+            sift latex-match-named(one, <url-escaped>)
+              case some
+                link escaped
+                push(parts, latex-match-text(escaped, text))
+              case none
+                save nothing, 0
+          miss
+            push(parts, latex-match-text(one, text))
+    case none
+      back text
+  back join(parts, <>)
+
+# KaTeX's `parseArgumentGroup`: an argument read as a group, in `mode` when it names one
+task parse-argument-group
+  take p, like latex-parser
+  take optional, like boolean
+  take mode, like text
+  like maybe, like latex-node
+
+  sift scan-argument(p/gullet, optional)
+    case none
+      back make none
+    case some
+      link argument
+      save outer, p/mode
+      fork test, is-unequal(mode, <>)
+        hold
+          switch-mode(p, mode)
+      begin-group(p/gullet)
+      save expression, parse-expression(p, false, <EOF>)
+      expect(p, <EOF>, true)
+      end-group(p/gullet)
+      save group
+        make latex-group
+          bind at, argument/at
+          bind end, argument/end
+          bind mode, p/mode
+          bind body, expression
+          bind semisimple, make none
+      fork test, is-unequal(mode, <>)
+        hold
+          switch-mode(p, outer)
+      back make(some, group)
+
+# KaTeX's `parseGroup`: `{...}`, `\begingroup...\endgroup`, a function with its arguments, or a symbol
+task parse-group
+  take p, like latex-parser
+  take name, like text
+  take break-on, like text
+  like maybe, like latex-node
+
+  save first, fetch(p)
+  save text, first/text
+  fork test, or(is-equal(text, <\{>), is-equal(text, <\\begingroup>))
+    hold
+      consume(p)
+      save close, <\}>
+      save semisimple, make none
+      fork test, is-equal(text, <\\begingroup>)
+        hold
+          save close, <\\endgroup>
+          save semisimple, make(some, true)
+      begin-group(p/gullet)
+      save expression, parse-expression(p, false, close)
+      expect(p, close, true)
+      end-group(p/gullet)
+      save group
+        make latex-group
+          bind at, first/at
+          bind end, p/last-end
+          bind mode, p/mode
+          bind body, expression
+          bind semisimple, semisimple
+      back make(some, group)
+  save result, parse-function(p, break-on, name)
+  sift result
+    case some
+      back result
+    case none
+      save nothing, 0
+  save result, parse-symbol(p)
+  sift result
+    case some
+      back result
+    case none
+      fork test, and(starts-with(text, <\\>), not(is-implicit(text)))
+        hold
+          refuse(first, <Undefined control sequence: {text}>)
+  back result
+
+# the commands the parser reads itself, KaTeX's `implicitCommands`
+task is-implicit
+  take text, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(text, <^>), is-equal(text, <_>)), or(is-equal(text, <\\limits>), is-equal(text, <\\nolimits>)))
+
+# KaTeX's `formLigatures` in text: `--`, `---`, ``` `` ``` and `''` read as one
+task form-ligatures
+  take group, like list, like latex-node
+  like list, like latex-node
+
+  save out, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, group/length)
+    hook hold
+      save here, get(group, i)
+      save v, text-ord-of(here)
+      save next, <>
+      fork test, is-below(add(i, 1), group/length)
+        hold
+          save next, text-ord-of(get(group, add(i, 1)))
+      save after, <>
+      fork test, is-below(add(i, 2), group/length)
+        hold
+          save after, text-ord-of(get(group, add(i, 2)))
+      fork test, and(is-equal(v, <->), is-equal(next, <->))
+        hold
+          fork test, is-equal(after, <->)
+            hold
+              push(out, ligature(here, get(group, add(i, 2)), <--->))
+              save i, add(i, 3)
+              turn next
+          push(out, ligature(here, get(group, add(i, 1)), <-->))
+          save i, add(i, 2)
+          turn next
+      fork test, and(or(is-equal(v, <'>), is-equal(v, <`>)), is-equal(next, v))
+        hold
+          push(out, ligature(here, get(group, add(i, 1)), <{v}{v}>))
+          save i, add(i, 2)
+          turn next
+      push(out, here)
+      save i, add(i, 1)
+  back out
+
+# the text of a `textord`, empty for any other node, which no ligature begins with
+task text-ord-of
+  take node, like latex-node
+  like text
+  mark private
+
+  sift node
+    case latex-text-ord
+      link at
+      link end
+      link mode
+      link written
+      back written
+    miss
+      back <>
+
+task ligature
+  take first, like latex-node
+  take last, like latex-node
+  take text, like text
+  like latex-node
+  mark private
+
+  back
+    make latex-text-ord
+      bind at, facts-of(first)/at
+      bind end, facts-of(last)/end
+      bind mode, <text>
+      bind text, text
+
+# KaTeX's `parseSymbol`: a `\verb`, or one character or command KaTeX's symbol table names. An accented letter is the
+# letter under its accents, a combining mark after a character is an accent over it, and a character no table names
+# is text
+task parse-symbol
+  take p, like latex-parser
+  like maybe, like latex-node
+
+  save nucleus, fetch(p)
+  sift nucleus/verb
+    case some
+      link body
+      consume(p)
+      save node
+        make latex-verb
+          bind at, nucleus/at
+          bind end, nucleus/end
+          bind mode, <text>
+          bind body, body
+          bind star, nucleus/star
+      back make(some, node)
+    case none
+      save nothing, 0
+
+  save text, nucleus/text
+  save marks, make list
+  save symbols, symbols-of(p, p/mode)
+
+  # A command, or one character before U+00C0, which is nearly every token, has no letter KaTeX composes (each is
+  # U+00C0 or past it) and no combining mark to come off, so it goes as it is. A command's own last character can be
+  # a mark only in `\` and the mark, which no table names either way
+  fork test, not(is-plain-symbol(text))
+    hold
+      save runes, to-runes(text)
+      fork test, is-equal(runes/length, 0)
+        hold
+          back make none
+      save head, from-runes(runes/slice(0, 1))
+      fork test, and(p/table/composed/has(head), not(symbols/has(head)))
+        hold
+          # XeTeX reads an accented letter in math, LaTeX does not
+          fork test, is-equal(p/mode, <math>)
+            hold
+              report-nonstrict(p, <unicodeTextInMathMode>, <Accented Unicode text character "{head}" used in math mode>, place-of(nucleus))
+          save spelled, p/table/composed/get(head)
+          save tail, from-runes(runes/slice(1, runes/length))
+          save runes, to-runes(<{spelled}{tail}>)
+
+      # the combining marks at the end come off, and are the accents
+      save cut, runes/length
+      walk test
+        hook test, and(is-above(cut, 0), is-combining(get(runes, subtract(cut, 1))))
+        hook hold
+          save cut, subtract(cut, 1)
+      save marks, runes/slice(cut, runes/length)
+      save text, from-runes(runes/slice(0, cut))
+      fork test, is-above(marks/length, 0)
+        hold
+          fork test, is-equal(text, <i>)
+            hold
+              save text, <ı>
+          fork test, is-equal(text, <j>)
+            hold
+              save text, <ȷ>
+
+  save symbol, make none
+  fork test, symbols/has(text)
+    hold
+      # KaTeX's `extraLatin`: three Latin-1 letters its math fonts carry and LaTeX's do not
+      fork test, and(is-equal(p/mode, <math>), p/table/extra-latin/has(text))
+        hold
+          report-nonstrict(p, <unicodeTextInMathMode>, <Latin-1/Unicode text character "{text}" used in math mode>, place-of(nucleus))
+      save group, symbols/get(text)/group
+      save made, symbol-node(group, nucleus, p/mode, text)
+      save symbol, make(some, made)
+    miss
+      save codes, to-runes(text)
+      fork test, and(is-above(codes/length, 0), is-minimum(get(codes, 0), 128))
+        hold
+          # KaTeX asks of the first UTF-16 unit, so a character past U+FFFF is asked of as its high surrogate, which
+          # no script holds
+          save unit, utf16-head(get(codes, 0))
+          fork test, not(is-supported-unit(p/table, unit))
+            hold
+              report-nonstrict(p, <unknownSymbol>, <Unrecognized Unicode character "{mark-of(unit)}" ({unit})>, place-of(nucleus))
+            miss
+              fork test, is-equal(p/mode, <math>)
+                hold
+                  report-nonstrict(p, <unicodeTextInMathMode>, <Unicode text character "{mark-of(unit)}" used in math mode>, place-of(nucleus))
+          save made
+            make latex-text-ord
+              bind at, nucleus/at
+              bind end, nucleus/end
+              bind mode, <text>
+              bind text, text
+          save symbol, make(some, made)
+        miss
+          back make none
+  consume(p)
+
+  sift symbol
+    case some
+      link known
+      save node, known
+      walk marks
+        take mark
+        save mark-text, mark-of(mark)
+        fork test, not(p/table/accents/has(mark-text))
+          hold
+            refuse(nucleus, <Unknown accent ' {mark-text}'>)
+        save spelling, p/table/accents/get(mark-text)
+        save command, spelling/text-command
+        fork test, and(is-equal(p/mode, <math>), is-unequal(spelling/math-command, <>))
+          hold
+            save command, spelling/math-command
+        save node
+          make latex-accent
+            bind at, nucleus/at
+            bind end, nucleus/end
+            bind mode, p/mode
+            bind label, command
+            bind is-stretchy, make(some, false)
+            bind is-shifty, make(some, true)
+            bind base, node
+      back make(some, node)
+    case none
+      back make none
+
+# a command, or one character before U+00C0
+task is-plain-symbol
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(text, <\\>)
+    hold
+      back true
+  save runes, to-runes(text)
+  back and(is-equal(runes/length, 1), is-below(get(runes, 0), 192))
+
+# the first UTF-16 unit of a code point: itself, or its high surrogate past U+FFFF
+task utf16-head
+  take code, like number
+  like number
+  mark private
+
+  fork test, is-below(code, 65536)
+    hold
+      back code
+  save above, subtract(code, 65536)
+  back add(55296, divide(subtract(above, modulo(above, 1024)), 1024))
+
+task mark-of
+  take code, like number
+  like text
+  mark private
+
+  save codes, make list
+  push(codes, code)
+  back from-runes(codes)
+
+task is-combining
+  take code, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(code, 768), is-maximum(code, 879))
+
+task symbols-of
+  take p, like latex-parser
+  take mode, like text
+  like hash, like text, like latex-symbol
+  mark private
+
+  save table, p/table
+  fork test, is-equal(mode, <math>)
+    hold
+      back table/math-symbols
+  back table/text-symbols
+
+# a symbol as the node its group names: an atom for `bin`, `rel`, `open`, `close`, `punct` and `inner`, else the
+# group's own node
+task symbol-node
+  take group, like text
+  take token, like latex-token
+  take mode, like text
+  take text, like text
+  like latex-node
+
+  fork test, is-equal(group, <mathord>)
+    hold
+      back
+        make latex-math-ord
+          bind at, token/at
+          bind end, token/end
+          bind mode, mode
+          bind text, text
+  fork test, is-equal(group, <textord>)
+    hold
+      back
+        make latex-text-ord
+          bind at, token/at
+          bind end, token/end
+          bind mode, mode
+          bind text, text
+  fork test, is-equal(group, <spacing>)
+    hold
+      back
+        make latex-spacing
+          bind at, token/at
+          bind end, token/end
+          bind mode, mode
+          bind text, text
+  fork test, is-equal(group, <accent-token>)
+    hold
+      back
+        make latex-accent-token
+          bind at, token/at
+          bind end, token/end
+          bind mode, mode
+          bind text, text
+  fork test, is-equal(group, <op-token>)
+    hold
+      back
+        make latex-op-token
+          bind at, token/at
+          bind end, token/end
+          bind mode, mode
+          bind text, text
+  back
+    make latex-atom
+      bind at, token/at
+      bind end, token/end
+      bind mode, mode
+      bind family, group
+      bind text, text
+
+# ---- what the handlers share (src/defineFunction.ts, src/parseNode.ts, src/utils.ts) ----
+
+# KaTeX's `ordargument`: a group's body, or the one node
+task ord-argument
+  take arg, like latex-node
+  like list, like latex-node
+
+  sift arg
+    case latex-group
+      back body
+    miss
+      save out, make list
+      push(out, arg)
+      back out
+
+# KaTeX's `normalizeArgument`: a group of one is that one
+task normalize-argument
+  take arg, like latex-node
+  like latex-node
+
+  sift arg
+    case latex-group
+      fork test, is-equal(body/length, 1)
+        hold
+          back get(body, 0)
+      back arg
+    miss
+      back arg
+
+# the text of a symbol node, none for any other node: KaTeX's `checkSymbolNodeType`
+task symbol-text
+  take node, like latex-node
+  like maybe, like text
+
+  # `text` is a word of the language, so each arm names the field by its place: `written`
+  sift node
+    case latex-atom
+      link at
+      link end
+      link mode
+      link family
+      link written
+      back make(some, written)
+    case latex-math-ord
+      link at
+      link end
+      link mode
+      link written
+      back make(some, written)
+    case latex-text-ord
+      link at
+      link end
+      link mode
+      link written
+      back make(some, written)
+    case latex-spacing
+      link at
+      link end
+      link mode
+      link written
+      back make(some, written)
+    case latex-accent-token
+      link at
+      link end
+      link mode
+      link written
+      back make(some, written)
+    case latex-op-token
+      link at
+      link end
+      link mode
+      link written
+      back make(some, written)
+    miss
+      back make none
+
+# KaTeX's `assertSymbolNodeType`
+task assert-symbol
+  take node, like latex-node
+  like text
+
+  sift symbol-text(node)
+    case some
+      link text
+      back text
+    case none
+      refuse-node(node, <Expected node of symbol group type, but got node of type {type-of(node)}>)
+  back <>
+
+task refuse-node
+  take node, like latex-node
+  take reason, like text
+
+  save facts, facts-of(node)
+  refuse(token-at(<>, facts/at, facts/end), reason)
+
+# KaTeX's `assertNodeType` for a group
+task assert-group
+  take node, like latex-node
+  like list, like latex-node
+
+  sift node
+    case latex-group
+      back body
+    miss
+      refuse-node(node, <Expected node of type ordgroup, but got node of type {type-of(node)}>)
+  back make list
+
+# KaTeX's `assertCharacterGroup`: the characters a group of plain characters spells. With `spaces`, a space counts
+task assert-characters
+  take body, like list, like latex-node
+  take message, like text
+  take spaces, like boolean
+  take group, like latex-node
+  like text
+
+  save out, make list
+  walk body
+    take node
+    sift node
+      case latex-text-ord
+        link at
+        link end
+        link mode
+        link written
+        push(out, written)
+      case latex-spacing
+        link at
+        link end
+        link mode
+        link written
+        fork test, and(spaces, is-equal(written, < >))
+          hold
+            push(out, < >)
+          miss
+            refuse-node(group, message)
+      miss
+        refuse-node(group, message)
+  back join(out, <>)
+
+# KaTeX's `getBaseElem` and `isCharacterBox`
+task base-element
+  take group, like latex-node
+  like latex-node
+
+  sift group
+    case latex-group
+      fork test, is-equal(body/length, 1)
+        hold
+          back base-element(get(body, 0))
+      back group
+    case latex-color
+      fork test, is-equal(body/length, 1)
+        hold
+          back base-element(get(body, 0))
+      back group
+    case latex-font
+      back base-element(body)
+    miss
+      back group
+
+task is-character-box
+  take group, like latex-node
+  like boolean
+
+  save type, type-of(base-element(group))
+  back or(or(is-equal(type, <mathord>), is-equal(type, <textord>)), is-equal(type, <atom>))
+
+# KaTeX's `binrelClass`: `mbin` or `mrel` when the argument is that atom, else `mord`
+task binrel-class
+  take arg, like latex-node
+  like text
+
+  save atom, arg
+  sift arg
+    case latex-group
+      fork test, is-above(body/length, 0)
+        hold
+          save atom, get(body, 0)
+    miss
+      save nothing, 0
+  sift atom
+    case latex-atom
+      fork test, or(is-equal(family, <bin>), is-equal(family, <rel>))
+        hold
+          back <m{family}>
+      back <mord>
+    miss
+      back <mord>
+
+# KaTeX's `checkDelimiter`: a symbol from the delimiters `\left`, `\right`, `\middle` and `\big` take
+task check-delimiter
+  take delim, like latex-node
+  take func, like text
+  like text
+
+  sift symbol-text(delim)
+    case some
+      link text
+      fork test, is-delimiter(text)
+        hold
+          back text
+      refuse-node(delim, <Invalid delimiter '{text}' after '{func}'>)
+    case none
+      refuse-node(delim, <Invalid delimiter type '{type-of(delim)}'>)
+  back <>
+
+# KaTeX's `delimiters` (src/functions/delimsizing.ts)
+task is-delimiter
+  take text, like text
+  like boolean
+  mark private
+
+  walk split(<( \\lparen ) \\rparen [ \\lbrack ] \\rbrack \\\{ \\lbrace \\\} \\rbrace \\lfloor \\rfloor ⌊ ⌋ \\lceil \\rceil ⌈ ⌉ \< \> \\langle ⟨ \\rangle ⟩ \\lt \\gt \\lvert \\rvert \\lVert \\rVert \\lgroup \\rgroup ⟮ ⟯ \\lmoustache \\rmoustache ⎰ ⎱ / \\backslash | \\vert \\| \\Vert \\uparrow \\Uparrow \\downarrow \\Downarrow \\updownarrow \\Updownarrow .>, < >)
+    take one
+    fork test, is-equal(one, text)
+      hold
+        back true
+  back false
+
+# the token a node was read from, for a mistake that names it
+task token-of
+  take node, like latex-node
+  like latex-token
+
+  save facts, facts-of(node)
+  back token-at(<>, facts/at, facts/end)
+
+task span-at
+  take body, like list, like latex-node
+  like number
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back 0
+  back facts-of(get(body, 0))/at
+
+task span-end
+  take body, like list, like latex-node
+  like number
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back 0
+  back facts-of(get(body, subtract(body/length, 1)))/end
+
+task the-option
+  take options, like list, like maybe, like latex-node
+  take index, like number
+  like maybe, like latex-node
+  mark private
+
+  fork test, is-below(index, options/length)
+    hold
+      back get(options, index)
+  back make none
+
+task one-node
+  take node, like latex-node
+  like list, like latex-node
+  mark private
+
+  save out, make list
+  push(out, node)
+  back out
+
+# ---- the handlers: one for each kind of function KaTeX defines (src/functions/), by the table's name for it ----
+
+task handle
+  take p, like latex-parser
+  take handler, like text
+  take name, like text
+  take values, like list, like latex-node
+  take options, like list, like maybe, like latex-node
+  take token, like latex-token
+  take break-on, like text
+  like latex-node
+
+  save at, token/at
+  save mode, p/mode
+
+  fork test, is-equal(handler, <accent>)
+    hold
+      save stretchy, not(is-plain-accent(name))
+      save shifty, or(not(stretchy), or(is-equal(name, <\\widehat>), or(is-equal(name, <\\widetilde>), is-equal(name, <\\widecheck>))))
+      back
+        make latex-accent
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind label, name
+          bind is-stretchy, make(some, stretchy)
+          bind is-shifty, make(some, shifty)
+          bind base, normalize-argument(get(values, 0))
+
+  fork test, is-equal(handler, <text-accent>)
+    hold
+      fork test, is-equal(mode, <math>)
+        hold
+          report-nonstrict(p, <mathVsTextAccents>, <LaTeX's accent {name} works only in text mode>, make(none))
+      back
+        make latex-accent
+          bind at, at
+          bind end, p/last-end
+          bind mode, <text>
+          bind label, name
+          bind is-stretchy, make(some, false)
+          bind is-shifty, make(some, true)
+          bind base, get(values, 0)
+
+  fork test, is-equal(handler, <accent-under>)
+    hold
+      back
+        make latex-accent-under
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind label, name
+          bind base, get(values, 0)
+
+  fork test, is-equal(handler, <x-arrow>)
+    hold
+      save body, make none
+      fork test, is-above(values/length, 0)
+        hold
+          save first, get(values, 0)
+          save body, make(some, first)
+      back
+        make latex-x-arrow
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind label, name
+          bind body, body
+          bind below, the-option(options, 0)
+
+  fork test, is-equal(handler, <math-class>)
+    hold
+      save body, get(values, 0)
+      back
+        make latex-math-class
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind mclass, <m{substring(name, 5)}>
+          bind body, ord-argument(body)
+          bind is-character-box, is-character-box(body)
+
+  fork test, is-equal(handler, <bin-rel>)
+    hold
+      back
+        make latex-math-class
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind mclass, binrel-class(get(values, 0))
+          bind body, ord-argument(get(values, 1))
+          bind is-character-box, is-character-box(get(values, 1))
+
+  fork test, is-equal(handler, <stack>)
+    hold
+      back handle-stack(p, name, values, at)
+
+  fork test, is-equal(handler, <poor-bold>)
+    hold
+      back
+        make latex-poor-bold
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind mclass, binrel-class(get(values, 0))
+          bind body, ord-argument(get(values, 0))
+
+  fork test, is-equal(handler, <cd-label>)
+    hold
+      back
+        make latex-cd-label
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind side, substring(name, 4)
+          bind label, get(values, 0)
+
+  fork test, is-equal(handler, <cd-label-parent>)
+    hold
+      back
+        make latex-cd-label-parent
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind fragment, get(values, 0)
+
+  fork test, is-equal(handler, <char>)
+    hold
+      back handle-char(p, get(values, 0), at)
+
+  fork test, is-equal(handler, <text-color>)
+    hold
+      back
+        make latex-color
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind color, color-of(get(values, 0))
+          bind body, ord-argument(get(values, 1))
+
+  fork test, is-equal(handler, <color>)
+    hold
+      save color, color-of(get(values, 0))
+      save value
+        make definition-text
+          bind body, color
+      set-macro(p/gullet, <\\current@color>, make(some, value), false)
+      save body, parse-expression(p, true, break-on)
+      back
+        make latex-color
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind color, color
+          bind body, body
+
+  fork test, is-equal(handler, <line-break>)
+    hold
+      save size, make none
+      fork test, is-equal(future(p/gullet)/text, <[>)
+        hold
+          sift parse-size-group(p, true)
+            case some
+              link known
+              save measured, size-value(known)
+              save size, make(some, measured)
+            case none
+              save nothing, 0
+      # in display math LaTeX reads `\\` as nothing, and strict reads it so
+      save new-line, true
+      fork test, p/options/display
+        hold
+          save new-line, not(is-strict(p/gullet/lexer/report, <newLineInDisplayMode>, <In LaTeX, \\\\ or \\newline does nothing in display mode>))
+      back
+        make latex-line-break
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind new-line, new-line
+          bind size, size
+
+  fork test, is-equal(handler, <prefix>)
+    hold
+      consume-parser-spaces(p)
+      save next, fetch(p)
+      save mapped, global-of(next/text)
+      fork test, is-equal(mapped, <>)
+        hold
+          refuse(next, <Invalid token after macro prefix>)
+      fork test, or(is-equal(name, <\\global>), is-equal(name, <\\\\globallong>))
+        hold
+          save changed, next
+          save changed/text, mapped
+          save p/next, make(some, changed)
+      sift parse-function(p, <>, <>)
+        case some
+          link node
+          fork test, is-unequal(type-of(node), <internal>)
+            hold
+              refuse-node(node, <Expected node of type internal, but got node of type {type-of(node)}>)
+          back node
+        case none
+          refuse(next, <Expected node of type internal, but got undefined>)
+      back internal(at, p)
+
+  fork test, is-equal(handler, <define>)
+    hold
+      handle-define(p, name)
+      back internal(at, p)
+
+  fork test, is-equal(handler, <let>)
+    hold
+      save target, check-control-sequence(pop-token(p/gullet))
+      consume-spaces(p/gullet)
+      save right-side, right-hand-side(p)
+      let-command(p, target, right-side, is-equal(name, <\\\\globallet>))
+      back internal(at, p)
+
+  fork test, is-equal(handler, <future-let>)
+    hold
+      save target, check-control-sequence(pop-token(p/gullet))
+      save middle, pop-token(p/gullet)
+      save next, pop-token(p/gullet)
+      let-command(p, target, next, is-equal(name, <\\\\globalfuture>))
+      push-token(p/gullet, next)
+      push-token(p/gullet, middle)
+      back internal(at, p)
+
+  fork test, is-equal(handler, <delimiter-size>)
+    hold
+      save delim, check-delimiter(normalize-argument(get(values, 0)), name)
+      back
+        make latex-delimiter-size
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind size, delimiter-size-of(name)
+          bind mclass, delimiter-class-of(name)
+          bind delim, delim
+
+  fork test, is-equal(handler, <right>)
+    hold
+      save color, make none
+      sift macro-of(p/gullet, <\\current@color>)
+        case some
+          link known
+          sift known
+            case definition-text
+              link current
+              save color, make(some, current)
+            miss
+              refuse(token, <\\current@color set to non-string in \\right>)
+        case none
+          save nothing, 0
+      back
+        make latex-right
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind delim, check-delimiter(get(values, 0), name)
+          bind color, color
+
+  fork test, is-equal(handler, <left>)
+    hold
+      save delim, check-delimiter(get(values, 0), name)
+      save p/depth, add(p/depth, 1)
+      save body, parse-expression(p, false, <>)
+      save p/depth, subtract(p/depth, 1)
+      expect(p, <\\right>, false)
+      save right-delim, <>
+      save right-color, make none
+      sift parse-function(p, <>, <>)
+        case some
+          link closing
+          sift closing
+            case latex-right
+              # the `\right`'s own fields, in the order the case declares them, apart from the `\left`'s
+              link right-at
+              link right-end
+              link right-mode
+              link closing-delim
+              link closing-color
+              save right-delim, closing-delim
+              save right-color, closing-color
+            miss
+              refuse-node(closing, <Expected node of type leftright-right, but got node of type {type-of(closing)}>)
+        case none
+          fail(p, <Expected node of type leftright-right, but got undefined>)
+      back
+        make latex-left-right
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, body
+          bind left, delim
+          bind right, right-delim
+          bind right-color, right-color
+
+  fork test, is-equal(handler, <middle>)
+    hold
+      save delim, check-delimiter(get(values, 0), name)
+      fork test, is-equal(p/depth, 0)
+        hold
+          refuse-node(get(values, 0), <\\middle without preceding \\left>)
+      back
+        make latex-middle
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind delim, delim
+
+  fork test, is-equal(handler, <color-box>)
+    hold
+      save background, color-of(get(values, 0))
+      back enclose(p, at, name, make(some, background), make(none),get(values, 1))
+
+  fork test, is-equal(handler, <frame-color-box>)
+    hold
+      save border, color-of(get(values, 0))
+      save background, color-of(get(values, 1))
+      back enclose(p, at, name, make(some, background), make(some, border), get(values, 2))
+
+  fork test, is-equal(handler, <frame-box>)
+    hold
+      back enclose(p, at, <\\fbox>, make(none),make(none),get(values, 0))
+
+  fork test, is-equal(handler, <enclose>)
+    hold
+      back enclose(p, at, name, make(none),make(none),get(values, 0))
+
+  fork test, is-equal(handler, <strike-out>)
+    hold
+      fork test, is-equal(mode, <math>)
+        hold
+          report-nonstrict(p, <mathVsSout>, <LaTeX's \\sout works only in text mode>, make(none))
+      back enclose(p, at, name, make(none),make(none),get(values, 0))
+
+  fork test, is-equal(handler, <angle-box>)
+    hold
+      back enclose(p, at, <\\angl>, make(none),make(none),get(values, 0))
+
+  fork test, is-equal(handler, <array-only>)
+    hold
+      refuse(token, <{name} valid only within array environment>)
+
+  fork test, is-equal(handler, <environment>)
+    hold
+      back handle-environment(p, name, get(values, 0), at)
+
+  fork test, is-equal(handler, <font>)
+    hold
+      save func, name
+      fork test, is-equal(name, <\\Bbb>)
+        hold
+          save func, <\\mathbb>
+      fork test, is-equal(name, <\\bold>)
+        hold
+          save func, <\\mathbf>
+      fork test, is-equal(name, <\\frak>)
+        hold
+          save func, <\\mathfrak>
+      back
+        make latex-font
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind font, substring(func, 1)
+          bind body, normalize-argument(get(values, 0))
+
+  fork test, is-equal(handler, <bold-symbol>)
+    hold
+      save body, get(values, 0)
+      save font
+        make latex-font
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind font, <boldsymbol>
+          bind body, body
+      back
+        make latex-math-class
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind mclass, binrel-class(body)
+          bind body, one-node(font)
+          bind is-character-box, is-character-box(body)
+
+  fork test, is-equal(handler, <old-font>)
+    hold
+      save body, parse-expression(p, true, break-on)
+      save group
+        make latex-group
+          bind at, at
+          bind end, p/last-end
+          bind mode, p/mode
+          bind body, body
+          bind semisimple, make none
+      back
+        make latex-font
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind font, <math{substring(name, 1)}>
+          bind body, group
+
+  fork test, is-equal(handler, <fraction>)
+    hold
+      back handle-fraction(p, name, get(values, 0), get(values, 1), at)
+
+  fork test, is-equal(handler, <infix>)
+    hold
+      save replace, <>
+      fork test, is-equal(name, <\\over>)
+        hold
+          save replace, <\\frac>
+      fork test, is-equal(name, <\\choose>)
+        hold
+          save replace, <\\binom>
+      fork test, is-equal(name, <\\atop>)
+        hold
+          save replace, <\\\\atopfrac>
+      fork test, is-equal(name, <\\brace>)
+        hold
+          save replace, <\\\\bracefrac>
+      fork test, is-equal(name, <\\brack>)
+        hold
+          save replace, <\\\\brackfrac>
+      back
+        make latex-infix
+          bind at, at
+          bind end, token/end
+          bind mode, mode
+          bind replace-with, replace
+          bind size, make none
+
+  fork test, is-equal(handler, <general-fraction>)
+    hold
+      back handle-general-fraction(p, values, at)
+
+  fork test, is-equal(handler, <above>)
+    hold
+      save measured, size-value(get(values, 0))
+      back
+        make latex-infix
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind replace-with, <\\\\abovefrac>
+          bind size, make(some, measured)
+
+  fork test, is-equal(handler, <above-fraction>)
+    hold
+      save bar, make none
+      sift get(values, 1)
+        case latex-infix
+          link infix-at
+          link infix-end
+          link infix-mode
+          link infix-replace
+          link infix-size
+          save bar, infix-size
+        miss
+          refuse-node(get(values, 1), <Expected node of type infix, but got node of type {type-of(get(values, 1))}>)
+      save bar-line, false
+      sift bar
+        case some
+          link known
+          save bar-line, is-above(known/amount, 0.0)
+        case none
+          refuse(token, <\\\\abovefrac expected size, but got undefined>)
+      back
+        make latex-fraction
+          bind at, facts-of(get(values, 0))/at
+          bind end, facts-of(get(values, 2))/end
+          bind mode, mode
+          bind continued, false
+          bind numer, get(values, 0)
+          bind denom, get(values, 2)
+          bind has-bar-line, bar-line
+          bind left-delim, make none
+          bind right-delim, make none
+          bind bar-size, bar
+
+  fork test, is-equal(handler, <horizontal-brace>)
+    hold
+      back
+        make latex-horizontal-brace
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind label, name
+          bind is-over, contains(name, <\\over>)
+          bind base, get(values, 0)
+
+  fork test, is-equal(handler, <href>)
+    hold
+      save href, url-of(get(values, 0))
+      fork test, not(is-trusted-url(p, href))
+        hold
+          back unsupported(p, name, at)
+      back
+        make latex-href
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind href, href
+          bind body, ord-argument(get(values, 1))
+
+  fork test, is-equal(handler, <url>)
+    hold
+      save href, url-of(get(values, 0))
+      fork test, not(is-trusted-url(p, href))
+        hold
+          back unsupported(p, name, at)
+      back handle-url(p, href, at)
+
+  fork test, is-equal(handler, <hbox>)
+    hold
+      back
+        make latex-hbox
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, ord-argument(get(values, 0))
+
+  fork test, is-equal(handler, <html>)
+    hold
+      back handle-html(p, name, raw-of(get(values, 0)), get(values, 1), at)
+
+  fork test, is-equal(handler, <html-mathml>)
+    hold
+      back
+        make latex-html-mathml
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind html, ord-argument(get(values, 0))
+          bind mathml, ord-argument(get(values, 1))
+
+  fork test, is-equal(handler, <include-graphics>)
+    hold
+      back handle-graphics(p, the-option(options, 0), get(values, 0), at)
+
+  fork test, is-equal(handler, <kern>)
+    hold
+      save dimension, size-value(get(values, 0))
+      # `\mkern` and `\mskip` take math units in math, `\kern` and `\hskip` take no math units
+      save mu, is-equal(dimension/unit, <mu>)
+      fork test, starts-with(name, <\\m>)
+        hold
+          fork test, not(mu)
+            hold
+              report-nonstrict(p, <mathVsTextUnits>, <LaTeX's {name} supports only mu units, not {dimension/unit} units>, make(none))
+          fork test, is-unequal(mode, <math>)
+            hold
+              report-nonstrict(p, <mathVsTextUnits>, <LaTeX's {name} works only in math mode>, make(none))
+        miss
+          fork test, mu
+            hold
+              report-nonstrict(p, <mathVsTextUnits>, <LaTeX's {name} doesn't support mu units>, make(none))
+      back
+        make latex-kern
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind dimension, dimension
+
+  fork test, is-equal(handler, <lap>)
+    hold
+      back
+        make latex-lap
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind alignment, substring(name, 5)
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <math-shift>)
+    hold
+      save outer, p/mode
+      switch-mode(p, <math>)
+      save close, <$>
+      fork test, is-equal(name, <\\(>)
+        hold
+          save close, <\\)>
+      save body, parse-expression(p, false, close)
+      expect(p, close, true)
+      switch-mode(p, outer)
+      back
+        make latex-styling
+          bind at, at
+          bind end, p/last-end
+          bind mode, p/mode
+          bind style, <text>
+          bind reset-font, make(some, true)
+          bind body, body
+
+  fork test, is-equal(handler, <mismatched>)
+    hold
+      refuse(token, <Mismatched {name}>)
+
+  fork test, is-equal(handler, <math-choice>)
+    hold
+      back
+        make latex-math-choice
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind display, ord-argument(get(values, 0))
+          bind text, ord-argument(get(values, 1))
+          bind script, ord-argument(get(values, 2))
+          bind scriptscript, ord-argument(get(values, 3))
+
+  fork test, is-equal(handler, <big-operator>)
+    hold
+      back operator(p, at, single-big-operator(name), true, true, make none)
+
+  fork test, is-equal(handler, <integral>)
+    hold
+      back operator(p, at, single-integral(name), false, true, make none)
+
+  fork test, is-equal(handler, <function-name>)
+    hold
+      back operator(p, at, name, false, false, make none)
+
+  fork test, is-equal(handler, <limit-name>)
+    hold
+      back operator(p, at, name, true, false, make none)
+
+  fork test, is-equal(handler, <math-operator>)
+    hold
+      save body, ord-argument(get(values, 0))
+      back
+        make latex-op
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind limits, false
+          bind always-handle-sup-sub, make none
+          bind suppress-base-shift, make none
+          bind parent-is-sup-sub, false
+          bind symbol, false
+          bind name, make none
+          bind body, make(some, body)
+
+  fork test, is-equal(handler, <operator-name>)
+    hold
+      back
+        make latex-operator-name
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, ord-argument(get(values, 0))
+          bind always-handle-sup-sub, is-equal(name, <\\operatornamewithlimits>)
+          bind limits, false
+          bind parent-is-sup-sub, false
+
+  fork test, is-equal(handler, <overline>)
+    hold
+      back
+        make latex-overline
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <underline>)
+    hold
+      back
+        make latex-underline
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <phantom>)
+    hold
+      back
+        make latex-phantom
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, ord-argument(get(values, 0))
+
+  fork test, is-equal(handler, <vertical-phantom>)
+    hold
+      back
+        make latex-vertical-phantom
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <raise-box>)
+    hold
+      back
+        make latex-raise-box
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind dy, size-value(get(values, 0))
+          bind body, get(values, 1)
+
+  fork test, is-equal(handler, <reflect-box>)
+    hold
+      back
+        make latex-reflect-box
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <relax>)
+    hold
+      back internal(at, p)
+
+  fork test, is-equal(handler, <rule>)
+    hold
+      save shift, make none
+      sift the-option(options, 0)
+        case some
+          link known
+          save measured, size-value(known)
+          save shift, make(some, measured)
+        case none
+          save nothing, 0
+      back
+        make latex-rule
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind shift, shift
+          bind width, size-value(get(values, 0))
+          bind height, size-value(get(values, 1))
+
+  fork test, is-equal(handler, <sizing>)
+    hold
+      save body, parse-expression(p, false, break-on)
+      back
+        make latex-sizing
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind size, sizing-of(name)
+          bind body, body
+
+  fork test, is-equal(handler, <smash>)
+    hold
+      back handle-smash(p, the-option(options, 0), get(values, 0), at)
+
+  fork test, is-equal(handler, <sqrt>)
+    hold
+      back
+        make latex-sqrt
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+          bind index, the-option(options, 0)
+
+  fork test, is-equal(handler, <styling>)
+    hold
+      save body, parse-expression(p, true, break-on)
+      save length, char-length(name)
+      back
+        make latex-styling
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind style, substring(name, 1, subtract(length, 5))
+          bind reset-font, make none
+          bind body, body
+
+  fork test, is-equal(handler, <text>)
+    hold
+      back
+        make latex-text
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, ord-argument(get(values, 0))
+          bind font, make(some, name)
+
+  fork test, is-equal(handler, <vertical-center>)
+    hold
+      back
+        make latex-vertical-center
+          bind at, at
+          bind end, p/last-end
+          bind mode, mode
+          bind body, get(values, 0)
+
+  fork test, is-equal(handler, <verb>)
+    hold
+      refuse(token, <\\verb ended by end of line instead of matching delimiter>)
+
+  refuse(token, <No function handler for {name}>)
+  back internal(at, p)
+
+task internal
+  take at, like number
+  take p, like latex-parser
+  like latex-node
+
+  back
+    make latex-internal
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+
+# KaTeX's `NON_STRETCHY_ACCENT_REGEX`: the accents that keep their width
+task is-plain-accent
+  take name, like text
+  like boolean
+  mark private
+
+  walk split(<\\acute \\grave \\ddot \\tilde \\bar \\breve \\check \\hat \\vec \\dot \\mathring>, < >)
+    take one
+    fork test, contains(name, one)
+      hold
+        back true
+  back false
+
+task color-of
+  take node, like latex-node
+  like text
+  mark private
+
+  sift node
+    case latex-color-token
+      back color
+    miss
+      refuse-node(node, <Expected node of type color-token, but got node of type {type-of(node)}>)
+  back <>
+
+task url-of
+  take node, like latex-node
+  like text
+  mark private
+
+  sift node
+    case latex-url
+      back url
+    miss
+      refuse-node(node, <Expected node of type url, but got node of type {type-of(node)}>)
+  back <>
+
+task raw-of
+  take node, like latex-node
+  like text
+  mark private
+
+  sift node
+    case latex-raw
+      back value
+    miss
+      refuse-node(node, <Expected node of type raw, but got node of type {type-of(node)}>)
+  back <>
+
+task size-value
+  take node, like latex-node
+  like latex-measure
+
+  sift node
+    case latex-size
+      back value
+    miss
+      refuse-node(node, <Expected node of type size, but got node of type {type-of(node)}>)
+  back zero-measure()
+
+task enclose
+  take p, like latex-parser
+  take at, like number
+  take label, like text
+  take background, like maybe, like text
+  take border, like maybe, like text
+  take body, like latex-node
+  like latex-node
+  mark private
+
+  back
+    make latex-enclose
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind label, label
+      bind background-color, background
+      bind border-color, border
+      bind body, body
+
+task operator
+  take p, like latex-parser
+  take at, like number
+  take name, like text
+  take limits, like boolean
+  take symbol, like boolean
+  take body, like maybe, like list, like latex-node
+  like latex-node
+  mark private
+
+  back
+    make latex-op
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind limits, limits
+      bind always-handle-sup-sub, make none
+      bind suppress-base-shift, make none
+      bind parent-is-sup-sub, false
+      bind symbol, symbol
+      bind name, make(some, name)
+      bind body, body
+
+# KaTeX's `singleCharBigOps`: `∑` is `\sum`
+task single-big-operator
+  take name, like text
+  like text
+  mark private
+
+  save pairs, split(<∏ \\prod ∐ \\coprod ∑ \\sum ⋀ \\bigwedge ⋁ \\bigvee ⋂ \\bigcap ⋃ \\bigcup ⨀ \\bigodot ⨁ \\bigoplus ⨂ \\bigotimes ⨄ \\biguplus ⨆ \\bigsqcup>, < >)
+  back paired(pairs, name)
+
+# KaTeX's `singleCharIntegrals`: `∫` is `\int`
+task single-integral
+  take name, like text
+  like text
+  mark private
+
+  save pairs, split(<∫ \\int ∬ \\iint ∭ \\iiint ∮ \\oint ∯ \\oiint ∰ \\oiiint>, < >)
+  back paired(pairs, name)
+
+task paired
+  take pairs, like list, like text
+  take name, like text
+  like text
+  mark private
+
+  save k, 0
+  walk test
+    hook test, is-below(add(k, 1), pairs/length)
+    hook hold
+      fork test, is-equal(get(pairs, k), name)
+        hold
+          back get(pairs, add(k, 1))
+      save k, add(k, 2)
+  back name
+
+# KaTeX's `delimiterSizes`
+task delimiter-size-of
+  take name, like text
+  like number
+  mark private
+
+  fork test, contains(name, <Bigg>)
+    hold
+      back 4
+  fork test, contains(name, <bigg>)
+    hold
+      back 3
+  fork test, contains(name, <Big>)
+    hold
+      back 2
+  back 1
+
+task delimiter-class-of
+  take name, like text
+  like text
+  mark private
+
+  save last, substring(name, subtract(char-length(name), 1))
+  fork test, is-equal(last, <l>)
+    hold
+      back <mopen>
+  fork test, is-equal(last, <r>)
+    hold
+      back <mclose>
+  fork test, is-equal(last, <m>)
+    hold
+      back <mrel>
+  back <mord>
+
+# KaTeX's `sizeFuncs`: `\tiny` is 1, `\Huge` 11
+task sizing-of
+  take name, like text
+  like number
+  mark private
+
+  save k, 1
+  walk split(<\\tiny \\sixptsize \\scriptsize \\footnotesize \\small \\normalsize \\large \\Large \\LARGE \\huge \\Huge>, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back k
+    save k, add(k, 1)
+  back 0
+
+# `\stackrel`, `\overset` and `\underset`: the base as an operator with the other above or below it
+task handle-stack
+  take p, like latex-parser
+  take name, like text
+  take values, like list, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save base-arg, get(values, 1)
+  save shifted, get(values, 0)
+  save mclass, <mrel>
+  fork test, is-unequal(name, <\\stackrel>)
+    hold
+      save mclass, binrel-class(base-arg)
+  save base-body, ord-argument(base-arg)
+  save suppress, is-unequal(name, <\\stackrel>)
+  save base-op
+    make latex-op
+      bind at, at
+      bind end, p/last-end
+      bind mode, facts-of(base-arg)/mode
+      bind limits, true
+      bind always-handle-sup-sub, make(some, true)
+      bind suppress-base-shift, make(some, suppress)
+      bind parent-is-sup-sub, false
+      bind symbol, false
+      bind name, make none
+      bind body, make(some, base-body)
+  save sup, make(some, shifted)
+  save sub, make none
+  fork test, is-equal(name, <\\underset>)
+    hold
+      save sup, make none
+      save sub, make(some, shifted)
+  save scripts
+    make latex-scripts
+      bind at, at
+      bind end, p/last-end
+      bind mode, facts-of(shifted)/mode
+      bind base, make(some, base-op)
+      bind sup, sup
+      bind sub, sub
+  back
+    make latex-math-class
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind mclass, mclass
+      bind body, one-node(scripts)
+      bind is-character-box, is-character-box(scripts)
+
+# `\@char{65}`: the character at that code point, read as JavaScript's `parseInt` reads the number
+task handle-char
+  take p, like latex-parser
+  take arg, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save body, assert-group(arg)
+  save number, assert-characters(body, <\\@char has non-numeric argument>, false, arg)
+  save outcome, run-latex-grammar(<integer-text>, number)
+  fork test, not(outcome/ok)
+    hold
+      refuse-node(arg, <\\@char has non-numeric argument {number}>)
+  save code, 0
+  sift outcome/match
+    case some
+      link found
+      save code, integer-value(found, number)
+    case none
+      save nothing, 0
+  fork test, is-below(code, -1)
+    hold
+      refuse-node(arg, <\\@char with invalid code point {number}>)
+  fork test, is-equal(code, -1)
+    hold
+      refuse-node(arg, <\\@char has non-numeric argument {number}>)
+  fork test, is-above(code, 1114111)
+    hold
+      refuse-node(arg, <\\@char with invalid code point {number}>)
+  save codes, make list
+  push(codes, code)
+  back
+    make latex-text-ord
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind text, from-runes(codes)
+
+# an `integer-text` match as JavaScript's `parseInt` reads it: -1 for NaN (no digits after `0x`), and every negative
+# value below -1, which no code point is
+task integer-value
+  take found, like latex-match
+  take text, like text
+  like number
+  mark private
+
+  save negative, false
+  sift latex-match-named(found, <sign>)
+    case some
+      link sign
+      save negative, is-equal(latex-match-text(sign, text), <->)
+    case none
+      save nothing, 0
+  save value, 0
+  sift latex-match-named(found, <hex-integer>)
+    case some
+      link hex
+      save digits, latex-matches-named(hex, <hex-digit>)
+      fork test, is-equal(digits/length, 0)
+        hold
+          back -1
+      walk digits
+        take one
+        save value, add(multiply(value, 16), parse-integer(latex-match-text(one, text), 16))
+    case none
+      sift latex-match-named(found, <digits>)
+        case some
+          link decimal
+          save value, parse-integer(latex-match-text(decimal, text))
+        case none
+          back -1
+  fork test, and(negative, is-above(value, 0))
+    hold
+      back subtract(-2, value)
+  back value
+
+# Whether KaTeX trusts a url when it is told to trust every command (src/Settings.ts `isTrusted`): one with no
+# protocol is relative, and trusted, and one is refused when its protocol's colon is written as an entity or its
+# scheme is no scheme RFC 3986 allows
+task is-trusted-url
+  take p, like latex-parser
+  take url, like text
+  like boolean
+  mark private
+
+  save outcome, run-latex-grammar(<url-protocol>, url)
+  sift outcome/match
+    case none
+      back true
+    case some
+      link found
+      save start, 0
+      sift latex-match-named(found, <url-scheme-search>)
+        case some
+          link search
+          save start, search/start
+        case none
+          back true
+      sift find-match(found, <url-separator-rest>)
+        case some
+          link rest
+          fork test, is-some-match(latex-match-named(rest, <url-entity-colon>))
+            hold
+              back false
+          save scheme, substring(url, start, rest/start)
+          back run-latex-grammar(<url-scheme-name>, scheme)/ok
+        case none
+          back true
+
+# KaTeX's `formatUnsupportedCmd`: a command it will not read, shown as its own name in red text
+task unsupported
+  take p, like latex-parser
+  take name, like text
+  take at, like number
+  like latex-node
+  mark private
+
+  save chars, make list
+  walk split(name, <>)
+    take one
+    save ord
+      make latex-text-ord
+        bind at, at
+        bind end, p/last-end
+        bind mode, <text>
+        bind text, one
+    push(chars, ord)
+  save shown
+    make latex-text
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind body, chars
+      bind font, make none
+  back
+    make latex-color
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind color, <#cc0000>
+      bind body, one-node(shown)
+
+# `\url{...}`: a link whose text is the url itself, in typewriter, `~` written as `\textasciitilde`
+task handle-url
+  take p, like latex-parser
+  take href, like text
+  take at, like number
+  like latex-node
+  mark private
+
+  save chars, make list
+  walk to-runes(href)
+    take code
+    save c, mark-of(code)
+    fork test, is-equal(c, <~>)
+      hold
+        save c, <\\textasciitilde>
+    save ord
+      make latex-text-ord
+        bind at, at
+        bind end, p/last-end
+        bind mode, <text>
+        bind text, c
+    push(chars, ord)
+  save body
+    make latex-text
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind body, chars
+      bind font, make(some, <\\texttt>)
+  back
+    make latex-href
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind href, href
+      bind body, ord-argument(body)
+
+# `\htmlClass`, `\htmlId`, `\htmlStyle`, `\htmlData`: the attributes they set
+task handle-html
+  take p, like latex-parser
+  take name, like text
+  take value, like text
+  take body, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  report-nonstrict(p, <htmlExtension>, <HTML extension is disabled on strict mode>, make(none))
+  save attributes, make list
+  fork test, is-equal(name, <\\htmlClass>)
+    hold
+      push(attributes, attribute(<class>, value))
+  fork test, is-equal(name, <\\htmlId>)
+    hold
+      push(attributes, attribute(<id>, value))
+  fork test, is-equal(name, <\\htmlStyle>)
+    hold
+      push(attributes, attribute(<style>, value))
+  fork test, is-equal(name, <\\htmlData>)
+    hold
+      save outcome, run-latex-grammar(<data-attributes>, value)
+      sift outcome/match
+        case some
+          link found
+          walk latex-matches-named(found, <data-item>)
+            take item
+            sift latex-match-named(item, <data-pair>)
+              case some
+                link pair
+                save key, <>
+                sift latex-match-named(pair, <data-key>)
+                  case some
+                    link key-match
+                    save key, unescaped-data(key-match, value)
+                  case none
+                    save nothing, 0
+                save data-value, <>
+                sift latex-match-named(pair, <data-value>)
+                  case some
+                    link value-match
+                    save data-value, unescaped-data(value-match, value)
+                  case none
+                    save nothing, 0
+                push(attributes, attribute(<data-{trim(key)}>, data-value))
+              case none
+                refuse(token-at(<>, at, p/last-end), <\\htmlData key/value '{unescaped-data(item, value)}' missing equals sign>)
+        case none
+          save nothing, 0
+  back
+    make latex-html
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind attributes, attributes
+      bind body, ord-argument(body)
+
+# a data key or value with each `{,}` read as a comma
+task unescaped-data
+  take found, like latex-match
+  take text, like text
+  like text
+  mark private
+
+  save parts, make list
+  walk found/children
+    take one
+    fork test, is-equal(one/rule, <escaped-comma>)
+      hold
+        push(parts, <,>)
+      miss
+        sift latex-match-named(one, <data-value>)
+          case some
+            link inner
+            push(parts, unescaped-data(inner, text))
+          case none
+            push(parts, latex-match-text(one, text))
+  back join(parts, <>)
+
+task attribute
+  take name, like text
+  take value, like text
+  like latex-attribute
+  mark private
+
+  back
+    make latex-attribute
+      bind name, name
+      bind value, value
+
+# `\includegraphics[width=...]{src}`
+task handle-graphics
+  take p, like latex-parser
+  take option, like maybe, like latex-node
+  take source, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save width
+    make latex-measure
+      bind amount, 0.0
+      bind unit, <em>
+  save height
+    make latex-measure
+      bind amount, 0.9
+      bind unit, <em>
+  save total
+    make latex-measure
+      bind amount, 0.0
+      bind unit, <em>
+  save alt, <>
+  sift option
+    case some
+      link known
+      save written, raw-of(known)
+      save outcome, run-latex-grammar(<graphic-attributes>, written)
+      sift outcome/match
+        case some
+          link found
+          walk latex-matches-named(found, <graphic-item>)
+            take item
+            sift latex-match-named(item, <graphic-pair>)
+              case some
+                link pair
+                save parts, latex-matches-named(pair, <graphic-part>)
+                save key, trim(latex-match-text(get(parts, 0), written))
+                save str, trim(latex-match-text(get(parts, 1), written))
+                fork test, is-equal(key, <alt>)
+                  hold
+                    save alt, str
+                  miss
+                    fork test, is-equal(key, <width>)
+                      hold
+                        save width, graphic-size(p, str, at)
+                      miss
+                        fork test, is-equal(key, <height>)
+                          hold
+                            save height, graphic-size(p, str, at)
+                          miss
+                            fork test, is-equal(key, <totalheight>)
+                              hold
+                                save total, graphic-size(p, str, at)
+                              miss
+                                # KaTeX names the key as written, its spaces kept
+                                refuse(token-at(<>, at, p/last-end), <Invalid key: '{latex-match-text(get(parts, 0), written)}' in \\includegraphics.>)
+              case none
+                save nothing, 0
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save src, url-of(source)
+  fork test, is-equal(alt, <>)
+    hold
+      save cut, last-index-of(src, </>)
+      save other, last-index-of(src, <\\>)
+      fork test, is-above(other, cut)
+        hold
+          save cut, other
+      save alt, substring(src, add(cut, 1))
+      save alt, substring(alt, 0, last-index-of(alt, <.>))
+  fork test, not(is-trusted-url(p, src))
+    hold
+      back unsupported(p, <\\includegraphics>, at)
+  back
+    make latex-include-graphics
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind alt, alt
+      bind width, width
+      bind height, height
+      bind totalheight, total
+      bind src, src
+
+# a size in `\includegraphics`: a bare number is in `bp`
+task graphic-size
+  take p, like latex-parser
+  take str, like text
+  take at, like number
+  like latex-measure
+  mark private
+
+  save bare, run-latex-grammar(<graphic-number>, str)
+  sift bare/match
+    case some
+      link found
+      save sign, <>
+      sift latex-match-named(found, <sign>)
+        case some
+          link known
+          save sign, latex-match-text(known, str)
+        case none
+          save nothing, 0
+      save amount, <0>
+      sift latex-match-named(found, <amount>)
+        case some
+          link known
+          save amount, latex-match-text(known, str)
+        case none
+          save nothing, 0
+      back
+        make latex-measure
+          bind amount, number-of(sign, amount)
+          bind unit, <bp>
+    case none
+      save nothing, 0
+  back measure-of(p, str, token-at(<>, at, p/last-end), <Invalid size: '{str}' in \\includegraphics>, <Invalid unit: '>, <' in \\includegraphics.>)
+
+# `\smash[tb]{...}`: which of height and depth it takes away
+task handle-smash
+  take p, like latex-parser
+  take option, like maybe, like latex-node
+  take body, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save height, true
+  save depth, true
+  sift option
+    case some
+      link known
+      save letters, assert-group(known)
+      save height, false
+      save depth, false
+      walk letters
+        take node
+        save letter, assert-symbol(node)
+        fork test, is-equal(letter, <t>)
+          hold
+            save height, true
+          miss
+            fork test, is-equal(letter, <b>)
+              hold
+                save depth, true
+              miss
+                save height, false
+                save depth, false
+                halt
+    case none
+      save nothing, 0
+  back
+    make latex-smash
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind body, body
+      bind smash-height, height
+      bind smash-depth, depth
+
+# `\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\binom` and the rest, and the fractions `\over`, `\atop`, `\brace` and
+# `\brack` stand for
+task handle-fraction
+  take p, like latex-parser
+  take name, like text
+  take numer, like latex-node
+  take denom, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save bar, true
+  save left, make none
+  save right, make none
+  fork test, is-equal(name, <\\\\atopfrac>)
+    hold
+      save bar, false
+  fork test, or(or(is-equal(name, <\\dbinom>), is-equal(name, <\\binom>)), is-equal(name, <\\tbinom>))
+    hold
+      save bar, false
+      save left, make(some, <(>)
+      save right, make(some, <)>)
+  fork test, is-equal(name, <\\\\bracefrac>)
+    hold
+      save bar, false
+      save left, make(some, <\\\{>)
+      save right, make(some, <\\\}>)
+  fork test, is-equal(name, <\\\\brackfrac>)
+    hold
+      save bar, false
+      save left, make(some, <[>)
+      save right, make(some, <]>)
+  save continued, is-equal(name, <\\cfrac>)
+  save style, <>
+  fork test, or(continued, starts-with(name, <\\d>))
+    hold
+      save style, <display>
+    miss
+      fork test, starts-with(name, <\\t>)
+        hold
+          save style, <text>
+  save fraction
+    make latex-fraction
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind continued, continued
+      bind numer, numer
+      bind denom, denom
+      bind has-bar-line, bar
+      bind left-delim, left
+      bind right-delim, right
+      bind bar-size, make none
+  back with-style(fraction, style)
+
+# KaTeX's `wrapWithStyle`
+task with-style
+  take node, like latex-node
+  take style, like text
+  like latex-node
+  mark private
+
+  fork test, is-equal(style, <>)
+    hold
+      back node
+  save facts, facts-of(node)
+  back
+    make latex-styling
+      bind at, facts/at
+      bind end, facts/end
+      bind mode, facts/mode
+      bind style, style
+      bind reset-font, make none
+      bind body, one-node(node)
+
+# `\genfrac{left}{right}{bar}{style}{numer}{denom}`
+task handle-general-fraction
+  take p, like latex-parser
+  take values, like list, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save left, delimiter-from(normalize-argument(get(values, 0)), <open>)
+  save right, delimiter-from(normalize-argument(get(values, 1)), <close>)
+  save bar-line, true
+  save bar-size, make none
+  sift get(values, 2)
+    case latex-size
+      link value
+      link is-blank
+      fork test, not(is-blank)
+        hold
+          save bar-size, make(some, value)
+          save bar-line, is-above(value/amount, 0.0)
+    miss
+      refuse-node(get(values, 2), <Expected node of type size, but got node of type {type-of(get(values, 2))}>)
+  save style, <>
+  save styl, get(values, 3)
+  sift styl
+    case latex-group
+      link group-at
+      link group-end
+      link group-mode
+      link group-body
+      fork test, is-above(group-body/length, 0)
+        hold
+          save first, get(group-body, 0)
+          fork test, is-unequal(type-of(first), <textord>)
+            hold
+              refuse-node(first, <Expected node of type textord, but got node of type {type-of(first)}>)
+          save style, style-at(text-ord-of(first))
+    miss
+      fork test, is-unequal(type-of(styl), <textord>)
+        hold
+          refuse-node(styl, <Expected node of type textord, but got node of type {type-of(styl)}>)
+      save style, style-at(text-ord-of(styl))
+  save fraction
+    make latex-fraction
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind continued, false
+      bind numer, get(values, 4)
+      bind denom, get(values, 5)
+      bind has-bar-line, bar-line
+      bind left-delim, left
+      bind right-delim, right
+      bind bar-size, bar-size
+  back with-style(fraction, style)
+
+# KaTeX's `stylArray[Number(text)]`: `0` display to `3` scriptscript, anything else no style
+task style-at
+  take text, like text
+  like text
+  mark private
+
+  fork test, is-equal(text, <0>)
+    hold
+      back <display>
+  fork test, is-equal(text, <1>)
+    hold
+      back <text>
+  fork test, is-equal(text, <2>)
+    hold
+      back <script>
+  fork test, is-equal(text, <3>)
+    hold
+      back <scriptscript>
+  back <>
+
+# a `\genfrac` delimiter: an atom of the family wanted, `.` meaning none
+task delimiter-from
+  take node, like latex-node
+  take wanted, like text
+  like maybe, like text
+  mark private
+
+  save written, <>
+  sift symbol-text(node)
+    case some
+      link known
+      save written, known
+    case none
+      save nothing, 0
+  sift node
+    case latex-atom
+      fork test, and(is-equal(family, wanted), and(is-unequal(written, <.>), is-unequal(written, <>)))
+        hold
+          back make(some, written)
+      back make none
+    miss
+      back make none
+
+# ---- definitions (src/functions/def.ts) ----
+
+# KaTeX's `globalMap`: what `\global` makes of the definition after it
+task global-of
+  take text, like text
+  like text
+  mark private
+
+  save pairs, split(<\\global \\global \\long \\\\globallong \\\\globallong \\\\globallong \\def \\gdef \\gdef \\gdef \\edef \\xdef \\xdef \\xdef \\let \\\\globallet \\futurelet \\\\globalfuture>, < >)
+  save k, 0
+  walk test
+    hook test, is-below(add(k, 1), pairs/length)
+    hook hold
+      fork test, is-equal(get(pairs, k), text)
+        hold
+          back get(pairs, add(k, 1))
+      save k, add(k, 2)
+  back <>
+
+task is-global-definition
+  take name, like text
+  like boolean
+  mark private
+
+  back is-equal(global-of(name), name)
+
+task check-control-sequence
+  take token, like latex-token
+  like text
+  mark private
+
+  save name, token/text
+  walk split(<\\ \{ \} $ & # ^ _ EOF>, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        refuse(token, <Expected a control sequence>)
+  back name
+
+# `\def`, `\gdef`, `\edef`, `\xdef`: a name, its parameter text, and its body
+task handle-define
+  take p, like latex-parser
+  take func, like text
+  mark private
+
+  save g, p/gullet
+  save tok, pop-token(g)
+  save name, tok/text
+  walk split(<\\ \{ \} $ & # ^ _ EOF>, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        refuse(tok, <Expected a control sequence>)
+  save count, 0
+  save insert, make none
+  save delimiters, make list
+  push(delimiters, make list)
+  walk test
+    hook test, is-unequal(future(g)/text, <\{>)
+    hook hold
+      save tok, pop-token(g)
+      fork test, is-equal(tok/text, <#>)
+        hold
+          fork test, is-equal(future(g)/text, <\{>)
+            hold
+              save brace, future(g)
+              save insert, make(some, brace)
+              push(get(delimiters, count), <\{>)
+              halt
+          save tok, pop-token(g)
+          save index, digit-of(tok/text)
+          fork test, is-below(index, 1)
+            hold
+              refuse(tok, <Invalid argument number "{tok/text}">)
+          fork test, is-unequal(index, add(count, 1))
+            hold
+              refuse(tok, <Argument number "{tok/text}" out of order>)
+          save count, add(count, 1)
+          push(delimiters, make list)
+        miss
+          fork test, is-equal(tok/text, <EOF>)
+            hold
+              refuse(tok, <Expected a macro definition>)
+          push(get(delimiters, count), tok/text)
+  save tokens, consume-argument(g, make none)/tokens
+  sift insert
+    case some
+      link inserted
+      tokens/unshift(inserted)
+    case none
+      save nothing, 0
+  fork test, or(is-equal(func, <\\edef>), is-equal(func, <\\xdef>))
+    hold
+      save expanded, expand-tokens(g, tokens)
+      save tokens, expanded/reverse()
+  save definition
+    make definition-tokens
+      bind tokens, tokens
+      bind arguments, count
+      bind delimiters, delimiters
+      bind unexpandable, false
+  set-macro(g, name, make(some, definition), is-global-definition(func))
+
+task digit-of
+  take text, like text
+  like number
+  mark private
+
+  save k, 1
+  walk split(<1 2 3 4 5 6 7 8 9>, < >)
+    take one
+    fork test, is-equal(one, text)
+      hold
+        back k
+    save k, add(k, 1)
+  back 0
+
+# what `\let` takes: the token after an optional `=` and one optional space
+task right-hand-side
+  take p, like latex-parser
+  like latex-token
+  mark private
+
+  save tok, pop-token(p/gullet)
+  fork test, is-equal(tok/text, <=>)
+    hold
+      save tok, pop-token(p/gullet)
+      fork test, is-equal(tok/text, < >)
+        hold
+          save tok, pop-token(p/gullet)
+  back tok
+
+# KaTeX's `letCommand`: the name means what the token means now. A token that is no macro is kept unexpanded, so
+# redefining it later does not change what was let
+task let-command
+  take p, like latex-parser
+  take name, like text
+  take tok, like latex-token
+  take global, like boolean
+  mark private
+
+  sift macro-of(p/gullet, tok/text)
+    case some
+      link known
+      set-macro(p/gullet, name, make(some, known), global)
+    case none
+      save kept, tok
+      save kept/noexpand, true
+      save tokens, make list
+      push(tokens, kept)
+      save definition
+        make definition-tokens
+          bind tokens, tokens
+          bind arguments, 0
+          bind delimiters, make list
+          bind unexpandable, not(is-expandable(p/gullet, tok/text))
+      set-macro(p/gullet, name, make(some, definition), global)
+
+# ---- environments (src/functions/environment.ts, src/environments/) ----
+
+# `\begin{name}...\end{name}`, and the `\end{name}` that closes it
+task handle-environment
+  take p, like latex-parser
+  take func, like text
+  take name-group, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save name-body, make list
+  sift name-group
+    case latex-group
+      link group-at
+      link group-end
+      link group-mode
+      link group-body
+      save name-body, group-body
+    miss
+      refuse-node(name-group, <Invalid environment name>)
+  save name, assert-characters(name-body, <Environment name should contain only text characters and spaces>, true, name-group)
+  fork test, is-equal(func, <\\begin>)
+    hold
+      fork test, not(p/table/environments/has(name))
+        hold
+          refuse-node(name-group, <No such environment: {name}>)
+      save spec, p/table/environments/get(name)
+      save arguments, parse-arguments(p, <\\begin\{{name}\}>, spec)
+      save result, environment-of(p, spec/handler, name, arguments, at)
+      expect(p, <\\end>, false)
+      save end-token, fetch(p)
+      save closing-name, <>
+      sift parse-function(p, <>, <>)
+        case some
+          link closing
+          sift closing
+            case latex-environment
+              link closing-at
+              link closing-end
+              link closing-mode
+              link closing-environment
+              link closing-group
+              save closing-name, closing-environment
+            miss
+              refuse-node(closing, <Expected node of type environment, but got node of type {type-of(closing)}>)
+          fork test, is-unequal(closing-name, name)
+            hold
+              refuse(end-token, <Mismatch: \\begin\{{name}\} matched by \\end\{{closing-name}\}>)
+        case none
+          refuse(end-token, <Expected node of type environment, but got undefined>)
+      back result
+  back
+    make latex-environment
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind name, name
+      bind name-group, name-group
+
+task environment-of
+  take p, like latex-parser
+  take handler, like text
+  take name, like text
+  take arguments, like latex-arguments
+  take at, like number
+  like latex-node
+  mark private
+
+  fork test, is-equal(handler, <array>)
+    hold
+      save cols, column-spec(get(arguments/values, 0), true)
+      save setup, array-setup()
+      save setup/cols, make(some, cols)
+      save setup/hskip, make(some, true)
+      save setup/most-columns, cols/length
+      back array-node(parse-array(p, setup, cell-style(name), at))
+
+  fork test, is-equal(handler, <matrix>)
+    hold
+      back matrix-environment(p, name, at)
+
+  fork test, is-equal(handler, <small-matrix>)
+    hold
+      save setup, array-setup()
+      save setup/stretch, 0.5
+      save array, parse-array(p, setup, <script>, at)
+      save array/separation, make(some, <small>)
+      back array-node(array)
+
+  fork test, is-equal(handler, <sub-array>)
+    hold
+      save cols, column-spec(get(arguments/values, 0), false)
+      fork test, is-above(cols/length, 1)
+        hold
+          refuse-node(get(arguments/values, 0), <\{subarray\} can contain only one column>)
+      save setup, array-setup()
+      save setup/cols, make(some, cols)
+      save setup/hskip, make(some, false)
+      save setup/stretch, 0.5
+      save array, parse-array(p, setup, <script>, at)
+      fork test, is-above(array/body/length, 0)
+        hold
+          fork test, is-above(get(array/body, 0)/length, 1)
+            hold
+              refuse(token-at(<>, at, p/last-end), <\{subarray\} can contain only one column>)
+      back array-node(array)
+
+  fork test, is-equal(handler, <cases>)
+    hold
+      save cols, make list
+      push(cols, aligned-column(<l>, 0.0, 1.0))
+      push(cols, aligned-column(<l>, 0.0, 0.0))
+      save setup, array-setup()
+      save setup/stretch, 1.2
+      save setup/cols, make(some, cols)
+      save array, array-node(parse-array(p, setup, cell-style(name), at))
+      save left, <\\\{>
+      save right, <.>
+      fork test, contains(name, <r>)
+        hold
+          save left, <.>
+          save right, <\\\}>
+      back delimited(p, array, left, right, at)
+
+  fork test, is-equal(handler, <align>)
+    hold
+      back align-environment(p, name, arguments, at)
+
+  fork test, is-equal(handler, <gather>)
+    hold
+      fork test, or(is-equal(name, <gather>), is-equal(name, <gather*>))
+        hold
+          require-display(p, name, at)
+      save cols, make list
+      push(cols, plain-column(<c>))
+      save setup, array-setup()
+      save setup/cols, make(some, cols)
+      save setup/add-jot, make(some, true)
+      save setup/separation, make(some, <gather>)
+      save setup/auto-tag, auto-tag-of(name)
+      save setup/empty-single-row, true
+      save setup/leqno, make(some, p/options/leqno)
+      back array-node(parse-array(p, setup, <display>, at))
+
+  fork test, is-equal(handler, <equation>)
+    hold
+      require-display(p, name, at)
+      save setup, array-setup()
+      save setup/auto-tag, auto-tag-of(name)
+      save setup/empty-single-row, true
+      save setup/single-row, true
+      save setup/most-columns, 1
+      save setup/leqno, make(some, p/options/leqno)
+      back array-node(parse-array(p, setup, <display>, at))
+
+  fork test, is-equal(handler, <commutative-diagram>)
+    hold
+      require-display(p, name, at)
+      back parse-cd(p, at)
+
+  refuse(token-at(<>, at, p/last-end), <No such environment: {name}>)
+  back internal(at, p)
+
+# KaTeX's `validateAmsEnvironmentContext`. KaTeX names no place for this mistake, so it is placed at the `\begin`
+task require-display
+  take p, like latex-parser
+  take name, like text
+  take at, like number
+  mark private
+
+  fork test, not(p/options/display)
+    hold
+      refuse(token-at(<>, at, p/last-end), <\{{name}\} can be used only in display mode.>)
+
+# KaTeX's `getAutoTag`: `none` for an array numbered by nothing, `true` numbered automatically, `false` numbered only
+# by a `\tag`
+task auto-tag-of
+  take name, like text
+  like text
+  mark private
+
+  fork test, not(contains(name, <ed>))
+    hold
+      fork test, contains(name, <*>)
+        hold
+          back <false>
+      back <true>
+  back <none>
+
+# KaTeX's `dCellStyle`
+task cell-style
+  take name, like text
+  like text
+  mark private
+
+  fork test, starts-with(name, <d>)
+    hold
+      back <display>
+  back <text>
+
+task plain-column
+  take align, like text
+  like latex-column
+  mark private
+
+  back
+    make column-align
+      bind align, align
+      bind pregap, make none
+      bind postgap, make none
+
+task aligned-column
+  take align, like text
+  take pregap, like float
+  take postgap, like float
+  like latex-column
+  mark private
+
+  back
+    make column-align
+      bind align, align
+      bind pregap, make(some, pregap)
+      bind postgap, make(some, postgap)
+
+# an `array`'s or `subarray`'s column argument: `l`, `c`, `r`, and for an array `|` and `:`
+task column-spec
+  take arg, like latex-node
+  take separators, like boolean
+  like list, like latex-column
+  mark private
+
+  save nodes, make list
+  sift symbol-text(arg)
+    case some
+      push(nodes, arg)
+    case none
+      save nodes, assert-group(arg)
+  save cols, make list
+  walk nodes
+    take node
+    save ca, assert-symbol(node)
+    fork test, or(or(is-equal(ca, <l>), is-equal(ca, <c>)), and(separators, is-equal(ca, <r>)))
+      hold
+        push(cols, plain-column(ca))
+        turn next
+    fork test, and(separators, or(is-equal(ca, <|>), is-equal(ca, <:>)))
+      hold
+        save separator
+          make column-separator
+            bind separator, ca
+        push(cols, separator)
+        turn next
+    refuse-node(node, <Unknown column alignment: {ca}>)
+  back cols
+
+# `\left...\right` around an array, as the delimited matrices and `cases` are
+task delimited
+  take p, like latex-parser
+  take array, like latex-node
+  take left, like text
+  take right, like text
+  take at, like number
+  like latex-node
+  mark private
+
+  back
+    make latex-left-right
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind body, one-node(array)
+      bind left, left
+      bind right, right
+      bind right-color, make none
+
+# `matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, and their starred forms, which take `[l]`, `[c]`
+# or `[r]`
+task matrix-environment
+  take p, like latex-parser
+  take name, like text
+  take at, like number
+  like latex-node
+  mark private
+
+  save align, <c>
+  fork test, contains(name, <*>)
+    hold
+      consume-parser-spaces(p)
+      fork test, is-equal(fetch(p)/text, <[>)
+        hold
+          consume(p)
+          consume-parser-spaces(p)
+          save align, fetch(p)/text
+          fork test, not(or(or(is-equal(align, <l>), is-equal(align, <c>)), is-equal(align, <r>)))
+            hold
+              fail(p, <Expected l or c or r>)
+          consume(p)
+          consume-parser-spaces(p)
+          expect(p, <]>, false)
+          consume(p)
+  save setup, array-setup()
+  save setup/hskip, make(some, false)
+  save read, parse-array(p, setup, cell-style(name), at)
+  save widest, 0
+  walk read/body
+    take row
+    fork test, is-above(row/length, widest)
+      hold
+        save widest, row/length
+  save cols, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, widest)
+    hook hold
+      push(cols, plain-column(align))
+      save k, add(k, 1)
+  save read/cols, make(some, cols)
+  save array, array-node(read)
+  save kind, name
+  fork test, contains(name, <*>)
+    hold
+      save kind, substring(name, 0, subtract(char-length(name), 1))
+  fork test, is-equal(kind, <pmatrix>)
+    hold
+      back delimited(p, array, <(>, <)>, at)
+  fork test, is-equal(kind, <bmatrix>)
+    hold
+      back delimited(p, array, <[>, <]>, at)
+  fork test, is-equal(kind, <Bmatrix>)
+    hold
+      back delimited(p, array, <\\\{>, <\\\}>, at)
+  fork test, is-equal(kind, <vmatrix>)
+    hold
+      back delimited(p, array, <|>, <|>, at)
+  fork test, is-equal(kind, <Vmatrix>)
+    hold
+      back delimited(p, array, <\\Vert>, <\\Vert>, at)
+  back array
+
+# `align`, `align*`, `aligned`, `split`, `alignat`, `alignat*`, `alignedat`: columns right and left in turn, each
+# left one opening with an empty group
+task align-environment
+  take p, like latex-parser
+  take name, like text
+  take arguments, like latex-arguments
+  take at, like number
+  like latex-node
+  mark private
+
+  fork test, not(contains(name, <ed>))
+    hold
+      require-display(p, name, at)
+  save split, is-equal(name, <split>)
+  save setup, array-setup()
+  save no-cols, make list
+  save setup/cols, make(some, no-cols)
+  save setup/add-jot, make(some, true)
+  fork test, not(split)
+    hold
+      save setup/auto-tag, auto-tag-of(name)
+  save setup/empty-single-row, true
+  save separation, <align>
+  fork test, contains(name, <at>)
+    hold
+      save separation, <alignat>
+  save setup/separation, make(some, separation)
+  fork test, split
+    hold
+      save setup/most-columns, 2
+  save setup/leqno, make(some, p/options/leqno)
+  save array, parse-array(p, setup, <display>, at)
+
+  save maths, 0
+  save columns, 0
+  fork test, is-above(arguments/values/length, 0)
+    hold
+      sift get(arguments/values, 0)
+        case latex-group
+          link group-at
+          link group-end
+          link group-mode
+          link group-body
+          save message, <Number of columns should be a positive integer>
+          save written, assert-characters(group-body, message, false, get(arguments/values, 0))
+          save counted, run-latex-grammar(<column-count>, written)
+          fork test, not(counted/ok)
+            hold
+              refuse-node(get(arguments/values, 0), message)
+          save maths, parse-integer(written)
+          fork test, is-below(maths, 1)
+            hold
+              refuse-node(get(arguments/values, 0), message)
+          save columns, multiply(maths, 2)
+        miss
+          save nothing, 0
+  save aligned, is-equal(columns, 0)
+
+  save rows, make list
+  walk array/body
+    take row
+    save entries, make list
+    save i, 0
+    walk row
+      take entry
+      fork test, is-equal(modulo(i, 2), 1)
+        hold
+          push(entries, open-with-empty(entry))
+        miss
+          push(entries, entry)
+      save i, add(i, 1)
+    fork test, not(aligned)
+      hold
+        fork test, is-below(multiply(maths, 2), row/length)
+          hold
+            refuse(token-at(<>, at, p/last-end), <Too many math in a row: expected {maths}, but got {half-of(row/length)}>)
+      miss
+        fork test, is-below(columns, row/length)
+          hold
+            save columns, row/length
+    push(rows, entries)
+  save cols, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, columns)
+    hook hold
+      save align, <r>
+      save pregap, 0.0
+      fork test, is-equal(modulo(i, 2), 1)
+        hold
+          save align, <l>
+        miss
+          fork test, and(is-above(i, 0), aligned)
+            hold
+              save pregap, 1.0
+      push(cols, aligned-column(align, pregap, 0.0))
+      save i, add(i, 1)
+  save array/body, rows
+  save array/cols, make(some, cols)
+  fork test, aligned
+    hold
+      save array/separation, make(some, <align>)
+    miss
+      save array/separation, make(some, <alignat>)
+  back array-node(array)
+
+# half a count as JavaScript prints it: `3` or `1.5`
+task half-of
+  take count, like number
+  like text
+  mark private
+
+  fork test, is-equal(modulo(count, 2), 0)
+    hold
+      back <{divide(count, 2)}>
+  back <{divide(subtract(count, 1), 2)}.5>
+
+# an align entry with an empty group put first inside it, as KaTeX's `ordgroup.body.unshift(emptyGroup)`
+task open-with-empty
+  take entry, like latex-node
+  like latex-node
+  mark private
+
+  sift entry
+    case latex-styling
+      link outer-at
+      link outer-end
+      link outer-mode
+      link outer-style
+      link outer-reset
+      link outer-body
+      fork test, is-above(outer-body/length, 0)
+        hold
+          sift get(outer-body, 0)
+            case latex-group
+              save empty
+                make latex-group
+                  bind at, at
+                  bind end, at
+                  bind mode, mode
+                  bind body, make list
+                  bind semisimple, make none
+              save grown, make list
+              push(grown, empty)
+              walk body
+                take one
+                push(grown, one)
+              save inner
+                make latex-group
+                  bind at, at
+                  bind end, end
+                  bind mode, mode
+                  bind body, grown
+                  bind semisimple, semisimple
+              back
+                make latex-styling
+                  bind at, outer-at
+                  bind end, outer-end
+                  bind mode, outer-mode
+                  bind style, outer-style
+                  bind reset-font, outer-reset
+                  bind body, one-node(inner)
+            miss
+              refuse-node(get(outer-body, 0), <Expected node of type ordgroup, but got node of type {type-of(get(outer-body, 0))}>)
+      refuse-node(entry, <Expected node of type ordgroup, but got undefined>)
+    miss
+      refuse-node(entry, <Expected node of type styling, but got node of type {type-of(entry)}>)
+  back entry
+
+# what KaTeX's `parseArray` is told
+form latex-array-setup
+  link hskip, like maybe, like boolean
+  link add-jot, like maybe, like boolean
+  link cols, like maybe, like list, like latex-column
+  # 0 when the environment sets none, and `\arraystretch` or 1 is used
+  link stretch, like float
+  link separation, like maybe, like text
+  # `none`, `true` or `false`, as ./read.tree `auto-tag-of` says
+  link auto-tag, like text
+  link single-row, like boolean
+  link empty-single-row, like boolean
+  # 0 for no limit
+  link most-columns, like number
+  link leqno, like maybe, like boolean
+
+task array-setup
+  like latex-array-setup
+  mark private
+
+  back
+    make latex-array-setup
+      bind hskip, make none
+      bind add-jot, make none
+      bind cols, make none
+      bind stretch, 0.0
+      bind separation, make none
+      bind auto-tag, <none>
+      bind single-row, false
+      bind empty-single-row, false
+      bind most-columns, 0
+      bind leqno, make none
+
+# KaTeX's `getHLines`: the `\hline`s and `\hdashline`s after a row, true for each dashed one
+task horizontal-lines
+  take p, like latex-parser
+  like list, like boolean
+  mark private
+
+  save lines, make list
+  consume-parser-spaces(p)
+  save next, fetch(p)/text
+  fork test, is-equal(next, <\\relax>)
+    hold
+      consume(p)
+      consume-parser-spaces(p)
+      save next, fetch(p)/text
+  walk test
+    hook test, or(is-equal(next, <\\hline>), is-equal(next, <\\hdashline>))
+    hook hold
+      consume(p)
+      push(lines, is-equal(next, <\\hdashline>))
+      consume-parser-spaces(p)
+      save next, fetch(p)/text
+  back lines
+
+# whether `\@eqnsw` is `1`: KaTeX's `macros.get("\\@eqnsw") === "1"`
+task numbering-on
+  take p, like latex-parser
+  like boolean
+  mark private
+
+  sift macro-of(p/gullet, <\\@eqnsw>)
+    case some
+      link known
+      sift known
+        case definition-text
+          back is-equal(body, <1>)
+        miss
+          back false
+    case none
+      back false
+
+task set-numbering
+  take p, like latex-parser
+  take value, like maybe, like text
+  take name, like text
+  mark private
+
+  sift value
+    case some
+      link known
+      save definition
+        make definition-text
+          bind body, known
+      set-macro(p/gullet, name, make(some, definition), true)
+    case none
+      set-macro(p/gullet, name, make(none),true)
+
+# KaTeX's `parseArray`: rows split by `\\`, entries by `&`, each entry in its own group and cast into `style`
+# what `parse-array` read, before an environment settles its columns: the fields of the `array` node
+form latex-array-read
+  link at, like number
+  link end, like number
+  link mode, like text
+  link separation, like maybe, like text
+  link hskip, like maybe, like boolean
+  link add-jot, like maybe, like boolean
+  link cols, like maybe, like list, like latex-column
+  link stretch, like float
+  link body
+    like list
+      like list
+        like latex-node
+  link gaps, like list, like maybe, like latex-measure
+  link lines
+    like list
+      like list
+        like boolean
+  link tags, like maybe, like list, like latex-row-tag
+  link leqno, like maybe, like boolean
+
+task array-node
+  take read, like latex-array-read
+  like latex-node
+  mark private
+
+  back
+    make latex-array
+      bind at, read/at
+      bind end, read/end
+      bind mode, read/mode
+      bind col-separation-type, read/separation
+      bind hskip-before-and-after, read/hskip
+      bind add-jot, read/add-jot
+      bind cols, read/cols
+      bind arraystretch, read/stretch
+      bind body, read/body
+      bind row-gaps, read/gaps
+      bind h-lines-before-row, read/lines
+      bind tags, read/tags
+      bind leqno, read/leqno
+
+task parse-array
+  take p, like latex-parser
+  take setup, like latex-array-setup
+  take style, like text
+  take at, like number
+  like latex-array-read
+
+  save g, p/gullet
+  begin-group(g)
+  fork test, not(setup/single-row)
+    hold
+      save cr
+        make definition-text
+          bind body, <\\\\\\relax>
+      set-macro(g, <\\cr>, make(some, cr), false)
+
+  save stretch, setup/stretch
+  fork test, is-equal(stretch, 0.0)
+    hold
+      sift expand-macro-text(g, <\\arraystretch>)
+        case none
+          save stretch, 1.0
+        case some
+          link written
+          save stretch, float-prefix(p, written)
+          fork test, not(is-above(stretch, 0.0))
+            hold
+              fail(p, <Invalid \\arraystretch: {written}>)
+
+  begin-group(g)
+  save row, make list
+  save body, make list
+  push(body, row)
+  save gaps, make list
+  save lines, make list
+  save tags, make list
+  save tagged, is-unequal(setup/auto-tag, <none>)
+  save auto, is-equal(setup/auto-tag, <true>)
+
+  fork test, auto
+    hold
+      set-numbering(p, make(some, <1>), <\\@eqnsw>)
+  push(lines, horizontal-lines(p))
+
+  walk test
+    hook test, true
+    hook hold
+      save closer, <\\\\>
+      fork test, setup/single-row
+        hold
+          save closer, <\\end>
+      save start, fetch(p)/at
+      save cell-body, parse-expression(p, false, closer)
+      end-group(g)
+      begin-group(g)
+      save group
+        make latex-group
+          bind at, start
+          bind end, p/last-end
+          bind mode, p/mode
+          bind body, cell-body
+          bind semisimple, make none
+      save entry
+        make latex-styling
+          bind at, start
+          bind end, p/last-end
+          bind mode, p/mode
+          bind style, style
+          bind reset-font, make(some, true)
+          bind body, one-node(group)
+      push(row, entry)
+      save next, fetch(p)/text
+      fork test, is-equal(next, <&>)
+        hold
+          fork test, and(is-above(setup/most-columns, 0), is-equal(row/length, setup/most-columns))
+            hold
+              fork test, or(setup/single-row, is-some-text(setup/separation))
+                hold
+                  fail(p, <Too many tab characters: &>)
+                miss
+                  report-nonstrict(p, <textEnv>, <Too few columns specified in the \{array\} column argument.>, make(none))
+          consume(p)
+          turn next
+      fork test, is-equal(next, <\\end>)
+        hold
+          fork test, tagged
+            hold
+              push(tags, row-tag(p, auto))
+          # an empty last row goes, as `\crcr` takes it, unless it is the only one of an AMS environment, or carries a
+          # tag, or was numbered automatically
+          save last-tag-given, false
+          save last-tag-true, false
+          fork test, and(tagged, is-above(tags/length, 0))
+            hold
+              sift get(tags, subtract(tags/length, 1))
+                case tag-given
+                  link given-body
+                  save last-tag-given, true
+                case tag-numbered
+                  link numbered
+                  save last-tag-true, numbered
+          fork test, and(and(and(is-equal(row/length, 1), is-empty-entry(entry)), or(is-above(body/length, 1), not(setup/empty-single-row))), and(not(last-tag-given), not(and(auto, last-tag-true))))
+            hold
+              body/pop()
+          fork test, is-below(lines/length, add(body/length, 1))
+            hold
+              push(lines, make list)
+          halt
+      fork test, is-equal(next, <\\\\>)
+        hold
+          consume(p)
+          save gap, make none
+          fork test, is-unequal(future(g)/text, < >)
+            hold
+              sift parse-size-group(p, true)
+                case some
+                  link known
+                  save measure, size-value(known)
+                  save gap, make(some, measure)
+                case none
+                  save nothing, 0
+          push(gaps, gap)
+          fork test, tagged
+            hold
+              push(tags, row-tag(p, auto))
+          push(lines, horizontal-lines(p))
+          save row, make list
+          push(body, row)
+          fork test, auto
+            hold
+              set-numbering(p, make(some, <1>), <\\@eqnsw>)
+          turn next
+      fail(p, <Expected & or \\\\ or \\cr or \\end>)
+
+  end-group(g)
+  end-group(g)
+  save tag-list, make none
+  fork test, tagged
+    hold
+      save tag-list, make(some, tags)
+  back
+    make latex-array-read
+      bind at, at
+      bind end, p/last-end
+      bind mode, p/mode
+      bind separation, setup/separation
+      bind hskip, setup/hskip
+      bind add-jot, setup/add-jot
+      bind cols, setup/cols
+      bind stretch, stretch
+      bind body, body
+      bind gaps, gaps
+      bind lines, lines
+      bind tags, tag-list
+      bind leqno, setup/leqno
+
+task is-some-text
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# an entry KaTeX would take as the empty last row: a styling around an empty group
+task is-empty-entry
+  take entry, like latex-node
+  like boolean
+  mark private
+
+  sift entry
+    case latex-styling
+      fork test, is-equal(body/length, 1)
+        hold
+          sift get(body, 0)
+            case latex-group
+              link group-at
+              link group-end
+              link group-mode
+              link group-body
+              back is-equal(group-body/length, 0)
+            miss
+              back false
+      back false
+    miss
+      back false
+
+# what numbers a row that ended, in an array whose rows are numbered: its `\tag` when it gave one, else whether it is
+# numbered
+task row-tag
+  take p, like latex-parser
+  take auto, like boolean
+  like latex-row-tag
+  mark private
+
+  fork test, has-tag(p/gullet)
+    hold
+      save tag-tokens, make list
+      push(tag-tokens, token-at(<\\df@tag>, 0, 0))
+      save tag-body, subparse(p, tag-tokens)
+      set-numbering(p, make(none), <\\df@tag>)
+      back
+        make tag-given
+          bind body, tag-body
+  back
+    make tag-numbered
+      bind numbered, and(auto, numbering-on(p))
+
+# a number at the front of a text as JavaScript's `parseFloat` reads it, 0 for none (which is no valid stretch)
+task float-prefix
+  take p, like latex-parser
+  take text, like text
+  like float
+  mark private
+
+  save outcome, run-latex-grammar(<float-text>, text)
+  sift outcome/match
+    case some
+      link found
+      sift find-match(found, <float-number>)
+        case some
+          link number
+          save sign, <>
+          sift latex-match-named(number, <sign>)
+            case some
+              link known
+              save sign, latex-match-text(known, text)
+            case none
+              save nothing, 0
+          save amount, <0>
+          sift latex-match-named(number, <amount>)
+            case some
+              link known
+              save amount, latex-match-text(known, text)
+            case none
+              save nothing, 0
+          save exponent, <>
+          sift latex-match-named(number, <exponent>)
+            case some
+              link known
+              save exponent, latex-match-text(known, text)
+            case none
+              save nothing, 0
+          save base, number-of(sign, amount)
+          fork test, is-equal(exponent, <>)
+            hold
+              back base
+          back parse-float(<{base}{exponent}>)
+        case none
+          back 0.0
+    case none
+      back 0.0
+  back 0.0
+
+# ---- the commutative diagram (src/environments/cd.ts) ----
+
+task cd-entry
+  take at, like number
+  like latex-node
+  mark private
+
+  back
+    make latex-styling
+      bind at, at
+      bind end, at
+      bind mode, <math>
+      bind style, <display>
+      bind reset-font, make(some, true)
+      bind body, make list
+
+task add-to-entry
+  take entry, like latex-node
+  take node, like latex-node
+  like latex-node
+  mark private
+
+  sift entry
+    case latex-styling
+      save grown, body/slice(0, body/length)
+      push(grown, node)
+      back
+        make latex-styling
+          bind at, at
+          bind end, end
+          bind mode, mode
+          bind style, style
+          bind reset-font, reset-font
+          bind body, grown
+    miss
+      back entry
+
+task is-arrow-start
+  take node, like latex-node
+  like boolean
+  mark private
+
+  sift node
+    case latex-text-ord
+      back is-equal(text-ord-of(node), <@>)
+    miss
+      back false
+
+task is-label-end
+  take node, like latex-node
+  take end-char, like text
+  like boolean
+  mark private
+
+  save type, type-of(node)
+  fork test, or(is-equal(type, <mathord>), is-equal(type, <atom>))
+    hold
+      sift symbol-text(node)
+        case some
+          link known
+          back is-equal(known, end-char)
+        case none
+          back false
+  back false
+
+task cd-group
+  take body, like list, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  back
+    make latex-group
+      bind at, at
+      bind end, at
+      bind mode, <math>
+      bind body, body
+      bind semisimple, make none
+
+# KaTeX's `cdArrow`: the arrow `@>`, `@<`, `@=`, `@A`, `@V`, `@|` or `@.` stands for, with its labels
+task cd-arrow
+  take p, like latex-parser
+  take arrow, like text
+  take labels, like list, like latex-node
+  take at, like number
+  like latex-node
+  mark private
+
+  save none-token, token-at(<>, at, at)
+  fork test, or(is-equal(arrow, <\>>), is-equal(arrow, <\<>))
+    hold
+      save name, <\\\\cdrightarrow>
+      fork test, is-equal(arrow, <\<>)
+        hold
+          save name, <\\\\cdleftarrow>
+      save values, one-node(get(labels, 0))
+      save options, make list
+      save below, get(labels, 1)
+      push(options, make(some, below))
+      back call-function(p, name, values, options, none-token, <>)
+  fork test, or(is-equal(arrow, <A>), is-equal(arrow, <V>))
+    hold
+      save left, call-function(p, <\\\\cdleft>, one-node(get(labels, 0)), make(list),none-token, <>)
+      save text, <\\uparrow>
+      fork test, is-equal(arrow, <V>)
+        hold
+          save text, <\\downarrow>
+      save bare
+        make latex-atom
+          bind at, at
+          bind end, at
+          bind mode, <math>
+          bind family, <rel>
+          bind text, text
+      save sized, call-function(p, <\\Big>, one-node(bare), make(list),none-token, <>)
+      save right, call-function(p, <\\\\cdright>, one-node(get(labels, 1)), make(list),none-token, <>)
+      save parts, make list
+      push(parts, left)
+      push(parts, sized)
+      push(parts, right)
+      back call-function(p, <\\\\cdparent>, one-node(cd-group(parts, at)), make(list),none-token, <>)
+  fork test, is-equal(arrow, <=>)
+    hold
+      back call-function(p, <\\\\cdlongequal>, make(list),make(list),none-token, <>)
+  fork test, is-equal(arrow, <|>)
+    hold
+      save vert
+        make latex-text-ord
+          bind at, at
+          bind end, at
+          bind mode, <math>
+          bind text, <\\Vert>
+      back call-function(p, <\\Big>, one-node(vert), make(list),none-token, <>)
+  back
+    make latex-text-ord
+      bind at, at
+      bind end, at
+      bind mode, <math>
+      bind text, < >
+
+# KaTeX's `parseCD`: rows of entries and arrows, every entry the space between two arrows
+task parse-cd
+  take p, like latex-parser
+  take at, like number
+  like latex-node
+  mark private
+
+  save g, p/gullet
+  save parsed-rows, make list
+  begin-group(g)
+  save cr
+    make definition-text
+      bind body, <\\\\\\relax>
+  set-macro(g, <\\cr>, make(some, cr), false)
+  begin-group(g)
+  walk test
+    hook test, true
+    hook hold
+      push(parsed-rows, parse-expression(p, false, <\\\\>))
+      end-group(g)
+      begin-group(g)
+      save next, fetch(p)/text
+      fork test, or(is-equal(next, <&>), is-equal(next, <\\\\>))
+        hold
+          consume(p)
+          turn next
+      fork test, is-equal(next, <\\end>)
+        hold
+          fork test, is-equal(get(parsed-rows, subtract(parsed-rows/length, 1))/length, 0)
+            hold
+              parsed-rows/pop()
+          halt
+      fail(p, <Expected \\\\ or \\cr or \\end>)
+
+  save body, make list
+  save row, make list
+  save i, 0
+  walk parsed-rows
+    take row-nodes
+    save entry, cd-entry(at)
+    save j, 0
+    walk test
+      hook test, is-below(j, row-nodes/length)
+      hook hold
+        save node, get(row-nodes, j)
+        fork test, not(is-arrow-start(node))
+          hold
+            save entry, add-to-entry(entry, node)
+            save j, add(j, 1)
+            turn next
+        push(row, entry)
+        save j, add(j, 1)
+        fork test, not(is-below(j, row-nodes/length))
+          hold
+            refuse-node(node, <Expected node of symbol group type, but got undefined>)
+        save arrow, assert-symbol(get(row-nodes, j))
+        save labels, make list
+        push(labels, cd-group(make(list),at))
+        push(labels, cd-group(make(list),at))
+        fork test, or(or(is-equal(arrow, <=>), is-equal(arrow, <|>)), is-equal(arrow, <.>))
+          hold
+            save nothing, 0
+          miss
+            fork test, or(or(is-equal(arrow, <\<>), is-equal(arrow, <\>>)), or(is-equal(arrow, <A>), is-equal(arrow, <V>)))
+              hold
+                save label-number, 0
+                walk test
+                  hook test, is-below(label-number, 2)
+                  hook hold
+                    save in-label, true
+                    save collected, make list
+                    save k, add(j, 1)
+                    walk test
+                      hook test, is-below(k, row-nodes/length)
+                      hook hold
+                        save candidate, get(row-nodes, k)
+                        fork test, is-label-end(candidate, arrow)
+                          hold
+                            save in-label, false
+                            save j, k
+                            halt
+                        fork test, is-arrow-start(candidate)
+                          hold
+                            refuse-node(candidate, <Missing a {arrow} character to complete a CD arrow.>)
+                        push(collected, candidate)
+                        save k, add(k, 1)
+                    fork test, in-label
+                      hold
+                        refuse-node(get(row-nodes, j), <Missing a {arrow} character to complete a CD arrow.>)
+                    labels/splice(label-number, 1, cd-group(collected, at))
+                    save label-number, add(label-number, 1)
+              miss
+                refuse-node(get(row-nodes, j), <Expected one of "\<\>AV=|." after @>)
+        save made, cd-arrow(p, arrow, labels, at)
+        save wrapped
+          make latex-styling
+            bind at, at
+            bind end, at
+            bind mode, <math>
+            bind style, <display>
+            bind reset-font, make(some, true)
+            bind body, one-node(made)
+        push(row, wrapped)
+        save entry, cd-entry(at)
+        save j, add(j, 1)
+    fork test, is-equal(modulo(i, 2), 0)
+      hold
+        push(row, entry)
+      miss
+        # KaTeX shifts an odd row that holds no arrow too, which takes nothing from an empty one
+        fork test, is-above(row/length, 0)
+          hold
+            row/shift()
+    push(body, row)
+    save row, make list
+    save i, add(i, 1)
+  push(body, row)
+
+  end-group(g)
+  end-group(g)
+
+  save cols, make list
+  save first-row, get(body, 0)
+  save k, 0
+  walk test
+    hook test, is-below(k, first-row/length)
+    hook hold
+      push(cols, aligned-column(<c>, 0.25, 0.25))
+      save k, add(k, 1)
+  save gaps, make list
+  push(gaps, make none)
+  save lines, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, add(body/length, 1))
+    hook hold
+      push(lines, make list)
+      save k, add(k, 1)
+  back
+    make latex-array
+      bind at, at
+      bind end, p/last-end
+      bind mode, <math>
+      bind col-separation-type, make(some, <CD>)
+      bind hskip-before-and-after, make none
+      bind add-jot, make(some, true)
+      bind cols, make(some, cols)
+      bind arraystretch, 1.0
+      bind body, body
+      bind row-gaps, gaps
+      bind h-lines-before-row, lines
+      bind tags, make none
+      bind leqno, make none
+
+# ---- every node's facts ----
+
+# KaTeX's type for a node, read without making a record: what every test of a node's kind asks
+task type-of
+  take node, like latex-node
+  like text
+
+  sift node
+    case latex-atom
+      back <atom>
+    case latex-math-ord
+      back <mathord>
+    case latex-text-ord
+      back <textord>
+    case latex-spacing
+      back <spacing>
+    case latex-accent-token
+      back <accent-token>
+    case latex-op-token
+      back <op-token>
+    case latex-group
+      back <ordgroup>
+    case latex-scripts
+      back <supsub>
+    case latex-raw
+      back <raw>
+    case latex-size
+      back <size>
+    case latex-color-token
+      back <color-token>
+    case latex-url
+      back <url>
+    case latex-accent
+      back <accent>
+    case latex-accent-under
+      back <accentUnder>
+    case latex-array
+      back <array>
+    case latex-cd-label
+      back <cdlabel>
+    case latex-cd-label-parent
+      back <cdlabelparent>
+    case latex-color
+      back <color>
+    case latex-line-break
+      back <cr>
+    case latex-delimiter-size
+      back <delimsizing>
+    case latex-enclose
+      back <enclose>
+    case latex-environment
+      back <environment>
+    case latex-font
+      back <font>
+    case latex-fraction
+      back <genfrac>
+    case latex-hbox
+      back <hbox>
+    case latex-horizontal-brace
+      back <horizBrace>
+    case latex-href
+      back <href>
+    case latex-html
+      back <html>
+    case latex-html-mathml
+      back <htmlmathml>
+    case latex-include-graphics
+      back <includegraphics>
+    case latex-infix
+      back <infix>
+    case latex-internal
+      back <internal>
+    case latex-kern
+      back <kern>
+    case latex-lap
+      back <lap>
+    case latex-left-right
+      back <leftright>
+    case latex-right
+      back <leftright-right>
+    case latex-math-choice
+      back <mathchoice>
+    case latex-middle
+      back <middle>
+    case latex-math-class
+      back <mclass>
+    case latex-op
+      back <op>
+    case latex-operator-name
+      back <operatorname>
+    case latex-overline
+      back <overline>
+    case latex-underline
+      back <underline>
+    case latex-phantom
+      back <phantom>
+    case latex-vertical-phantom
+      back <vphantom>
+    case latex-poor-bold
+      back <pmb>
+    case latex-raise-box
+      back <raisebox>
+    case latex-reflect-box
+      back <reflectbox>
+    case latex-rule
+      back <rule>
+    case latex-sizing
+      back <sizing>
+    case latex-smash
+      back <smash>
+    case latex-sqrt
+      back <sqrt>
+    case latex-styling
+      back <styling>
+    case latex-tag
+      back <tag>
+    case latex-text
+      back <text>
+    case latex-verb
+      back <verb>
+    case latex-vertical-center
+      back <vcenter>
+    case latex-x-arrow
+      back <xArrow>
+
+task facts-of
+  take node, like latex-node
+  like latex-facts
+
+  sift node
+    case latex-atom
+      back facts(<atom>, at, end, mode)
+    case latex-math-ord
+      back facts(<mathord>, at, end, mode)
+    case latex-text-ord
+      back facts(<textord>, at, end, mode)
+    case latex-spacing
+      back facts(<spacing>, at, end, mode)
+    case latex-accent-token
+      back facts(<accent-token>, at, end, mode)
+    case latex-op-token
+      back facts(<op-token>, at, end, mode)
+    case latex-group
+      back facts(<ordgroup>, at, end, mode)
+    case latex-scripts
+      back facts(<supsub>, at, end, mode)
+    case latex-raw
+      back facts(<raw>, at, end, mode)
+    case latex-size
+      back facts(<size>, at, end, mode)
+    case latex-color-token
+      back facts(<color-token>, at, end, mode)
+    case latex-url
+      back facts(<url>, at, end, mode)
+    case latex-accent
+      back facts(<accent>, at, end, mode)
+    case latex-accent-under
+      back facts(<accentUnder>, at, end, mode)
+    case latex-array
+      back facts(<array>, at, end, mode)
+    case latex-cd-label
+      back facts(<cdlabel>, at, end, mode)
+    case latex-cd-label-parent
+      back facts(<cdlabelparent>, at, end, mode)
+    case latex-color
+      back facts(<color>, at, end, mode)
+    case latex-line-break
+      back facts(<cr>, at, end, mode)
+    case latex-delimiter-size
+      back facts(<delimsizing>, at, end, mode)
+    case latex-enclose
+      back facts(<enclose>, at, end, mode)
+    case latex-environment
+      back facts(<environment>, at, end, mode)
+    case latex-font
+      back facts(<font>, at, end, mode)
+    case latex-fraction
+      back facts(<genfrac>, at, end, mode)
+    case latex-hbox
+      back facts(<hbox>, at, end, mode)
+    case latex-horizontal-brace
+      back facts(<horizBrace>, at, end, mode)
+    case latex-href
+      back facts(<href>, at, end, mode)
+    case latex-html
+      back facts(<html>, at, end, mode)
+    case latex-html-mathml
+      back facts(<htmlmathml>, at, end, mode)
+    case latex-include-graphics
+      back facts(<includegraphics>, at, end, mode)
+    case latex-infix
+      back facts(<infix>, at, end, mode)
+    case latex-internal
+      back facts(<internal>, at, end, mode)
+    case latex-kern
+      back facts(<kern>, at, end, mode)
+    case latex-lap
+      back facts(<lap>, at, end, mode)
+    case latex-left-right
+      back facts(<leftright>, at, end, mode)
+    case latex-right
+      back facts(<leftright-right>, at, end, mode)
+    case latex-math-choice
+      back facts(<mathchoice>, at, end, mode)
+    case latex-middle
+      back facts(<middle>, at, end, mode)
+    case latex-math-class
+      back facts(<mclass>, at, end, mode)
+    case latex-op
+      back facts(<op>, at, end, mode)
+    case latex-operator-name
+      back facts(<operatorname>, at, end, mode)
+    case latex-overline
+      back facts(<overline>, at, end, mode)
+    case latex-underline
+      back facts(<underline>, at, end, mode)
+    case latex-phantom
+      back facts(<phantom>, at, end, mode)
+    case latex-vertical-phantom
+      back facts(<vphantom>, at, end, mode)
+    case latex-poor-bold
+      back facts(<pmb>, at, end, mode)
+    case latex-raise-box
+      back facts(<raisebox>, at, end, mode)
+    case latex-reflect-box
+      back facts(<reflectbox>, at, end, mode)
+    case latex-rule
+      back facts(<rule>, at, end, mode)
+    case latex-sizing
+      back facts(<sizing>, at, end, mode)
+    case latex-smash
+      back facts(<smash>, at, end, mode)
+    case latex-sqrt
+      back facts(<sqrt>, at, end, mode)
+    case latex-styling
+      back facts(<styling>, at, end, mode)
+    case latex-tag
+      back facts(<tag>, at, end, mode)
+    case latex-text
+      back facts(<text>, at, end, mode)
+    case latex-verb
+      back facts(<verb>, at, end, mode)
+    case latex-vertical-center
+      back facts(<vcenter>, at, end, mode)
+    case latex-x-arrow
+      back facts(<xArrow>, at, end, mode)
+
+task facts
+  take type, like text
+  take at, like number
+  take end, like number
+  take mode, like text
+  like latex-facts
+  mark private
+
+  back
+    make latex-facts
+      bind type, type
+      bind at, at
+      bind end, end
+      bind mode, mode

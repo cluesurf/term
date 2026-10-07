@@ -19,3 +19,9 @@ task present-share
     call native-open/share
       read text
       wait true
+
+# a page holds no file of the person's by path, so it has none to share
+task present-share-file
+  take path, like text
+  like text
+  send back, text <unavailable>

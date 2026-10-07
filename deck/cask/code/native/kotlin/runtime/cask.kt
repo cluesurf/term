@@ -161,12 +161,12 @@ abstract class CaskActivity : Activity() {
     }
 }
 
-// What the device runtimes (site/code/view/native/toolkit/runtime/*.kt) ask of the app they run in, the same two names
-// the toolkit and Compose hosts define, so a page's device calls answered in the cask link here too (device-layer-0013)
-fun hostActivity(): Activity? = cask.activity
-
-// called with the request code whenever the platform answers a permission request
-val hostPermissionAnswers = mutableListOf<(Int) -> Unit>()
+// What the device runtimes (site/code/view/native/toolkit/runtime/*.kt) ask of the app they run in, `hostActivity()`
+// and `hostPermissionAnswers`, are the APP HOST's, and this file is not always the host: a program drawn in Android's
+// own views or in Compose links it for `data-path` alone (the blog, test/compile/blog-native.ts), and its host defines
+// the two names already. So they are written beside the `TermActivity` that makes this the host, by
+// call/code/cask.ts `caskAndroidDriver` (device-layer-0013). Defined here, they were a conflicting overload in every
+// such program
 
 object cask {
     internal var pending: CaskWindow? = null

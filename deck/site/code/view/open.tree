@@ -7,6 +7,9 @@
 #   open-address(address)   opened, or unavailable when nothing handles it, or denied when the platform refused
 #   share-text(text)        shown (the sheet is up, and the person decides), denied (a browser refuses a share it
 #                           was not asked for by a click), or unavailable
+#   share-file(path)        the same for a file the app holds, the sheet offering it to AirDrop, Messages, Files
+#                           and the rest (beat-term-0003). unavailable when the path is not a file. Apple only so
+#                           far: Android needs a FileProvider in its manifest, and answers unavailable until it has one
 #
 # A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
 # closed set above, so an app compares strings and no platform enum ever reaches it.
@@ -14,6 +17,7 @@
 load ./native/{platform}/open
   find hand-address
   find present-share
+  find present-share-file
 
 task open-address
   take address, like text
@@ -28,3 +32,10 @@ task share-text
   send back
     call present-share
       read text
+
+task share-file
+  take path, like text
+  like text
+  send back
+    call present-share-file
+      read path

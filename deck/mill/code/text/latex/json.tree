@@ -1,0 +1,556 @@
+# A LaTeX tree (./form.tree) as JSON, under KaTeX's own names: `type` for the node's kind, `hasBarLine` for
+# `has-bar-line`, every field KaTeX's parse tree holds. A field that is none is left out, as JSON leaves out KaTeX's
+# `undefined`. Where a node stands in the source is not written, because KaTeX's `loc` counts UTF-16 units and is not
+# kept on every node, so the tree is the part the two parsers can be held equal on (test/latex/katex.ts).
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./form
+  find latex-node
+  find latex-measure
+  find latex-column
+  find latex-row-tag
+  find latex-attribute
+
+# a list of nodes as a JSON array
+task write-latex-json
+  take nodes, like list, like latex-node
+  like text
+
+  back nodes-json(nodes)
+
+task nodes-json
+  take nodes, like list, like latex-node
+  like text
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, node-json(one))
+  back <[{join(out, <,>)}]>
+
+task node-json
+  take node, like latex-node
+  like text
+
+  # `text` is a word of the language, so an arm that reads that field names every field by its place
+  sift node
+    case latex-atom
+      link at
+      link end
+      link mode
+      link family
+      link written
+      back object(<atom>, mode, pair(<family>, quote(family)), pair(<text>, quote(written)))
+    case latex-math-ord
+      link at
+      link end
+      link mode
+      link written
+      back object(<mathord>, mode, pair(<text>, quote(written)), <>)
+    case latex-text-ord
+      link at
+      link end
+      link mode
+      link written
+      back object(<textord>, mode, pair(<text>, quote(written)), <>)
+    case latex-spacing
+      link at
+      link end
+      link mode
+      link written
+      back object(<spacing>, mode, pair(<text>, quote(written)), <>)
+    case latex-accent-token
+      link at
+      link end
+      link mode
+      link written
+      back object(<accent-token>, mode, pair(<text>, quote(written)), <>)
+    case latex-op-token
+      link at
+      link end
+      link mode
+      link written
+      back object(<op-token>, mode, pair(<text>, quote(written)), <>)
+    case latex-group
+      back object(<ordgroup>, mode, pair(<body>, nodes-json(body)), maybe-flag(<semisimple>, semisimple))
+    case latex-scripts
+      save fields, make list
+      push(fields, pair(<base>, maybe-node(base)))
+      push(fields, maybe-pair(<sup>, sup))
+      push(fields, maybe-pair(<sub>, sub))
+      back object(<supsub>, mode, join-fields(fields), <>)
+    case latex-raw
+      back object(<raw>, mode, pair(<string>, quote(value)), <>)
+    case latex-size
+      back object(<size>, mode, pair(<value>, measure-json(value)), pair(<isBlank>, flag(is-blank)))
+    case latex-color-token
+      back object(<color-token>, mode, pair(<color>, quote(color)), <>)
+    case latex-url
+      back object(<url>, mode, pair(<url>, quote(url)), <>)
+    case latex-accent
+      save fields, make list
+      push(fields, pair(<label>, quote(label)))
+      push(fields, maybe-flag(<isStretchy>, is-stretchy))
+      push(fields, maybe-flag(<isShifty>, is-shifty))
+      push(fields, pair(<base>, node-json(base)))
+      back object(<accent>, mode, join-fields(fields), <>)
+    case latex-accent-under
+      back object(<accentUnder>, mode, pair(<label>, quote(label)), pair(<base>, node-json(base)))
+    case latex-array
+      save fields, make list
+      push(fields, maybe-text(<colSeparationType>, col-separation-type))
+      push(fields, maybe-flag(<hskipBeforeAndAfter>, hskip-before-and-after))
+      push(fields, maybe-flag(<addJot>, add-jot))
+      sift cols
+        case some
+          link known
+          save written, make list
+          walk known
+            take column
+            push(written, column-json(column))
+          push(fields, pair(<cols>, <[{join(written, <,>)}]>))
+        case none
+          save nothing, 0
+      push(fields, pair(<arraystretch>, number(arraystretch)))
+      save rows, make list
+      walk body
+        take row
+        push(rows, nodes-json(row))
+      push(fields, pair(<body>, <[{join(rows, <,>)}]>))
+      save gaps, make list
+      walk row-gaps
+        take gap
+        sift gap
+          case some
+            link measure
+            push(gaps, measure-json(measure))
+          case none
+            push(gaps, <null>)
+      push(fields, pair(<rowGaps>, <[{join(gaps, <,>)}]>))
+      save lines, make list
+      walk h-lines-before-row
+        take row-lines
+        save flags, make list
+        walk row-lines
+          take dashed
+          push(flags, flag(dashed))
+        push(lines, <[{join(flags, <,>)}]>)
+      push(fields, pair(<hLinesBeforeRow>, <[{join(lines, <,>)}]>))
+      sift tags
+        case some
+          link known
+          save written, make list
+          walk known
+            take one
+            push(written, tag-json(one))
+          push(fields, pair(<tags>, <[{join(written, <,>)}]>))
+        case none
+          save nothing, 0
+      push(fields, maybe-flag(<leqno>, leqno))
+      back object(<array>, mode, join-fields(fields), <>)
+    case latex-cd-label
+      back object(<cdlabel>, mode, pair(<side>, quote(side)), pair(<label>, node-json(label)))
+    case latex-cd-label-parent
+      back object(<cdlabelparent>, mode, pair(<fragment>, node-json(fragment)), <>)
+    case latex-color
+      back object(<color>, mode, pair(<color>, quote(color)), pair(<body>, nodes-json(body)))
+    case latex-line-break
+      back object(<cr>, mode, pair(<newLine>, flag(new-line)), maybe-measure(<size>, size))
+    case latex-delimiter-size
+      save fields, make list
+      push(fields, pair(<size>, number-whole(size)))
+      push(fields, pair(<mclass>, quote(mclass)))
+      push(fields, pair(<delim>, quote(delim)))
+      back object(<delimsizing>, mode, join-fields(fields), <>)
+    case latex-enclose
+      save fields, make list
+      push(fields, pair(<body>, node-json(body)))
+      push(fields, pair(<label>, quote(label)))
+      push(fields, maybe-text(<backgroundColor>, background-color))
+      push(fields, maybe-text(<borderColor>, border-color))
+      back object(<enclose>, mode, join-fields(fields), <>)
+    case latex-environment
+      back object(<environment>, mode, pair(<name>, quote(name)), pair(<nameGroup>, node-json(name-group)))
+    case latex-font
+      back object(<font>, mode, pair(<font>, quote(font)), pair(<body>, node-json(body)))
+    case latex-fraction
+      save fields, make list
+      push(fields, pair(<continued>, flag(continued)))
+      push(fields, pair(<numer>, node-json(numer)))
+      push(fields, pair(<denom>, node-json(denom)))
+      push(fields, pair(<hasBarLine>, flag(has-bar-line)))
+      push(fields, maybe-text(<leftDelim>, left-delim))
+      push(fields, maybe-text(<rightDelim>, right-delim))
+      push(fields, maybe-measure(<barSize>, bar-size))
+      back object(<genfrac>, mode, join-fields(fields), <>)
+    case latex-hbox
+      back object(<hbox>, mode, pair(<body>, nodes-json(body)), <>)
+    case latex-horizontal-brace
+      save fields, make list
+      push(fields, pair(<label>, quote(label)))
+      push(fields, pair(<isOver>, flag(is-over)))
+      push(fields, pair(<base>, node-json(base)))
+      back object(<horizBrace>, mode, join-fields(fields), <>)
+    case latex-href
+      back object(<href>, mode, pair(<href>, quote(href)), pair(<body>, nodes-json(body)))
+    case latex-html
+      save written, make list
+      walk attributes
+        take one
+        push(written, pair(one/name, quote(one/value)))
+      back object(<html>, mode, pair(<attributes>, <\{{join(written, <,>)}\}>), pair(<body>, nodes-json(body)))
+    case latex-html-mathml
+      back object(<htmlmathml>, mode, pair(<html>, nodes-json(html)), pair(<mathml>, nodes-json(mathml)))
+    case latex-include-graphics
+      save fields, make list
+      push(fields, pair(<alt>, quote(alt)))
+      push(fields, pair(<width>, measure-json(width)))
+      push(fields, pair(<height>, measure-json(height)))
+      push(fields, pair(<totalheight>, measure-json(totalheight)))
+      push(fields, pair(<src>, quote(src)))
+      back object(<includegraphics>, mode, join-fields(fields), <>)
+    case latex-infix
+      back object(<infix>, mode, pair(<replaceWith>, quote(replace-with)), maybe-measure(<size>, size))
+    case latex-internal
+      back object(<internal>, mode, <>, <>)
+    case latex-kern
+      back object(<kern>, mode, pair(<dimension>, measure-json(dimension)), <>)
+    case latex-lap
+      back object(<lap>, mode, pair(<alignment>, quote(alignment)), pair(<body>, node-json(body)))
+    case latex-left-right
+      save fields, make list
+      push(fields, pair(<body>, nodes-json(body)))
+      push(fields, pair(<left>, quote(left)))
+      push(fields, pair(<right>, quote(right)))
+      push(fields, maybe-text(<rightColor>, right-color))
+      back object(<leftright>, mode, join-fields(fields), <>)
+    case latex-right
+      back object(<leftright-right>, mode, pair(<delim>, quote(delim)), maybe-text(<color>, color))
+    case latex-math-choice
+      link at
+      link end
+      link mode
+      link display
+      link in-text
+      link script
+      link scriptscript
+      save fields, make list
+      push(fields, pair(<display>, nodes-json(display)))
+      push(fields, pair(<text>, nodes-json(in-text)))
+      push(fields, pair(<script>, nodes-json(script)))
+      push(fields, pair(<scriptscript>, nodes-json(scriptscript)))
+      back object(<mathchoice>, mode, join-fields(fields), <>)
+    case latex-middle
+      back object(<middle>, mode, pair(<delim>, quote(delim)), <>)
+    case latex-math-class
+      save fields, make list
+      push(fields, pair(<mclass>, quote(mclass)))
+      push(fields, pair(<body>, nodes-json(body)))
+      push(fields, pair(<isCharacterBox>, flag(is-character-box)))
+      back object(<mclass>, mode, join-fields(fields), <>)
+    case latex-op
+      save fields, make list
+      push(fields, pair(<limits>, flag(limits)))
+      push(fields, maybe-flag(<alwaysHandleSupSub>, always-handle-sup-sub))
+      push(fields, maybe-flag(<suppressBaseShift>, suppress-base-shift))
+      push(fields, pair(<parentIsSupSub>, flag(parent-is-sup-sub)))
+      push(fields, pair(<symbol>, flag(symbol)))
+      push(fields, maybe-text(<name>, name))
+      sift body
+        case some
+          link known
+          push(fields, pair(<body>, nodes-json(known)))
+        case none
+          save nothing, 0
+      back object(<op>, mode, join-fields(fields), <>)
+    case latex-operator-name
+      save fields, make list
+      push(fields, pair(<body>, nodes-json(body)))
+      push(fields, pair(<alwaysHandleSupSub>, flag(always-handle-sup-sub)))
+      push(fields, pair(<limits>, flag(limits)))
+      push(fields, pair(<parentIsSupSub>, flag(parent-is-sup-sub)))
+      back object(<operatorname>, mode, join-fields(fields), <>)
+    case latex-overline
+      back object(<overline>, mode, pair(<body>, node-json(body)), <>)
+    case latex-underline
+      back object(<underline>, mode, pair(<body>, node-json(body)), <>)
+    case latex-phantom
+      back object(<phantom>, mode, pair(<body>, nodes-json(body)), <>)
+    case latex-vertical-phantom
+      back object(<vphantom>, mode, pair(<body>, node-json(body)), <>)
+    case latex-poor-bold
+      back object(<pmb>, mode, pair(<mclass>, quote(mclass)), pair(<body>, nodes-json(body)))
+    case latex-raise-box
+      back object(<raisebox>, mode, pair(<dy>, measure-json(dy)), pair(<body>, node-json(body)))
+    case latex-reflect-box
+      back object(<reflectbox>, mode, pair(<body>, node-json(body)), <>)
+    case latex-rule
+      save fields, make list
+      push(fields, maybe-measure(<shift>, shift))
+      push(fields, pair(<width>, measure-json(width)))
+      push(fields, pair(<height>, measure-json(height)))
+      back object(<rule>, mode, join-fields(fields), <>)
+    case latex-sizing
+      back object(<sizing>, mode, pair(<size>, number-whole(size)), pair(<body>, nodes-json(body)))
+    case latex-smash
+      save fields, make list
+      push(fields, pair(<body>, node-json(body)))
+      push(fields, pair(<smashHeight>, flag(smash-height)))
+      push(fields, pair(<smashDepth>, flag(smash-depth)))
+      back object(<smash>, mode, join-fields(fields), <>)
+    case latex-sqrt
+      back object(<sqrt>, mode, pair(<body>, node-json(body)), maybe-pair(<index>, index))
+    case latex-styling
+      save fields, make list
+      push(fields, pair(<style>, quote(style)))
+      push(fields, maybe-flag(<resetFont>, reset-font))
+      push(fields, pair(<body>, nodes-json(body)))
+      back object(<styling>, mode, join-fields(fields), <>)
+    case latex-tag
+      back object(<tag>, mode, pair(<body>, nodes-json(body)), pair(<tag>, nodes-json(tag)))
+    case latex-text
+      back object(<text>, mode, pair(<body>, nodes-json(body)), maybe-text(<font>, font))
+    case latex-verb
+      back object(<verb>, mode, pair(<body>, quote(body)), pair(<star>, flag(star)))
+    case latex-vertical-center
+      back object(<vcenter>, mode, pair(<body>, node-json(body)), <>)
+    case latex-x-arrow
+      save fields, make list
+      push(fields, pair(<label>, quote(label)))
+      push(fields, maybe-pair(<body>, body))
+      push(fields, maybe-pair(<below>, below))
+      back object(<xArrow>, mode, join-fields(fields), <>)
+
+# `{"type":...,"mode":...}` and up to two more fields, each already written, `<>` for none
+task object
+  take type, like text
+  take mode, like text
+  take first, like text
+  take second, like text
+  like text
+  mark private
+
+  save fields, make list
+  push(fields, pair(<type>, quote(type)))
+  push(fields, pair(<mode>, quote(mode)))
+  push(fields, first)
+  push(fields, second)
+  back <\{{join-fields(fields)}\}>
+
+# the fields that were written, commas between
+task join-fields
+  take fields, like list, like text
+  like text
+  mark private
+
+  save kept, make list
+  walk fields
+    take one
+    fork test, is-unequal(one, <>)
+      hold
+        push(kept, one)
+  back join(kept, <,>)
+
+task pair
+  take name, like text
+  take value, like text
+  like text
+  mark private
+
+  back <{quote(name)}:{value}>
+
+task maybe-pair
+  take name, like text
+  take value, like maybe, like latex-node
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back pair(name, node-json(known))
+    case none
+      back <>
+
+task maybe-node
+  take value, like maybe, like latex-node
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back node-json(known)
+    case none
+      back <null>
+
+task maybe-flag
+  take name, like text
+  take value, like maybe, like boolean
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back pair(name, flag(known))
+    case none
+      back <>
+
+task maybe-text
+  take name, like text
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back pair(name, quote(known))
+    case none
+      back <>
+
+task maybe-measure
+  take name, like text
+  take value, like maybe, like latex-measure
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back pair(name, measure-json(known))
+    case none
+      back <>
+
+task measure-json
+  take measure, like latex-measure
+  like text
+  mark private
+
+  back <\{"number":{number(measure/amount)},"unit":{quote(measure/unit)}\}>
+
+task column-json
+  take column, like latex-column
+  like text
+  mark private
+
+  sift column
+    case column-align
+      save fields, make list
+      push(fields, pair(<type>, quote(<align>)))
+      push(fields, pair(<align>, quote(align)))
+      sift pregap
+        case some
+          link known
+          push(fields, pair(<pregap>, number(known)))
+        case none
+          save nothing, 0
+      sift postgap
+        case some
+          link known
+          push(fields, pair(<postgap>, number(known)))
+        case none
+          save nothing, 0
+      back <\{{join-fields(fields)}\}>
+    case column-separator
+      back <\{"type":"separator","separator":{quote(separator)}\}>
+
+task tag-json
+  take tag, like latex-row-tag
+  like text
+  mark private
+
+  sift tag
+    case tag-numbered
+      back flag(numbered)
+    case tag-given
+      back nodes-json(body)
+
+task flag
+  take value, like boolean
+  like text
+  mark private
+
+  fork test, value
+    hold
+      back <true>
+  back <false>
+
+# a float as JSON writes it: `1`, `0.5`, `-2`
+task number
+  take value, like float
+  like text
+  mark private
+
+  back <{value}>
+
+task number-whole
+  take value, like number
+  like text
+  mark private
+
+  back <{value}>
+
+# a text as a JSON string: `"` and `\` escaped, and every control character as `\u00XX`
+task quote
+  take value, like text
+  like text
+
+  save out, make list
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 34)
+      hold
+        push(out, <\\">)
+        turn next
+    fork test, is-equal(code, 92)
+      hold
+        push(out, <\\\\>)
+        turn next
+    fork test, is-below(code, 32)
+      hold
+        push(out, <\\u00{hex-pair(code)}>)
+        turn next
+    save one, make list
+    push(one, code)
+    push(out, from-runes(one))
+  back <"{join(out, <>)}">
+
+task hex-pair
+  take code, like number
+  like text
+  mark private
+
+  save digits, make list
+  push(digits, <0>)
+  push(digits, <1>)
+  push(digits, <2>)
+  push(digits, <3>)
+  push(digits, <4>)
+  push(digits, <5>)
+  push(digits, <6>)
+  push(digits, <7>)
+  push(digits, <8>)
+  push(digits, <9>)
+  push(digits, <a>)
+  push(digits, <b>)
+  push(digits, <c>)
+  push(digits, <d>)
+  push(digits, <e>)
+  push(digits, <f>)
+  save low, modulo(code, 16)
+  save high, divide(subtract(code, low), 16)
+  back <{get(digits, high)}{get(digits, low)}>

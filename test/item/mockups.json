@@ -35660,7 +35660,7 @@
     ]
    },
    {
-    "text": "  14:42:00.015 · code/shape.tree · like number → like decimal",
+    "text": "  14:42:00.015 · code/shape.tree · like number → like float",
     "marks": [
      {
       "role": "text",
@@ -35929,16 +35929,6 @@
      },
      {
       "role": "text",
-      "strong": false,
-      "focus": false
-     },
-     {
-      "role": "dim",
-      "strong": false,
-      "focus": false
-     },
-     {
-      "role": "dim",
       "strong": false,
       "focus": false
      },

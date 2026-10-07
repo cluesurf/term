@@ -19,8 +19,18 @@ role mill
   take @/code/tree/**/*.tree
 
 # the `note` grammar's reader is Term the compiler runs (deck/make/code/compile/scope.tree hands it a grammar scope's
-# text), written lean like every other module of the toolchain
+# text), written lean like every other module of the toolchain. Its mine.tree is the grammar itself, run by the text
+# grammar engine, and is no code
 role code
   mark lean
   take @/code/text/note/**/*.tree
+    miss @/code/text/note/mine.tree
   take @/test/note/**/*.tree
+
+# the LaTeX reader (note/term/mill/04-latex-grammar.md) is Term the same way, lean, and its mine.tree the grammar the
+# reader is held to, run by the text grammar engine
+role code
+  mark lean
+  take @/code/text/latex/**/*.tree
+    miss @/code/text/latex/mine.tree
+  take @/test/latex/**/*.tree

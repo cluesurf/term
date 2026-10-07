@@ -339,14 +339,19 @@ function step(output: string, name: string): string {
 
 const adb = (serial: string, ...args: string[]) => spawnSync(androidTools().adb, ['-s', serial, ...args], { encoding: 'utf8' })
 
-// the emulator's serial, each Android leg's package, and how many times the camera service had logged a torch turned on
-// before each leg ran, all kept from `prepare` for the read-backs after the run
+// the emulator's serial, each Android leg's package, and the torch-on lines the camera service had logged before each
+// leg ran, all kept from `prepare` for the read-backs after the run
 let serial = ''
 const packages: Partial<Record<Leg, string>> = {}
-const torchesBefore: Partial<Record<Leg, number>> = {}
+const torchesBefore: Partial<Record<Leg, Set<string>>> = {}
 
-// the camera service's own record of a torch turned on, counted: its events log survives the app
-const torchesLit = (): number => ((adb(serial, 'shell', 'dumpsys', 'media.camera').stdout ?? '').match(/Torch for camera id \S+ turned on/g) ?? []).length
+// the camera service's own record of a torch turned on, each line WITH its timestamp: its events log survives the app,
+// but it is a fixed-size ring, so once full a new line pushes an old one out and a COUNT stays flat. A line the
+// before-set lacks is the one this leg wrote.
+const torchesLit = (): Set<string> =>
+  new Set((adb(serial, 'shell', 'dumpsys', 'media.camera').stdout ?? '').match(/^.*Torch for camera id \S+ turned on.*$/gm) ?? [])
+const torchLitSince = (before: Set<string> | undefined): boolean =>
+  before !== undefined && [...torchesLit()].some(line => !before.has(line))
 
 // the simulator the iOS leg ran on, for reading its calendar store afterwards
 let simulator = ''
@@ -550,7 +555,7 @@ function judge(leg: Leg, toolkit: string, output: string): void {
 
   if (android) {
     ok(`${named}: the torch goes on, reads on, and goes off again`, torch === 'off on on off', torch)
-    ok(`${named}: and the camera service logged it turned on`, torchesLit() > (torchesBefore[leg] ?? Number.POSITIVE_INFINITY), `${torchesBefore[leg]} before`)
+    ok(`${named}: and the camera service logged it turned on`, torchLitSince(torchesBefore[leg]), `${torchesBefore[leg]?.size ?? 'none'} lines before`)
   } else {
     ok(`${named}: no torch here, said so every time`, torch === 'unavailable unavailable unavailable unavailable', torch)
   }

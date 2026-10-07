@@ -20,6 +20,8 @@ load @term/base/native/{platform}/environment/path
   find read-path
 
 # RENAMED 2026-10-02 from `get` (base-v1-0038): a top-level `get` shadows list `get` in every build that loads this.
+# `home`, `temporary`, `data`, `configuration` or `cache`. Any other name answers the home directory, a real path on
+# every platform.
 task known-directory
   take kind, like text
   like text

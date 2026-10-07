@@ -28,6 +28,7 @@ load @term/base/ordering
 
 load @term/base/text
   find split
+  find ends-with
 
 load ../parser/diagnostic
   find diagnostic
@@ -67,6 +68,7 @@ load ../compile/import-scope
 
 load ../compile/view-lower
   find is-html-tag
+  find runtime-bound
 
 load ../compile/type-text
   find type-key
@@ -84,6 +86,8 @@ form disambiguated
   # same-name, same-arity overloads: a key, the first candidate's mangled name or a typed choice's own, and every
   # candidate's name, in the order the original's map was filled
   link groups, like list, like overload-group
+  # what each runtime name the view lowering writes is called once the build has split names by file (bind-runtime)
+  link runtime, like list, like runtime-bound
 
 task has-text
   take values, like list, like text
@@ -2887,11 +2891,55 @@ task arity-statement
 
 # ---- the pass ----
 
+# The names the view lowering writes (the render runtime's tasks, compile/render-names.tree) are bound as render.tree
+# itself binds them (D020). The lowering runs after this pass, so a name the build split by file (`append`, defined by
+# @term/base/file and by the dom) is no longer written as it was: each of `names` that is a split group, and that
+# render.tree's own definitions and imports reach in exactly one file, answers that file's renamed name. Any other name
+# answers itself. Nothing in the program changes and nothing is diagnosed.
+task bind-runtime
+  take state, like walk-state
+  take names, like list, like text
+  like list, like runtime-bound
+  mark private
+
+  save render, <>
+  walk state/program
+    take one
+    save file, file-of(one)
+    fork test, ends-with(file, </view/render.tree>)
+      hold
+        save render, file
+        halt
+  save before, state/file
+  save out, make list
+  walk names
+    take name
+    save answer, name
+    fork test, is-unequal(render, <>)
+      hold
+        save place, group-at(state, name)
+        fork test, is-minimum(place, 0)
+          hold
+            save group, get(state/groups, place)
+            save state/file, render
+            save reached, reached-files(state, group, <>)
+            fork test, is-equal(reached/length, 1)
+              hold
+                save answer, renamed-in(group, get(reached, 0))
+    save pair
+      make runtime-bound
+        bind name, name
+        bind bound, answer
+    push(out, pair)
+  save state/file, before
+  back out
+
 # Returns the references it could not bind (see bind-by-import). `entry` is the file whose own definitions keep their
 # names when a name is split by file, because its roots and its exported API are called by them (`<>` for none)
 task disambiguate
   take program, like list, like statement
   take scopes, like list, like file-scope
+  take runtime, like list, like text
   take entry, like text
   like disambiguated
 
@@ -2903,8 +2951,10 @@ task disambiguate
   bind-natives-apart(state)
   bind-by-import(state, entry)
   arity-pass(state, entry)
+  save bound, bind-runtime(state, runtime)
   back
     make disambiguated
       bind program, state/program
       bind diagnostics, state/diagnostics
       bind groups, state/overloads
+      bind runtime, bound

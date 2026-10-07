@@ -51,7 +51,11 @@ load @term/mill/text/note/form
   find unit-factor
 
 load @term/mill/text/note/read
-  find read-note
+  find note-engine
+  find read-note-with
+
+load ./mine-text
+  find mine-engine
 
 load ../parser/diagnostic
   find span
@@ -92,6 +96,8 @@ form scope-pass
   link file, like text
   link grammars, like list, like grammar-name
   link registry, like list, like unit-entry
+  # the note grammar's engine, made by the first scope that needs it and kept for the rest of the file
+  link engine, like maybe, like mine-engine
   link needs, like list, like scope-need
   link diagnostics, like list, like diagnostic
 
@@ -118,6 +124,7 @@ task expand-scopes
       bind file, file
       bind grammars, make list
       bind registry, unit-table()
+      bind engine, make none
       bind needs, make list
       bind diagnostics, make list
 
@@ -388,14 +395,14 @@ task scope-of
 
 task found-of
   take grammar, like text
-  take text, like node
+  take literal, like node
   like scope-found
   mark private
 
   back
     make scope-found
       bind grammar, grammar
-      bind text, read(text)
+      bind text, literal
 
 # ---- lowering one scope ----
 
@@ -420,7 +427,7 @@ task lower-scope
     case some
       link source
       save place, place-of(found/text)
-      save answer, read-note(source, pass/registry)
+      save answer, read-note-with(engine-of(pass), source, pass/registry)
       sift answer/node
         case none
           save first, get(answer/problems, 0)
@@ -448,6 +455,20 @@ task lower-scope
                   back group
               save written, <scope {value/text}>
           back reread(pass, written, done, where)
+
+# the note grammar's engine, made once for the file
+task engine-of
+  take pass, like scope-pass
+  like mine-engine
+  mark private
+
+  sift pass/engine
+    case some
+      back value
+    case none
+      save made, note-engine(pass/registry)
+      save pass/engine, make(some, made)
+      back made
 
 # `x = value` and `a.b = value`, as `save x, value` and `save a/b, value`, when the scope is a statement
 task assignment-of
@@ -481,7 +502,7 @@ task assignment-of
 # under a head of its own, `scope <value>`, since a number cannot head a line
 task reread
   take pass, like scope-pass
-  take text, like text
+  take lowered-source, like text
   take statement, like boolean
   take where, like span
   like node
@@ -490,7 +511,7 @@ task reread
   save source
     make token-source
       bind file, pass/file
-      bind text, read(text)
+      bind text, lowered-source
   save parsed, parse(source)
   save top, make list
   sift parsed/tree
@@ -499,7 +520,7 @@ task reread
       save top, given
   fork test, or(not(parsed/ok), is-equal(top/length, 0))
     hold
-      refuse(pass, make(scope-refused), where, <this scope lowered to code that does not parse: {text}>, <this is a defect in the scope pass (compile/scope.tree), not in the scope>)
+      refuse(pass, make(scope-refused), where, <this scope lowered to code that does not parse: {lowered-source}>, <this is a defect in the scope pass (compile/scope.tree), not in the scope>)
       back name-node-of(<scope>, where)
   save group, get(top, 0)
   fork test, statement
@@ -510,14 +531,14 @@ task reread
 # ---- lowering an expression ----
 
 task lowered-of
-  take text, like text
+  take written, like text
   take kind, like text
   like lowered
   mark private
 
   back
     make lowered
-      bind text, read(text)
+      bind text, written
       bind kind, kind
       bind path, make none
       bind ok, true
@@ -1204,9 +1225,13 @@ task word-of-head
       fork test, is-unequal(parts/length, 1)
         hold
           back <>
-      sift get(parts, 0)
+      # matched through a named local, whose form the emitter knows: matched on the call itself, a `chunk` arm was
+      # read as compile/node.tree's `chunk`, whose field is `value`, once both forms were in one program
+      save first-part, get(parts, 0)
+      sift first-part
         case chunk
-          back read(text)
+          link chunk-text
+          back chunk-text
         miss
           back <>
     miss
@@ -1231,7 +1256,8 @@ task text-of
             take part
             sift part
               case chunk
-                push(out, raw-content(read(text)))
+                link chunk-text
+                push(out, raw-content(chunk-text))
               miss
                 back make none
           save joined, join(out, <>)
@@ -1484,34 +1510,47 @@ task respan
               bind call, call
         case none
           back one
+    # each arm names its fields: a bare `text` here would be the `text` case of a form this module imports
     case chunk
+      link chunk-text
+      link chunk-span
+      link chunk-follows
       back
         make chunk
-          bind text, read(text)
+          bind text, chunk-text
           bind span, where
-          bind follows, follows
+          bind follows, chunk-follows
     case integer
+      link whole
+      link written
       back
         make integer
-          bind value, value
-          bind text, read(text)
+          bind value, whole
+          bind text, written
           bind span, where
           bind comments, comments
     case decimal
+      link fraction
+      link written
       back
         make decimal
-          bind value, value
-          bind text, read(text)
+          bind value, fraction
+          bind text, written
           bind span, where
           bind comments, comments
     case radix
+      link whole
+      link written
+      link radix-span
+      link radix-comments
+      link base
       back
         make radix
-          bind value, value
-          bind text, read(text)
+          bind value, whole
+          bind text, written
           bind span, where
-          bind comments, comments
-          bind radix, radix
+          bind comments, radix-comments
+          bind radix, base
 
 task respan-all
   take nodes, like list, like node

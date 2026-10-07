@@ -4,7 +4,10 @@
 import { parse } from '@term/make/code/parser/tree'
 import { readView, lowerView, viewManifest, checkView } from '@term/make/code/compile/view'
 import { readDataText } from '@term/make/code/compile/host'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked for: render-names.tree exports a task where render-names.ts held a constant
+const RENDER = renderNames()
 
 let pass = 0
 let fail = 0

@@ -80,6 +80,15 @@ form lowering
   link params, like list, like closure-param
   link span, like span
   link counter, like number
+  # the render runtime's names as the build bound them (D020), and `append` the same way
+  link names, like render-names
+  link append, like text
+
+# a render runtime name, and what the build called it once names were split by file (check/disambiguate.tree
+# bind-runtime). Declared here, where the lowering reads it, because disambiguate.tree loads this file
+form runtime-bound
+  link name, like text
+  link bound, like text
 
 # the statements one step builds, added to as it goes
 form built
@@ -337,10 +346,10 @@ task attribute-statement
   # not `value`: a text literal's own field of that name would hide it inside its arm
   take given, like expression
   take at, like span
+  take names, like render-names
   like statement
   mark private
 
-  save names, render-names()
   sift given
     case string
       back statement-of(call-of(names/attribute, three(variable-of(ref, at), text-of(name, at), given), at), at)
@@ -381,7 +390,7 @@ task fragment-thunk
       push(inner/items, return-of(variable-of(ref, at), at))
     miss
       save frag, fresh(state)
-      save names, render-names()
+      save names, state/names
       push(inner/items, let-of(frag, call-of(names/element, one-arg(text-of(<seed-fragment>, at)), at), at))
       walk body
         take child
@@ -500,7 +509,7 @@ task build-node
   mark private
 
   save at, state/span
-  save names, render-names()
+  save names, state/names
   # not `ref`: an element's own field of that name would hide it inside the element's arm
   save made-ref, <>
   sift node
@@ -535,12 +544,12 @@ task build-node
           hold
             push(out/items, statement-of(call-of(names/event, three(variable-of(made-ref, at), text-of(attribute/name, at), handler-of(attribute/value, state)), at), at))
           miss
-            push(out/items, attribute-statement(made-ref, attribute/name, attribute/value, at))
+            push(out/items, attribute-statement(made-ref, attribute/name, attribute/value, at, names))
       # `bind <name>, <value>` on an HTML element is an attribute (on a component it is a prop, handled by
       # component-call)
       walk props
         take prop
-        push(out/items, attribute-statement(made-ref, prop/name, prop/value, at))
+        push(out/items, attribute-statement(made-ref, prop/name, prop/value, at, names))
       walk children
         take child
         attach(child, made-ref, out, state)
@@ -556,7 +565,7 @@ task handler-of
   mark private
 
   save at, state/span
-  save names, render-names()
+  save names, state/names
   # not `body`: a closure's own field of that name would hide it inside the closure's arm
   save handled, make list
   save no-params, make list
@@ -654,7 +663,7 @@ task attach
   mark private
 
   save at, state/span
-  save names, render-names()
+  save names, state/names
   sift node
     case fork
       # show(parent, () => cond, () => then, () => else)
@@ -695,10 +704,10 @@ task attach
         miss
           # not `ref`: the element's own field of that name is a local here
           save built-ref, build-node(node, out, state)
-          push(out/items, statement-of(call-of(<append>, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
+          push(out/items, statement-of(call-of(state/append, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
     miss
       save built-ref, build-node(node, out, state)
-      push(out/items, statement-of(call-of(<append>, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
+      push(out/items, statement-of(call-of(state/append, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
 
 task two
   take first, like expression
@@ -711,10 +720,26 @@ task two
   push(out, second)
   back out
 
+# what the build called a render runtime name: the bound one, else the name itself
+task bound-of-name
+  take bound, like list, like runtime-bound
+  take name, like text
+  like text
+  mark private
+
+  walk bound
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one/bound
+  back name
+
 # lower one view into a function
 task lower-view
   take definition, like statement
   take components, like list, like component
+  take bound-names, like render-names
+  take bound-append, like text
   like statement
   mark private
 
@@ -726,6 +751,8 @@ task lower-view
           bind params, params
           bind span, span
           bind counter, 0
+          bind names, bound-names
+          bind append, bound-append
       save slotted, has-slot(body)
       sift component-of(state, name)
         case some
@@ -801,6 +828,7 @@ task lower-view
 # the pass: replace every view with its lowered function
 task lower-views
   take program, like list, like statement
+  take bound, like list, like runtime-bound
   like list, like statement
 
   # the program-wide component registry. A view named after an HTML tag is not a component (it would be unreachable
@@ -843,12 +871,32 @@ task lower-views
       push(registry, get(components, at))
       save at, subtract(at, 1)
 
+  save plain-names, render-names()
+  save bound-names
+    make render-names
+      bind element, bound-of-name(bound, plain-names/element)
+      bind text, bound-of-name(bound, plain-names/text)
+      bind dynamic, bound-of-name(bound, plain-names/dynamic)
+      bind attribute, bound-of-name(bound, plain-names/attribute)
+      bind bind-attribute, bound-of-name(bound, plain-names/bind-attribute)
+      bind event, bound-of-name(bound, plain-names/event)
+      bind show, bound-of-name(bound, plain-names/show)
+      bind each, bound-of-name(bound, plain-names/each)
+      bind each-keyed, bound-of-name(bound, plain-names/each-keyed)
+      bind dynamic-view, bound-of-name(bound, plain-names/dynamic-view)
+      bind gate, bound-of-name(bound, plain-names/gate)
+      bind mount, bound-of-name(bound, plain-names/mount)
+      bind portal, bound-of-name(bound, plain-names/portal)
+      bind raise, bound-of-name(bound, plain-names/raise)
+      bind integers, bound-of-name(bound, plain-names/integers)
+  save bound-append, bound-of-name(bound, <append>)
+
   save out, make list
   walk program
     take one
     sift one
       case view
-        push(out, lower-view(one, registry))
+        push(out, lower-view(one, registry, bound-names, bound-append))
       miss
         push(out, one)
   back out

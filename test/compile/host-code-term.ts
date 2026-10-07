@@ -210,9 +210,10 @@ async function main(): Promise<void> {
   for (let at = 0; at < 1500; at++) {
     const value: Data = { kind: 'hash', list: [{ name: 'value', base: generated(random, 3) }] }
     const text = writeLong(value)
-    const reference = encodeTree(oracle(text))
 
     try {
+      // inside the try, so a value the reference cannot read or encode is reported by its text, not a crash
+      const reference = encodeTree(oracle(text))
       const term = mod.codeOf(text) as Uint8Array
       const back = mod.longOfCode(reference) as string
       const recoded = mod.recode(reference) as Uint8Array

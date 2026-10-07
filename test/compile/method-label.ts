@@ -35,8 +35,7 @@ const show = (result: ReturnType<typeof build>): string =>
 
 // a form with a `get` method, and a module with a top-level `get` of the same arity and other parameters
 const BOX = `form box
-  link items, like list
-    like text
+  link items, like list, like text
 
   task get
     take self

@@ -73,28 +73,31 @@ task holds-at
     save step, add(step, 1)
   back true
 
-# `/func main\(\)[^{]*throws/`: the program's `main` raises, so the line that starts it says `try`
+# `/func <entry>\(\)[^{]*throws/`: the program's entry (`boot`, or the older `main`, as Swift spells it) raises, so the
+# line that starts it says `try`
 task start-line
   take swift, like text
+  take entry, like text
   like text
 
   save points, split(swift, <>)
+  save head, <func {entry}()>
   save at, 0
   walk test
     hook test, is-below(at, points/length)
     hook hold
-      fork test, and(is-equal(get(points, at), <f>), holds-at(points, at, <func main()>))
+      fork test, and(is-equal(get(points, at), <f>), holds-at(points, at, head))
         hold
-          save step, add(at, 11)
+          save step, add(at, head/length)
           walk test
             hook test, and(is-below(step, points/length), is-unequal(get(points, step), <\{>))
             hook hold
               fork test, holds-at(points, step, <throws>)
                 hold
-                  back <try main()>
+                  back <try {entry}()>
               save step, add(step, 1)
       save at, add(at, 1)
-  back <main()>
+  back <{entry}()>
 
 # ---- the Xcode project ----
 

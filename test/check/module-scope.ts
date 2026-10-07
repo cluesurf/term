@@ -321,7 +321,7 @@ const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  ca
   const fault = `load @term/base/exception\n  find exception\n\nform clash\n  like exception\n    bind note, <Clashed>\n    link at, like number\n\ntask fail-it\n  like number\n  halt clash\n    bind at, code 7\n`
   const names = `form label\n  mark text\n  case clash\n  case other\n`
   // main imports the case's form too: an arm still means the exception it imports by name
-  const main = `load @app/fault\n  find clash\n  find fail-it\n\nload @app/names\n  find label\n\ntask run\n  like number\n  mark unsafe\n    call fail-it\n    send back, code 0\n  halt take\n    take error\n    sift error\n      case clash\n        send back, read at\n    send back, code -1\n`
+  const main = `load @app/fault\n  find clash\n  find fail-it\n\nload @app/names\n  find label\n\ntask run\n  like number\n  fork\n    mark unsafe\n    call fail-it\n    send back, code 0\n  halt take\n    take error\n    sift error\n      case clash\n        send back, read at\n    send back, code -1\n`
   const files = { '@app/fault': fault, '@app/names': names }
   const resolve = (path: string, from: string): Source | undefined =>
     files[path as keyof typeof files] !== undefined

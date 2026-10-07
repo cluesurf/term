@@ -1,0 +1,33 @@
+# The LaTeX grammar made ready for the text grammar engine (deck/make/code/compile/mine-text.tree): ./mine.tree as
+# baked into ./grammar.tree, read by the one parser. The reader does not run this. It runs ./compiled.tree, the same
+# grammar compiled to Term by `pnpm term:grammar-compile`, which reads its rules and first characters from this engine
+# so the two cannot be built from different grammars, and test/latex/compiled.tree holds the two equal: what the
+# interpreter reads, the compiled grammar reads, to the same tree.
+
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/feed-compile
+  find read-feed-mine-grammar
+
+load @term/make/compile/mine-text
+  find mine-engine
+  find make-mine-engine
+
+load ./grammar
+  find latex-grammar-text
+
+# the grammar is whole on its own, its `\verb` rules included, so the engine is given no rule of its own
+task latex-engine
+  like mine-engine
+
+  save source
+    make token-source
+      bind file, <@term/mill/text/latex/mine.tree>
+      bind text, latex-grammar-text()
+  save parsed, parse(source)
+  save rules, read-feed-mine-grammar(parsed/tree)
+  back make-mine-engine(rules, make hash)

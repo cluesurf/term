@@ -1,0 +1,549 @@
+# What the LaTeX reader reads math to (note/term/mill/04-latex-grammar.md): a list of `latex-node`, one case for each
+# node KaTeX's parser builds, every field KaTeX's own under its kebab spelling (`hasBarLine` is `has-bar-line`), so a
+# tree read here and a tree KaTeX reads are the same tree. ./json.tree writes one under KaTeX's names, which is how
+# test/latex/katex.ts holds the two equal.
+#
+# Every node also carries `at` and `end`, the code points of the source it was read from. A node a macro built is
+# placed at the command that was expanded, since its text is nowhere in the source.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+# a length: `2em`, `-0.5ex`, `3mu`. `amount` is the number as written, `unit` its two letters
+form latex-measure
+  link amount, like float
+  link unit, like text
+
+# one column of an array: an alignment (`l`, `c`, `r`) and its gaps in em, or a separator (`|`, `:`)
+form latex-column
+  mark tag, name kind
+  case column-align
+    link align, like text
+    link pregap, like maybe, like float
+    link postgap, like maybe, like float
+  case column-separator
+    link separator, like text
+
+# what numbers one row of an AMS environment: whether it is numbered automatically, or the `\tag` it was given
+form latex-row-tag
+  mark tag, name kind
+  case tag-numbered
+    link numbered, like boolean
+  case tag-given
+    link body, like list, like latex-node
+
+# one attribute `\htmlClass`, `\htmlId`, `\htmlStyle` or `\htmlData` sets: `class`, `id`, `style`, `data-<key>`
+form latex-attribute
+  link name, like text
+  link value, like text
+
+form latex-node
+  mark tag, name kind
+
+  # ---- symbols: one character or one command, named by its group in KaTeX's symbol table ----
+
+  # a binary operator, relation, opening, closing, punctuation or inner atom. `family` is `bin`, `rel`, `open`,
+  # `close`, `punct` or `inner`
+  case latex-atom
+    link at, like number
+    link end, like number
+    link mode, like text
+    link family, like text
+    link text, like text
+  case latex-math-ord
+    link at, like number
+    link end, like number
+    link mode, like text
+    link text, like text
+  case latex-text-ord
+    link at, like number
+    link end, like number
+    link mode, like text
+    link text, like text
+  case latex-spacing
+    link at, like number
+    link end, like number
+    link mode, like text
+    link text, like text
+  case latex-accent-token
+    link at, like number
+    link end, like number
+    link mode, like text
+    link text, like text
+  case latex-op-token
+    link at, like number
+    link end, like number
+    link mode, like text
+    link text, like text
+
+  # ---- groups ----
+
+  # `{...}`, and `\begingroup...\endgroup`, which is `semisimple`
+  case latex-group
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+    link semisimple, like maybe, like boolean
+
+  # a base with a superscript, a subscript, or both. The base is none for `^2` with nothing before it
+  case latex-scripts
+    link at, like number
+    link end, like number
+    link mode, like text
+    link base, like maybe, like latex-node
+    link sup, like maybe, like latex-node
+    link sub, like maybe, like latex-node
+
+  # ---- arguments read raw: what a command takes as a value rather than as math ----
+
+  case latex-raw
+    link at, like number
+    link end, like number
+    link mode, like text
+    link value, like text
+  case latex-size
+    link at, like number
+    link end, like number
+    link mode, like text
+    link value, like latex-measure
+    link is-blank, like boolean
+  case latex-color-token
+    link at, like number
+    link end, like number
+    link mode, like text
+    link color, like text
+  case latex-url
+    link at, like number
+    link end, like number
+    link mode, like text
+    link url, like text
+
+  # ---- commands ----
+
+  # an accent over its base: `\hat x`, `\widetilde{ab}`, or `\'e` in text
+  case latex-accent
+    link at, like number
+    link end, like number
+    link mode, like text
+    link label, like text
+    link is-stretchy, like maybe, like boolean
+    link is-shifty, like maybe, like boolean
+    link base, like latex-node
+  case latex-accent-under
+    link at, like number
+    link end, like number
+    link mode, like text
+    link label, like text
+    link base, like latex-node
+
+  # the array environments: `matrix`, `cases`, `align`, `array{cc}` and the rest. `body` is the rows, each a list of
+  # its entries in order
+  case latex-array
+    link at, like number
+    link end, like number
+    link mode, like text
+    link col-separation-type, like maybe, like text
+    link hskip-before-and-after, like maybe, like boolean
+    link add-jot, like maybe, like boolean
+    link cols, like maybe, like list, like latex-column
+    link arraystretch, like float
+    link body
+      like list
+        like list
+          like latex-node
+    link row-gaps, like list, like maybe, like latex-measure
+    link h-lines-before-row
+      like list
+        like list
+          like boolean
+    link tags, like maybe, like list, like latex-row-tag
+    link leqno, like maybe, like boolean
+
+  # a label on a commutative diagram's vertical arrow, and the group that holds the arrow with its labels
+  case latex-cd-label
+    link at, like number
+    link end, like number
+    link mode, like text
+    link side, like text
+    link label, like latex-node
+  case latex-cd-label-parent
+    link at, like number
+    link end, like number
+    link mode, like text
+    link fragment, like latex-node
+
+  case latex-color
+    link at, like number
+    link end, like number
+    link mode, like text
+    link color, like text
+    link body, like list, like latex-node
+
+  # `\\`, with the row gap it was given
+  case latex-line-break
+    link at, like number
+    link end, like number
+    link mode, like text
+    link new-line, like boolean
+    link size, like maybe, like latex-measure
+
+  # `\big(` and the rest: `size` 1 to 4, `mclass` `mopen`, `mclose`, `mrel` or `mord`
+  case latex-delimiter-size
+    link at, like number
+    link end, like number
+    link mode, like text
+    link size, like number
+    link mclass, like text
+    link delim, like text
+
+  # `\fbox`, `\colorbox`, `\cancel`, `\sout` and the rest, named by `label`
+  case latex-enclose
+    link at, like number
+    link end, like number
+    link mode, like text
+    link label, like text
+    link background-color, like maybe, like text
+    link border-color, like maybe, like text
+    link body, like latex-node
+
+  # what `\end{name}` reads to before it closes its `\begin`
+  case latex-environment
+    link at, like number
+    link end, like number
+    link mode, like text
+    link name, like text
+    link name-group, like latex-node
+
+  case latex-font
+    link at, like number
+    link end, like number
+    link mode, like text
+    link font, like text
+    link body, like latex-node
+
+  # `\frac`, `\binom`, `\over`, `\genfrac` and the rest
+  case latex-fraction
+    link at, like number
+    link end, like number
+    link mode, like text
+    link continued, like boolean
+    link numer, like latex-node
+    link denom, like latex-node
+    link has-bar-line, like boolean
+    link left-delim, like maybe, like text
+    link right-delim, like maybe, like text
+    link bar-size, like maybe, like latex-measure
+
+  case latex-hbox
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+
+  case latex-horizontal-brace
+    link at, like number
+    link end, like number
+    link mode, like text
+    link label, like text
+    link is-over, like boolean
+    link base, like latex-node
+
+  case latex-href
+    link at, like number
+    link end, like number
+    link mode, like text
+    link href, like text
+    link body, like list, like latex-node
+
+  case latex-html
+    link at, like number
+    link end, like number
+    link mode, like text
+    link attributes, like list, like latex-attribute
+    link body, like list, like latex-node
+
+  case latex-html-mathml
+    link at, like number
+    link end, like number
+    link mode, like text
+    link html, like list, like latex-node
+    link mathml, like list, like latex-node
+
+  case latex-include-graphics
+    link at, like number
+    link end, like number
+    link mode, like text
+    link alt, like text
+    link width, like latex-measure
+    link height, like latex-measure
+    link totalheight, like latex-measure
+    link src, like text
+
+  # `\over` and the others between two halves of a group, before the group is read into the fraction it names
+  case latex-infix
+    link at, like number
+    link end, like number
+    link mode, like text
+    link replace-with, like text
+    link size, like maybe, like latex-measure
+
+  # what a definition or `\relax` reads to: nothing in the tree
+  case latex-internal
+    link at, like number
+    link end, like number
+    link mode, like text
+
+  case latex-kern
+    link at, like number
+    link end, like number
+    link mode, like text
+    link dimension, like latex-measure
+
+  case latex-lap
+    link at, like number
+    link end, like number
+    link mode, like text
+    link alignment, like text
+    link body, like latex-node
+
+  # `\left( ... \right)`, its `\middle`s inside `body`
+  case latex-left-right
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+    link left, like text
+    link right, like text
+    link right-color, like maybe, like text
+
+  # the `\right)` a `\left` reads to its end
+  case latex-right
+    link at, like number
+    link end, like number
+    link mode, like text
+    link delim, like text
+    link color, like maybe, like text
+
+  case latex-math-choice
+    link at, like number
+    link end, like number
+    link mode, like text
+    link display, like list, like latex-node
+    link text, like list, like latex-node
+    link script, like list, like latex-node
+    link scriptscript, like list, like latex-node
+
+  case latex-middle
+    link at, like number
+    link end, like number
+    link mode, like text
+    link delim, like text
+
+  # `\mathbin{x}`, `\overset{a}{b}`, `\boldsymbol` and the rest: `mclass` is `mord`, `mop`, `mbin`, `mrel`, `mopen`,
+  # `mclose`, `mpunct` or `minner`
+  case latex-math-class
+    link at, like number
+    link end, like number
+    link mode, like text
+    link mclass, like text
+    link body, like list, like latex-node
+    link is-character-box, like boolean
+
+  # `\sum`, `\lim`, `\sin`, `\int`, `\mathop{x}`. A named operator has `name`, `\mathop` a `body`
+  case latex-op
+    link at, like number
+    link end, like number
+    link mode, like text
+    link limits, like boolean
+    link always-handle-sup-sub, like maybe, like boolean
+    link suppress-base-shift, like maybe, like boolean
+    link parent-is-sup-sub, like boolean
+    link symbol, like boolean
+    link name, like maybe, like text
+    link body, like maybe, like list, like latex-node
+
+  case latex-operator-name
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+    link always-handle-sup-sub, like boolean
+    link limits, like boolean
+    link parent-is-sup-sub, like boolean
+
+  case latex-overline
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+
+  case latex-underline
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+
+  case latex-phantom
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+
+  case latex-vertical-phantom
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+
+  case latex-poor-bold
+    link at, like number
+    link end, like number
+    link mode, like text
+    link mclass, like text
+    link body, like list, like latex-node
+
+  case latex-raise-box
+    link at, like number
+    link end, like number
+    link mode, like text
+    link dy, like latex-measure
+    link body, like latex-node
+
+  case latex-reflect-box
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+
+  case latex-rule
+    link at, like number
+    link end, like number
+    link mode, like text
+    link shift, like maybe, like latex-measure
+    link width, like latex-measure
+    link height, like latex-measure
+
+  # `\tiny` to `\Huge` over the rest of the group: `size` 1 to 11
+  case latex-sizing
+    link at, like number
+    link end, like number
+    link mode, like text
+    link size, like number
+    link body, like list, like latex-node
+
+  case latex-smash
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+    link smash-height, like boolean
+    link smash-depth, like boolean
+
+  case latex-sqrt
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+    link index, like maybe, like latex-node
+
+  # `\displaystyle` and the rest over what follows, and every entry of an array: `style` is `display`, `text`,
+  # `script` or `scriptscript`
+  case latex-styling
+    link at, like number
+    link end, like number
+    link mode, like text
+    link style, like text
+    link reset-font, like maybe, like boolean
+    link body, like list, like latex-node
+
+  # a display equation and its `\tag`
+  case latex-tag
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+    link tag, like list, like latex-node
+
+  # `\text{...}` and the text fonts, `\textbf` and the rest, named by `font`
+  case latex-text
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like list, like latex-node
+    link font, like maybe, like text
+
+  case latex-verb
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like text
+    link star, like boolean
+
+  case latex-vertical-center
+    link at, like number
+    link end, like number
+    link mode, like text
+    link body, like latex-node
+
+  # `\xrightarrow[below]{above}` and the rest. The body is none only for the long equals of a commutative diagram's
+  # `@=`, which KaTeX builds with no argument
+  case latex-x-arrow
+    link at, like number
+    link end, like number
+    link mode, like text
+    link label, like text
+    link body, like maybe, like latex-node
+    link below, like maybe, like latex-node
+
+# a mistake in the source, at the code points `at` to `end`: the first one stops the reading, as it stops KaTeX's
+form latex-problem
+  link at, like number
+  link end, like number
+  link message, like text
+
+# where something stands in the source, in code points
+form latex-place
+  link at, like number
+  link end, like number
+
+# KaTeX's `strict`: what to do with input LaTeX would refuse or read otherwise, and KaTeX reads anyway. `ignore`
+# reads it and says nothing. `warn` reads it and keeps a warning for each. `error` refuses it, the first one stopping
+# the reading, and reads `\\` in display math as LaTeX does, as nothing
+form latex-strict
+  mark text
+  case ignore
+  case warn
+  case error
+
+# one such input: KaTeX's own code for it (`unicodeTextInMathMode`, `newLineInDisplayMode`, ...), its message, and the
+# token KaTeX reports it at, none where KaTeX names none
+form latex-warning
+  link code, like text
+  link message, like text
+  link place, like maybe, like latex-place
+
+# how to read: `display` is display math (`\displaystyle`, and what only display math allows: `align`, `\tag`),
+# `leqno` puts equation numbers on the left, `max-expand` bounds macro expansion, `macros` are definitions every
+# reading starts with, each a name and its expansion (`\R`, `\mathbb{R}`), `strict` as KaTeX's
+form latex-options
+  link display, like boolean
+  link leqno, like boolean
+  link max-expand, like number
+  link color-is-text-color, like boolean
+  link macros, like list, like latex-macro
+  link strict, like latex-strict
+
+form latex-macro
+  link name, like text
+  link expansion, like text
+
+# what reading gives: the nodes, or none and the mistake that stopped it, and the warnings kept on the way, in the
+# order KaTeX reports them
+form latex-read
+  link nodes, like maybe, like list, like latex-node
+  link problem, like maybe, like latex-problem
+  link warnings, like list, like latex-warning

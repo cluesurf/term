@@ -716,11 +716,17 @@ task plain-decimal
   save exponent-negative, false
   save in-exponent, false
   save negative, false
+  save ended, false
   walk list
     call to-runes
       read shown
     hook next
       take site, name c
+      fork test
+        hook test
+          read ended
+        hook hold
+          turn next
       fork test
         hook test
           call or
@@ -744,6 +750,16 @@ task plain-decimal
               save exponent-negative, true
             hook miss
               save negative, true
+        # a point after the exponent ends the number: `1e+300.0` is not one, and reading its `.0` as more of the
+        # exponent made it three thousand
+        hook test
+          call and
+            call is-equal
+              read c
+              code 46
+            read in-exponent
+        hook hold
+          save ended, true
         hook test
           call is-equal
             read c

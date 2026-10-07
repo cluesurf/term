@@ -452,7 +452,8 @@ task tokenize
 # and the scope is what follows it on the line, written one of three ways:
 #
 #   , x + y         after `role <name>`, the rest of the line after a comma: the literal is a sibling of the name
-#   x + y           the rest of the line after a space: the literal nests under the name
+#   x + y           after an imported grammar name only, the rest of the line after a space: the literal nests under
+#                   the name. `role note x + y` is refused, naming the comma it wants (comma-wanted)
 #   (x + y)         the balanced parentheses, which close on the same line
 #   (nothing)       the block indented under the line, when the opener heads its line or is a `role`
 #
@@ -730,6 +731,11 @@ task scope-at
       fork test, is-equal(get(runes, content-at), 60)
         hold
           back no-scope(at, column)
+      # `role note x + y` is refused: a role's scope is the rest of the line after a COMMA, so a space after
+      # `role <name>` reads as nesting, which a scope is not. An imported grammar name takes the space (`note x + y`)
+      fork test, role
+        hold
+          back comma-wanted(runes, at, column, line, file, name)
       save content-column, add(column, width-of(runes, at, content-at))
       save separator, token-of(make(space), line, column, content-column, from-runes(runes/slice(at, content-at)))
       back line-scope(runes, content-at, content-column, line, separator)
@@ -738,6 +744,36 @@ task scope-at
     hold
       back block-scope(runes, at, column, line, lines, or(role, head))
   back no-scope(at, column)
+
+# `role note x + y`: refused at the space, and the rest of the line skipped, so it is reported once and the next line
+# is read as usual
+task comma-wanted
+  take runes, like list, like number
+  take at, like number
+  take column, like number
+  take line, like number
+  take file, like text
+  take name, like text
+  like scope-step
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, span-of(line, column, add(column, 1))
+      bind message, make(some, <a `role` scope follows a comma: `role {name}, x + y`, not `role {name} x + y`>)
+      bind hint, make(some, <for more than one line, write `role {name}` alone and the text indented under it>)
+  save found, make list
+  push(found, diagnose(make(syntax-error), input))
+  save stop, subtract(runes/length, 1)
+  back
+    make scope-step
+      bind taken, true
+      bind tokens, make list
+      bind pos, stop
+      bind column, add(column, width-of(runes, at, stop))
+      bind skip-to, 0
+      bind found, found
 
 task no-scope
   take at, like number

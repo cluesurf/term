@@ -33,6 +33,8 @@ dock load
   load <@term/call/code/host>, name host-module
   load <@term/call/code/bind>, name bind-module
   load <@term/call/code/self>, name self-module
+  load <@term/call/code/skill>, name skill-module
+  load <@term/call/code/show>, name show-module
   load <node:process>, name node-process
 
 form root-ask
@@ -268,6 +270,29 @@ task self-back
     log-fail format-error error
     node-process/exit code 1
 
+form self-skill-ask
+  link root, like text
+  link version, like text
+
+# `term self skill`: write the skill that teaches a coding agent term's verbs into this project, at
+# .claude/skills/term/SKILL.md
+task self-skill
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  save version, call show-module/termVersion
+  fork
+    mark unsafe
+    call skill-module/callSelfSkill
+      make self-skill-ask
+        bind root, read root
+        bind version, read version
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
 # `term self list`: the installed versions, the front, the default, and what runs here
 task self-list
   mark async
@@ -436,18 +461,70 @@ task self-wash
     log-fail format-error error
     node-process/exit code 1
 
-# `term show`: what this toolchain is -- its version and where it is installed
+form show-toolchain-ask
+  link root, like text
+  link version, like text
+
+form show-what-ask
+  link root, like text
+  link what, like text
+  link budget, like number
+  link version, like text
+
+form show-name-ask
+  link root, like text
+  link what, like text
+  link name, like text
+  link budget, like number
+  link version, like text
+
+# `term show [what] [name]`: the toolchain's version and platform, the project's version (`mark`), the native
+# toolchains (`tools`), what a diagnostic means (`kink`), or one name of the project sized to `--budget` (`name`).
+#
+# The hook hands an absent text over as an empty one, and `callShow` tells "no `what`" and "no `name`" by their
+# absence, so the ask leaves out each one that is empty rather than passing it empty. An absent `--budget` arrives as
+# 0, which the context reader already takes as its default
 task show
   mark async
   take what, like text
+  take name, like text
+  take budget, like number
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+  save version, call show-module/termVersion
   fork
     mark unsafe
-    call line-module/callShow, make(root-ask, bind root, read root), wait true
+    fork test
+      is-equal read(what), <>
+      hold
+        call show-module/callShow
+          make show-toolchain-ask
+            bind root, read root
+            bind version, read version
+          wait true
+        send back
+    fork test
+      is-equal read(name), <>
+      hold
+        call show-module/callShow
+          make show-what-ask
+            bind root, read root
+            bind what, read what
+            bind budget, read budget
+            bind version, read version
+          wait true
+        send back
+    call show-module/callShow
+      make show-name-ask
+        bind root, read root
+        bind what, read what
+        bind name, read name
+        bind budget, read budget
+        bind version, read version
+      wait true
   halt take
     take error
     log-fail format-error error

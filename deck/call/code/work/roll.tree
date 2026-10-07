@@ -41,6 +41,12 @@ dock load
 form roll-show-ask
   link path, like boolean
 
+# what `callRoll` takes for `--diff`. NOT `roll-ask`, for the same package-global reason as above
+form roll-diff-ask
+  link root, like text
+  link json, like boolean
+  link diff, like text
+
 # the kinds a roll always has, before any a deck declares with `roll <name>`
 task built-in-kinds
   like list, like text
@@ -71,16 +77,29 @@ task is-known-kind
         back true
   back false
 
+# The hook passes a take to the parameter of its own name, else to the one at its position, so these stand in the
+# hook's order (kind, json, private, host, path, diff): `json-out` and `show-path` are named apart from `json` and
+# `path` and so are filled by position. `--private` and `--host` are taken and not yet applied here.
 task roll
   mark async
   take kind, like text
   take json-out, like boolean
+  take only-private, like boolean
+  take only-host, like text
   take show-path, like boolean
+  take diff, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+  # `--diff` compares this roll with an earlier one, through roll-diff.ts and its reach analysis: the compiler's
+  # machinery, so the verb hands it to `callRoll` whole, as it does the roll itself to `projectRoll`
+  fork test
+    is-unequal diff, <>
+    hold
+      roll-diff(root, json-out, diff)
+      send back
   fork test
     json-out
     miss
@@ -125,6 +144,29 @@ task roll
     hold
       console/log
         fade <  {{failed}} file(s) did not compile and are not on the roll>
+
+# `term roll --diff <before>`: what changed in what each task can reach and raise since a roll file or a git ref
+task roll-diff
+  mark async
+  mark private
+  take root, like text
+  take json-out, like boolean
+  take diff, like text
+
+  like void
+
+  fork
+    mark unsafe
+    call roll-module/callRoll
+      make roll-diff-ask
+        bind root, read root
+        bind json, read json-out
+        bind diff, read diff
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
 
 # the note of the tell that covers one exception, or `private` when none does
 task tell-for

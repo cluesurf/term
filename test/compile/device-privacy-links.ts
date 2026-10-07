@@ -53,6 +53,7 @@ const CASES: Case[] = [
   { module: 'camera', task: 'take-photo', args: [], frameworks: ['AVFoundation'], usage: ['NSCameraUsageDescription'] },
   { module: 'torch', task: 'torch-state', args: [], frameworks: ['AVFoundation'], usage: ['NSCameraUsageDescription'] },
   { module: 'microphone', task: 'record-audio', args: ['code 1'], frameworks: ['AVFoundation'], usage: ['NSMicrophoneUsageDescription'] },
+  { module: 'audio', task: 'audio-length', args: ['text <a>'], frameworks: ['AVFoundation'], usage: ['NSMicrophoneUsageDescription'] },
   { module: 'location', task: 'current-position', args: [], frameworks: ['CoreLocation'], usage: ['NSLocationWhenInUseUsageDescription'] },
   { module: 'contacts', task: 'find-contacts', args: ['text <a>'], frameworks: ['Contacts'], usage: ['NSContactsUsageDescription'] },
   { module: 'calendar', task: 'find-events', args: ['text <a>', 'text <b>'], frameworks: ['EventKit'], usage: ['NSCalendarsFullAccessUsageDescription'] },

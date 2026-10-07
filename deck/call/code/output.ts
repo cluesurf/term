@@ -281,6 +281,17 @@ export function printData(value: string): void {
   printDataOut(value)
 }
 
+// bytes the user asked for (`term mold --code`), on stdout exactly as they are: binary, so no elbow and no layout
+export function printBytes(bytes: Uint8Array): void {
+  process.stdout.write(bytes)
+}
+
+// a timing line a person switched on for one command (`TERM_ROLL_PROFILE=1`), on stderr as it is, so it never mixes
+// with the data on stdout
+export function printProfile(line: string): void {
+  emitPort.printRawError(`${line}\n`)
+}
+
 // ---- a child process ----
 
 // a toolchain step run for its result (a compiler, a linker, a signer, a device bridge): its output is the TOOL's,

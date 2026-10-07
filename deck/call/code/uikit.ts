@@ -26,6 +26,8 @@ import { checkScope } from '@term/call/code/scope'
 import { appleUsage } from '@term/call/code/device-declare'
 import { SWIFT_MODULE } from '@term/call/code/cask'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { entryOf } from '@term/make/code/compile/native-main'
+import { findEntry } from '@term/call/code/boot'
 import { projectResolver } from '@term/call/code/make'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
 // what the build decides beside the compiler and Xcode: the app's names, its start line, the project, the team, the
@@ -63,8 +65,15 @@ function programSource(input: { root: string; entry: string }): string {
 
   const swift = emitSwift(result.program)
   const prelude = nativePrelude(result.program, 'ios', readRuntime, swift)
-  // `main` throws when anything it reaches can raise, and a raise nothing handles ends the program
-  const start = words.startLine(swift)
+  // the entry task: `boot`, as every Term program's is, else the older `main`. It throws when anything it reaches can
+  // raise, and a raise nothing handles ends the program
+  const named = entryOf('swift', swift, 'boot') ?? entryOf('swift', swift, 'main')
+
+  if (!named) {
+    throw refusal(`${showPath(input.entry, input.root)} has no \`boot\` task, which is what a UIKit app starts at`, 'usage')
+  }
+
+  const start = words.startLine(swift, named)
 
   return ['import Foundation', prelude, swift, start, ''].join('\n')
 }
@@ -129,7 +138,9 @@ function run(command: string, args: string[], cwd: string): void {
 }
 
 export async function makeUikit(input: { root: string; entry?: string; team?: string; link?: string; version?: string }): Promise<{ app: string }> {
-  const entry = join(input.root, input.entry ?? 'app.tree')
+  // the file `--entry` names, else the one the manifest's `boot` line names (`boot ./code/boot`), else the older
+  // `app.tree` beside the manifest
+  const entry = findEntry(input.root, input.entry) ?? join(input.root, input.entry ?? 'app.tree')
   openRun({ verb: 'make', root: input.root, facts: ['--target uikit'] })
 
   if (process.platform !== 'darwin') {
@@ -141,7 +152,7 @@ export async function makeUikit(input: { root: string; entry?: string; team?: st
   }
 
   if (!existsSync(entry)) {
-    throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a UIKit app is a program with a \`main\` task (--entry names another file)`, 'usage')
+    throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a UIKit app is a program with a \`boot\` task, named by the \`boot\` line of deck.tree (--entry names another file)`, 'usage')
   }
 
   const { name, identifier } = uikitIdentity(input.root)

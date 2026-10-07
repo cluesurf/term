@@ -1,0 +1,147 @@
+# The LaTeX reader on the cases that say what each layer does: the grammar's tokens, the gullet's expansions, the
+# parser's trees, and the mistakes with where they stand. The whole of KaTeX's own test corpus is held equal to KaTeX
+# itself by test/latex/katex.ts (note/term/mill/04-latex-grammar.md); these are the ones a person reads.
+
+load @term/mill/text/latex/lex
+  find make-latex-table
+  find latex-table
+
+load @term/mill/text/latex/read
+  find read-latex
+  find latex-defaults
+
+load @term/mill/text/latex/json
+  find write-latex-json
+
+load @term/base/list
+  find join
+
+# the table, made once for every test
+task table
+  like latex-table
+
+  back make-latex-table()
+
+# the tree as JSON, or `error at <code point>: <message>`
+task shown
+  take source, like text
+  like text
+
+  back shown-with(source, false)
+
+task shown-with
+  take source, like text
+  take display, like boolean
+  like text
+
+  save options, latex-defaults()
+  save options/display, display
+  save read, read-latex(source, table(), options)
+  sift read/nodes
+    case some
+      link nodes
+      back write-latex-json(nodes)
+    case none
+      sift read/problem
+        case some
+          link problem
+          back <error at {problem/at}: {problem/message}>
+        case none
+          back <error>
+
+# the warnings a reading keeps, each its code and where it stands, `-` where KaTeX names no place
+task warned
+  take source, like text
+  like text
+
+  save read, read-latex(source, table(), latex-defaults())
+  save out, make list
+  walk read/warnings
+    take one
+    save place, <->
+    sift one/place
+      case some
+        link known
+        save place, <{known/at}>
+      case none
+        save nothing, 0
+    out/push(<{one/code}@{place}>)
+  back join(out, <, >)
+
+# the reading with strict set to error, shown as `shown-with` shows it
+task strictly
+  take source, like text
+  take display, like boolean
+  like text
+
+  save options, latex-defaults()
+  save options/display, display
+  save options/strict, make error
+  save read, read-latex(source, table(), options)
+  sift read/nodes
+    case some
+      link nodes
+      back write-latex-json(nodes)
+    case none
+      sift read/problem
+        case some
+          link problem
+          back <error at {problem/at}: {problem/message}>
+        case none
+          back <error>
+
+test <a symbol is the node its group names>
+  want hold, is-equal(shown(<x>), <[\{"type":"mathord","mode":"math","text":"x"\}]>)
+  want hold, is-equal(shown(<2>), <[\{"type":"textord","mode":"math","text":"2"\}]>)
+  want hold, is-equal(shown(<+>), <[\{"type":"atom","mode":"math","family":"bin","text":"+"\}]>)
+  want hold, is-equal(shown(<\\alpha>), <[\{"type":"mathord","mode":"math","text":"\\\\alpha"\}]>)
+  want hold, is-equal(shown(<\\le>), <[\{"type":"atom","mode":"math","family":"rel","text":"\\\\le"\}]>)
+
+test <space between atoms is no token in math>
+  want hold, is-equal(shown(<  x   y  >), shown(<xy>))
+  want hold, is-equal(shown(<x % a comment\n y>), shown(<xy>))
+
+test <scripts attach to the atom before them>
+  want hold, is-equal(shown(<x^2>), <[\{"type":"supsub","mode":"math","base":\{"type":"mathord","mode":"math","text":"x"\},"sup":\{"type":"textord","mode":"math","text":"2"\}\}]>)
+  want hold, is-equal(shown(<x_1^2>), shown(<x^2_1>))
+  want hold, is-equal(shown(<^2>), <[\{"type":"supsub","mode":"math","base":null,"sup":\{"type":"textord","mode":"math","text":"2"\}\}]>)
+
+test <a fraction takes its two arguments>
+  want hold, is-equal(shown(<\\frac ab>), shown(<\\frac\{a\}\{b\}>))
+  want hold, is-equal(shown(<a \\over b>), shown(<\\frac\{a\}\{b\}>))
+
+test <macros expand to what KaTeX's table says>
+  want hold, is-equal(shown(<\\def\\x\{y\}\\x>), shown(<y>))
+  want hold, is-equal(shown(<\\newcommand\{\\sq\}[1]\{#1^2\}\\sq a>), shown(<a^2>))
+  want hold, is-equal(shown(<\\gdef\\a#1#2\{#2#1\}\\a xy>), shown(<yx>))
+
+test <environments read their rows and entries>
+  want hold, is-equal(shown(<\\begin\{matrix\}a&b\\\\c&d\\end\{matrix\}>), shown(<\\begin\{matrix\} a & b \\\\ c & d \\end\{matrix\}>))
+  want hold, is-equal(shown-with(<\\begin\{align\}a&=b\\end\{align\}>, false), <error at 0: \{align\} can be used only in display mode.>)
+
+test <a verb reads to the delimiter it opened with>
+  want hold, is-equal(shown(<\\verb|a b|>), <[\{"type":"verb","mode":"text","body":"a b","star":false\}]>)
+  want hold, is-equal(shown(<\\verb*+x+>), <[\{"type":"verb","mode":"text","body":"x","star":true\}]>)
+  want hold, is-equal(shown(<\\verb§a b§>), <[\{"type":"verb","mode":"text","body":"a b","star":false\}]>)
+  want hold, is-equal(shown(<\\verb日x日y>), shown(<\\verb|x|y>))
+  want hold, is-equal(shown(<\\verb§x>), <error at 0: \\verb ended by end of line instead of matching delimiter>)
+
+test <mistakes are where they were written>
+  want hold, is-equal(shown(<\\frac>), <error at 5: Unexpected end of input in a macro argument, expected '\}'>)
+  want hold, is-equal(shown(<\{x>), <error at 2: Expected '\}', got 'EOF'>)
+  want hold, is-equal(shown(<x^2^3>), <error at 3: Double superscript>)
+  want hold, is-equal(shown(<\\nope>), <error at 0: Undefined control sequence: \\nope>)
+
+test <input LaTeX would refuse is read, and warned of>
+  want hold, is-equal(warned(<x^2>), <>)
+  want hold, is-equal(warned(<é>), <unicodeTextInMathMode@0>)
+  want hold, is-equal(warned(<a Ж b>), <unicodeTextInMathMode@2>)
+  want hold, is-equal(warned(<\\text\{日本\}>), <>)
+  want hold, is-equal(warned(<x %>), <commentAtEnd@->)
+  want hold, is-equal(warned(<\\kern1mu \\mkern1em>), <mathVsTextUnits@-, mathVsTextUnits@->)
+  want hold, is-equal(warned(<\\sout\{x\}>), <mathVsSout@->)
+
+test <strict set to error refuses it, and reads a display line break as LaTeX does>
+  want hold, is-equal(strictly(<x é>, false), <error at 2: LaTeX-incompatible input and strict mode is set to 'error': Accented Unicode text character "é" used in math mode [unicodeTextInMathMode]>)
+  want hold, is-equal(strictly(<a \\\\ b>, false), shown(<a \\\\ b>))
+  want hold, is-unequal(strictly(<a \\\\ b>, true), shown-with(<a \\\\ b>, true))

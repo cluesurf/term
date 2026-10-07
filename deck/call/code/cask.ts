@@ -521,6 +521,23 @@ export function androidTools(): {
   }
 }
 
+// the Activity a cask app starts at, its `program()` running `start` (the Kotlin of the program's first call), and the two
+// names the device runtimes ask of the app's host (site/code/view/native/toolkit/runtime/native-*.kt): `hostActivity()`
+// and `hostPermissionAnswers`. They are written HERE because this is what makes the cask the app's host. A program
+// drawn in Android's own views or in Compose links the cask runtime for `data-path` alone, and its own host defines
+// them, so the cask runtime (cask/code/native/kotlin/runtime/cask.kt) cannot (device-layer-0013)
+export function caskAndroidDriver(start: string): string {
+  return [
+    'class TermActivity : CaskActivity() {',
+    `  override fun program() { ${start} }`,
+    '}',
+    '',
+    'fun hostActivity(): android.app.Activity? = cask.activity',
+    '',
+    'val hostPermissionAnswers = mutableListOf<(Int) -> Unit>()',
+  ].join('\n')
+}
+
 // the cask program compiled to Kotlin with the cask runtime prepended, an Activity the build writes calling the
 // program's `boot`, compiled against android.jar and dexed
 export function buildAndroidProgram({
@@ -1090,11 +1107,7 @@ async function makeAndroidCask({
     entry,
     identifier,
     // the Activity the system starts: it runs the program's `boot`, which opens the window the Activity then shows
-    driver: [
-      'class TermActivity : CaskActivity() {',
-      `  override fun program() { boot(${JSON.stringify(url ?? 'webview')}, ${url ? 'true' : 'false'}) }`,
-      '}',
-    ].join('\n'),
+    driver: caskAndroidDriver(`boot(${JSON.stringify(url ?? 'webview')}, ${url ? 'true' : 'false'})`),
     work,
   })
 

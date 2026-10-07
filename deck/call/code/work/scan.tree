@@ -31,6 +31,7 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/resolve>, name resolve-module
   load <@term/call/code/report>, name report-module
+  load <@term/call/code/scan>, name scan-module
   load <node:path>, name node-path
   load <node:process>, name node-process
   load <global:console>, name console
@@ -48,15 +49,33 @@ form missing-answer
   link error, like text
   link file, like text
 
+form scan-fix-ask
+  link root, like text
+  link file, like text
+  link back, like text
+  link fix, like boolean
+
+# `fix` stands second, in the hook's order: a parameter no take names is filled by position, so `back` after it is
+# filled by nothing rather than by `--fix`
 task scan
   mark async
   take file, like text
+  take fix, like boolean
   take back, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+  # `--fix` is the TypeScript verb's, whole. Its fixes are spans into the file as `term make` reads it, with the
+  # project's resolver, its role and `mark lean` and a test file rewritten (scan.ts `scanOnce`), and this port
+  # compiles the file as written with the editor's resolver. A fix computed against that reading would be written
+  # into a lean file at the wrong place, so the edit is left to the one reading that is right
+  fork test
+    fix
+    hold
+      scan-fix(root, file, back)
+      send back
   save want-json
     is-equal read(back), <json>
   save full, node-path/resolve root, file
@@ -112,3 +131,27 @@ task scan
       log-good <{{file}} ok ({{found}} warnings)>
       send back
   log-good <{{file}} ok>
+
+# `term scan <file> --fix`: write the sure fixes into the file and scan again, through scan.ts
+task scan-fix
+  mark async
+  mark private
+  take root, like text
+  take file, like text
+  take back, like text
+
+  like void
+
+  fork
+    mark unsafe
+    call scan-module/callScan
+      make scan-fix-ask
+        bind root, read root
+        bind file, read file
+        bind back, read back
+        bind fix, true
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1

@@ -24,7 +24,7 @@ import {
 } from '@term/make/code/compile/host'
 import type { Data, DataTree } from '@term/make/code/compile/host'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { closeRun, openRun, printData, report, reportProblems } from '@term/call/code/output'
+import { closeRun, openRun, printBytes, printData, report, reportProblems } from '@term/call/code/output'
 
 // the run ends on the data's own defects, each with its frame
 function refuse(diagnostics: Diagnostic[], text: string, root: string): void {
@@ -171,7 +171,7 @@ export async function callMold(input: {
       return
     }
 
-    process.stdout.write(bytes)
+    printBytes(bytes)
   } else if (input.json) {
     printData(toJson(data, input.keep) + '\n')
   } else if (input.pack) {

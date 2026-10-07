@@ -14,7 +14,7 @@ import { buildable, buildSession, findTreeFiles, isWholeFile, unitSlug } from '@
 import type { BuildProblem } from '@term/call/code/make'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
-import { closeRun, count, field, location, openRun, outputOptions, printData, report, reportProblems } from '@term/call/code/output'
+import { closeRun, count, field, location, openRun, outputOptions, printData, printProfile, report, reportProblems } from '@term/call/code/output'
 import { addReach, diffRolls, ownHost, reachGains, rollBefore } from '@term/call/code/roll-diff'
 // what `term roll` decides beside the roll's own shape: the kinds, each exception's tell and routes, and what it says
 import * as words from '@term/call/code/roll-words'
@@ -76,7 +76,7 @@ export function projectRoll(root: string, rolls?: Map<string, Roll>): {
   const roll = merger.done()
 
   if (profile) {
-    process.stderr.write(`roll pass: ${Date.now() - startedAt} ms over ${units.size} units\n`)
+    printProfile(`roll pass: ${Date.now() - startedAt} ms over ${units.size} units`)
   }
 
   return { roll, failed, problems }

@@ -175,16 +175,16 @@ task decimal-text
 
   back plain-decimal(host-decimal-text(value))
 
-# the host's own text for a float, `.0` added to a whole one where the host leaves it off
+# the host's own shortest text for a float, as it prints it: `plain-decimal` adds the point a whole one lacks
 bind host-decimal-text
   take value, like float
   like text
   case node
-    text <(Number.isInteger($value) ? String($value) + '.0' : String($value))>
+    text <String($value)>
   case browser
-    text <(Number.isInteger($value) ? String($value) + '.0' : String($value))>
+    text <String($value)>
   case rust
-    text <(if $value.is_finite() && $value.fract() == 0.0 \{ format!("\{:.1\}", $value) \} else \{ $value.to_string() \})>
+    text <$value.to_string()>
   case swift
     text <String($value)>
   case kotlin
@@ -1252,10 +1252,12 @@ task read-items
         sift bare
           case some
             link bare-node
+            # `list` over an empty `list` (or `mesh`) is the same tree as `list <key>`, and a list's items have no
+            # key, so a data head there is the first item, as a `true` or a `void` is (test/compile/host-code-term.ts)
             sift key-of(kid)
               case some
                 link known
-                save keyed, not(is-scalar-word(bare-node))
+                save keyed, and(not(is-scalar-word(bare-node)), is-equal(head-kind(literal-text(bare-node)), <>))
               case none
                 save nothing, 0
           case none

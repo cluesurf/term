@@ -31,3 +31,6 @@ task read-path
     case cache
       send back
         call folder/cache
+  # every other name: the home directory, as on every platform (node/environment/path.tree)
+  send back
+    call folder/home

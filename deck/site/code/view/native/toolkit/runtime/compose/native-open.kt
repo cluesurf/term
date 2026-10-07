@@ -13,4 +13,6 @@ object nativeOpen {
     }
 
     suspend fun share(text: String): String = "unavailable"
+
+    suspend fun shareFile(path: String): String = "unavailable"
 }

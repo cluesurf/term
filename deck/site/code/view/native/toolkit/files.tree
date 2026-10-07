@@ -1,0 +1,16 @@
+# picking a file on the platform's own toolkit (beat-term-0002): UIDocumentPickerViewController on iOS, NSOpenPanel on
+# macOS; unavailable on Android and under Compose on the desktop until their hosts are written. Conforms to ../files.
+# The runtime is native-files.swift and native-files.kt (both Kotlin hosts).
+
+dock load
+  load <global:native-files>, name native-files
+  # the confirmed presentation the picker goes up by on iOS (native-present.swift)
+  load <global:native-present>, name native-present
+
+task choose-file
+  take kind, like text
+  like text
+  send back
+    call native-files/pick
+      read kind
+      wait true

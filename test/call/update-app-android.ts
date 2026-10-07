@@ -11,7 +11,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { androidDevice, androidTools, assembleApk, buildAndroidProgram, buildPage, stampRuntimeVersion } from '@term/call/code/cask'
+import { androidDevice, androidTools, assembleApk, buildAndroidProgram, buildPage, caskAndroidDriver, stampRuntimeVersion } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 
 let pass = 0
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     entry: join(APP, 'main.tree'),
     identifier,
     // the app's own files directory as its resources, the update server through adb reverse
-    driver: ['class TermActivity : CaskActivity() {', `  override fun program() { boot(cask.bundlePath(), "http://localhost:${PORT}") }`, '}'].join('\n'),
+    driver: caskAndroidDriver(`boot(cask.bundlePath(), "http://localhost:${PORT}")`),
     work,
   })
   const version = stampRuntimeVersion({ target: 'android', native, into: assets })

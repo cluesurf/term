@@ -1,0 +1,783 @@
+# The first layer of the LaTeX reader (note/term/mill/04-latex-grammar.md): the source as tokens, BY RUNNING THE
+# GRAMMAR. ./mine.tree reads every character, compiled to Term in ./compiled.tree (`pnpm term:grammar-compile`), which
+# reads every text to the outcome the text grammar engine reads it to, and nothing here reads a character of the
+# source: it reads what the grammar matched, by rule name. The command table (./table.tree, from KaTeX's registries) is
+# read here too, once.
+#
+# KaTeX lexes one token at a time (src/Lexer.ts), because `\url` changes what a `%` is while it reads its argument.
+# Here the grammar reads the rest of the source at once, and when `%` changes meaning the rest is read again from where
+# KaTeX's lexer would stand, which is the end of the last token handed out. A character no token can begin with is
+# reported only when the parser reaches it, as KaTeX reports it, so a mistake earlier in the source is the one named.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/text/number
+  find parse-integer
+
+load ./compiled
+  find run-latex-grammar
+  find latex-match
+  find latex-match-named
+
+load ./form
+  find latex-strict
+  find latex-warning
+  find latex-place
+
+load ./table
+  find latex-symbol-rows
+  find latex-function-rows
+  find latex-environment-rows
+  find latex-macro-rows
+  find latex-script-rows
+  find latex-accent-rows
+  find latex-composed-rows
+  find latex-block-rows
+  find latex-extra-latin-rows
+
+# a mistake in the source, from `at` to `end` in code points: what stops a reading, as KaTeX's ParseError stops it
+form latex-mistake
+  like mismatch
+    bind note, <Not LaTeX>
+    link at, like number
+    link end, like number
+    link reason, like text
+
+# one symbol of KaTeX's table, in one mode: its group (`mathord`, `rel`, ...), its font, the character it stands for
+form latex-symbol
+  link group, like text
+  link font, like text
+  link replace, like text
+
+# one function or environment: the handler the reader runs, how many arguments and optional arguments it takes, each
+# argument's type (empty for an ordinary one), and where it may stand
+form latex-function
+  link name, like text
+  link handler, like text
+  link arguments, like number
+  link optional, like number
+  link argument-types, like list, like text
+  link in-text, like boolean
+  link in-math, like boolean
+  link in-argument, like boolean
+  link infix, like boolean
+  link primitive, like boolean
+
+# a Unicode subscript or superscript character, `²`: what it stands for, and which it is
+form latex-script
+  link value, like text
+  link sub, like boolean
+
+# a combining accent: its text-mode command, and its math-mode command (empty when it has none)
+form latex-accent-spelling
+  link text-command, like text
+  link math-command, like text
+
+# everything the reader knows before it reads: KaTeX's tables. Made once, read by every reading. `bodies` keeps each
+# macro body the grammar has already read into tokens, and `open-bodies` the ones of them that end in a comment no
+# newline closes
+form latex-table
+  link math-symbols, like hash, like text, like latex-symbol
+  link text-symbols, like hash, like text, like latex-symbol
+  link functions, like hash, like text, like latex-function
+  link environments, like hash, like text, like latex-function
+  link macros, like hash, like text, like text
+  link builtins, like hash, like text, like boolean
+  link scripts, like hash, like text, like latex-script
+  link accents, like hash, like text, like latex-accent-spelling
+  link composed, like hash, like text, like text
+  link bodies, like hash, like text, like list, like latex-token
+  link open-bodies, like hash, like text, like boolean
+  # the UTF-16 units KaTeX reads as text of a script it knows, as first and last of each run, flat
+  link blocks, like list, like number
+  link extra-latin, like hash, like text, like boolean
+
+# what a reading keeps of the input LaTeX would refuse or read otherwise: how strict it is, and the warnings so far.
+# The lexer, the gullet and the parser each find such input, and each reaches this through the lexer
+form latex-report
+  mark shared
+  link strict, like latex-strict
+  link warnings, like list, like latex-warning
+
+# a token, as KaTeX's: its text (`\frac`, `x`, ` ` for a run of space), where it stands, and the two flags `\noexpand`
+# sets. `verb` is the content of a `\verb` token and `star` whether it was `\verb*`
+form latex-token
+  link text, like text
+  link at, like number
+  link end, like number
+  link noexpand, like boolean
+  link relax, like boolean
+  link verb, like maybe, like text
+  link star, like boolean
+
+# where the lexer stands: the source, the tokens the grammar read from `from` on, the next one to hand out, and the end
+# of the last one handed out, which is where KaTeX's lexer would read on from. `url` is whether `%` is a character
+form latex-lexer
+  mark shared
+  link table, like latex-table
+  link source, like text
+  link runes, like list, like number
+  link tokens, like list, like latex-token
+  link next, like number
+  link last-end, like number
+  link url, like boolean
+  # where each token's match ended, its trailing space included: what `last-end` becomes when it is handed out
+  link reach, like list, like number
+  # the first character no token begins with, -1 when there is none past `from`
+  link stuck, like number
+  # whether the source ends in a comment no newline closes, not yet reported
+  link open-comment, like boolean
+  link report, like latex-report
+
+# ---- the table ----
+
+task make-latex-table
+  like latex-table
+
+  save table
+    make latex-table
+      bind math-symbols, make hash
+      bind text-symbols, make hash
+      bind functions, make hash
+      bind environments, make hash
+      bind macros, make hash
+      bind builtins, make hash
+      bind scripts, make hash
+      bind accents, make hash
+      bind composed, make hash
+      bind bodies, make hash
+      bind open-bodies, make hash
+      bind blocks, make list
+      bind extra-latin, make hash
+
+  walk rows-of(latex-symbol-rows())
+    take fields
+    save symbol
+      make latex-symbol
+        bind group, get(fields, 2)
+        bind font, get(fields, 3)
+        bind replace, get(fields, 4)
+    fork test, is-equal(get(fields, 0), <math>)
+      hold
+        save key, get(fields, 1)
+        save table/math-symbols/{key}, symbol
+      miss
+        save key, get(fields, 1)
+        save table/text-symbols/{key}, symbol
+
+  walk rows-of(latex-function-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/functions/{key}, function-of(fields)
+
+  walk rows-of(latex-environment-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/environments/{key}, function-of(fields)
+
+  walk rows-of(latex-macro-rows())
+    take fields
+    fork test, is-equal(get(fields, 1), <builtin>)
+      hold
+        save key, get(fields, 0)
+        save table/builtins/{key}, true
+      miss
+        save key, get(fields, 0)
+        save table/macros/{key}, get(fields, 2)
+
+  walk rows-of(latex-script-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/scripts/{key}
+      make latex-script
+        bind value, get(fields, 1)
+        bind sub, is-equal(get(fields, 2), <sub>)
+
+  walk rows-of(latex-accent-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/accents/{key}
+      make latex-accent-spelling
+        bind text-command, get(fields, 1)
+        bind math-command, get(fields, 2)
+
+  walk rows-of(latex-composed-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/composed/{key}, get(fields, 1)
+
+  walk rows-of(latex-block-rows())
+    take fields
+    push(table/blocks, parse-integer(get(fields, 0)))
+    push(table/blocks, parse-integer(get(fields, 1)))
+
+  walk rows-of(latex-extra-latin-rows())
+    take fields
+    save key, get(fields, 0)
+    save table/extra-latin/{key}, true
+  back table
+
+# KaTeX's `supportedCodepoint`: whether a UTF-16 unit is in a script KaTeX reads as text
+task is-supported-unit
+  take table, like latex-table
+  take unit, like number
+  like boolean
+
+  save k, 0
+  walk test
+    hook test, is-below(k, table/blocks/length)
+    hook hold
+      fork test, and(is-minimum(unit, get(table/blocks, k)), is-maximum(unit, get(table/blocks, add(k, 1))))
+        hold
+          back true
+      save k, add(k, 2)
+  back false
+
+# a table's rows, each its fields read back (./table.tree says how a field is written)
+task rows-of
+  take rows, like text
+  like list, like list, like text
+  mark private
+
+  save out, make list
+  walk split(rows, <\n>)
+    take row
+    fork test, is-equal(row, <>)
+      hold
+        turn next
+    save fields, make list
+    walk split(row, <\t>)
+      take field
+      push(fields, field-of(field))
+    push(out, fields)
+  back out
+
+# `=00a0` is the characters of those code points, anything else is itself
+task field-of
+  take field, like text
+  like text
+  mark private
+
+  fork test, not(starts-with(field, <=>))
+    hold
+      back field
+  save codes, make list
+  walk split(substring(field, 1), <.>)
+    take hex
+    push(codes, parse-integer(hex, 16))
+  back from-runes(codes)
+
+task function-of
+  take fields, like list, like text
+  like latex-function
+  mark private
+
+  save types, make list
+  fork test, is-unequal(get(fields, 4), <>)
+    hold
+      walk split(get(fields, 4), <,>)
+        take one
+        push(types, one)
+  save flags, get(fields, 5)
+  back
+    make latex-function
+      bind name, get(fields, 0)
+      bind handler, get(fields, 1)
+      bind arguments, parse-integer(get(fields, 2))
+      bind optional, parse-integer(get(fields, 3))
+      bind argument-types, types
+      bind in-text, has-flag(flags, <t>)
+      bind in-math, not(has-flag(flags, <n>))
+      bind in-argument, has-flag(flags, <a>)
+      bind infix, has-flag(flags, <i>)
+      bind primitive, has-flag(flags, <p>)
+
+task has-flag
+  take flags, like text
+  take flag, like text
+  like boolean
+  mark private
+
+  walk split(flags, <>)
+    take one
+    fork test, is-equal(one, flag)
+      hold
+        back true
+  back false
+
+# ---- strict ----
+
+# KaTeX's `handleStrict` with `report: true`: input LaTeX would refuse, kept as a warning or refused, as `strict`
+# says. A refusal stands at `place`, or at `here` where KaTeX names no place
+task report-strict
+  take report, like latex-report
+  take code, like text
+  take message, like text
+  take place, like maybe, like latex-place
+  take here, like number
+
+  sift report/strict
+    case ignore
+      back
+    case warn
+      push(report/warnings, make-warning(code, message, place))
+    case error
+      save at, here
+      save end, here
+      sift place
+        case some
+          link known
+          save at, known/at
+          save end, known/end
+        case none
+          save nothing, 0
+      halt latex-mistake
+        bind thing, <latex>
+        bind at, at
+        bind end, end
+        bind reason, <LaTeX-incompatible input and strict mode is set to 'error': {message} [{code}]>
+
+# KaTeX's `handleStrict` with `report: false`: whether to read as LaTeX does. Only `error` says so, and `warn` keeps a
+# warning that it did not
+task is-strict
+  take report, like latex-report
+  take code, like text
+  take message, like text
+  like boolean
+
+  sift report/strict
+    case ignore
+      back false
+    case warn
+      push(report/warnings, make-warning(code, message, make(none)))
+      back false
+    case error
+      back true
+
+task make-warning
+  take code, like text
+  take message, like text
+  take place, like maybe, like latex-place
+  like latex-warning
+  mark private
+
+  back
+    make latex-warning
+      bind code, code
+      bind message, message
+      bind place, place
+
+# a token's place, as a warning names it
+task place-of
+  take token, like latex-token
+  like maybe, like latex-place
+
+  save place
+    make latex-place
+      bind at, token/at
+      bind end, token/end
+  back make(some, place)
+
+# KaTeX's message for a comment no newline closes, which LaTeX would let swallow the `$` that ends the math
+task comment-at-end
+  take report, like latex-report
+  take here, like number
+
+  report-strict(report, <commentAtEnd>, <% comment has no terminating newline; LaTeX would fail because of commenting the end of math mode (e.g. $)>, make(none), here)
+
+# ---- the lexer ----
+
+task make-latex-lexer
+  take table, like latex-table
+  take source, like text
+  take report, like latex-report
+  like latex-lexer
+
+  save lexer
+    make latex-lexer
+      bind table, table
+      bind source, source
+      bind runes, to-runes(source)
+      bind tokens, make list
+      bind next, 0
+      bind last-end, 0
+      bind url, false
+      bind reach, make list
+      bind stuck, -1
+      bind open-comment, false
+      bind report, report
+  read-from(lexer, 0)
+  back lexer
+
+# KaTeX's `setCatcode`: `\url` makes `%` a character while it reads, and gives it back after. The rest of the source
+# is read again from where KaTeX's lexer stands
+task set-url
+  take lexer, like latex-lexer
+  take url, like boolean
+
+  fork test, is-equal(lexer/url, url)
+    hold
+      back
+  save lexer/url, url
+  read-from(lexer, lexer/last-end)
+
+# the next token, KaTeX's `lex`: an `EOF` at the end of the source
+task lex
+  take lexer, like latex-lexer
+  like latex-token
+
+  fork test, is-below(lexer/next, lexer/tokens/length)
+    hold
+      save one, get(lexer/tokens, lexer/next)
+      save lexer/last-end, get(lexer/reach, lexer/next)
+      save lexer/next, add(lexer/next, 1)
+      back one
+  fork test, is-minimum(lexer/stuck, 0)
+    hold
+      save at, lexer/stuck
+      save runes, lexer/runes
+      save character, from-runes(runes/slice(at, add(at, 1)))
+      halt latex-mistake
+        bind thing, <latex>
+        bind at, at
+        bind end, add(at, 1)
+        bind reason, <Unexpected character: '{character}'>
+  # KaTeX reports the comment when it lexes it, which is on the way to the end, and once
+  fork test, lexer/open-comment
+    hold
+      save lexer/open-comment, false
+      comment-at-end(lexer/report, lexer/runes/length)
+  save lexer/last-end, lexer/runes/length
+  back token-at(<EOF>, lexer/runes/length, lexer/runes/length)
+
+# the tokens from `from` to the end, as the grammar reads them in the lexer's mode
+task read-from
+  take lexer, like latex-lexer
+  take from, like number
+  mark private
+
+  save runes, lexer/runes
+  save rest, from-runes(runes/slice(from, runes/length))
+  save found, read-tokens(lexer/table, rest, lexer/url, from)
+  save lexer/tokens, found/tokens
+  save lexer/reach, found/reach
+  save lexer/stuck, found/stuck
+  save lexer/open-comment, found/open-comment
+  save lexer/next, 0
+
+# what the grammar reads from one text: its tokens, where each match ended, the first character no token begins with
+# (-1 when there is none), and whether it ends in a comment no newline closes. Every position is `offset` past the
+# text's own
+form latex-lexed
+  link tokens, like list, like latex-token
+  link reach, like list, like number
+  link stuck, like number
+  link open-comment, like boolean
+
+task read-tokens
+  take table, like latex-table
+  take input, like text
+  take url, like boolean
+  take offset, like number
+  like latex-lexed
+
+  save start, <tokens>
+  fork test, url
+    hold
+      save start, <url-tokens>
+  save outcome, run-latex-grammar(start, input)
+  save stuck, -1
+  save whole, input
+  fork test, not(outcome/ok)
+    hold
+      # the tokens before the character no token begins with, and that character, reported when it is reached
+      save stuck, add(offset, outcome/matched)
+      save runes, to-runes(input)
+      save whole, from-runes(runes/slice(0, outcome/matched))
+      save outcome, run-latex-grammar(start, whole)
+  save tokens, make list
+  save reach, make list
+  # the text's code points once, which every token's text is sliced from: `latex-match-text` reads the whole text into
+  # code points again at every call, which over every token is quadratic in the source
+  save runes, to-runes(whole)
+  save open, false
+  sift outcome/match
+    case some
+      link root
+      walk root/children, name each
+        take token
+        walk token/children
+          take kind
+          # a `\verb` the grammar could not close: closed here, and the rest read again from where it ends
+          fork test, is-equal(kind/rule, <verb-wide>)
+            hold
+              save rest, close-verb(table, kind, to-runes(input), url, offset)
+              walk rest/tokens
+                take one
+                push(tokens, one)
+              walk rest/reach
+                take one
+                push(reach, one)
+              save stuck, rest/stuck
+              save open, rest/open-comment
+              halt, name each
+          sift token-of-match(kind, runes, offset)
+            case some
+              link one
+              push(tokens, one)
+              push(reach, add(offset, kind/end))
+            case none
+              # a comment takes its newline, so one without is the last thing in the text
+              fork test, is-unequal(get(runes, subtract(kind/end, 1)), 10)
+                hold
+                  save open, true
+              turn next
+    case none
+      save nothing, 0
+  back
+    make latex-lexed
+      bind tokens, tokens
+      bind reach, reach
+      bind stuck, stuck
+      bind open-comment, open
+
+# KaTeX's `\verb` with a delimiter outside printable ASCII: closed at the next of that character on its line, the
+# `verb-line` the grammar read, or else the command `\verb`. What follows is read again from where the token ends:
+# the tokens `verb-wide` stood for were the line's, read as one. `runes` is the whole text this run read
+task close-verb
+  take table, like latex-table
+  take kind, like latex-match
+  take runes, like list, like number
+  take url, like boolean
+  take offset, like number
+  like latex-lexed
+  mark private
+
+  save delimiter, -1
+  sift latex-match-named(kind, <verb-wide-delimiter>)
+    case some
+      link found
+      save delimiter, get(runes, found/start)
+    case none
+      unshaped(kind, offset, offset)
+  # the closing delimiter is on the line, or just past it when it is itself the line feed that ends the line
+  save close, -1
+  sift latex-match-named(kind, <verb-line>)
+    case some
+      link line
+      save k, line/start
+      walk test
+        hook test, and(and(is-maximum(k, line/end), is-below(k, runes/length)), is-below(close, 0))
+        hook hold
+          fork test, is-equal(get(runes, k), delimiter)
+            hold
+              save close, k
+          save k, add(k, 1)
+    case none
+      unshaped(kind, offset, offset)
+
+  save tokens, make list
+  save reach, make list
+  save from, 0
+  fork test, is-minimum(close, 0)
+    hold
+      save open-at, 0
+      sift latex-match-named(kind, <verb-wide-delimiter>)
+        case some
+          link found
+          save open-at, found/end
+        case none
+          save nothing, 0
+      save token, token-at(from-runes(runes/slice(kind/start, add(close, 1))), add(offset, kind/start), add(offset, add(close, 1)))
+      save body, from-runes(runes/slice(open-at, close))
+      save token/verb, make(some, body)
+      save token/star, is-some(latex-match-named(kind, <verb-wide-starred>))
+      push(tokens, token)
+      save from, add(close, 1)
+      push(reach, add(offset, from))
+    miss
+      # no second delimiter: the command `\verb`, and the space after it, as KaTeX's control word reads it
+      # a run reads its whole text, so the command is read from what the first run matched of the rest
+      save command-text, from-runes(runes/slice(kind/start, runes/length))
+      save command, run-latex-grammar(<verb-command>, command-text)
+      fork test, not(command/ok)
+        hold
+          save command-text, from-runes(runes/slice(kind/start, add(kind/start, command/matched)))
+          save command, run-latex-grammar(<verb-command>, command-text)
+      save command-runes, to-runes(command-text)
+      sift command/match
+        case some
+          link root
+          walk root/children
+            take word
+            sift token-of-match(word, command-runes, add(offset, kind/start))
+              case some
+                link one
+                push(tokens, one)
+                save from, add(kind/start, word/end)
+                push(reach, add(offset, from))
+              case none
+                unshaped(word, offset, offset)
+        case none
+          unshaped(kind, offset, offset)
+
+  save after, read-tokens(table, from-runes(runes/slice(from, runes/length)), url, add(offset, from))
+  walk after/tokens
+    take one
+    push(tokens, one)
+  walk after/reach
+    take one
+    push(reach, one)
+  back
+    make latex-lexed
+      bind tokens, tokens
+      bind reach, reach
+      bind stuck, after/stuck
+      bind open-comment, after/open-comment
+
+# one token match as the token KaTeX's lexer hands out: none for a comment, ` ` for a run of space
+task token-of-match
+  take kind, like latex-match
+  take runes, like list, like number
+  take offset, like number
+  like maybe, like latex-token
+  mark private
+
+  save at, add(offset, kind/start)
+  save end, add(offset, kind/end)
+  fork test, is-equal(kind/rule, <comment>)
+    hold
+      back make none
+  fork test, is-equal(kind/rule, <space>)
+    hold
+      save space, token-at(< >, at, end)
+      back make(some, space)
+  fork test, is-equal(kind/rule, <control-space>)
+    hold
+      save control, token-at(<\\ >, at, end)
+      back make(some, control)
+  fork test, is-equal(kind/rule, <control-word>)
+    hold
+      sift latex-match-named(kind, <command-name>)
+        case some
+          link name
+          save word, token-at(<\\{text-of(name, runes)}>, at, add(offset, name/end))
+          back make(some, word)
+        case none
+          unshaped(kind, at, end)
+  fork test, is-equal(kind/rule, <verb>)
+    hold
+      save token, token-at(text-of(kind, runes), at, end)
+      sift content-of(kind)
+        case some
+          link content
+          save body, text-of(content, runes)
+          save token/verb, make(some, body)
+        case none
+          unshaped(kind, at, end)
+      save token/star, is-some(latex-match-named(kind, <verb-starred>))
+      back make(some, token)
+  save plain, token-at(text-of(kind, runes), at, end)
+  back make(some, plain)
+
+# a token match without the part its rule always has: the grammar and this reader disagree, which is the reader's
+# defect and is never passed over
+task unshaped
+  take kind, like latex-match
+  take at, like number
+  take end, like number
+  mark private
+
+  halt latex-mistake
+    bind thing, <latex>
+    bind at, at
+    bind end, end
+    bind reason, <the grammar read a `{kind/rule}` token without the part the reader reads it by>
+
+# the text a match read, sliced from code points already read
+task text-of
+  take match, like latex-match
+  take runes, like list, like number
+  like text
+  mark private
+
+  back from-runes(runes/slice(match/start, match/end))
+
+# the content match under a `\verb` token's, however deep the delimiter's rule put it: `verb-content-007c` for `|`
+task content-of
+  take match, like latex-match
+  like maybe, like latex-match
+  mark private
+
+  walk match/children
+    take one
+    fork test, starts-with(one/rule, <verb-content>)
+      hold
+        back make(some, one)
+    sift content-of(one)
+      case some
+        link found
+        back make(some, found)
+      case none
+        save nothing, 0
+  back make none
+
+# a token not read from the source: one a parser makes (`EOF`, `}`), placed where it stands for
+task token-at
+  take text, like text
+  take at, like number
+  take end, like number
+  like latex-token
+
+  back
+    make latex-token
+      bind text, text
+      bind at, at
+      bind end, end
+      bind noexpand, false
+      bind relax, false
+      bind verb, make none
+      bind star, false
+
+# A macro body as tokens, read by the grammar once and kept: KaTeX lexes a body afresh at every expansion
+# (src/MacroExpander.ts `_getExpansion`), which gives the same tokens. Their places are the body's own, and the gullet
+# moves them to the command that was expanded
+task body-tokens
+  take table, like latex-table
+  take body, like text
+  take at, like number
+  take end, like number
+  like list, like latex-token
+
+  fork test, table/bodies/has(body)
+    hold
+      back table/bodies/get(body)
+  save found, read-tokens(table, body, false, 0)
+  fork test, is-minimum(found/stuck, 0)
+    hold
+      save runes, to-runes(body)
+      halt latex-mistake
+        bind thing, <latex>
+        bind at, at
+        bind end, end
+        bind reason, <Unexpected character: '{from-runes(runes/slice(found/stuck, add(found/stuck, 1)))}'>
+  save table/bodies/{body}, found/tokens
+  fork test, found/open-comment
+    hold
+      save table/open-bodies/{body}, true
+  back found/tokens

@@ -6,12 +6,14 @@
 // Run: npx tsx test/compile/role-scope.ts
 
 import { transformSync } from 'esbuild'
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { readFeedMineGrammar, feedMineUnknownRefs } from '@term/make/code/compile/feed-mill'
 import { parse } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
+import { declaresDraft } from '@term/call/code/draft'
 
 let pass = 0
 let fail = 0
@@ -272,7 +274,7 @@ const broken = refused(`${LOAD}task f\n  like number\n  send back, note (1 + 2\n
 
 ok(
   'a grammar mistake is reported where it was written: `(1 + 2`',
-  broken?.name === 'scope-refused' && /before its `\)`/.test(broken.message) && broken.line === 5,
+  broken?.name === 'scope-refused' && /ends where .*`\)`.* was wanted/.test(broken.message) && broken.line === 5,
   JSON.stringify(broken),
 )
 
@@ -347,11 +349,13 @@ if (spec.ok) {
   ok(`it declares ${declared.length} rules, each read`, declared.every(name => (grammar.get(name) ?? []).length > 0), declared.filter(name => (grammar.get(name) ?? []).length === 0).join(', '))
   ok('it names no rule it does not define', feedMineUnknownRefs(grammar).length === 0, feedMineUnknownRefs(grammar).join(', '))
 
-  // every precedence level the reader has is a rule of the spec, so the two cannot drift apart in their levels
-  const READER_LEVELS = ['or', 'and', 'relation', 'comparison', 'set-expression', 'range-expression', 'additive', 'product', 'unary', 'power', 'postfix', 'primary']
-
-  ok('every level the reader parses is a rule of the spec', READER_LEVELS.every(level => grammar.has(level)), READER_LEVELS.filter(level => !grammar.has(level)).join(', '))
+  ok('it is the parser: not shelved', !declaresDraft(specText))
 }
+
+// the grammar the build runs is mine.tree byte for byte: the baked copy is regenerated, never edited
+const bundled = spawnSync('pnpm', ['exec', 'tsx', 'task/term/grammar-bundle.ts', '--check'], { cwd: join(HERE, '../../../../../..'), encoding: 'utf8' })
+
+ok('the grammar the build runs is mine.tree as written (pnpm term:grammar-bundle --check)', bundled.status === 0, `${bundled.stdout}${bundled.stderr}`)
 
 console.log(`\nrole-scope: ${pass} pass, ${fail} fail`)
 

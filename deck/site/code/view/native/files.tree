@@ -1,0 +1,7 @@
+# picking a file where there is no picker (beat-term-0002): the abstract module beside the env dirs, reached by every
+# env with no host (node, the server, the memory host, Rust, a browser). Conforms to ../files.
+
+task choose-file
+  take kind, like text
+  like text
+  send back, text <unavailable>

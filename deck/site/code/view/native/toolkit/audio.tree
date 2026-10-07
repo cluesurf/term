@@ -1,0 +1,116 @@
+# audio on the platform's own toolkit (beat-term-0001): AVAudioEngine, AVAudioPlayer and AVAudioRecorder on macOS and
+# iOS; unavailable on Android and under Compose on the desktop until their hosts are written (beat-term-0011).
+# Conforms to ../audio. The runtime is native-audio.swift, native-audio.kt (both Android hosts) and
+# compose/native-audio.kt. The permission runtime is docked too: the recorder registers the microphone's grant with
+# it, which on Apple is AVFoundation's (native-capture.swift). The watchers fan out through native-watch.
+
+dock load
+  load <global:native-audio>, name native-audio
+  load <global:native-watch>, name native-watch
+  load <global:native-permission>, name native-permission
+  load <global:native-capture>, name native-capture
+
+task begin-loop
+  take path, like text
+  take segments, like text
+  take volume, like number
+  like text
+  send back
+    call native-audio/start-loop
+      read path
+      read segments
+      read volume
+
+task end-loop
+  like text
+  send back
+    call native-audio/stop-loop
+
+task again-loop
+  like text
+  send back
+    call native-audio/restart-loop
+
+task level-loop
+  take volume, like number
+  like text
+  send back
+    call native-audio/set-loop-volume
+      read volume
+
+task state-loop
+  like text
+  send back
+    call native-audio/loop-state
+
+task follow-loop
+  take handler
+    like task
+      take value, like text
+  like task
+  save watching
+    call native-audio/watch-loop
+      read handler
+  send back
+    task drop
+      call native-audio/unwatch-loop
+        read watching
+
+task begin-playback
+  take paths, like text
+  take volume, like number
+  like text
+  send back
+    call native-audio/play
+      read paths
+      read volume
+
+task end-playback
+  like text
+  send back
+    call native-audio/stop-playing
+
+task follow-playback
+  take handler
+    like task
+      take value, like text
+  like task
+  save watching
+    call native-audio/watch-playback
+      read handler
+  send back
+    task drop
+      call native-audio/unwatch-playback
+        read watching
+
+task begin-recording
+  take path, like text
+  like text
+  send back
+    call native-audio/start-recording
+      read path
+
+task end-recording
+  like text
+  send back
+    call native-audio/stop-recording
+
+task follow-recording
+  take handler
+    like task
+      take value, like text
+  like task
+  save watching
+    call native-audio/watch-recording
+      read handler
+  send back
+    task drop
+      call native-audio/unwatch-recording
+        read watching
+
+task length-of
+  take path, like text
+  like text
+  send back
+    call native-audio/length
+      read path

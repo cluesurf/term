@@ -40,6 +40,10 @@ test <three hundred places each way, and the digits never recomputed>
   want hold
     call is-equal, read(small/length), code(302)
 
+test <a point after the exponent is not more of the exponent>
+  want hold
+    call is-equal, call(plain-decimal, text(<1e+3.0>)), text(<1000.0>)
+
 test <NaN and the infinities come back as their text>
   want hold
     call is-equal, call(plain-decimal, text(<NaN>)), text(<NaN>)

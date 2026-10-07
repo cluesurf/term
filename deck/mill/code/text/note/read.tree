@@ -1,29 +1,14 @@
-# The `note` grammar's reader: a grammar scope's text to one expression (form.tree). The grammar is
-# note/term/mill/03-note-grammar.md, and ./mine.tree states it in the mine vocabulary.
+# The `note` reader: a scope's text to one expression (./form.tree), by RUNNING THE GRAMMAR. ./mine.tree is the
+# parser, run by the text grammar engine (deck/make/code/compile/mine-text.tree) from the copy baked into
+# ./grammar.tree. Nothing here reads a character of the text. It reads what the grammar matched, by rule name, and
+# says what each match means.
 #
-# Hand-written rather than generated from mine.tree, for one reason the mine vocabulary cannot express: whether a number
-# with a word after it is a QUANTITY is decided by the unit REGISTRY, never by the characters. `20MB/s` is twenty
-# megabytes a second because `MB` and `s` are registered, `20mb` is an error because `mb` is not, and `20 * mb` is a
-# product. A mine grammar matches characters, so it can only guess.
+# The registry is two rules of the grammar, given when the engine is made: `registered-unit` is every symbol
+# @term/base/unit `unit-table` registers, longest first, each followed by no name character, and `currency-sign`
+# every currency's sign. So whether `20MB` is a quantity is the grammar's answer, against the registry, and
+# `20mb` matches `unregistered-quantity`, which is refused here by the unit's name.
 #
-# Two stages. The lexer cuts the text into numbers, names, texts and symbols, and records whether white space stands
-# before each, because adjacency is the one thing white space decides: `20MB/s` is a quantity and `20MB / s` a
-# quantity divided by `s`. The parser is one task per precedence level, lowest first:
-#
-#   or         or ||
-#   and        and &&
-#   relation   in ∈ -> => ~
-#   comparison = == != < > <= >= ≤ ≥ ≠      a chain `0 < x < 10` reads as each pair, joined by and
-#   set        union intersect \ ∪ ∩
-#   range      ..  ..<
-#   additive   + -
-#   product    * / % × ÷ ·
-#   unary      - + not ! ¬
-#   power      ^                        right to left: `2^3^2` is `2^9`
-#   postfix    f(x)  x[i]  x.name
-#   primary    a number, a quantity, `$20`, "text", a name, ( ), [ ], { }
-#
-# Reading stops at the first mistake and reports it where it was written. Browser-safe.
+# What a run cannot match is reported where it got furthest, with what would have let it go on. Browser-safe.
 
 load @term/base/list
   find list
@@ -36,15 +21,41 @@ load @term/base/maybe
 load @term/base/text
   find split
 
-load @term/base/text/number
-  find plain-decimal
-
 load @term/base/text/unicode
   find to-runes
   find from-runes
 
+load @term/base/text/number
+  find plain-decimal
+
+load @term/base/float
+  find to-decimal
+
 load @term/base/unit
   find unit-entry
+
+load @term/make/parser/tree
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/feed-compile
+  find feed-rule
+  find read-feed-mine-grammar
+
+load @term/make/compile/mine-text
+  find mine-engine
+  find mine-match
+  find mine-outcome
+  find make-mine-engine
+  find run-mine
+  find match-text
+  find matches-named
+  find match-named
+
+load ./grammar
+  find note-grammar-text
 
 load ./form
   find unit-factor
@@ -52,290 +63,80 @@ load ./form
   find note-problem
   find note-read
 
-form note-token
-  # `number`, `name`, `text`, `symbol`, or `end` past the last
-  link kind, like text
-  # as written. A text's value with its escapes read
-  link text, like text
-  link at, like number
-  # white space stands straight before it
-  link spaced, like boolean
-
-form note-lexed
-  link tokens, like list, like note-token
-  link problems, like list, like note-problem
-
-form note-parser
+# a run's shaping: the text, the registry, and the first mistake found
+form note-shape
   mark shared
-  link tokens, like list, like note-token
-  link at, like number
+  link source, like text
   link registry, like list, like unit-entry
   link problems, like list, like note-problem
 
-# Read one expression from a scope's text against the unit registry (@term/base/unit `unit-table`, and whatever a
-# caller adds to it). The whole text must be the one expression
+# The engine for the note grammar against a registry: made once, and run for every scope a file holds
+task note-engine
+  take registry, like list, like unit-entry
+  like mine-engine
+
+  save source
+    make token-source
+      bind file, <@term/mill/text/note/mine.tree>
+      bind text, note-grammar-text()
+  save parsed, parse(source)
+  save rules, read-feed-mine-grammar(parsed/tree)
+  back make-mine-engine(rules, registry-rules(registry))
+
+# Read one expression from a scope's text. The whole text must be the one expression
 task read-note
-  take text, like text
+  take input, like text
   take registry, like list, like unit-entry
   like note-read
 
-  save lexed, lex-note(text)
-  fork test, is-above(lexed/problems/length, 0)
-    hold
-      back failed(lexed/problems)
+  back read-note-with(note-engine(registry), input, registry)
 
-  save p
-    make note-parser
-      bind tokens, lexed/tokens
-      bind at, 0
-      bind registry, registry
-      bind problems, make list
+task read-note-with
+  take engine, like mine-engine
+  take input, like text
+  take registry, like list, like unit-entry
+  like note-read
 
-  fork test, is-kind(peek(p, 0), <end>)
+  fork test, is-above(engine/refused/length, 0)
     hold
-      problem(p, 0, <there is nothing to read here>, <a scope holds one expression: `x + y`, `9.81m/s^2`, `[1, 2, 3]`>)
-      back failed(p/problems)
+      back failed(0, get(engine/refused, 0), <the note grammar is ./mine.tree in @term/mill/text/note>)
 
-  save node, parse-or(p)
-  fork test, and(is-equal(p/problems/length, 0), not(is-kind(peek(p, 0), <end>)))
-    hold
-      save extra, peek(p, 0)
-      problem(p, extra/at, <`{extra/text}` cannot follow the expression before it>, adjacency-hint(extra))
-  fork test, is-above(p/problems/length, 0)
-    hold
-      back failed(p/problems)
-  back
-    make note-read
-      bind node, make(some, node)
-      bind problems, make list
+  save outcome, run-mine(engine, <note>, input)
+  sift outcome/match
+    case none
+      back failed(outcome/at, refusal-of(input, outcome), expected-hint(outcome))
+    case some
+      link root
+      save shape
+        make note-shape
+          bind source, input
+          bind registry, registry
+          bind problems, make list
+      save node, shape-expression(shape, only-named(root, <expression>))
+      fork test, is-above(shape/problems/length, 0)
+        hold
+          back
+            make note-read
+              bind node, make none
+              bind problems, shape/problems
+      back
+        make note-read
+          bind node, make(some, node)
+          bind problems, make list
 
 task failed
-  take problems, like list, like note-problem
+  take at, like number
+  take message, like text
+  take hint, like text
   like note-read
   mark private
 
+  save problems, make list
+  push(problems, problem-of(at, message, hint))
   back
     make note-read
       bind node, make none
       bind problems, problems
-
-# two values side by side are never multiplied, which is what a reader most often meant
-task adjacency-hint
-  take token, like note-token
-  like text
-  mark private
-
-  fork test, or(is-kind(token, <name>), is-kind(token, <number>))
-    hold
-      back <values side by side are never multiplied: write the operator, `a * b`>
-  back <an expression ends where nothing more of it can follow>
-
-# ---- the lexer ----
-
-# the symbols, longest first so `..<` is not read as `..` and `<`
-task symbols
-  like list, like text
-  mark private
-
-  back split(<..\< .. \<= \>= != == && || -\> =\> + - * / % ^ = \< \> ! ~ \\ ( ) [ ] \{ \} , . $ € £ ¥ ° × ÷ · ≤ ≥ ≠ ∈ ∪ ∩ ¬>, < >)
-
-task lex-note
-  take text, like text
-  like note-lexed
-  mark private
-
-  save runes, to-runes(text)
-  save tokens, make list
-  save problems, make list
-  save table, symbols()
-  save at, 0
-  save spaced, false
-
-  walk test
-    hook test, and(is-below(at, runes/length), is-equal(problems/length, 0))
-    hook hold
-      save one, get(runes, at)
-
-      fork test, is-space(one)
-        hold
-          save spaced, true
-          save at, add(at, 1)
-          turn next
-
-      fork test, is-digit(one)
-        hold
-          save end, number-end(runes, at)
-          push(tokens, token-of(<number>, from-runes(runes/slice(at, end)), at, spaced))
-          save at, end
-          save spaced, false
-          turn next
-
-      fork test, starts-name(one)
-        hold
-          save end, name-end(runes, at)
-          push(tokens, token-of(<name>, from-runes(runes/slice(at, end)), at, spaced))
-          save at, end
-          save spaced, false
-          turn next
-
-      # `"text"`, where `\"` and `\\` are the quote and the backslash
-      fork test, is-equal(one, 34)
-        hold
-          save out, make list
-          save k, add(at, 1)
-          save closed, false
-          walk test
-            hook test, and(is-below(k, runes/length), not(closed))
-            hook hold
-              save c, get(runes, k)
-              fork test, is-equal(c, 34)
-                hold
-                  save closed, true
-                  turn next
-              fork test, and(is-equal(c, 92), is-below(add(k, 1), runes/length))
-                hold
-                  push(out, get(runes, add(k, 1)))
-                  save k, add(k, 2)
-                  turn next
-              push(out, c)
-              save k, add(k, 1)
-          fork test, not(closed)
-            hold
-              push(problems, problem-of(at, <this text is never closed>, <a text ends with the `"` it began with>))
-              turn next
-          push(tokens, token-of(<text>, from-runes(out), at, spaced))
-          save at, add(k, 1)
-          save spaced, false
-          turn next
-
-      save size, symbol-size(runes, at, table)
-      fork test, is-above(size, 0)
-        hold
-          push(tokens, token-of(<symbol>, from-runes(runes/slice(at, add(at, size))), at, spaced))
-          save at, add(at, size)
-          save spaced, false
-          turn next
-
-      push(problems, problem-of(at, <`{from-runes(runes/slice(at, add(at, 1)))}` is no part of the note grammar>, <it reads numbers, names, "texts", and the operators + - * / % ^ = != \< \> \<= \>= and or not .. ( ) [ ] \{ \}>))
-
-  push(tokens, token-of(<end>, <>, runes/length, spaced))
-  back
-    make note-lexed
-      bind tokens, tokens
-      bind problems, problems
-
-# Where a number that starts at `at` ends. `0x`, `0b` and `0o` take their digits and underscores. Otherwise digits and
-# underscores, a point only when a digit follows it (so `1..10` is a range), and an exponent only when a digit
-# follows the `e` and its sign (so `1em` is one em)
-task number-end
-  take runes, like list, like number
-  take at, like number
-  like number
-  mark private
-
-  save next, rune-at(runes, add(at, 1))
-  fork test, and(is-equal(get(runes, at), 48), is-radix-letter(next))
-    hold
-      save end, add(at, 2)
-      walk test
-        hook test, or(is-hex(rune-at(runes, end)), is-equal(rune-at(runes, end), 95))
-        hook hold
-          save end, add(end, 1)
-      back end
-
-  save end, digits-end(runes, at)
-  fork test, and(is-equal(rune-at(runes, end), 46), is-digit(rune-at(runes, add(end, 1))))
-    hold
-      save end, digits-end(runes, add(end, 1))
-  save e, rune-at(runes, end)
-  fork test, or(is-equal(e, 101), is-equal(e, 69))
-    hold
-      save sign, rune-at(runes, add(end, 1))
-      save first, add(end, 1)
-      fork test, or(is-equal(sign, 43), is-equal(sign, 45))
-        hold
-          save first, add(end, 2)
-      fork test, is-digit(rune-at(runes, first))
-        hold
-          save end, digits-end(runes, first)
-  back end
-
-task digits-end
-  take runes, like list, like number
-  take at, like number
-  like number
-  mark private
-
-  save end, at
-  walk test
-    hook test, or(is-digit(rune-at(runes, end)), is-equal(rune-at(runes, end), 95))
-    hook hold
-      save end, add(end, 1)
-  back end
-
-# a name: a letter, `_` or `µ`, then letters, digits and `_`, and a hyphen between two parts of it when a letter
-# follows (`max-value`, as Term names are written). `x-1` is `x` take 1
-task name-end
-  take runes, like list, like number
-  take at, like number
-  like number
-  mark private
-
-  save end, add(at, 1)
-  walk test
-    hook test, is-below(end, runes/length)
-    hook hold
-      save one, get(runes, end)
-      fork test, or(starts-name(one), is-digit(one))
-        hold
-          save end, add(end, 1)
-          turn next
-      fork test, and(is-equal(one, 45), starts-name(rune-at(runes, add(end, 1))))
-        hold
-          save end, add(end, 2)
-          turn next
-      halt
-  back end
-
-# how many code points the longest symbol at `at` takes, 0 for none
-task symbol-size
-  take runes, like list, like number
-  take at, like number
-  take table, like list, like text
-  like number
-  mark private
-
-  walk table
-    take one
-    save want, to-runes(one)
-    save k, 0
-    save same, is-maximum(add(at, want/length), runes/length)
-    walk test
-      hook test, and(same, is-below(k, want/length))
-      hook hold
-        fork test, is-unequal(get(runes, add(at, k)), get(want, k))
-          hold
-            save same, false
-        save k, add(k, 1)
-    fork test, same
-      hold
-        back want/length
-  back 0
-
-task token-of
-  take kind, like text
-  take text, like text
-  take at, like number
-  take spaced, like boolean
-  like note-token
-  mark private
-
-  back
-    make note-token
-      bind kind, kind
-      bind text, text
-      bind at, at
-      bind spaced, spaced
 
 task problem-of
   take at, like number
@@ -350,146 +151,626 @@ task problem-of
       bind message, message
       bind hint, hint
 
-task rune-at
-  take runes, like list, like number
-  take at, like number
-  like number
+# what stands where the run got furthest, said plainly
+task refusal-of
+  take input, like text
+  take outcome, like mine-outcome
+  like text
   mark private
 
-  fork test, and(is-minimum(at, 0), is-below(at, runes/length))
+  save runes, to-runes(input)
+  fork test, is-equal(runes/length, 0)
     hold
-      back get(runes, at)
-  back -1
-
-task is-space
-  take code, like number
-  like boolean
-  mark private
-
-  back or(is-equal(code, 32), or(is-equal(code, 9), or(is-equal(code, 10), is-equal(code, 13))))
-
-task is-digit
-  take code, like number
-  like boolean
-  mark private
-
-  back and(is-minimum(code, 48), is-maximum(code, 57))
-
-task is-hex
-  take code, like number
-  like boolean
-  mark private
-
-  back or(is-digit(code), or(and(is-minimum(code, 97), is-maximum(code, 102)), and(is-minimum(code, 65), is-maximum(code, 70))))
-
-# x, b or o, either case, after a `0`
-task is-radix-letter
-  take code, like number
-  like boolean
-  mark private
-
-  back or(or(is-equal(code, 120), is-equal(code, 88)), or(or(is-equal(code, 98), is-equal(code, 66)), or(is-equal(code, 111), is-equal(code, 79))))
-
-# what a name may begin with: an ASCII letter, `_`, or `µ` (the micro sign, so `µm` is a unit's name)
-task starts-name
-  take code, like number
-  like boolean
-  mark private
-
-  fork test, or(and(is-minimum(code, 97), is-maximum(code, 122)), and(is-minimum(code, 65), is-maximum(code, 90)))
+      back <there is nothing to read here>
+  save wanted, wanted-of(outcome)
+  fork test, is-minimum(outcome/at, runes/length)
     hold
-      back true
-  back or(is-equal(code, 95), is-equal(code, 181))
-
-# ---- the parser ----
-
-task peek
-  take p, like note-parser
-  take ahead, like number
-  like note-token
-  mark private
-
-  save at, add(p/at, ahead)
-  fork test, is-below(at, p/tokens/length)
+      back <the expression ends where {wanted} was wanted>
+  save here, from-runes(runes/slice(outcome/at, add(outcome/at, 1)))
+  # the grammar read a whole expression and stopped where the run did: what stands there cannot follow one
+  fork test, is-equal(outcome/matched, outcome/at)
     hold
-      back get(p/tokens, at)
-  back get(p/tokens, subtract(p/tokens/length, 1))
+      back <`{here}` cannot follow the expression before it>
+  back <`{here}` cannot stand here, where {wanted} was wanted>
 
-task advance
-  take p, like note-parser
-  like note-token
+# What the run would have gone on with: the texts it wanted, quoted, five at most. Where it wanted only rules, those
+# are the grammar's own names (`space-char`, `product`), which say nothing to a reader: what they stand for here is a
+# value
+task wanted-of
+  take outcome, like mine-outcome
+  like text
   mark private
 
-  save one, peek(p, 0)
-  fork test, is-below(p/at, subtract(p/tokens/length, 1))
-    hold
-      save p/at, add(p/at, 1)
-  back one
-
-task is-kind
-  take token, like note-token
-  take kind, like text
-  like boolean
-  mark private
-
-  back is-equal(token/kind, kind)
-
-# the token is the symbol, or the word operator, `wanted`
-task is-symbol
-  take token, like note-token
-  take wanted, like text
-  like boolean
-  mark private
-
-  back and(or(is-kind(token, <symbol>), is-kind(token, <name>)), is-equal(token/text, wanted))
-
-task is-any
-  take token, like note-token
-  take wanted, like text
-  like boolean
-  mark private
-
-  walk split(wanted, < >)
+  save all, make list
+  walk outcome/expected
     take one
-    fork test, is-symbol(token, one)
+    fork test, starts-with-backtick(one)
       hold
-        back true
-  back false
+        push(all, one)
+  fork test, is-equal(all/length, 0)
+    hold
+      back <a value>
+  save shown, make list
+  walk all
+    take one
+    fork test, is-below(shown/length, 5)
+      hold
+        push(shown, one)
+  back join(shown, < or >)
 
-# the words that are operators, never names
-task is-reserved
-  take text, like text
+task starts-with-backtick
+  take written, like text
   like boolean
   mark private
 
-  walk split(<and or not in union intersect>, < >)
-    take one
-    fork test, is-equal(one, text)
-      hold
-        back true
-  back false
+  save runes, to-runes(written)
+  back and(is-above(runes/length, 0), is-equal(get(runes, 0), 96))
 
-# record a mistake. Only the first is kept: after it, nothing the parser reads means what it would have
-task problem
-  take p, like note-parser
+task expected-hint
+  take outcome, like mine-outcome
+  like text
+  mark private
+
+  fork test, and(is-minimum(outcome/matched, 0), is-equal(outcome/matched, outcome/at))
+    hold
+      back <values side by side are never multiplied: write the operator, `a * b`>
+  fork test, is-equal(outcome/expected/length, 0)
+    hold
+      back <an expression is a value, or values joined by operators: `x + y`>
+  back <wanted here: {join(outcome/expected, <, >)}>
+
+task note-problem-at
+  take shape, like note-shape
   take at, like number
   take message, like text
   take hint, like text
   mark private
 
-  fork test, is-equal(p/problems/length, 0)
+  fork test, is-equal(shape/problems/length, 0)
     hold
-      push(p/problems, problem-of(at, message, hint))
+      push(shape/problems, problem-of(at, message, hint))
 
-task failed-at
-  take p, like note-parser
-  take at, like number
+# ---- the registry, as rules of the grammar ----
+
+# `registered-unit`: every symbol, longest first so `min` is tried before `m`, each its own rule of the symbol and no
+# name character after it, so `mb` is not `m` and a `b`. `currency-sign`: every currency's sign
+task registry-rules
+  take registry, like list, like unit-entry
+  like hash, like text, like list, like feed-rule
+  mark private
+
+  save rules, make hash
+  save ordered, longest-first(registry)
+  save choices, make list
+  save signs, make list
+  save k, 0
+  walk ordered
+    take entry
+    save rule-name, <registered-unit-{k}>
+    save body, make list
+    push(body, text-rule(entry/symbol))
+    push(body, not-name-character())
+    save rules/{rule-name}, body
+    push(choices, form-rule(rule-name))
+    fork test, is-unequal(entry/prefix, <>)
+      hold
+        push(signs, text-rule(entry/prefix))
+    save k, add(k, 1)
+  save unit-body, make list
+  push(unit-body, any-rule(choices))
+  save unit-name, <registered-unit>
+  save rules/{unit-name}, unit-body
+  save sign-body, make list
+  push(sign-body, any-rule(signs))
+  save sign-name, <currency-sign>
+  save rules/{sign-name}, sign-body
+  back rules
+
+task longest-first
+  take registry, like list, like unit-entry
+  like list, like unit-entry
+  mark private
+
+  save out, make list
+  save longest, 0
+  walk registry
+    take entry
+    save size, to-runes(entry/symbol)/length
+    fork test, is-above(size, longest)
+      hold
+        save longest, size
+  save size, longest
+  walk test
+    hook test, is-above(size, 0)
+    hook hold
+      walk registry
+        take entry
+        fork test, is-equal(to-runes(entry/symbol)/length, size)
+          hold
+            push(out, entry)
+      save size, subtract(size, 1)
+  back out
+
+task text-rule
+  take literal, like text
+  like feed-rule
+  mark private
+
+  back
+    make text
+      bind literal, literal
+      bind send, make none
+
+task form-rule
+  take name, like text
+  like feed-rule
+  mark private
+
+  back
+    make form
+      bind name, name
+      bind send, make none
+      bind args, make none
+
+task any-rule
+  take children, like list, like feed-rule
+  like feed-rule
+  mark private
+
+  back
+    make any
+      bind children, children
+      bind send, make none
+
+# what a name may hold, which no unit may run on into: letters, digits, `_` and `µ`
+task not-name-character
+  like feed-rule
+  mark private
+
+  save codes, make list
+  push(codes, 95.0)
+  push(codes, 181.0)
+  save code, 48
+  walk test
+    hook test, is-maximum(code, 57)
+    hook hold
+      push(codes, to-decimal(code))
+      save code, add(code, 1)
+  save code, 65
+  walk test
+    hook test, is-maximum(code, 90)
+    hook hold
+      push(codes, to-decimal(code))
+      save code, add(code, 1)
+  save code, 97
+  walk test
+    hook test, is-maximum(code, 122)
+    hook hold
+      push(codes, to-decimal(code))
+      save code, add(code, 1)
+  back
+    make not
+      bind codes, codes
+
+# ---- what the grammar matched, and what it means ----
+
+task has-named
+  take match, like mine-match
+  take rule, like text
+  like boolean
+  mark private
+
+  sift match-named(match, rule)
+    case some
+      back true
+    case none
+      back false
+
+task only-named
+  take match, like mine-match
+  take rule, like text
+  like mine-match
+  mark private
+
+  sift match-named(match, rule)
+    case some
+      back value
+    case none
+      back match
+
+# a match's parts with the white space taken out
+task parts-of
+  take match, like mine-match
+  like list, like mine-match
+  mark private
+
+  save out, make list
+  walk match/children
+    take one
+    fork test, is-unequal(one/rule, <space>)
+      hold
+        push(out, one)
+  back out
+
+task text-at
+  take shape, like note-shape
+  take match, like mine-match
+  like text
+  mark private
+
+  back match-text(match, shape/source)
+
+task shape-expression
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  back shape-node(shape, only-named(match, <or>))
+
+# One matched rule as a note node. A level of operators is its operands and its operators, in turn
+task shape-node
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save rule, match/rule
+  fork test, has-word(<or and relation set-expression additive product>, rule)
+    hold
+      back shape-chain(shape, match)
+  fork test, is-equal(rule, <expression>)
+    hold
+      back shape-expression(shape, match)
+  fork test, is-equal(rule, <comparison>)
+    hold
+      back shape-comparison(shape, match)
+  fork test, is-equal(rule, <range-expression>)
+    hold
+      save parts, parts-of(match)
+      fork test, is-equal(parts/length, 1)
+        hold
+          back shape-node(shape, get(parts, 0))
+      save op, get(parts, 1)
+      back
+        make range-node
+          bind at, op/start
+          bind from, shape-node(shape, get(parts, 0))
+          bind to, shape-node(shape, get(parts, 2))
+          bind from-open, false
+          bind to-open, is-equal(text-at(shape, op), <..\<>)
+  fork test, is-equal(rule, <unary>)
+    hold
+      back shape-node(shape, get(parts-of(match), 0))
+  fork test, is-equal(rule, <signed>)
+    hold
+      save parts, parts-of(match)
+      save op, get(parts, 0)
+      back
+        make unary-node
+          bind at, op/start
+          bind operator, spelled(trimmed(text-at(shape, op)))
+          bind operand, shape-node(shape, get(parts, 1))
+  fork test, is-equal(rule, <power>)
+    hold
+      save parts, parts-of(match)
+      fork test, is-equal(parts/length, 1)
+        hold
+          back shape-node(shape, get(parts, 0))
+      save op, get(parts, 1)
+      back binary(op/start, <^>, shape-node(shape, get(parts, 0)), shape-node(shape, get(parts, 2)))
+  fork test, is-equal(rule, <postfix>)
+    hold
+      back shape-postfix(shape, match)
+  fork test, is-equal(rule, <primary>)
+    hold
+      back shape-node(shape, get(parts-of(match), 0))
+  back shape-primary(shape, match)
+
+# operands and operators in turn, read left to right
+task shape-chain
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save parts, parts-of(match)
+  save out, shape-node(shape, get(parts, 0))
+  save k, 1
+  walk test
+    hook test, is-below(add(k, 1), parts/length)
+    hook hold
+      save op, get(parts, k)
+      save out, binary(op/start, spelled(trimmed(text-at(shape, op))), out, shape-node(shape, get(parts, add(k, 1))))
+      save k, add(k, 2)
+  back out
+
+# `a < b < c` is `a < b and b < c`: each pair, the middle read once and used twice
+task shape-comparison
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save parts, parts-of(match)
+  save left, shape-node(shape, get(parts, 0))
+  fork test, is-equal(parts/length, 1)
+    hold
+      back left
+  save op, get(parts, 1)
+  save right, shape-node(shape, get(parts, 2))
+  save out, binary(op/start, spelled(text-at(shape, op)), left, right)
+  save k, 3
+  walk test
+    hook test, is-below(add(k, 1), parts/length)
+    hook hold
+      save next-op, get(parts, k)
+      save next, shape-node(shape, get(parts, add(k, 1)))
+      save out, binary(next-op/start, <and>, out, binary(next-op/start, spelled(text-at(shape, next-op)), right, next))
+      save right, next
+      save k, add(k, 2)
+  back out
+
+task shape-postfix
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save parts, parts-of(match)
+  save out, shape-node(shape, get(parts, 0))
+  save k, 1
+  walk test
+    hook test, is-below(k, parts/length)
+    hook hold
+      save part, get(parts, k)
+      fork test, is-equal(part/rule, <call>)
+        hold
+          save out
+            make call-node
+              bind at, part/start
+              bind callee, out
+              bind arguments, shape-items(shape, part)
+      fork test, is-equal(part/rule, <index>)
+        hold
+          save out
+            make index-node
+              bind at, part/start
+              bind target, out
+              bind index, shape-expression(shape, only-named(part, <expression>))
+      fork test, is-equal(part/rule, <member>)
+        hold
+          save named, only-named(part, <name>)
+          save out
+            make member-node
+              bind at, part/start
+              bind target, out
+              bind name, text-at(shape, named)
+      save k, add(k, 1)
+  back out
+
+# the expressions under a list of items, in order: the items rule holds them directly or one level down
+task shape-items
+  take shape, like note-shape
+  take match, like mine-match
+  like list, like note-node
+  mark private
+
+  back collect-expressions(shape, only-named(match, <items>))
+
+# the expressions under a match, in order, not looking inside one: sent back, since a list handed in is a copy
+task collect-expressions
+  take shape, like note-shape
+  take match, like mine-match
+  like list, like note-node
+  mark private
+
+  save out, make list
+  walk match/children
+    take one
+    fork test, is-equal(one/rule, <expression>)
+      hold
+        push(out, shape-expression(shape, one))
+      miss
+        walk collect-expressions(shape, one)
+          take inner
+          push(out, inner)
+  back out
+
+task shape-primary
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save rule, match/rule
+  fork test, is-equal(rule, <number>)
+    hold
+      save literal, number-literal(text-at(shape, match))
+      back
+        make number-node
+          bind at, match/start
+          bind literal, literal
+          bind decimal, contains-point(literal)
+  fork test, is-equal(rule, <quantity>)
+    hold
+      back shape-quantity(shape, match)
+  fork test, is-equal(rule, <unregistered-quantity>)
+    hold
+      save word, only-named(match, <name>)
+      save unit, text-at(shape, word)
+      save number, text-at(shape, only-named(match, <number>))
+      note-problem-at(shape, word/start, <`{unit}` is not a registered unit>, <a unit is registered, never guessed (@term/base/unit). Values side by side are never multiplied: for a product write `{number} * {unit}`>)
+      back placeholder(match)
+  fork test, is-equal(rule, <money>)
+    hold
+      back shape-money(shape, match)
+  fork test, is-equal(rule, <string>)
+    hold
+      back
+        make text-node
+          bind at, match/start
+          bind value, unquoted(text-at(shape, match))
+  fork test, is-equal(rule, <name>)
+    hold
+      save word, text-at(shape, match)
+      fork test, has-word(<and or not in union intersect>, word)
+        hold
+          note-problem-at(shape, match/start, <`{word}` is an operator, and a value was expected here>, <write the value it joins, `a {word} b`>)
+      back
+        make name-node
+          bind at, match/start
+          bind name, word
+  fork test, is-equal(rule, <group>)
+    hold
+      back shape-expression(shape, only-named(match, <expression>))
+  fork test, is-equal(rule, <closed-open-interval>)
+    hold
+      back interval-of(shape, match, false, true)
+  fork test, is-equal(rule, <open-interval>)
+    hold
+      back interval-of(shape, match, true, not(has-named(match, <closed-end>)))
+  fork test, is-equal(rule, <list-literal>)
+    hold
+      back
+        make list-node
+          bind at, match/start
+          bind items, shape-items(shape, match)
+  fork test, is-equal(rule, <set-literal>)
+    hold
+      back
+        make set-node
+          bind at, match/start
+          bind items, shape-items(shape, match)
+  note-problem-at(shape, match/start, <the note grammar matched `{rule}`, which the note reader gives no meaning>, <this is a defect in ./read.tree, beside the grammar>)
+  back placeholder(match)
+
+task interval-of
+  take shape, like note-shape
+  take match, like mine-match
+  take from-open, like boolean
+  take to-open, like boolean
+  like note-node
+  mark private
+
+  save ends, matches-named(match, <expression>)
+  back
+    make range-node
+      bind at, match/start
+      bind from, shape-expression(shape, get(ends, 0))
+      bind to, shape-expression(shape, get(ends, 1))
+      bind from-open, from-open
+      bind to-open, to-open
+
+# A quantity: its number and its unit's factors, each a registered unit to a power. A `/` makes every factor after it
+# negative, `^` gives a power, and the unit is kept as written
+task shape-quantity
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save number, only-named(match, <number>)
+  save unit, unit-expression-in(match)
+  save factors, make list
+  save sign, 1
+  walk unit/children
+    take part
+    fork test, is-equal(part/rule, <unit-operator>)
+      hold
+        save sign, 1
+        fork test, is-equal(text-at(shape, part), </>)
+          hold
+            save sign, -1
+        turn next
+    fork test, is-unequal(part/rule, <unit-power>)
+      hold
+        turn next
+    save symbol, text-at(shape, only-named(part, <registered-unit>))
+    save power, 1
+    fork test, has-named(part, <unit-exponent>)
+      hold
+        save power, whole-of(substring-after-caret(text-at(shape, only-named(part, <unit-exponent>))))
+    sift entry-of(shape/registry, symbol)
+      case some
+        link entry
+        save factor
+          make unit-factor
+            bind entry, entry
+            bind power, multiply(power, sign)
+        push(factors, factor)
+      case none
+        note-problem-at(shape, part/start, <`{symbol}` is not a registered unit>, <the registry and the grammar's `registered-unit` disagree: a defect in ./read.tree>)
+  back quantity-of(shape, match, number, text-at(shape, unit), factors)
+
+task unit-expression-in
+  take match, like mine-match
+  like mine-match
+  mark private
+
+  sift match-named(match, <unit-expression>)
+    case some
+      back value
+    case none
+      save spaced, only-named(match, <spaced-unit>)
+      back only-named(spaced, <unit-expression>)
+
+task shape-money
+  take shape, like note-shape
+  take match, like mine-match
+  like note-node
+  mark private
+
+  save sign, text-at(shape, only-named(match, <currency-sign>))
+  save number, only-named(match, <number>)
+  sift signed-entry(shape/registry, sign)
+    case some
+      link entry
+      save factors, make list
+      save factor
+        make unit-factor
+          bind entry, entry
+          bind power, 1
+      push(factors, factor)
+      back quantity-of(shape, match, number, entry/symbol, factors)
+    case none
+      note-problem-at(shape, match/start, <`{sign}` is the sign of no registered currency>, <the registry and the grammar's `currency-sign` disagree: a defect in ./read.tree>)
+      back placeholder(match)
+
+task quantity-of
+  take shape, like note-shape
+  take match, like mine-match
+  take number, like mine-match
+  take unit, like text
+  take factors, like list, like unit-factor
+  like note-node
+  mark private
+
+  save written, text-at(shape, number)
+  fork test, is-radix(written)
+    hold
+      note-problem-at(shape, number/start, <a quantity's number is written in decimal>, <`255px`, not `0xffpx`>)
+      back placeholder(match)
+  save literal, number-literal(written)
+  fork test, not(contains-point(literal))
+    hold
+      save literal, <{literal}.0>
+  back
+    make quantity-node
+      bind at, match/start
+      bind value, literal
+      bind unit, unit
+      bind factors, factors
+
+# where a refused match stood: never lowered, since a refusal stops the scope
+task placeholder
+  take match, like mine-match
   like note-node
   mark private
 
   back
     make name-node
-      bind at, at
+      bind at, match/start
       bind name, <>
 
 task binary
@@ -507,664 +788,73 @@ task binary
       bind left, left
       bind right, right
 
-task node-at
-  take node, like note-node
-  like number
-  mark private
+# ---- spellings ----
 
-  sift node
-    case number-node
-      back at
-    case quantity-node
-      back at
-    case text-node
-      back at
-    case name-node
-      back at
-    case unary-node
-      back at
-    case binary-node
-      back at
-    case call-node
-      back at
-    case index-node
-      back at
-    case member-node
-      back at
-    case list-node
-      back at
-    case set-node
-      back at
-    case range-node
-      back at
-
-# each operator in its one spelling
+# each operator in its one spelling: `≤` is `<=`, `&&` is `and`, `×` is `*`, `!` is `not`
 task spelled
-  take text, like text
+  take written, like text
   like text
   mark private
 
-  # each written spelling beside the one it means, in pairs
   save pairs, split(<|| or && and ∈ in == = ≤ \<= ≥ \>= ≠ != ∪ union ∩ intersect × * · * ÷ / ! not ¬ not>, < >)
   save k, 0
   walk test
     hook test, is-below(add(k, 1), pairs/length)
     hook hold
-      fork test, is-equal(get(pairs, k), text)
+      fork test, is-equal(get(pairs, k), written)
         hold
           back get(pairs, add(k, 1))
       save k, add(k, 2)
-  back text
+  back written
 
-task parse-or
-  take p, like note-parser
-  like note-node
+# a word operator's match holds the space after it
+task trimmed
+  take written, like text
+  like text
   mark private
 
-  save left, parse-and(p)
+  save runes, to-runes(written)
+  save end, runes/length
   walk test
-    hook test, is-any(peek(p, 0), <or ||>)
+    hook test, and(is-above(end, 0), is-space(get(runes, subtract(end, 1))))
     hook hold
-      save op, advance(p)
-      save left, binary(op/at, <or>, left, parse-and(p))
-  back left
+      save end, subtract(end, 1)
+  back from-runes(runes/slice(0, end))
 
-task parse-and
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save left, parse-relation(p)
-  walk test
-    hook test, is-any(peek(p, 0), <and &&>)
-    hook hold
-      save op, advance(p)
-      save left, binary(op/at, <and>, left, parse-relation(p))
-  back left
-
-task parse-relation
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save left, parse-comparison(p)
-  walk test
-    hook test, is-any(peek(p, 0), <in ∈ -\> =\> ~>)
-    hook hold
-      save op, advance(p)
-      save left, binary(op/at, spelled(op/text), left, parse-comparison(p))
-  back left
-
-# `a < b < c` reads as `a < b and b < c`: each pair compared, the middle read once in the text and used twice
-task parse-comparison
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save ops, <= == != \< \> \<= \>= ≤ ≥ ≠>
-  save left, parse-set(p)
-  fork test, not(is-any(peek(p, 0), ops))
-    hold
-      back left
-  save op, advance(p)
-  save right, parse-set(p)
-  save out, binary(op/at, spelled(op/text), left, right)
-  walk test
-    hook test, is-any(peek(p, 0), ops)
-    hook hold
-      save next-op, advance(p)
-      save next, parse-set(p)
-      save out, binary(next-op/at, <and>, out, binary(next-op/at, spelled(next-op/text), right, next))
-      save right, next
-  back out
-
-task parse-set
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save left, parse-range(p)
-  walk test
-    hook test, is-any(peek(p, 0), <union intersect \\ ∪ ∩>)
-    hook hold
-      save op, advance(p)
-      save left, binary(op/at, spelled(op/text), left, parse-range(p))
-  back left
-
-task parse-range
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save from, parse-additive(p)
-  fork test, is-any(peek(p, 0), <.. ..\<>)
-    hold
-      save op, advance(p)
-      save to, parse-additive(p)
-      back
-        make range-node
-          bind at, op/at
-          bind from, from
-          bind to, to
-          bind from-open, false
-          bind to-open, is-equal(op/text, <..\<>)
-  back from
-
-task parse-additive
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save left, parse-product(p)
-  walk test
-    hook test, is-any(peek(p, 0), <+ ->)
-    hook hold
-      save op, advance(p)
-      save left, binary(op/at, op/text, left, parse-product(p))
-  back left
-
-task parse-product
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save left, parse-unary(p)
-  walk test
-    hook test, is-any(peek(p, 0), <* / % × ÷ ·>)
-    hook hold
-      save op, advance(p)
-      save left, binary(op/at, spelled(op/text), left, parse-unary(p))
-  back left
-
-task parse-unary
-  take p, like note-parser
-  like note-node
-  mark private
-
-  fork test, is-any(peek(p, 0), <- + not ! ¬>)
-    hold
-      save op, advance(p)
-      save operand, parse-unary(p)
-      back
-        make unary-node
-          bind at, op/at
-          bind operator, spelled(op/text)
-          bind operand, operand
-  back parse-power(p)
-
-# right to left, and the exponent may carry a sign: `2^-1`
-task parse-power
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save base, parse-postfix(p)
-  fork test, is-symbol(peek(p, 0), <^>)
-    hold
-      save op, advance(p)
-      back binary(op/at, <^>, base, parse-unary(p))
-  back base
-
-task parse-postfix
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save node, parse-primary(p)
-  walk test
-    hook test, is-equal(p/problems/length, 0)
-    hook hold
-      save next, peek(p, 0)
-      # a call: `(` straight after a name, a member, or another call
-      fork test, and(is-symbol(next, <(>), not(next/spaced))
-        hold
-          advance(p)
-          save node
-            make call-node
-              bind at, next/at
-              bind callee, node
-              bind arguments, parse-items(p, <)>)
-          turn next
-      fork test, and(is-symbol(next, <[>), not(next/spaced))
-        hold
-          advance(p)
-          save index, parse-or(p)
-          expect(p, <]>, <an index closes with `]`>)
-          save node
-            make index-node
-              bind at, next/at
-              bind target, node
-              bind index, index
-          turn next
-      fork test, is-symbol(next, <.>)
-        hold
-          advance(p)
-          save named, advance(p)
-          fork test, not(is-kind(named, <name>))
-            hold
-              problem(p, named/at, <a member is named after the `.`>, <`point.x`, `list.length`>)
-              back node
-          save node
-            make member-node
-              bind at, next/at
-              bind target, node
-              bind name, named/text
-          turn next
-      halt
-  back node
-
-# the items of a call or a collection, to `close`: none, or values between commas
-task parse-items
-  take p, like note-parser
-  take close, like text
-  like list, like note-node
-  mark private
-
-  save items, make list
-  fork test, is-symbol(peek(p, 0), close)
-    hold
-      advance(p)
-      back items
-  walk test
-    hook test, is-equal(p/problems/length, 0)
-    hook hold
-      push(items, parse-or(p))
-      fork test, is-symbol(peek(p, 0), <,>)
-        hold
-          advance(p)
-          turn next
-      expect(p, close, <a list of values is separated by commas and closes with `{close}`>)
-      halt
-  back items
-
-task expect
-  take p, like note-parser
-  take wanted, like text
-  take hint, like text
-  mark private
-
-  save next, peek(p, 0)
-  fork test, is-symbol(next, wanted)
-    hold
-      advance(p)
-      back
-  fork test, is-kind(next, <end>)
-    hold
-      problem(p, next/at, <the expression ends before its `{wanted}`>, hint)
-      back
-  problem(p, next/at, <expected `{wanted}`, not `{next/text}`>, hint)
-
-task parse-primary
-  take p, like note-parser
-  like note-node
-  mark private
-
-  save next, peek(p, 0)
-
-  fork test, is-kind(next, <number>)
-    hold
-      advance(p)
-      back number-or-quantity(p, next)
-
-  fork test, is-kind(next, <text>)
-    hold
-      advance(p)
-      back
-        make text-node
-          bind at, next/at
-          bind value, next/text
-
-  # a currency's sign before its amount: `$20` is 20 USD
-  fork test, is-kind(next, <symbol>)
-    hold
-      sift signed(p/registry, next/text)
-        case some
-          link entry
-          save amount, peek(p, 1)
-          fork test, and(is-kind(amount, <number>), not(amount/spaced))
-            hold
-              advance(p)
-              advance(p)
-              save factors, make list
-              push(factors, factor-of(entry, 1))
-              back quantity-of(p, next/at, amount, entry/symbol, factors)
-          problem(p, next/at, <a currency's sign is written straight before its amount>, <`{next/text}20`>)
-          back failed-at(p, next/at)
-        case none
-          save nothing, 0
-
-  fork test, is-kind(next, <name>)
-    hold
-      fork test, is-reserved(next/text)
-        hold
-          problem(p, next/at, <`{next/text}` is an operator, and a value was expected here>, <write the value it joins, `a {next/text} b`>)
-          back failed-at(p, next/at)
-      advance(p)
-      back
-        make name-node
-          bind at, next/at
-          bind name, next/text
-
-  # `( x )` is the expression it holds. `(a, b)` and `(a, b]` are the intervals open at the start
-  fork test, is-symbol(next, <(>)
-    hold
-      advance(p)
-      save inner, parse-or(p)
-      fork test, is-symbol(peek(p, 0), <,>)
-        hold
-          advance(p)
-          save to, parse-or(p)
-          save close, peek(p, 0)
-          fork test, or(is-symbol(close, <)>), is-symbol(close, <]>))
-            hold
-              advance(p)
-              back interval(next/at, inner, to, true, is-symbol(close, <)>))
-          problem(p, close/at, <an interval written `(a, b` closes with `)` or `]`>, <`(0, 1)` holds neither end, `(0, 1]` its end>)
-          back inner
-      expect(p, <)>, <a group closes with `)`>)
-      back inner
-
-  # `[1, 2, 3]` is a list, and `[a, b)` the interval holding its start and not its end
-  fork test, is-symbol(next, <[>)
-    hold
-      advance(p)
-      save items, make list
-      fork test, is-symbol(peek(p, 0), <]>)
-        hold
-          advance(p)
-          back list-of(next/at, items)
-      walk test
-        hook test, is-equal(p/problems/length, 0)
-        hook hold
-          push(items, parse-or(p))
-          fork test, is-symbol(peek(p, 0), <,>)
-            hold
-              advance(p)
-              turn next
-          halt
-      fork test, and(is-equal(items/length, 2), is-symbol(peek(p, 0), <)>))
-        hold
-          advance(p)
-          back interval(next/at, get(items, 0), get(items, 1), false, true)
-      expect(p, <]>, <a list closes with `]`>)
-      back list-of(next/at, items)
-
-  fork test, is-symbol(next, <\{>)
-    hold
-      advance(p)
-      back
-        make set-node
-          bind at, next/at
-          bind items, parse-items(p, <\}>)
-
-  fork test, is-kind(next, <end>)
-    hold
-      problem(p, next/at, <the expression ends where a value was expected>, <every operator stands between two values: `a + b`>)
-      back failed-at(p, next/at)
-  problem(p, next/at, <`{next/text}` cannot start a value>, <a value is a number, a name, a "text", or ( ), [ ] or \{ \} around more>)
-  back failed-at(p, next/at)
-
-task list-of
-  take at, like number
-  take items, like list, like note-node
-  like note-node
-  mark private
-
-  back
-    make list-node
-      bind at, at
-      bind items, items
-
-task interval
-  take at, like number
-  take from, like note-node
-  take to, like note-node
-  take from-open, like boolean
-  take to-open, like boolean
-  like note-node
-  mark private
-
-  back
-    make range-node
-      bind at, at
-      bind from, from
-      bind to, to
-      bind from-open, from-open
-      bind to-open, to-open
-
-# ---- numbers and quantities ----
-
-# A number, or a QUANTITY when a registered unit follows it: straight after it (`20MB`), or after a space when the
-# unit is a word (`20 MB`). A word straight after a number that is NOT a registered unit is a mistake, never a product:
-# `20foo` and `2x` are refused. After the first unit the rest of the unit is read in UNIT MODE: `*` or `/` straight
-# before another registered unit, and `^` with a whole power, all with nothing between them, so `20MB/s` is one
-# quantity and `20MB / s` a quantity divided by `s`
-task number-or-quantity
-  take p, like note-parser
-  take number, like note-token
-  like note-node
-  mark private
-
-  save next, peek(p, 0)
-  save unit-like, or(is-kind(next, <name>), and(is-kind(next, <symbol>), or(is-equal(next/text, <%>), is-equal(next/text, <°>))))
-  fork test, or(not(unit-like), is-reserved(next/text))
-    hold
-      back plain-number(p, number)
-
-  sift unit-named(p/registry, next/text)
-    case some
-      link entry
-      fork test, and(next/spaced, not(is-kind(next, <name>)))
-        hold
-          back plain-number(p, number)
-      advance(p)
-      save factors, make list
-      save written, make list
-      push(written, next/text)
-      push(factors, factor-of(entry, read-power(p, written, 1)))
-      walk test
-        hook test, is-equal(p/problems/length, 0)
-        hook hold
-          save op, peek(p, 0)
-          save unit, peek(p, 1)
-          fork test, not(and(is-any(op, <* />), and(not(op/spaced), not(unit/spaced))))
-            hold
-              halt
-          sift unit-named(p/registry, unit/text)
-            case some
-              link more
-              advance(p)
-              advance(p)
-              push(written, op/text)
-              push(written, unit/text)
-              save sign, 1
-              fork test, is-equal(op/text, </>)
-                hold
-                  save sign, -1
-              push(factors, factor-of(more, read-power(p, written, sign)))
-            case none
-              halt
-      back quantity-of(p, number/at, number, join(written, <>), factors)
-    case none
-      fork test, next/spaced
-        hold
-          back plain-number(p, number)
-      problem(p, next/at, <`{next/text}` is not a registered unit>, <a unit is registered, never guessed (@term/base/unit). Values side by side are never multiplied: for a product write `{number/text} * {next/text}`>)
-      back failed-at(p, next/at)
-
-# `^2` or `^-2` straight after a unit, written into `written`, times `sign`; 1 times `sign` when there is none
-task read-power
-  take p, like note-parser
-  take written, like list, like text
-  take sign, like number
-  like number
-  mark private
-
-  save caret, peek(p, 0)
-  fork test, not(and(is-symbol(caret, <^>), not(caret/spaced)))
-    hold
-      back sign
-  save first, peek(p, 1)
-  save negative, false
-  save digits-at, 1
-  fork test, and(is-symbol(first, <->), not(first/spaced))
-    hold
-      save negative, true
-      save digits-at, 2
-  save digits, peek(p, digits-at)
-  fork test, not(and(is-kind(digits, <number>), and(not(digits/spaced), is-whole(digits/text))))
-    hold
-      problem(p, caret/at, <a unit's power is a whole number written straight after its `^`>, <`m/s^2`, `s^-1`>)
-      back sign
-  advance(p)
-  push(written, <^>)
-  fork test, negative
-    hold
-      advance(p)
-      push(written, <->)
-  advance(p)
-  push(written, digits/text)
-  save power, parse-whole(digits/text)
-  fork test, negative
-    hold
-      save power, subtract(0, power)
-  back multiply(power, sign)
-
-task is-whole
-  take text, like text
+task is-space
+  take code, like number
   like boolean
   mark private
 
-  walk to-runes(text)
-    take code
-    fork test, not(is-digit(code))
-      hold
-        back false
-  back true
+  back or(is-equal(code, 32), or(is-equal(code, 9), or(is-equal(code, 10), is-equal(code, 13))))
 
-task parse-whole
-  take text, like text
-  like number
-  mark private
-
-  save out, 0
-  walk to-runes(text)
-    take code
-    save out, add(multiply(out, 10), subtract(code, 48))
-  back out
-
-task factor-of
-  take entry, like unit-entry
-  take power, like number
-  like unit-factor
-  mark private
-
-  back
-    make unit-factor
-      bind entry, entry
-      bind power, power
-
-task unit-named
-  take registry, like list, like unit-entry
-  take symbol, like text
-  like maybe, like unit-entry
-  mark private
-
-  walk registry
-    take entry
-    fork test, is-equal(entry/symbol, symbol)
-      hold
-        back make(some, entry)
-  back make none
-
-task signed
-  take registry, like list, like unit-entry
-  take sign, like text
-  like maybe, like unit-entry
-  mark private
-
-  fork test, is-equal(sign, <>)
-    hold
-      back make none
-  walk registry
-    take entry
-    fork test, is-equal(entry/prefix, sign)
-      hold
-        back make(some, entry)
-  back make none
-
-task plain-number
-  take p, like note-parser
-  take number, like note-token
-  like note-node
-  mark private
-
-  save literal, number-literal(number/text)
-  back
-    make number-node
-      bind at, number/at
-      bind literal, literal
-      bind decimal, contains-point(literal)
-
-task quantity-of
-  take p, like note-parser
-  take at, like number
-  take number, like note-token
-  take unit, like text
-  take factors, like list, like unit-factor
-  like note-node
-  mark private
-
-  save literal, number-literal(number/text)
-  fork test, is-radix(number/text)
-    hold
-      problem(p, number/at, <a quantity's number is written in decimal>, <`255px`, not `0xffpx`>)
-      back failed-at(p, at)
-  fork test, not(contains-point(literal))
-    hold
-      save literal, <{literal}.0>
-  back
-    make quantity-node
-      bind at, at
-      bind value, literal
-      bind unit, unit
-      bind factors, factors
-
-task is-radix
-  take text, like text
+task has-word
+  take words, like text
+  take word, like text
   like boolean
   mark private
 
-  save runes, to-runes(text)
-  back and(is-above(runes/length, 1), and(is-equal(get(runes, 0), 48), is-radix-letter(get(runes, 1))))
-
-task contains-point
-  take text, like text
-  like boolean
-  mark private
-
-  walk to-runes(text)
-    take code
-    fork test, is-equal(code, 46)
+  walk split(words, < >)
+    take one
+    fork test, is-equal(one, word)
       hold
         back true
   back false
 
 # A number as Term writes it. Underscores go. A radix number keeps its digits under a lowercase prefix (`0XFF` is
-# `0xff`). An exponent moves the point, so the literal is exact: `1e-9` is `0.000000001`, `6.02e23` is
-# `602000000000000000000000.0`. A number with an exponent is a decimal
+# `0xff`). An exponent moves the point, by the stdlib's one rule (@term/base/text/number `plain-decimal`), so
+# `1e-9` is `0.000000001` exactly
 task number-literal
-  take text, like text
+  take written, like text
   like text
   mark private
 
   save runes, make list
-  walk to-runes(text)
+  walk to-runes(written)
     take code
     fork test, is-unequal(code, 95)
       hold
         push(runes, code)
-
   fork test, and(is-above(runes/length, 1), and(is-equal(get(runes, 0), 48), is-radix-letter(get(runes, 1))))
     hold
       save letter, get(runes, 1)
@@ -1181,11 +871,113 @@ task number-literal
           push(out, get(runes, k))
           save k, add(k, 1)
       back from-runes(out)
-
-  # an exponent moves the point, by the one rule every writer of a decimal shares
   walk runes
     take code
     fork test, or(is-equal(code, 101), is-equal(code, 69))
       hold
         back plain-decimal(from-runes(runes))
   back from-runes(runes)
+
+task is-radix
+  take written, like text
+  like boolean
+  mark private
+
+  save runes, to-runes(written)
+  back and(is-above(runes/length, 1), and(is-equal(get(runes, 0), 48), is-radix-letter(get(runes, 1))))
+
+# x, b or o, either case, after a `0`
+task is-radix-letter
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(code, 120), is-equal(code, 88)), or(or(is-equal(code, 98), is-equal(code, 66)), or(is-equal(code, 111), is-equal(code, 79))))
+
+task contains-point
+  take written, like text
+  like boolean
+  mark private
+
+  walk to-runes(written)
+    take code
+    fork test, is-equal(code, 46)
+      hold
+        back true
+  back false
+
+# `"a \"b\""` as the text it holds, its escapes read
+task unquoted
+  take written, like text
+  like text
+  mark private
+
+  save runes, to-runes(written)
+  save out, make list
+  save k, 1
+  walk test
+    hook test, is-below(k, subtract(runes/length, 1))
+    hook hold
+      save one, get(runes, k)
+      fork test, is-equal(one, 92)
+        hold
+          push(out, get(runes, add(k, 1)))
+          save k, add(k, 2)
+          turn next
+      push(out, one)
+      save k, add(k, 1)
+  back from-runes(out)
+
+# `^-2` as -2
+task substring-after-caret
+  take written, like text
+  like text
+  mark private
+
+  save runes, to-runes(written)
+  back from-runes(runes/slice(1, runes/length))
+
+task whole-of
+  take written, like text
+  like number
+  mark private
+
+  save negative, false
+  save out, 0
+  walk to-runes(written)
+    take code
+    fork test, is-equal(code, 45)
+      hold
+        save negative, true
+        turn next
+    save out, add(multiply(out, 10), subtract(code, 48))
+  fork test, negative
+    hold
+      back subtract(0, out)
+  back out
+
+task entry-of
+  take registry, like list, like unit-entry
+  take symbol, like text
+  like maybe, like unit-entry
+  mark private
+
+  walk registry
+    take entry
+    fork test, is-equal(entry/symbol, symbol)
+      hold
+        back make(some, entry)
+  back make none
+
+task signed-entry
+  take registry, like list, like unit-entry
+  take sign, like text
+  like maybe, like unit-entry
+  mark private
+
+  walk registry
+    take entry
+    fork test, and(is-unequal(entry/prefix, <>), is-equal(entry/prefix, sign))
+      hold
+        back make(some, entry)
+  back make none

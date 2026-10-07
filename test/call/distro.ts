@@ -158,6 +158,15 @@ const dnfSetup = (base: string) =>
 
 const AS_USER = (command: string) => `su -s /bin/sh dev -c '${command}'`
 
+// without the pack every container asks a server with nothing in it, and the failures read as a broken repository
+// (`curl: (22) ... 404`) when the truth is that nothing was built. Refused here, naming what to run: this cannot pass
+// as clean, and `pnpm term:distro` signs with gpg, which asks a person for the passphrase
+if (!existsSync(join(DISTRO, 'public'))) {
+  ok(`the ${VERSION} distro is packed: run \`pnpm term:distro\` (after \`pnpm term:release --dry\`), or set TERM_DISTRO_VERSION to a version packed earlier`, false, `${DISTRO}/public is absent`)
+  console.log(`\ndistro: ${pass} pass, ${fail} fail`)
+  process.exit(1)
+}
+
 const site = await serveSite(join(DISTRO, 'public'))
 
 for (const platform of ['linux/arm64', 'linux/amd64']) {

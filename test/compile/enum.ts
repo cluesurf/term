@@ -117,7 +117,7 @@ async function main(): Promise<void> {
   // note/term/stdlib/semantics.md), never JavaScript's bare `items[0]`, which answered undefined
   const indexed = compile({
     file: 'i.tree',
-    text: 'task first\n  take items, like list\n    like number\n  like number\n  send back, read items/0\n',
+    text: 'task first\n  take items, like list, like number\n  like number\n  send back, read items/0\n',
   })
   ok(
     'a literal index reads through the checked list read',

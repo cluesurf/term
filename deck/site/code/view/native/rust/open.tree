@@ -15,3 +15,8 @@ task present-share
   take text, like text
   like text
   send back, text <unavailable>
+
+task present-share-file
+  take path, like text
+  like text
+  send back, text <unavailable>

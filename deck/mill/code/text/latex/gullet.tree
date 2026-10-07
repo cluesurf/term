@@ -1,0 +1,1189 @@
+# The second layer of the LaTeX reader (note/term/mill/04-latex-grammar.md): KaTeX's "gullet", src/MacroExpander.ts,
+# which expands macros until only tokens the parser reads are left. The tokens come from ./lex.tree, the builtin
+# macros from KaTeX's table (./table.tree), and the macros a source defines with `\def` or `\newcommand` live in a
+# namespace scoped by group, KaTeX's src/Namespace.ts.
+#
+# Like KaTeX's, the stack holds tokens in REVERSE order: the next token is the last one.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find contains
+  find replace-all
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./compiled
+  find run-latex-grammar
+
+load ./lex
+  find latex-mistake
+  find latex-table
+  find latex-token
+  find latex-lexer
+  find lex
+  find set-url
+  find token-at
+  find body-tokens
+  find comment-at-end
+
+# what a name means as a macro, KaTeX's `MacroDefinition`
+form latex-definition
+  mark tag, name kind
+  # a body written as text, read into tokens when it is expanded: a builtin from KaTeX's table, a `\color`'s color,
+  # a definition the options give
+  case definition-text
+    link body, like text
+  # tokens in reverse order, how many arguments, and each argument's delimiters, with the ones before the first
+  # argument first: what `\def`, `\newcommand` and `\let` make
+  case definition-tokens
+    link tokens, like list, like latex-token
+    link arguments, like number
+    link delimiters
+      like list
+        like list
+          like text
+    link unexpandable, like boolean
+  # one KaTeX writes as a function, which ./gullet.tree `expand-builtin` computes
+  case definition-builtin
+    link name, like text
+  # the `|` and `\|` inside `\Braket`, `\Set` and `\set`, which expand to the middle tokens they were given
+  case definition-middle
+    link double, like boolean
+    link once, like boolean
+    link middle, like list, like latex-token
+    link middle-double, like list, like latex-token
+    link old-middle, like maybe, like latex-definition
+    link old-middle-double, like maybe, like latex-definition
+
+# one saved value of a name, for the end of its group: none when the name had no value
+form latex-undo
+  link name, like text
+  link value, like maybe, like latex-definition
+
+# the macro expander's state
+form latex-gullet
+  mark shared
+  link lexer, like latex-lexer
+  link table, like latex-table
+  link stack, like list, like latex-token
+  link mode, like text
+  link expansions, like number
+  link most, like number
+  # the namespace: the value each name has now, and per open group the values to put back when it closes
+  link current, like hash, like text, like latex-definition
+  link undo, like list, like list, like latex-undo
+
+# an expansion: its tokens in reverse order, and how many arguments it takes
+form latex-expansion
+  link tokens, like list, like latex-token
+  link arguments, like number
+  link delimiters, like maybe, like list, like list, like text
+
+# an argument KaTeX's `consumeArg` read: its tokens in reverse order, and the tokens it began and ended at
+form latex-argument
+  link tokens, like list, like latex-token
+  link start, like latex-token
+  link end, like latex-token
+
+task make-latex-gullet
+  take lexer, like latex-lexer
+  take most, like number
+  like latex-gullet
+
+  back
+    make latex-gullet
+      bind lexer, lexer
+      bind table, lexer/table
+      bind stack, make list
+      bind mode, <math>
+      bind expansions, 0
+      bind most, most
+      bind current, make hash
+      bind undo, make list
+
+task refuse
+  take token, like latex-token
+  take reason, like text
+
+  halt latex-mistake
+    bind thing, <latex>
+    bind at, token/at
+    bind end, token/end
+    bind reason, reason
+
+# ---- the namespace ----
+
+task begin-group
+  take g, like latex-gullet
+
+  push(g/undo, make list)
+
+task end-group
+  take g, like latex-gullet
+
+  fork test, is-equal(g/undo/length, 0)
+    hold
+      refuse(token-at(<EOF>, 0, 0), <Unbalanced namespace destruction: attempt to pop global namespace; please report this as a bug>)
+  save undos, g/undo/pop()
+  walk undos/reverse()
+    take one
+    put-current(g, one/name, one/value)
+
+task end-groups
+  take g, like latex-gullet
+
+  walk test
+    hook test, is-above(g/undo/length, 0)
+    hook hold
+      end-group(g)
+
+task put-current
+  take g, like latex-gullet
+  take name, like text
+  take value, like maybe, like latex-definition
+  mark private
+
+  sift value
+    case some
+      link known
+      save g/current/{name}, known
+    case none
+      fork test, g/current/has(name)
+        hold
+          g/current/remove(name)
+
+# whether an undo for `name` is already in a group's list
+task undo-index
+  take undos, like list, like latex-undo
+  take name, like text
+  like number
+  mark private
+
+  save k, 0
+  walk undos
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back k
+    save k, add(k, 1)
+  back -1
+
+# KaTeX's `Namespace.set`. A global set is a set in every group: every undo of the name goes, and the innermost group
+# undoes to the new value
+task set-macro
+  take g, like latex-gullet
+  take name, like text
+  take value, like maybe, like latex-definition
+  take global, like boolean
+
+  fork test, global
+    hold
+      walk g/undo
+        take undos
+        save at, undo-index(undos, name)
+        fork test, is-minimum(at, 0)
+          hold
+            undos/splice(at, 1)
+      fork test, is-above(g/undo/length, 0)
+        hold
+          save top, get(g/undo, subtract(g/undo/length, 1))
+          push(top, undo-of(name, value))
+    miss
+      fork test, is-above(g/undo/length, 0)
+        hold
+          save top, get(g/undo, subtract(g/undo/length, 1))
+          fork test, is-below(undo-index(top, name), 0)
+            hold
+              push(top, undo-of(name, current-of(g, name)))
+  put-current(g, name, value)
+
+task undo-of
+  take name, like text
+  take value, like maybe, like latex-definition
+  like latex-undo
+  mark private
+
+  back
+    make latex-undo
+      bind name, name
+      bind value, value
+
+task current-of
+  take g, like latex-gullet
+  take name, like text
+  like maybe, like latex-definition
+  mark private
+
+  fork test, g/current/has(name)
+    hold
+      save known, g/current/get(name)
+      back make(some, known)
+  back make none
+
+# a name's definition now: the source's own, else KaTeX's builtin
+task macro-of
+  take g, like latex-gullet
+  take name, like text
+  like maybe, like latex-definition
+
+  fork test, g/current/has(name)
+    hold
+      save known, g/current/get(name)
+      back make(some, known)
+  fork test, g/table/macros/has(name)
+    hold
+      save body
+        make definition-text
+          bind body, g/table/macros/get(name)
+      back make(some, body)
+  fork test, g/table/builtins/has(name)
+    hold
+      save builtin
+        make definition-builtin
+          bind name, name
+      back make(some, builtin)
+  back make none
+
+task has-macro
+  take g, like latex-gullet
+  take name, like text
+  like boolean
+
+  back or(g/current/has(name), or(g/table/macros/has(name), g/table/builtins/has(name)))
+
+# ---- the stack ----
+
+# the next token, unexpanded, without taking it: TeX's `\futurelet`
+task future
+  take g, like latex-gullet
+  like latex-token
+
+  fork test, is-equal(g/stack/length, 0)
+    hold
+      push(g/stack, lex(g/lexer))
+  back get(g/stack, subtract(g/stack/length, 1))
+
+task pop-token
+  take g, like latex-gullet
+  like latex-token
+
+  future(g)
+  back g/stack/pop()
+
+task push-token
+  take g, like latex-gullet
+  take token, like latex-token
+
+  push(g/stack, token)
+
+# tokens in reverse order onto the stack
+task push-tokens
+  take g, like latex-gullet
+  take tokens, like list, like latex-token
+
+  walk tokens
+    take one
+    push(g/stack, one)
+
+task consume-spaces
+  take g, like latex-gullet
+
+  walk test
+    hook test, is-equal(future(g)/text, < >)
+    hook hold
+      g/stack/pop()
+
+# KaTeX's `scanArgument`: an argument's tokens put back onto the stack after an `EOF` that marks where it ends, and a
+# token standing for the whole of it, or none when an optional argument is not there
+task scan-argument
+  take g, like latex-gullet
+  take optional, like boolean
+  like maybe, like latex-token
+
+  save start, token-at(<>, 0, 0)
+  save last, token-at(<>, 0, 0)
+  save tokens, make list
+  fork test, optional
+    hold
+      consume-spaces(g)
+      fork test, is-unequal(future(g)/text, <[>)
+        hold
+          back make none
+      save start, pop-token(g)
+      save delimiters, make list
+      push(delimiters, <]>)
+      save argument, consume-argument(g, make(some, delimiters))
+      save tokens, argument/tokens
+      save last, argument/end
+    miss
+      save argument, consume-argument(g, make none)
+      save tokens, argument/tokens
+      save start, argument/start
+      save last, argument/end
+  push-token(g, token-at(<EOF>, last/at, last/end))
+  push-tokens(g, tokens)
+  save spanned, token-at(<>, start/at, last/end)
+  back make(some, spanned)
+
+# KaTeX's `consumeArg`. A delimited argument is the shortest balanced run of tokens the delimiters follow; an
+# undelimited one is the next token that is not a space, or the whole `{...}` group when that token is `{`, its outer
+# braces taken off
+task consume-argument
+  take g, like latex-gullet
+  take delimiters, like maybe, like list, like text
+  like latex-argument
+
+  save delims, make list
+  sift delimiters
+    case some
+      link given
+      save delims, given
+    case none
+      save nothing, 0
+  save delimited, is-above(delims/length, 0)
+  fork test, not(delimited)
+    hold
+      consume-spaces(g)
+  save start, future(g)
+  save tokens, make list
+  save depth, 0
+  save matched, 0
+  save last, start
+  walk test
+    hook test, true
+    hook hold
+      save one, pop-token(g)
+      save last, one
+      push(tokens, one)
+      fork test, is-equal(one/text, <\{>)
+        hold
+          save depth, add(depth, 1)
+        miss
+          fork test, is-equal(one/text, <\}>)
+            hold
+              save depth, subtract(depth, 1)
+              fork test, is-equal(depth, -1)
+                hold
+                  refuse(one, <Extra \}>)
+            miss
+              fork test, is-equal(one/text, <EOF>)
+                hold
+                  save wanted, <\}>
+                  fork test, delimited
+                    hold
+                      save wanted, get(delims, matched)
+                  refuse(one, <Unexpected end of input in a macro argument, expected '{wanted}'>)
+      fork test, delimited
+        hold
+          save want, get(delims, matched)
+          fork test, and(or(is-equal(depth, 0), and(is-equal(depth, 1), is-equal(want, <\{>))), is-equal(one/text, want))
+            hold
+              save matched, add(matched, 1)
+              fork test, is-equal(matched, delims/length)
+                hold
+                  # the delimiters are no part of the argument
+                  tokens/splice(subtract(tokens/length, matched), matched)
+                  halt
+            miss
+              save matched, 0
+      fork test, and(is-equal(depth, 0), not(delimited))
+        hold
+          halt
+  fork test, and(is-equal(start/text, <\{>), is-above(tokens/length, 0))
+    hold
+      fork test, is-equal(get(tokens, subtract(tokens/length, 1))/text, <\}>)
+        hold
+          tokens/pop()
+          tokens/shift()
+  back
+    make latex-argument
+      bind tokens, tokens/reverse()
+      bind start, start
+      bind end, last
+
+# KaTeX's `consumeArgs`: the tokens before the first argument must be the definition's own, then each argument
+task consume-arguments
+  take g, like latex-gullet
+  take count, like number
+  take delimiters, like maybe, like list, like list, like text
+  like list, like list, like latex-token
+
+  sift delimiters
+    case some
+      link given
+      fork test, is-unequal(given/length, add(count, 1))
+        hold
+          refuse(future(g), <The length of delimiters doesn't match the number of args!>)
+      save leading, get(given, 0)
+      walk leading
+        take wanted
+        save one, pop-token(g)
+        fork test, is-unequal(wanted, one/text)
+          hold
+            refuse(one, <Use of the macro doesn't match its definition>)
+    case none
+      save nothing, 0
+  save out, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, count)
+    hook hold
+      save own, make none
+      sift delimiters
+        case some
+          link given
+          save these, get(given, add(k, 1))
+          save own, make(some, these)
+        case none
+          save nothing, 0
+      push(out, consume-argument(g, own)/tokens)
+      save k, add(k, 1)
+  back out
+
+task count-expansion
+  take g, like latex-gullet
+  take amount, like number
+
+  save g/expansions, add(g/expansions, amount)
+  fork test, is-above(g/expansions, g/most)
+    hold
+      refuse(future(g), <Too many expansions: infinite loop or need to increase maxExpand setting>)
+
+# ---- expanding ----
+
+# KaTeX's `expandOnce`: expand the next token once when it is a macro, its expansion's tokens onto the stack, and say
+# how many there are; false when it is no macro and stays where it was. With `expandable-only`, a macro that cannot
+# be expanded is left alone, and an undefined command is a mistake
+form latex-expanded
+  link expanded, like boolean
+  link count, like number
+
+task expand-once
+  take g, like latex-gullet
+  take expandable-only, like boolean
+  like latex-expanded
+
+  save top, pop-token(g)
+  save name, top/text
+  save found, make none
+  fork test, not(top/noexpand)
+    hold
+      save found, expansion-of(g, name, top)
+  sift found
+    case none
+      fork test, and(expandable-only, and(starts-with(name, <\\>), not(is-defined(g, name))))
+        hold
+          refuse(top, <Undefined control sequence: {name}>)
+      push-token(g, top)
+      back not-expanded()
+    case some
+      link expansion
+      fork test, and(expandable-only, is-unexpandable(g, name))
+        hold
+          push-token(g, top)
+          back not-expanded()
+      count-expansion(g, 1)
+      save tokens, expansion/tokens
+      save arguments, consume-arguments(g, expansion/arguments, expansion/delimiters)
+      fork test, is-above(expansion/arguments, 0)
+        hold
+          save tokens, substitute(tokens, arguments)
+      push-tokens(g, tokens)
+      back
+        make latex-expanded
+          bind expanded, true
+          bind count, tokens/length
+
+task not-expanded
+  like latex-expanded
+  mark private
+
+  back
+    make latex-expanded
+      bind expanded, false
+      bind count, 0
+
+# whether a name's definition is one `\let` marked unexpandable
+task is-unexpandable
+  take g, like latex-gullet
+  take name, like text
+  like boolean
+  mark private
+
+  sift macro-of(g, name)
+    case some
+      link known
+      sift known
+        case definition-tokens
+          back unexpandable
+        miss
+          back false
+    case none
+      back false
+
+# the arguments pasted in place of `#1` to `#9`, and `##` as `#`. The tokens are in reverse order, so a placeholder's
+# `#` comes after its digit
+task substitute
+  take tokens, like list, like latex-token
+  take arguments, like list, like list, like latex-token
+  like list, like latex-token
+  mark private
+
+  save out, tokens/slice(0, tokens/length)
+  save i, subtract(out/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save one, get(out, i)
+      fork test, is-equal(one/text, <#>)
+        hold
+          fork test, is-equal(i, 0)
+            hold
+              refuse(one, <Incomplete placeholder at end of macro body>)
+          save i, subtract(i, 1)
+          save digit, get(out, i)
+          fork test, is-equal(digit/text, <#>)
+            hold
+              out/splice(add(i, 1), 1)
+            miss
+              save index, digit-value(digit/text)
+              fork test, is-below(index, 1)
+                hold
+                  refuse(digit, <Not a valid argument number>)
+              save before, out/slice(0, i)
+              save after, out/slice(add(i, 2), out/length)
+              save argument, get(arguments, subtract(index, 1))
+              save joined, before/concat(argument)
+              save out, joined/concat(after)
+      save i, subtract(i, 1)
+  back out
+
+# 1 to 9 for the digit, 0 for anything else
+task digit-value
+  take text, like text
+  like number
+
+  save digits, split(<1 2 3 4 5 6 7 8 9>, < >)
+  save k, 0
+  walk digits
+    take one
+    fork test, is-equal(one, text)
+      hold
+        back add(k, 1)
+    save k, add(k, 1)
+  back 0
+
+# KaTeX's `expandAfterFuture`
+task expand-after-future
+  take g, like latex-gullet
+  like latex-token
+
+  expand-once(g, false)
+  back future(g)
+
+# KaTeX's `expandNextToken`: expand until the next token is no macro, and take it. A token `\noexpand` marked reads
+# as `\relax`
+task expand-next-token
+  take g, like latex-gullet
+  like latex-token
+
+  walk test
+    hook test, true
+    hook hold
+      save step, expand-once(g, false)
+      fork test, not(step/expanded)
+        hold
+          save token, g/stack/pop()
+          fork test, token/relax
+            hold
+              save token/text, <\\relax>
+          back token
+  back token-at(<EOF>, 0, 0)
+
+# KaTeX's `expandTokens`: the tokens, given in reverse order, expanded as far as they go, back in forward order
+task expand-tokens
+  take g, like latex-gullet
+  take tokens, like list, like latex-token
+  like list, like latex-token
+
+  save out, make list
+  save floor, g/stack/length
+  push-tokens(g, tokens)
+  walk test
+    hook test, is-above(g/stack/length, floor)
+    hook hold
+      save step, expand-once(g, true)
+      fork test, not(step/expanded)
+        hold
+          save token, g/stack/pop()
+          fork test, token/relax
+            hold
+              save token/noexpand, false
+              save token/relax, false
+          push(out, token)
+  count-expansion(g, out/length)
+  back out
+
+# a macro's full expansion as text, none when it is no macro
+task expand-macro-text
+  take g, like latex-gullet
+  take name, like text
+  like maybe, like text
+
+  fork test, not(has-macro(g, name))
+    hold
+      back make none
+  save tokens, make list
+  push(tokens, token-at(name, 0, 0))
+  save texts, make list
+  walk expand-tokens(g, tokens)
+    take one
+    push(texts, one/text)
+  save joined, join(texts, <>)
+  back make(some, joined)
+
+# KaTeX's `_getExpansion`: what a name expands to, none when it is no macro. A single character that is not active
+# (`%` always, `~` while `\url` reads) is never expanded
+task expansion-of
+  take g, like latex-gullet
+  take name, like text
+  take token, like latex-token
+  like maybe, like latex-expansion
+
+  # a character that is not active is never expanded, whatever it names, so the test comes first: a name with no
+  # definition expands to nothing either way
+  fork test, is-equal(name, <%>)
+    hold
+      back make none
+  fork test, and(is-equal(name, <~>), g/lexer/url)
+    hold
+      back make none
+  # KaTeX's builtins are looked up where they are, so no definition is made for the token every macro check reads
+  fork test, not(g/current/has(name))
+    hold
+      fork test, g/table/macros/has(name)
+        hold
+          save expanded, text-expansion(g, g/table/macros/get(name), token)
+          back make(some, expanded)
+      fork test, g/table/builtins/has(name)
+        hold
+          save built, expand-builtin(g, name, token)
+          back make(some, built)
+      back make none
+  sift macro-of(g, name)
+    case none
+      back make none
+    case some
+      link definition
+      sift definition
+        case definition-text
+          save expanded, text-expansion(g, body, token)
+          back make(some, expanded)
+        case definition-tokens
+          # `\newcommand` and `\let` give no delimiters at all, where a `\def` gives one list for each argument and
+          # one before them
+          save given, make none
+          fork test, is-above(delimiters/length, 0)
+            hold
+              save given, make(some, delimiters)
+          save found
+            make latex-expansion
+              bind tokens, tokens
+              bind arguments, arguments
+              bind delimiters, given
+          back make(some, found)
+        case definition-builtin
+          # the builtin the definition names, which a `\let` may have given another name
+          link builtin
+          save expanded, expand-builtin(g, builtin, token)
+          back make(some, expanded)
+        case definition-middle
+          save expanded, expand-middle(g, double, once, middle, middle-double, old-middle, old-middle-double)
+          back make(some, expanded)
+
+# a text expansion: its tokens, placed at the command, and as many arguments as it names `#1`, `#2`, ... in order
+task text-expansion
+  take g, like latex-gullet
+  take body, like text
+  take token, like latex-token
+  like latex-expansion
+
+  save count, 0
+  fork test, contains(body, <#>)
+    hold
+      save stripped, replace-all(body, <##>, <>)
+      walk test
+        hook test, contains(stripped, <#{add(count, 1)}>)
+        hook hold
+          save count, add(count, 1)
+  save tokens, make list
+  walk body-tokens(g/table, body, token/at, token/end)
+    take one
+    save placed, one
+    save placed/at, token/at
+    save placed/end, token/end
+    push(tokens, placed)
+  # KaTeX lexes a body afresh at every expansion, so a comment that ends one is reported at every expansion
+  fork test, g/table/open-bodies/has(body)
+    hold
+      comment-at-end(g/lexer/report, token/end)
+  back
+    make latex-expansion
+      bind tokens, tokens/reverse()
+      bind arguments, count
+      bind delimiters, make none
+
+task tokens-expansion
+  take tokens, like list, like latex-token
+  like latex-expansion
+  mark private
+
+  back
+    make latex-expansion
+      bind tokens, tokens
+      bind arguments, 0
+      bind delimiters, make none
+
+# KaTeX's `isDefined`: a macro, a function, a symbol, or one of the commands the parser reads itself
+task is-defined
+  take g, like latex-gullet
+  take name, like text
+  like boolean
+
+  fork test, has-macro(g, name)
+    hold
+      back true
+  fork test, or(g/table/functions/has(name), or(g/table/math-symbols/has(name), g/table/text-symbols/has(name)))
+    hold
+      back true
+  back or(or(is-equal(name, <^>), is-equal(name, <_>)), or(is-equal(name, <\\limits>), is-equal(name, <\\nolimits>)))
+
+# KaTeX's `isExpandable`
+task is-expandable
+  take g, like latex-gullet
+  take name, like text
+  like boolean
+
+  sift macro-of(g, name)
+    case some
+      link known
+      sift known
+        case definition-tokens
+          back not(unexpandable)
+        miss
+          back true
+    case none
+      fork test, g/table/functions/has(name)
+        hold
+          back not(g/table/functions/get(name)/primitive)
+      back false
+
+# ---- the builtins: the macros KaTeX writes as functions (src/macros.ts) ----
+
+task expand-builtin
+  take g, like latex-gullet
+  take name, like text
+  take token, like latex-token
+  like latex-expansion
+
+  fork test, is-equal(name, <\\noexpand>)
+    hold
+      save t, pop-token(g)
+      fork test, is-expandable(g, t/text)
+        hold
+          save t/noexpand, true
+          save t/relax, true
+      save out, make list
+      push(out, t)
+      back tokens-expansion(out)
+
+  fork test, is-equal(name, <\\expandafter>)
+    hold
+      save t, pop-token(g)
+      expand-once(g, true)
+      save out, make list
+      push(out, t)
+      back tokens-expansion(out)
+
+  fork test, is-equal(name, <\\@firstoftwo>)
+    hold
+      back tokens-expansion(get(consume-arguments(g, 2, make none), 0))
+
+  fork test, is-equal(name, <\\@secondoftwo>)
+    hold
+      back tokens-expansion(get(consume-arguments(g, 2, make none), 1))
+
+  fork test, is-equal(name, <\\@ifnextchar>)
+    hold
+      save args, consume-arguments(g, 3, make none)
+      consume-spaces(g)
+      save next, future(g)
+      save wanted, get(args, 0)
+      fork test, and(is-equal(wanted/length, 1), is-equal(get(wanted, 0)/text, next/text))
+        hold
+          back tokens-expansion(get(args, 1))
+      back tokens-expansion(get(args, 2))
+
+  fork test, is-equal(name, <\\TextOrMath>)
+    hold
+      save args, consume-arguments(g, 2, make none)
+      fork test, is-equal(g/mode, <text>)
+        hold
+          back tokens-expansion(get(args, 0))
+      back tokens-expansion(get(args, 1))
+
+  fork test, is-equal(name, <\\char>)
+    hold
+      back text-expansion(g, expand-char(g), token)
+
+  fork test, is-equal(name, <\\newcommand>)
+    hold
+      back text-expansion(g, new-command(g, false, true, false), token)
+  fork test, is-equal(name, <\\renewcommand>)
+    hold
+      back text-expansion(g, new-command(g, true, false, false), token)
+  fork test, is-equal(name, <\\providecommand>)
+    hold
+      back text-expansion(g, new-command(g, true, true, true), token)
+
+  # what KaTeX writes to the console, read and dropped
+  fork test, or(is-equal(name, <\\message>), is-equal(name, <\\errmessage>))
+    hold
+      consume-arguments(g, 1, make none)
+      back tokens-expansion(make list)
+  fork test, is-equal(name, <\\show>)
+    hold
+      pop-token(g)
+      back tokens-expansion(make list)
+
+  fork test, is-equal(name, <\\dots>)
+    hold
+      back text-expansion(g, dots-for(g), token)
+  fork test, is-equal(name, <\\dotso>)
+    hold
+      fork test, is-space-after-dots(future(g)/text)
+        hold
+          back text-expansion(g, <\\ldots\\,>, token)
+      back text-expansion(g, <\\ldots>, token)
+  fork test, is-equal(name, <\\dotsc>)
+    hold
+      save next, future(g)/text
+      fork test, and(is-space-after-dots(next), is-unequal(next, <,>))
+        hold
+          back text-expansion(g, <\\ldots\\,>, token)
+      back text-expansion(g, <\\ldots>, token)
+  fork test, is-equal(name, <\\cdots>)
+    hold
+      fork test, is-space-after-dots(future(g)/text)
+        hold
+          back text-expansion(g, <\\@cdots\\,>, token)
+      back text-expansion(g, <\\@cdots>, token)
+
+  fork test, is-equal(name, <\\tag@literal>)
+    hold
+      fork test, has-tag(g)
+        hold
+          refuse(token, <Multiple \\tag>)
+      back text-expansion(g, <\\gdef\\df@tag\{\\text\{#1\}\}>, token)
+
+  fork test, is-equal(name, <\\bra@ket>)
+    hold
+      back expand-braket(g, false)
+  fork test, is-equal(name, <\\bra@set>)
+    hold
+      back expand-braket(g, true)
+
+  refuse(token, <No builtin macro {name}>)
+  back tokens-expansion(make list)
+
+# whether `\df@tag` has a value: KaTeX's `macros.get("\\df@tag")` read as true or false
+task has-tag
+  take g, like latex-gullet
+  like boolean
+
+  sift macro-of(g, <\\df@tag>)
+    case some
+      link known
+      sift known
+        case definition-text
+          back is-unequal(body, <>)
+        miss
+          back true
+    case none
+      back false
+
+# TeX's `\char`: `\char65` decimal, `\char'101` octal, `\char"41` hex, `` \char`A `` the character itself, read as
+# `\@char{65}`
+task expand-char
+  take g, like latex-gullet
+  like text
+
+  save token, pop-token(g)
+  save base, 0
+  save number, 0
+  fork test, is-equal(token/text, <'>)
+    hold
+      save base, 8
+      save token, pop-token(g)
+    miss
+      fork test, is-equal(token/text, <">)
+        hold
+          save base, 16
+          save token, pop-token(g)
+        miss
+          fork test, is-equal(token/text, <`>)
+            hold
+              save token, pop-token(g)
+              save runes, to-runes(token/text)
+              fork test, starts-with(token/text, <\\>)
+                hold
+                  save number, get(runes, 1)
+                miss
+                  fork test, is-equal(token/text, <EOF>)
+                    hold
+                      refuse(token, <\\char` missing argument>)
+                  save number, get(runes, 0)
+            miss
+              save base, 10
+  fork test, is-above(base, 0)
+    hold
+      save number, hex-digit-value(token/text)
+      fork test, or(is-below(number, 0), is-minimum(number, base))
+        hold
+          refuse(token, <Invalid base-{base} digit {token/text}>)
+      walk test
+        hook test, true
+        hook hold
+          save digit, hex-digit-value(future(g)/text)
+          fork test, or(is-below(digit, 0), is-minimum(digit, base))
+            hold
+              halt
+          save number, add(multiply(number, base), digit)
+          pop-token(g)
+  back <\\@char\{{number}\}>
+
+# 0 to 15 for a hex digit of either case, -1 for anything else (KaTeX's `digitToNumber`)
+task hex-digit-value
+  take text, like text
+  like number
+  mark private
+
+  save lower, split(<0 1 2 3 4 5 6 7 8 9 a b c d e f>, < >)
+  save upper, split(<0 1 2 3 4 5 6 7 8 9 A B C D E F>, < >)
+  save k, 0
+  walk test
+    hook test, is-below(k, 16)
+    hook hold
+      fork test, or(is-equal(get(lower, k), text), is-equal(get(upper, k), text))
+        hold
+          back k
+      save k, add(k, 1)
+  back -1
+
+# `\newcommand{\name}[count]{body}` and its two kin, by whether a name may already be, or not yet be, defined, and
+# whether a defined one is left as it was
+task new-command
+  take g, like latex-gullet
+  take exists-ok, like boolean
+  take missing-ok, like boolean
+  take skip-existing, like boolean
+  like text
+
+  save first, consume-argument(g, make none)
+  save arg, first/tokens
+  fork test, is-unequal(arg/length, 1)
+    hold
+      refuse(first/start, <\\newcommand's first argument must be a macro name>)
+  save name, get(arg, 0)/text
+  save exists, is-defined(g, name)
+  fork test, and(exists, not(exists-ok))
+    hold
+      refuse(first/start, <\\newcommand\{{name}\} attempting to redefine {name}; use \\renewcommand>)
+  fork test, and(not(exists), not(missing-ok))
+    hold
+      refuse(first/start, <\\renewcommand\{{name}\} when command {name} does not yet exist; use \\newcommand>)
+  save count, 0
+  save next, consume-argument(g, make none)
+  save arg, next/tokens
+  fork test, and(is-equal(arg/length, 1), is-equal(get(arg, 0)/text, <[>))
+    hold
+      save texts, make list
+      save one, expand-next-token(g)
+      walk test
+        hook test, and(is-unequal(one/text, <]>), is-unequal(one/text, <EOF>))
+        hook hold
+          push(texts, one/text)
+          save one, expand-next-token(g)
+      save written, join(texts, <>)
+      save read, run-latex-grammar(<whole-number>, written)
+      fork test, not(read/ok)
+        hold
+          refuse(one, <Invalid number of arguments: {written}>)
+      save count, whole-of(written)
+      save arg, consume-argument(g, make none)/tokens
+  fork test, not(and(exists, skip-existing))
+    hold
+      save definition
+        make definition-tokens
+          bind tokens, arg
+          bind arguments, count
+          bind delimiters, make list
+          bind unexpandable, false
+      set-macro(g, name, make(some, definition), false)
+  back <>
+
+# the digits of a text read as a whole number, every other character passed over: KaTeX's `parseInt` on a text the
+# grammar has already held to `\s*[0-9]+\s*`
+task whole-of
+  take text, like text
+  like number
+
+  save out, 0
+  walk split(text, <>)
+    take one
+    save digit, hex-digit-value(one)
+    fork test, and(is-minimum(digit, 0), is-below(digit, 10))
+      hold
+        save out, add(multiply(out, 10), digit)
+  back out
+
+# AMSMath's `\dots`, by the token after it
+task dots-for
+  take g, like latex-gullet
+  like text
+
+  save next, expand-after-future(g)/text
+  save found, dots-by-token(next)
+  fork test, is-unequal(found, <>)
+    hold
+      back found
+  fork test, starts-with(next, <\\not>)
+    hold
+      back <\\dotsb>
+  fork test, g/table/math-symbols/has(next)
+    hold
+      save group, g/table/math-symbols/get(next)/group
+      fork test, or(is-equal(group, <bin>), is-equal(group, <rel>))
+        hold
+          back <\\dotsb>
+  back <\\dotso>
+
+# KaTeX's `dotsByToken` (src/macros.ts)
+task dots-by-token
+  take next, like text
+  like text
+  mark private
+
+  fork test, is-equal(next, <,>)
+    hold
+      back <\\dotsc>
+  save dotsb, split(<\\not + = \< \> - * : \\DOTSB \\coprod \\bigvee \\bigwedge \\biguplus \\bigcap \\bigcup \\prod \\sum \\bigotimes \\bigoplus \\bigodot \\bigsqcup \\And \\longrightarrow \\Longrightarrow \\longleftarrow \\Longleftarrow \\longleftrightarrow \\Longleftrightarrow \\mapsto \\longmapsto \\hookrightarrow \\doteq \\mathbin \\mathrel \\relbar \\Relbar \\xrightarrow \\xleftarrow>, < >)
+  walk dotsb
+    take one
+    fork test, is-equal(one, next)
+      hold
+        back <\\dotsb>
+  save dotsi, split(<\\DOTSI \\int \\oint \\iint \\iiint \\iiiint \\idotsint>, < >)
+  walk dotsi
+    take one
+    fork test, is-equal(one, next)
+      hold
+        back <\\dotsi>
+  fork test, is-equal(next, <\\DOTSX>)
+    hold
+      back <\\dotsx>
+  back <>
+
+# KaTeX's `spaceAfterDots`
+task is-space-after-dots
+  take next, like text
+  like boolean
+  mark private
+
+  walk split(<) ] \\rbrack \\\} \\rbrace \\rangle \\rceil \\rfloor \\rgroup \\rmoustache \\right \\bigr \\biggr \\Bigr \\Biggr $ ; . ,>, < >)
+    take one
+    fork test, is-equal(one, next)
+      hold
+        back true
+  back false
+
+# braket.sty's `\Braket`, `\Set` and `\set`: four arguments (the left delimiter, what `|` becomes, what `\|` becomes,
+# the right delimiter), then the body, read with `|` and `\|` standing for the middles. `once` is `\Set`'s, where only
+# the first `|` is a middle
+task expand-braket
+  take g, like latex-gullet
+  take once, like boolean
+  like latex-expansion
+
+  save left, consume-argument(g, make none)/tokens
+  save middle, consume-argument(g, make none)/tokens
+  save middle-double, consume-argument(g, make none)/tokens
+  save right, consume-argument(g, make none)/tokens
+  save old-middle, current-of(g, <|>)
+  save old-middle-double, current-of(g, <\\|>)
+  begin-group(g)
+  save single
+    make definition-middle
+      bind double, false
+      bind once, once
+      bind middle, middle
+      bind middle-double, middle-double
+      bind old-middle, old-middle
+      bind old-middle-double, old-middle-double
+  set-macro(g, <|>, make(some, single), false)
+  fork test, is-above(middle-double/length, 0)
+    hold
+      save doubled
+        make definition-middle
+          bind double, true
+          bind once, once
+          bind middle, middle
+          bind middle-double, middle-double
+          bind old-middle, old-middle
+          bind old-middle-double, old-middle-double
+      set-macro(g, <\\|>, make(some, doubled), false)
+  save body, consume-argument(g, make none)/tokens
+  save inner, right/concat(body)
+  save all, inner/concat(left)
+  save expanded, expand-tokens(g, all)
+  end-group(g)
+  back tokens-expansion(expanded/reverse())
+
+task expand-middle
+  take g, like latex-gullet
+  take double, like boolean
+  take once, like boolean
+  take middle, like list, like latex-token
+  take middle-double, like list, like latex-token
+  take old-middle, like maybe, like latex-definition
+  take old-middle-double, like maybe, like latex-definition
+  like latex-expansion
+
+  fork test, once
+    hold
+      set-macro(g, <|>, old-middle, false)
+      fork test, is-above(middle-double/length, 0)
+        hold
+          set-macro(g, <\\|>, old-middle-double, false)
+  save doubled, double
+  fork test, and(not(double), is-above(middle-double/length, 0))
+    hold
+      fork test, is-equal(future(g)/text, <|>)
+        hold
+          pop-token(g)
+          save doubled, true
+  fork test, doubled
+    hold
+      back tokens-expansion(middle-double)
+  back tokens-expansion(middle)

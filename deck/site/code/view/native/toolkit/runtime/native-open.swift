@@ -29,18 +29,29 @@ enum nativeOpen {
     // shown, or unavailable with no window to show the sheet from. On the main actor, where every view lives
     @MainActor
     static func share(_ text: String) async -> String {
+        await present([text])
+    }
+
+    // the same for a file, offered as itself (a URL to a file is what AirDrop, Messages and Files take), or
+    // unavailable when the path is not a file (beat-term-0003)
+    @MainActor
+    static func shareFile(_ path: String) async -> String {
+        var folder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &folder), !folder.boolValue else { return "unavailable" }
+        return await present([URL(fileURLWithPath: path)])
+    }
+
+    // the share sheet in front of everything, holding `items`, and `shown` only once it is up (nativePresent,
+    // native-present.swift: UIKit drops a presentation asked while another is pending)
+    @MainActor
+    private static func present(_ items: [Any]) async -> String {
         #if canImport(UIKit)
-        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
-        guard let window = windows.first(where: \.isKeyWindow) ?? windows.first, let root = window.rootViewController else { return "unavailable" }
-        let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        // an iPad shows the sheet as a popover, which must say what it points at
-        sheet.popoverPresentationController?.sourceView = window
-        sheet.popoverPresentationController?.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
-        root.present(sheet, animated: true)
-        return "shown"
+        guard nativePresent.topmost() != nil else { return "unavailable" }
+        let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return await nativePresent.whenFree(sheet) ? "shown" : "unavailable"
         #else
         guard let view = (NSApp.keyWindow ?? NSApp.windows.first)?.contentView else { return "unavailable" }
-        NSSharingServicePicker(items: [text]).show(relativeTo: .zero, of: view, preferredEdge: .minY)
+        NSSharingServicePicker(items: items).show(relativeTo: .zero, of: view, preferredEdge: .minY)
         return "shown"
         #endif
     }

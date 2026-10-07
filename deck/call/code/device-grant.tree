@@ -92,6 +92,11 @@ task declarations
   save out, make list
   push(out, declared(<nativeCamera>, one-of(<android.permission.CAMERA>), <NSCameraUsageDescription>, <Takes the photos you ask for.>))
   push(out, declared(<nativeMicrophone>, one-of(<android.permission.RECORD_AUDIO>), <NSMicrophoneUsageDescription>, <Records the sound you ask it to.>))
+  # a download (beat-term-0004) needs the network on Android, and on iOS the person's leave to reach a machine on the
+  # local network, which iOS asks with this string the first time and refuses without it
+  push(out, declared(<nativeDownload>, one-of(<android.permission.INTERNET>), <NSLocalNetworkUsageDescription>, <Downloads the songs you choose from a computer on the same Wi-Fi.>))
+  # the audio module's recorder (beat-term-0001) is the same microphone, so the same string
+  push(out, declared(<nativeAudio>, one-of(<android.permission.RECORD_AUDIO>), <NSMicrophoneUsageDescription>, <Records the sound you ask it to.>))
   push(out, declared(<nativeContacts>, one-of(<android.permission.READ_CONTACTS>), <NSContactsUsageDescription>, <Finds the people you ask for.>))
   # iOS 17 and macOS 14 read the full-access string; the build's minimum is those, so the older
   # NSCalendarsUsageDescription is not needed

@@ -31,3 +31,8 @@ task read-path
     case cache
       send back
         call folder/cache
+  # every other name: the home directory, which is always a real path, as node answers (node/environment/path.tree).
+  # Without it the match fell off the end of a task that answers text, which Swift refuses to build (`missing return`),
+  # so no native program could call known-directory (beat-term, 2026-10-06)
+  send back
+    call folder/home

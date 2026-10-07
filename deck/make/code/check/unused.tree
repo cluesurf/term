@@ -107,6 +107,10 @@ task collect-reads
           collect-reads(given, read)
         case none
           back
+    # a closure reads what its body reads: `save at, make-desk()` used only inside a `task route` handed to a call was
+    # warned as never used (beat-term's app.tree, 2026-10-06). Its own locals are its own, so they are declared apart
+    case closure
+      walk-body(body, fresh-declared(), read)
     miss
       back
 
