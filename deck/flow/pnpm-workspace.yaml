@@ -22,8 +22,10 @@ overrides:
   qs: ^6.16.0
   linkify-it: ^5.0.2
   # GHSA-253c-mchw-3w2r, two quadratic paths under `linkify: true`.
-  # Pulled in by @vscode/vsce. The 14.x fix is 14.3.1.
-  markdown-it: ^14.3.1
+  # Pulled in by @vscode/vsce. The 14.x fix is 14.3.1, raised to 14.3.3 for
+  # GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q (quadratic link reference
+  # definitions, quadratic inline HTML).
+  markdown-it: ^14.3.3
   # Ten advisories published 2026-09-04 (cookie disclosure, TLS bypass in
   # BalancedPool, response splitting, several DoS). The lockfile held
   # 7.29.0, and the 7.x fix is 7.29.1.

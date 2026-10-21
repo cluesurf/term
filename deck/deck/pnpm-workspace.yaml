@@ -7,7 +7,12 @@ onlyBuiltDependencies:
 # is not. `tsx task/audit-safe.ts --root <this dir>` from the repo root
 # is what checks them against the lockfile.
 overrides:
-  vite: ^7.3.5
+  # GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, in
+  # launch-editor through vite's dev server. The 7.x fix is 7.3.7.
+  vite: ^7.3.7
+  launch-editor: ^2.14.2
+  # GHSA-68fv-2mgg-jv7q, event-loop DoS through section offsets.
+  source-map-js: ^1.2.2
   # GHSA-82fw-gwwq-j7x9, path traversal and arbitrary file read through
   # the mocker's redirect mock. vitest pulls its own matching mocker so
   # both are pinned. The 4.x fix is 4.1.11.
@@ -19,7 +24,8 @@ overrides:
   postcss: ^8.5.23
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
-  shell-quote: ^1.9.0
+  # GHSA-pqg4-j6r4-53mv, `quote()` command injection. Fixed in 1.11.0.
+  shell-quote: ^1.11.0
   # GHSA-vfj7-8cjw-p6xm affects every release through 3.0.3, the newest.
   # No fix exists, see the repository root's pnpm-workspace.yaml.
   braces: ^3.0.3

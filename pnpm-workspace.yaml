@@ -7,7 +7,15 @@ onlyBuiltDependencies:
 # is not. `pnpm audit:safe --root .` from the repo root is what checks
 # them against the lockfile.
 overrides:
-  vite: ^7.3.5
+  # GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, all in
+  # launch-editor, which vite reaches through its dev server: an existence
+  # check bypass, `%` left unescaped and editor flags read as commands, on
+  # Windows. The 7.x fix is 7.3.7, and launch-editor's own is 2.14.2.
+  vite: ^7.3.7
+  launch-editor: ^2.14.2
+  # GHSA-68fv-2mgg-jv7q, event-loop DoS through indexed source-map section
+  # offsets. Fixed in 1.2.2.
+  source-map-js: ^1.2.2
   # GHSA-82fw-gwwq-j7x9, path traversal and arbitrary file read through
   # the mocker's redirect mock. vitest pulls its own matching mocker so
   # both are pinned. The 4.x fix is 4.1.11, and it stays on vite 7:
@@ -22,7 +30,10 @@ overrides:
   postcss: ^8.5.23
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
-  shell-quote: ^1.9.0
+  # GHSA-pqg4-j6r4-53mv, `quote()` command injection through a line
+  # terminator after a `{ comment }` token. Raised from ^1.9.0, which
+  # admitted the vulnerable 1.10.0 the lockfile held. Fixed in 1.11.0.
+  shell-quote: ^1.11.0
   # GHSA-vfj7-8cjw-p6xm, stack exhaustion on deeply nested patterns,
   # affects every release through 3.0.3, which is the newest on npm
   # (2024-09). There is no fix to raise this to. It is reached through
@@ -58,7 +69,9 @@ overrides:
   # nesting in parseBody(), and toSSG() still escaping its output
   # directory. All three are fixed in 4.13.5. Raised to 4.13.7 for
   # GHSA-hxh3-vqpv-xpqv, hono/jsx rendering plain strings unescaped.
-  hono: ^4.13.7
+  # Raised to 4.13.11 for GHSA-5r4p-p66f-jhc7, `serveStatic` decoding the
+  # path twice and so slipping past middleware on static paths.
+  hono: ^4.13.11
   # GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7: three
   # DoS advisories patched on every major line on 2026-09-14. The
   # lockfile held 1.1.18 and 2.1.4, both inside the old floors.
