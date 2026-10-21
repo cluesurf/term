@@ -188,6 +188,59 @@ task bucket
   expect('a closure does not see the version at its creation', about(late, 'call late(code 1)', 'code 1'), refused('unchecked-hold'))
 }
 
+// ---- a cited rule's `have` (term-proof-0003) ----
+//
+// `assumed` is true only under its hypothesis, and the kernel proved it by `fold` from that hypothesis. It used to be
+// recorded as an UNCONDITIONAL lemma, so `cite assumed` (or `seek`) closed `g == yes` for every flag, `no` included.
+// A lemma proven from the path's equations (a `have`, a guard) is no rewrite the kernel may use at any seat, so the
+// false law is refused, while an unconditional lemma is still cited.
+function citeHave(): void {
+  const flag = `form flag
+  case yes
+  case no
+
+task flip
+  take g, like flag
+  like flag
+  sift g
+    case yes
+      back make no
+    case no
+      back make yes
+
+rule assumed
+  seat g, like flag
+  have hold, is-equal(g, make yes)
+  show hold, is-equal(g, make yes)
+  fold g
+`
+  const everyFlag = (steps: string): string => `${flag}
+rule every-flag-is-yes
+  seat g, like flag
+  show hold, is-equal(g, make yes)
+${steps}`
+
+  expect('control: the conditional rule itself is proven', flag, proven)
+  expect('cite of a rule with a have does not drop the have', everyFlag('  cite assumed\n'), refused('invalid-proof'))
+  expect('nor does seek, rewriting by every lemma', everyFlag('  seek\n'), refused('invalid-proof'))
+  expect('nor a cite under a fold', everyFlag('  fold g\n    cite assumed\n'), refused('invalid-proof'))
+  expect(
+    'control: an unconditional rule is still cited',
+    `${flag}
+rule flip-twice
+  seat g, like flag
+  show hold, is-equal(flip(flip(g)), g)
+  fold g
+
+rule flip-twice-again
+  seat h, like flag
+  show hold, is-equal(flip(flip(h)), h)
+  cite flip-twice
+`,
+    proven,
+  )
+}
+
 function main(): void {
   // ---- reassignment ----
 
@@ -2067,6 +2120,7 @@ task count
   )
 
   lowering()
+  citeHave()
 
   console.log(`\nsoundness: ${pass} pass, ${fail} fail`)
 

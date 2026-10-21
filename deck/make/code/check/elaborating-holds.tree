@@ -507,12 +507,12 @@ task decide-by-table
   fork test, truth-table(st, ts/data, is/cs, ctx, evaluate(st, ctx/env, left), evaluate(st, ctx/env, right), given, divide-two(stated/length))
     hold
       discharge(hs, statement)
-      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx)
+      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx, is-above(given/length, 0))
       back true
   fork test, ring-case(st, is/truncating, is/no-span, ctx/level, evaluate(st, ctx/env, left), evaluate(st, ctx/env, right), given, no-rules())
     hold
       discharge(hs, statement)
-      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx)
+      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx, is-above(given/length, 0))
       back true
   sift found-counterexample(is/cs)
     case some
@@ -668,7 +668,7 @@ task settle
           fork test, agree
             hold
               discharge(hs, statement)
-              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, false)
               back true
   # the path's equations, as rewrites and as hypotheses
   fork test, is-above(assumptions/length, 0)
@@ -750,13 +750,15 @@ task settle
           save unfolded-left, hs/host/unfold-definitions(left-node)
           save unfolded-right, hs/host/unfold-definitions(right-node)
           save holds, ring-equal(unfolded-left, unfolded-right)
+          save modulo, false
           fork test, and(is-equal(holds, false), is-above(assumptions/length, 0))
             hold
               save holds, ring-equal-modulo(unfolded-left, unfolded-right, ring-pairs(hs, assumptions, true))
+              save modulo, true
           fork test, holds
             hold
               discharge(hs, statement)
-              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, modulo)
               back true
           refuse(hs, statement, <this proof does not establish the equality>, <>)
         miss
@@ -910,7 +912,7 @@ task check-hold
                       fork test, attempt-boolean(st, step)
                         hold
                           discharge(hs, statement)
-                          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+                          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, false)
                           back
                     case none
                       save l, l
@@ -969,7 +971,7 @@ task check-hold
               discharge(hs, statement)
               sift op
                 case equal
-                  record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+                  record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, is-above(assumptions/length, 0))
                 miss
                   save op, op
             miss
@@ -1012,12 +1014,12 @@ task check-hold
       fork test, and(is-equal(has-proof, false), ring-equal(ring/left, ring/right))
         hold
           discharge(hs, statement)
-          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, false)
           back
       fork test, and(is-above(assumptions/length, 0), ring-equal-modulo(ring/left, ring/right, ring-pairs(hs, assumptions, true)))
         hold
           discharge(hs, statement)
-          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx, true)
           back
       save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
       # linear in shape and over numbers: the linear prover's

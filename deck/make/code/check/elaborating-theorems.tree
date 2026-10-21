@@ -555,7 +555,11 @@ task numeric-term
     back true
   back true
 
-# a proven equation recorded as a citable lemma and a rewrite rule, nothing on any raise
+# a proven equation recorded as a citable lemma and a rewrite rule, nothing on any raise.
+# A CONDITIONAL equation is not recorded (term-proof-0003): one proven from the path's equations (a rule's `have`, a
+# guard, a definition) holds only where they do, and every reader of the table (`cite`, `seek`, an induction's cited
+# rewrites) uses a lemma at any values of its seats with no hypothesis to prove. It is cited through the hold walk
+# instead (check/hold-walk.tree `cited-facts`), which proves each hypothesis at the instance
 task record-lemma-rule
   take ts, like term-state
   take ls, like lemma-state
@@ -563,8 +567,9 @@ task record-lemma-rule
   take goal, like expression
   take scope, like hash, like text, like number
   take ctx, like context
+  take conditional, like boolean
 
-  fork test, is-equal(name, <>)
+  fork test, or(is-equal(name, <>), conditional)
     hold
       back
   save st, ts/st
