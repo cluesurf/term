@@ -995,7 +995,7 @@ task cited-facts
               link op
               sift op
                 case equal
-                  back refuse-cite(walk, name, at, <the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its seats, makes the two sides the same>)
+                  back refuse-cite(walk, name, at, <the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its seats, makes the two sides the same, or it was proven under a hypothesis (a `have` or a guard), which the kernel never cites>)
                 miss
                   save nothing, 0
             miss

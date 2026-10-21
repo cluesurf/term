@@ -47,6 +47,10 @@ load ./alias
   find type-alias
   find through-alias
 
+load ./lean-nest
+  find lean-labels
+  find lean-calls-nested
+
 load ./judging
   find kernel-term
   find signature-entry
@@ -396,11 +400,14 @@ task number-literal-constant
 
 # ---- the kernel's reading of a type ----
 
-# the program's transparent aliases, and the ones being read through right now
+# the program's transparent aliases, the ones being read through right now, and the tasks a value index may call
+# (`callable`, term-proof-0004: each a task the kernel can type, with no generics, filled by `encode-functions` before
+# it reads the claims, so a claim may state `steps(s, e, step(s, e))`)
 form alias-state
   mark shared
   link aliases, like hash, like text, like type-alias
   link open, like hash, like text, like boolean
+  link callable, like hash, like text, like list, like text
 
 task new-alias-state
   take aliases, like hash, like text, like type-alias
@@ -410,14 +417,21 @@ task new-alias-state
     make alias-state
       bind aliases, aliases
       bind open, make hash
+      bind callable, make hash
 
 # a value index (a variable an enclosing telescope binds, a literal, a construction, a call of a function value in
-# scope) as a kernel term at binder `depth`, none for anything else. `value-scope` maps a name to its binder level
+# scope, a call of a task `callable` names) as a kernel term at binder `depth`, none for anything else. `value-scope`
+# maps a name to its binder level.
+# A CALLED TASK is its constant applied to the arguments. The kernel unfolds the constant only when it checked the
+# task's body as one pure, terminating term (check/elaborating-main.tree `check-task`, `define-constant`); any other
+# task stays an opaque constant, so a claim about it can be proven only of every function of its type, never by an
+# unchecked body. A task with generics is not callable here: its constant takes its type arguments first
 task index-term-at
   take node, like expression
   take depth, like number
   take value-scope, like hash, like text, like number
   take owners, like hash, like text, like list, like text
+  take callable, like hash, like text, like list, like text
   like maybe, like kernel-term
 
   sift node
@@ -444,7 +458,7 @@ task index-term-at
       save term, constant(head)
       walk fields
         take field
-        sift index-term-at(field/value, depth, value-scope, owners)
+        sift index-term-at(field/value, depth, value-scope, owners, callable)
           case some
             link argument
             save term, apply-term(term, argument)
@@ -457,13 +471,50 @@ task index-term-at
       sift callee
         case variable
           link callee-name
-          fork test, is-equal(value-scope/has(callee-name), false)
+          save term, constant(callee-name)
+          save call-args, args
+          fork test, value-scope/has(callee-name)
             hold
-              back make none
-          save term, variable(subtract(subtract(depth, value-scope/get(callee-name)), 1))
-          walk args
+              save term, variable(subtract(subtract(depth, value-scope/get(callee-name)), 1))
+            miss
+              fork test, is-equal(callable/has(callee-name), false)
+                hold
+                  back make none
+              # A LEAN LABEL THAT NAMES NO PARAMETER IS A NESTED CALL (check/lean-nest.tree), as the resolver reads
+              # one in a body: `show` over `same` with `w` and `i` under it is `show(same(w, i))`. A type is not
+              # resolved, so it is nested here, and only into a task a type may call
+              save params, callable/get(callee-name)
+              save chosen, make list
+              walk lean-labels(node)
+                take label
+                fork test, and(is-equal(names-include(params, label/written), false), callable/has(label/name))
+                  hold
+                    push(chosen, label/at)
+              fork test, is-above(chosen/length, 0)
+                hold
+                  sift lean-calls-nested(node, chosen)/node
+                    case call
+                      link args
+                      save call-args, args
+                    miss
+                      back make none
+          # a label left is a named argument, which a value index does not arrange: unreadable, never misplaced
+          sift node
+            case call
+              link lean
+              link lean-names
+              fork test, is-equal(lean, true)
+                hold
+                  walk lean-names
+                    take flagged
+                    fork test, flagged
+                      hold
+                        back make none
+            miss
+              save call-args, call-args
+          walk call-args
             take arg
-            sift index-term-at(arg, depth, value-scope, owners)
+            sift index-term-at(arg, depth, value-scope, owners, callable)
               case some
                 link argument
                 save term, apply-term(term, argument)
@@ -474,6 +525,26 @@ task index-term-at
           back make none
     miss
       back make none
+
+task names-include
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# no task is callable: a constructor's own indices
+task no-callable
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
 
 # no constructor resolves: the default of the original's `resolveCtor`
 task empty-owners
@@ -626,7 +697,7 @@ task kernel-type-at
               save family, variable(subtract(subtract(depth, value-scope/get(name)), 1))
               walk index-args
                 take value-arg
-                sift index-term-at(value-arg, depth, value-scope, owners)
+                sift index-term-at(value-arg, depth, value-scope, owners, state/callable)
                   case some
                     link arg-term
                     save family, apply-term(family, arg-term)
@@ -658,7 +729,7 @@ task kernel-type-at
                 back make none
           walk index-args
             take value-arg
-            sift index-term-at(value-arg, depth, value-scope, owners)
+            sift index-term-at(value-arg, depth, value-scope, owners, state/callable)
               case some
                 link arg-term
                 save base, apply-term(base, arg-term)
@@ -1072,7 +1143,7 @@ task encode-enum
                 save read-ok, false
                 fork test, is-below(i, values/length)
                   hold
-                    sift index-term-at(get(values, i), add(m, k), field-scope(fields, k, m), data/variant-to-enum)
+                    sift index-term-at(get(values, i), add(m, k), field-scope(fields, k, m), data/variant-to-enum, no-callable())
                       case some
                         link term
                         push(index-terms, term)
@@ -1286,7 +1357,7 @@ task encode-family
             save read-ok, false
             fork test, is-below(t, values/length)
               hold
-                sift index-term-at(get(values, t), result-depth, field-scope(fields, k, depth-b), data/variant-to-enum)
+                sift index-term-at(get(values, t), result-depth, field-scope(fields, k, depth-b), data/variant-to-enum, no-callable())
                   case some
                     link ivt
                     push(iv-terms, ivt)
@@ -1678,6 +1749,36 @@ task encode-functions
       like boolean
   mark private
 
+  # THE TASKS A TYPE MAY CALL (term-proof-0004): every task with no generics that is not a claim, nor a claim's proof.
+  # One the kernel cannot type has no constant, so a type calling it does not check and its claim proves nothing
+  save claims, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link claim
+        fork test, is-equal(claim, true)
+          hold
+            claims/set(name, true)
+      miss
+        turn next
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link generics
+        link params
+        fork test, and(is-equal(generics/length, 0), is-equal(claims/has(name), false))
+          hold
+            save names, make list
+            walk params
+              take p
+              push(names, p/name)
+            state/callable/set(name, names)
+      miss
+        turn next
   walk program
     take one
     sift one

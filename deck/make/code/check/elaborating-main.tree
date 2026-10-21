@@ -319,16 +319,30 @@ task check-program
             push(ordered, one)
       miss
         turn next
+  # a claim's proof after every other task, so a task its claim calls in its type (term-proof-0004) is already a
+  # transparent definition when the proof is checked against that type
   walk program
     take one
     sift one
       case function
+        link name
         link stub
-        fork test, is-unequal(stub, true)
+        fork test, and(is-unequal(stub, true), is-equal(claims/has(name), false))
           hold
             push(ordered, one)
       miss
         push(ordered, one)
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link stub
+        fork test, and(is-unequal(stub, true), claims/has(name))
+          hold
+            push(ordered, one)
+      miss
+        turn next
   walk ordered
     take statement
     sift statement

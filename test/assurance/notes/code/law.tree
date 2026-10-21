@@ -2,56 +2,26 @@
 # the proof as one term and keeps it for the Lean export. A law's lemmas are claims too, named after the law, so a
 # broken model is refused under the law's name.
 #
-# THE MODEL HERE IS RELATIONAL. `step`, `replay` and `view` are inductive relations (`steps s e t`: event e takes
-# state s to t), not the tasks of model.tree, because a claim's type cannot name a call of a defined task today: the
-# kernel reads a value index only as a variable, a literal, a construction, or a call of a function PARAMETER
-# (check/elaborating-data.tree `index-term-at`). So `fair-shelf(replay(es))` cannot be written, and these laws are
-# proven of the relation, which model.tree's tasks are meant to implement. The bridge (each task inhabits its
-# relation) is the claim that waits on that gap. The relations are nondeterministic where safety allows: an erase may
-# always leave a note as it was, a view may always leave a note out, so each law holds of every way to resolve them.
-form natural
-  case zero
-  case succ
-    link prior, like natural
-
-form rank
-  case admin
-  case member
-
-form person
-  link id, like natural
-  link rank, like rank
-
-# a note is live, or gone with the person who erased it (the tombstone a soft delete keeps)
-form note
-  case live
-    link at, like natural
-    link whose, like natural
-  case gone
-    link at, like natural
-    link whose, like natural
-    link by, like person
-
-form shelf
-  case bare
-  case more
-    link top, like note
-    link rest, like shelf
-
-form event
-  case write
-    link actor, like person
-    link id, like natural
-  case erase
-    link actor, like person
-    link id, like natural
-
-# the events so far, newest first
-form events
-  case begin
-  case after
-    link event, like event
-    link earlier, like events
+# THE LAWS ARE STATED OVER RELATIONS (`steps s e t`: event e takes state s to t), and model.tree's tasks are tied to
+# them by BRIDGE claims at the end of this file: `view-shows` says what `view` computes is a view `shows` allows, so
+# laws 4 and 5 hold of the task itself (`deleted-stays-gone-of-view`, `isolation-of-view`). A claim's type may call a
+# pure, terminating task of the program since term-proof-0004, which the kernel unfolds. The bridges for `step` and
+# `replay` (law 1 of the task) are not written yet. The relations are nondeterministic where safety allows: an erase
+# may always leave a note as it was, a view may always leave a note out, so each law holds of every way to resolve
+# them. The forms are model.tree's, so a law and the task it is about name one `shelf`.
+load ./model
+  find natural
+  find rank
+  find person
+  find note
+  find shelf
+  find event
+  find events
+  find flag
+  find same
+  find view
+  find pick
+  find show
 
 # THE POLICY: a person may erase a note when the person is an admin, or owns it
 form allowed
@@ -1072,3 +1042,537 @@ task ownership-settle
                 bind whose, whose
                 bind by, by
           back ok
+
+# ---- THE BRIDGE FOR VIEW: model.tree's `view` computes a view `shows` allows ----
+
+# what `same(w, i)` answers, as evidence: `yes` only where w is i
+form same-view
+  head w, like natural
+  head i, like natural
+  head f, like flag
+  case is-same
+    link k, like natural
+    head
+      read k
+    head
+      read k
+    head
+      make yes
+  case not-same
+    link a, like natural
+    link b, like natural
+    head
+      read a
+    head
+      read b
+    head
+      make no
+
+# a step down both naturals keeps the evidence
+rule view-same-lift
+  take p, like natural
+  take q, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read p
+      head
+        read q
+      head
+        read f
+  like same-view
+    head
+      make succ
+        bind prior, p
+    head
+      make succ
+        bind prior, q
+    head
+      read f
+
+task view-same-lift
+  take p
+  take q
+  take f
+  take ev
+  sift ev
+    case is-same
+      back
+        make is-same
+          bind k
+            make succ
+              bind prior, k
+    case not-same
+      back
+        make not-same
+          bind a
+            make succ
+              bind prior, a
+          bind b
+            make succ
+              bind prior, b
+
+# `same` answers as the evidence says
+rule view-same
+  take w, like natural
+  take i, like natural
+  like same-view
+    head
+      read w
+    head
+      read i
+    head
+      same(w, i)
+
+task view-same
+  take w
+  take i
+  sift w
+    case zero
+      back view-same-zero(i)
+    case succ
+      link p
+      back
+        view-same-succ
+          read p
+          read i
+          task
+            take q, like natural
+            like same-view
+              head
+                read p
+              head
+                read q
+              head
+                same(p, q)
+            back view-same(p, q)
+
+rule view-same-zero
+  take i, like natural
+  like same-view
+    head
+      make zero
+    head
+      read i
+    head
+      same
+        make zero
+        read i
+
+task view-same-zero
+  take i
+  sift i
+    case zero
+      back
+        make is-same
+          bind k, make zero
+    case succ
+      back
+        make not-same
+          bind a, make zero
+          bind b
+            make succ
+              bind prior, prior
+
+rule view-same-succ
+  take p, like natural
+  take i, like natural
+  take below
+    like task
+      take q, like natural
+      like same-view
+        head
+          read p
+        head
+          read q
+        head
+          same(p, q)
+  like same-view
+    head
+      make succ
+        bind prior, p
+    head
+      read i
+    head
+      same
+        make succ
+          bind prior, p
+        read i
+
+task view-same-succ
+  take p
+  take i
+  take below
+  sift i
+    case zero
+      back
+        make not-same
+          bind a
+            make succ
+              bind prior, p
+          bind b, make zero
+    case succ
+      link q
+      back view-same-lift(p, q, same(p, q), below(q))
+
+# ONE LIVE NOTE BEFORE A VIEW: shown when `same` said yes, skipped when it said no. A convoy: the rest's view is taken
+# after the match, so the match rewrites the viewer's id in its type
+rule view-pick-by
+  take at, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take w, like natural
+  take i, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read w
+      head
+        read i
+      head
+        read f
+  like task
+    take others
+      like shows
+        head
+          read rest
+        head
+          make person
+            bind id, i
+            bind rank, r
+        head
+          read shown
+    like shows
+      head
+        make more
+          bind top
+            make live
+              bind at, at
+              bind whose, w
+          bind rest, rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        show
+          read f
+          make live
+            bind at, at
+            bind whose, w
+          read shown
+
+task view-pick-by
+  take at
+  take r
+  take rest
+  take shown
+  take w
+  take i
+  take f
+  take ev
+  sift ev
+    case is-same
+      back
+        task
+          take others
+            like shows
+              head
+                read rest
+              head
+                make person
+                  bind id, k
+                  bind rank, r
+              head
+                read shown
+          like shows
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, k
+                bind rest, rest
+            head
+              make person
+                bind id, k
+                bind rank, r
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, k
+                bind rest, shown
+          back
+            make show-own
+              bind at, at
+              bind w, k
+              bind r, r
+              bind rest, rest
+              bind shown, shown
+              bind others, others
+    case not-same
+      back
+        task
+          take others
+            like shows
+              head
+                read rest
+              head
+                make person
+                  bind id, b
+                  bind rank, r
+              head
+                read shown
+          like shows
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, a
+                bind rest, rest
+            head
+              make person
+                bind id, b
+                bind rank, r
+            head
+              read shown
+          back
+            make show-skip
+              bind n
+                make live
+                  bind at, at
+                  bind whose, a
+              bind rest, rest
+              bind doer
+                make person
+                  bind id, b
+                  bind rank, r
+              bind shown, shown
+              bind others, others
+
+# ONE LIVE NOTE BEFORE A VIEW, by what `same` answers. Its type is written through `pick`, which computes to
+# `show(same(whose, i), ...)`, the type `view-pick-by` builds
+rule view-pick-live
+  take at, like natural
+  take whose, like natural
+  take i, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take others
+    like shows
+      head
+        read rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        read shown
+  like shows
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, whose
+        bind rest, rest
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      pick
+        make live
+          bind at, at
+          bind whose, whose
+        make person
+          bind id, i
+          bind rank, r
+        read shown
+
+task view-pick-live
+  take at
+  take whose
+  take i
+  take r
+  take rest
+  take shown
+  take others
+  save fill, view-pick-by(at, r, rest, shown, whose, i, same(whose, i), view-same(whose, i))
+  back fill(others)
+
+# ONE NOTE BEFORE A VIEW, live or gone
+rule view-pick
+  take top, like note
+  take i, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take others
+    like shows
+      head
+        read rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        read shown
+  like shows
+    head
+      make more
+        bind top, top
+        bind rest, rest
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      pick
+        read top
+        make person
+          bind id, i
+          bind rank, r
+        read shown
+
+task view-pick
+  take top
+  take i
+  take r
+  take rest
+  take shown
+  take others
+  sift top
+    case live
+      back view-pick-live(at, whose, i, r, rest, shown, others)
+    case gone
+      back
+        make show-skip
+          bind n
+            make gone
+              bind at, at
+              bind whose, whose
+              bind by, by
+          bind rest, rest
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind shown, shown
+          bind others, others
+
+# THE BRIDGE: what `view` computes for the viewer `person(i, r)` is a view `shows` allows
+rule view-shows
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like shows
+    head
+      read s
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task view-shows
+  take s
+  take i
+  take r
+  sift s
+    case bare
+      back
+        make show-end
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+    case more
+      back
+        view-pick
+          read top
+          read i
+          read r
+          read rest
+          view
+            read rest
+            make person
+              bind id, i
+              bind rank, r
+          view-shows(rest, i, r)
+
+# LAW 4 OF THE TASK: no view `view` computes shows an erased note
+rule deleted-stays-gone-of-view
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like all-live
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task deleted-stays-gone-of-view
+  take s
+  take i
+  take r
+  back
+    deleted-stays-gone
+      read s
+      make person
+        bind id, i
+        bind rank, r
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+      view-shows(s, i, r)
+
+# LAW 5 OF THE TASK: every note `view` computes for a person is that person's
+rule isolation-of-view
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like owned
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task isolation-of-view
+  take s
+  take i
+  take r
+  back
+    isolation
+      read s
+      make person
+        bind id, i
+        bind rank, r
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+      view-shows(s, i, r)

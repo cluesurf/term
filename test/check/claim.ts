@@ -634,6 +634,135 @@ task symmetry
   )
 }
 
+// ---- a claim's type may call a task of the program (term-proof-0004) ----
+//
+// A value index was read only as a variable, a literal, a construction or a call of a function PARAMETER, so a law
+// about what a task computes (`flip(flip(g)) == g`) could not be a claim. Now a call of a task with no generics is its
+// kernel constant, unfolded only when the kernel checked the task's body as one pure, terminating term. Each true law
+// beside its false twin, and a task the kernel never unfolds (it does not terminate) stays opaque: refl does not
+// prove a claim about it.
+
+const FLAG = `form flag
+  case yes
+  case no
+
+task flip
+  take g, like flag
+  like flag
+  sift g
+    case yes
+      back make no
+    case no
+      back make yes
+
+task spin
+  take g, like flag
+  like flag
+  back spin(g)
+`
+
+const closedClaim = (name: string, left: string, right: string, value: string): string => `${EQUAL}
+${FLAG}
+rule ${name}
+  like equal flag
+    head
+      ${left}
+    head
+      ${right}
+
+task ${name}
+  send back
+    make equal/refl
+      bind c, ${value}
+`
+
+const everyFlagClaim = (name: string, left: string, right: string): string => `${EQUAL}
+${FLAG}
+rule ${name}
+  take g, like flag
+  like equal flag
+    head
+      ${left}
+    head
+      ${right}
+
+task ${name}
+  take g
+  sift g
+    case yes
+      back
+        make equal/refl
+          bind c, make yes
+    case no
+      back
+        make equal/refl
+          bind c, make no
+`
+
+{
+  const out = run(closedClaim('flip-yes', 'flip(make yes)', 'make no', 'make no'))
+
+  ok('a claim calling a task: flip(yes) == no, by refl, is proven', !out.refused, out.errors.join(','))
+}
+
+{
+  const out = run(closedClaim('flip-yes', 'flip(make yes)', 'make yes', 'make yes'))
+
+  ok(
+    'FALSE: flip(yes) == yes is refused',
+    out.refused && out.errors.includes('unverified-proof'),
+    `refused=${out.refused} ${out.errors.join(',')}`,
+  )
+}
+
+{
+  const out = run(everyFlagClaim('flip-twice', 'flip(flip(g))', 'read g'))
+
+  ok('flip(flip(g)) == g for every flag, by cases, is proven', !out.refused, out.errors.join(','))
+}
+
+{
+  const out = run(everyFlagClaim('flip-fixed', 'flip(g)', 'read g'))
+
+  ok(
+    'FALSE: flip(g) == g for every flag is refused',
+    out.refused && out.errors.includes('unverified-proof'),
+    `refused=${out.refused} ${out.errors.join(',')}`,
+  )
+}
+
+{
+  const out = run(closedClaim('spin-yes', 'spin(make yes)', 'make yes', 'make yes'))
+
+  ok(
+    'a task the kernel did not keep (it does not terminate) is opaque: spin(yes) == yes is refused',
+    out.refused && out.errors.includes('unverified-proof'),
+    `refused=${out.refused} ${out.errors.join(',')}`,
+  )
+}
+
+// in a LEAN file a call written under a call is read as a label over its arguments until the resolver nests it, and
+// nothing resolves a type: the kernel's reading nests it the same way, so `flip` over `flip` over `g` is flip(flip(g))
+{
+  const text = everyFlagClaim('flip-twice', 'flip\n        flip\n          read g', 'read g')
+  const lean = compile({ file: 'claim.tree', text }, { leanOf: () => true })
+  const falseLean = compile(
+    { file: 'claim.tree', text: everyFlagClaim('flip-fixed', 'flip\n        flip\n          flip\n            read g', 'read g') },
+    { leanOf: () => true },
+  )
+
+  ok(
+    'lean: a call nested under a call in a claim type reads, and flip(flip(g)) == g is proven',
+    lean.ok,
+    lean.ok ? '' : lean.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
+  ok(
+    'FALSE, lean: flip(flip(flip(g))) == g is refused',
+    !falseLean.ok && falseLean.diagnostics.some(d => d.name === 'unverified-proof'),
+    falseLean.ok ? 'compiled' : falseLean.diagnostics.map(d => d.name).join(','),
+  )
+}
+
 // ---- the qualified constructor spelling ----
 
 {

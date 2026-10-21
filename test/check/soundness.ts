@@ -221,9 +221,20 @@ rule every-flag-is-yes
 ${steps}`
 
   expect('control: the conditional rule itself is proven', flag, proven)
-  expect('cite of a rule with a have does not drop the have', everyFlag('  cite assumed\n'), refused('invalid-proof'))
+  expect('cite of a rule with a have does not drop the have', everyFlag('  cite assumed\n'), refused('unproven'))
   expect('nor does seek, rewriting by every lemma', everyFlag('  seek\n'), refused('invalid-proof'))
   expect('nor a cite under a fold', everyFlag('  fold g\n    cite assumed\n'), refused('invalid-proof'))
+  expect(
+    'control: under the same have, the goal still holds',
+    `${flag}
+rule yes-when-yes
+  seat g, like flag
+  have hold, is-equal(g, make yes)
+  show hold, is-equal(g, make yes)
+  cite assumed
+`,
+    proven,
+  )
   expect(
     'control: an unconditional rule is still cited',
     `${flag}

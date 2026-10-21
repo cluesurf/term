@@ -8,7 +8,7 @@ task note-grammar-text
   like text
 
   save lines, make list
-  push(lines, <# The `note` grammar: ordinary notation, one expression (note/term/mill/03-note-grammar.md). This file IS the parser.>)
+  push(lines, <# The `note` grammar: ordinary notation, one expression (note/project/term/mill/03-note-grammar.md). This file IS the parser.>)
   push(lines, <# The build runs it with the text grammar engine (deck/make/code/compile/mine-text.tree), and the note reader>)
   push(lines, <# (./read.tree) reads what it matched by these rule names, so a change here is a change to what `note` reads.>)
   push(lines, <#>)

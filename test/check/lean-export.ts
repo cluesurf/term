@@ -115,6 +115,66 @@ const planted = plantLean(out.lean, 'symmetry', `(@TermExport.«equal».«refl»
 const changed = out.lean.split('\n').filter((line, i) => planted.split('\n')[i] !== line)
 ok('the plant changes exactly one line, the body of symmetry', changed.length === 1 && planted !== out.lean, `${changed.length} lines`)
 
+// A CLAIM ABOUT A TASK (term-proof-0004): its type calls `flip`, which the kernel checked and keeps as a transparent
+// definition, so the export writes `flip` as a `def` before the claim and nothing as an axiom
+const aboutTask = exportLean({
+  file: 'flip.tree',
+  text: `form equal
+  head a
+  head x, like a
+  head y, like a
+  case refl
+    link c, like a
+    head
+      read c
+    head
+      read c
+
+form flag
+  case yes
+  case no
+
+task flip
+  take g, like flag
+  like flag
+  sift g
+    case yes
+      back make no
+    case no
+      back make yes
+
+rule flip-twice
+  take g, like flag
+  like equal flag
+    head
+      flip(flip(g))
+    head
+      read g
+
+task flip-twice
+  take g
+  sift g
+    case yes
+      back
+        make equal/refl
+          bind c, make yes
+    case no
+      back
+        make equal/refl
+          bind c, make no
+`,
+})
+
+ok(
+  'a claim whose type calls a task is exported, the task a def before it, no axiom',
+  aboutTask.exported.some(e => e.name === 'flip-twice' && e.claim && e.axioms.length === 0) &&
+    aboutTask.lean.indexOf('def TermExport.«flip»') >= 0 &&
+    aboutTask.lean.indexOf('def TermExport.«flip»') < aboutTask.lean.indexOf('def TermExport.«flip-twice»') &&
+    aboutTask.axioms.length === 0 &&
+    aboutTask.lean.includes('(TermExport.«flip» (TermExport.«flip» g_1)) g_1)'),
+  JSON.stringify({ exported: aboutTask.exported, refused: aboutTask.refused, axioms: aboutTask.axioms }),
+)
+
 // write the files for a Lean run by hand
 const writeAt = process.argv.indexOf('--write')
 

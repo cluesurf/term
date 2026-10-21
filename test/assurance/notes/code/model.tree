@@ -2,12 +2,11 @@
 # runs the events from the empty shelf, `view` is what one person is shown. Recursion only, no reassignment, so the
 # kernel reads every task here as a term.
 #
-# law.tree states the laws over relations these tasks are meant to implement (`steps`, `replays`, `shows`). The claim
-# that ties them, `steps(s, e, step(s, e))`, cannot be written yet: a claim's type cannot name a call of a defined
-# task (see the demo's log.md, term-assurance-demo-0001).
+# law.tree states the laws over relations these tasks are meant to implement (`steps`, `replays`, `shows`), and ties
+# `view` to `shows` (`view-shows`, so laws 4 and 5 hold of `view` itself). `step` and `replay` are not tied yet.
 #
-# The forms are law.tree's, written again: loading anything from law.tree brings its claims into this unit without
-# their proofs, and the per-unit build then calls each one open (tmp/claim-load-open under deck/term/deck/term).
+# The forms live here and law.tree loads them, never the other way: loading anything from law.tree brings its claims
+# into this unit without their proofs, and the per-unit build then calls each one open (term-proof-0005).
 form natural
   case zero
   case succ
