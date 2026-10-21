@@ -2977,10 +2977,13 @@ task infer
               bind type, type
               bind value, left
           save base-type, apply-value(st, apply-value(st, motive-value, left), refl-a)
-          check(st, ctx, base, base-type)
+          # J's result IS its base, transported (term-proof-0001): the base's usage is the result's, so an erased
+          # binder cannot come back live through it and a linear one is not used twice. The proof and the motive
+          # stay at 0, a dead region
+          save base-usage, check(st, ctx, base, base-type)
           save proof-value, evaluate(st, ctx/env, proof)
           save result-type, apply-value(st, apply-value(st, motive-value, right), proof-value)
-          back inferred-of(result-type, zero-usage(ctx/level))
+          back inferred-of(result-type, base-usage)
         miss
           halt <kernel-type:J needs an identity proof>
     case sigma
@@ -2996,7 +2999,15 @@ task infer
       save pair-type, force(st, got/type)
       sift pair-type
         case sigma
+          link mult
           link domain
+          # AN ERASED FIRST COMPONENT IS NOT A LIVE VALUE (term-proof-0001): the pair kept it at multiplicity 0, so
+          # its usage was scaled away, and projecting it would hand a dead value to a live place. Refused outright,
+          # since the kernel threads no demand to tell an erased place from a live one; nothing the elaborator builds
+          # is a sigma of multiplicity 0
+          fork test, is-equal(mult, 0)
+            hold
+              halt <kernel-type:fst of a pair whose first component is erased (multiplicity 0)>
           back inferred-of(domain, got/usage)
         miss
           halt <kernel-type:fst of a non-pair>

@@ -625,6 +625,34 @@ function main(): void {
       {throw new CoreTypeError('the Bool self-encoding is not a type')}
   })
 
+  // ---- the dead-to-live wall (term-proof-0001, tmp/mult-zero-wall-probe.ts) ----
+  // J over refl at Type 1, with a constant motive to Type 0, so its result has the base's type and IS the base
+  const jOver = (base: Term): Term => ({
+    tag: 'j',
+    proof: refl(ty(1), ty(0)),
+    motive: lam(lam(ty(0))),
+    base,
+    level: litLevel(1),
+  })
+  const closed = (term: Term, type: Term): void => void check(emptyContext, term, evaluate([], type))
+
+  rejects('an erased binder returned through the base of J', () => closed(lam(jOver(v(0))), pi(0, ty(0), ty(0))))
+  rejects('a linear binder used twice, once hidden in the base of J', () =>
+    closed(lam(pair(jOver(v(0)), v(0))), pi(1, ty(0), sigma('many', ty(0), ty(0)))),
+  )
+  rejects('an erased binder packed as an erased first component, then projected live by fst', () =>
+    closed(lam(fst(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(0))),
+  )
+  ok('control: a linear binder returned once through the base of J', () =>
+    closed(lam(jOver(v(0))), pi(1, ty(0), ty(0))),
+  )
+  ok('control: fst of a pair whose first component is live', () =>
+    closed(lam(fst(ann(pair(v(0), ty(0)), sigma('many', ty(0), ty(1))))), pi('many', ty(0), ty(0))),
+  )
+  ok('control: snd of a pair whose first component is erased', () =>
+    closed(lam(snd(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(1))),
+  )
+
   console.log(`\njudge: ${pass} pass, ${fail} fail`)
 }
 

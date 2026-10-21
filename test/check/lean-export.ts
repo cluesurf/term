@@ -198,8 +198,18 @@ if (lean && existsSync(lean)) {
   ok('lean checks the export', good.status === 0, `${good.stdout}${good.stderr}`.slice(0, 2000))
   const axiomFree = CLAIMS.every(c => new RegExp(`'TermExport\\.${c}' does not depend on any axioms`).test(good.stdout))
   ok('lean reports every claim free of axioms', axiomFree, good.stdout.slice(0, 2000))
+  ok('lean prints no warning on the export', !/warning:/.test(`${good.stdout}${good.stderr}`), good.stdout.slice(0, 2000))
   const bad = spawnSync(lean, [join(dir, 'planted.lean')], { encoding: 'utf8' })
   ok('lean refuses the planted proof', bad.status !== 0, `${bad.stdout}${bad.stderr}`.slice(0, 2000))
+  // refused for the plant and nothing else: one error, on the planted body line, and symmetry alone rests on sorry
+  const plantedLine = out.lean.split('\n').findIndex((line, i) => planted.split('\n')[i] !== line) + 1
+  const errorLines = [...`${bad.stdout}${bad.stderr}`.matchAll(/planted\.lean:(\d+):\d+: error/g)].map(m => Number(m[1]))
+  const sorried = [...bad.stdout.matchAll(/'TermExport\.(\S+)' depends on axioms: \[sorryAx\]/g)].map(m => m[1])
+  ok(
+    'lean refuses the planted body alone',
+    errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'symmetry',
+    `errors at ${errorLines.join(', ')}, planted line ${plantedLine}, sorry in ${sorried.join(', ')}`,
+  )
 } else {
   console.log('skip  lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)')
 }

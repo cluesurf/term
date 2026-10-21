@@ -912,6 +912,12 @@ export function exportLean(source: LeanSource): LeanExport {
     '-- The translation: note/project/term/proof/lean-export/spec.md',
     ...(universes.size > 0 ? [`universe ${[...universes].sort().join(' ')}`] : []),
     '',
+    // Lean promotes an index that every constructor fills with its own binder (equal's first value) to a parameter,
+    // which puts one more argument before the motive of `casesOn` than Term's form has. Keep the form as Term has it.
+    'set_option inductive.autoPromoteIndices false',
+    // a translated binder Term never reads (a motive's major premise) is not a defect: keep the run's output clean
+    'set_option linter.unusedVariables false',
+    '',
     'noncomputable section',
     '',
     ...order.flatMap(name => [blocks.get(name)!, '']),
