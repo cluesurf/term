@@ -60,6 +60,16 @@ load @term/site/dom/native/toolkit/dom
 
 load @term/site/view/native/toolkit/host
   find mount-app
+
+load @term/site/http/http
+  find request
+  find response
+
+load @term/site/view/route-answer
+  find answer-nothing
+
+load @term/base/maybe
+  find maybe
 `
 
 const FILE = `
@@ -105,9 +115,12 @@ task main
 ${use}  call mount-app
     task route
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
       call screen
         read host
+      send back
+        call answer-nothing
 ${title}  call run-app
 `
 
@@ -133,12 +146,15 @@ task main
   call mount-app
     task route
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
       call append
         read host
         read host
       call screen
         read host
+      send back
+        call answer-nothing
     text <Repro>
   call run-app
 `

@@ -389,7 +389,27 @@ task base-signature
   push(out, signature-of(<Array>, arrow(type-zero(), type-zero())))
   push(out, signature-of(<arrayEmpty>, erased-pi(type-zero(), apply-term(constant(<Array>), variable(0)))))
   push(out, signature-of(<arrayPush>, erased-pi(type-zero(), arrow(apply-term(constant(<Array>), variable(0)), arrow(variable(1), apply-term(constant(<Array>), variable(2)))))))
+  # and its eliminator, which computes on the two constructors (check/judging.tree `reduce-array`, decision 001 of
+  # note/project/term/proof): a walk over a list is a fold that ends because the list does
+  push(out, signature-of(<arrayElim>, array-eliminator-type()))
   back out
+
+# arrayElim : (0 A : Type 0) -> (0 P : Array A -> Type 0) -> P (arrayEmpty A)
+#   -> ((xs : Array A) -> (x : A) -> P xs -> P (arrayPush A xs x)) -> (a : Array A) -> P a
+# the minor for a push takes the shorter list, the last element, then what the shorter list gave: Lean's `Array.rec`
+task array-eliminator-type
+  like kernel-term
+  mark private
+
+  save array, constant(<Array>)
+  save motive, arrow(apply-term(array, variable(0)), type-zero())
+  save empty-case, apply-term(variable(0), apply-term(constant(<arrayEmpty>), variable(1)))
+  # under A, P, e: A is 2, P is 1. Under xs, x, the shorter list's answer: A is 5, P is 4, xs is 2, x is 1
+  save pushed, apply-term(apply-term(apply-term(constant(<arrayPush>), variable(5)), variable(2)), variable(1))
+  save push-case, arrow(apply-term(array, variable(2)), arrow(variable(3), arrow(apply-term(variable(3), variable(1)), apply-term(variable(4), pushed))))
+  # under A, P, e, p, a: P is 3
+  save result, arrow(apply-term(array, variable(3)), apply-term(variable(3), variable(0)))
+  back erased-pi(type-zero(), erased-pi(motive, arrow(empty-case, arrow(push-case, result))))
 
 # a numeric literal's own postulated constant, so the kernel tells `24` from `999`
 task number-literal-constant

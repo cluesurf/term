@@ -1505,6 +1505,13 @@ task apply-value
           link circle
           back circle
         case none
+          save nothing, 0
+      # the list eliminator's, on a list built by its two constructors
+      sift reduce-array(st, name, spine, x)
+        case some
+          link folded
+          back folded
+        case none
           save made
             make kernel-value/rigid
               bind name, name
@@ -1554,6 +1561,70 @@ task reduce-circle
     hold
       back make(some, x)
   back make none
+
+# THE LIST ELIMINATOR's rules (decision 001 of note/project/term/proof): a list is built by `arrayEmpty A` and
+# `arrayPush A xs x` (the element at the END), and `arrayElim A P e p` on one computes
+#   arrayElim A P e p (arrayEmpty A)        -->  e
+#   arrayElim A P e p (arrayPush A xs x)    -->  p xs x (arrayElim A P e p xs)
+# Lean's recursor of the same inductive, minor for minor, so the exporter writes it as `Array.rec` and Lean checks the
+# rule. None when the application is no complete redex, or the list is not built by a constructor
+task reduce-array
+  take st, like judge-state
+  take name, like text
+  take sp, like list, like kernel-elim
+  take x, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  fork test, or(is-unequal(name, <arrayElim>), is-unequal(sp/length, 4))
+    hold
+      back make none
+  save major, whnf(st, x)
+  sift major
+    case rigid
+      link name
+      link spine
+      fork test, and(is-equal(name, <arrayEmpty>), is-equal(spine/length, 1))
+        hold
+          sift get(sp, 2)
+            case app
+              link arg
+              back make(some, arg)
+            miss
+              back make none
+      fork test, and(is-equal(name, <arrayPush>), is-equal(spine/length, 3))
+        hold
+          save xs-elim, get(spine, 1)
+          save last-elim, get(spine, 2)
+          save step-elim, get(sp, 3)
+          sift xs-elim
+            case app
+              link arg
+              save xs, arg
+              sift last-elim
+                case app
+                  link arg
+                  save last, arg
+                  sift step-elim
+                    case app
+                      link arg
+                      save step, arg
+                      save folded
+                        make kernel-value/rigid
+                          bind name, <arrayElim>
+                          bind spine, sp
+                      save below, apply-value(st, folded, xs)
+                      save reduced, apply-value(st, apply-value(st, apply-value(st, step, xs), last), below)
+                      back make(some, reduced)
+                    miss
+                      back make none
+                miss
+                  back make none
+            miss
+              back make none
+      back make none
+    miss
+      back make none
 
 task apply-j
   take st, like judge-state

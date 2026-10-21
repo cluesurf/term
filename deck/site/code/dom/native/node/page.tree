@@ -6,7 +6,7 @@ dock load
   load <global:html>, name doc
 
 # routing glue on the server: the path comes from the request (the server boot passes it), so this is a stub. A server
-# boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.
+# boot dispatches per request rather than reading globals; the same `route(host, request)` dispatcher is reused.
 task page-path
   like text
   send back, text </>

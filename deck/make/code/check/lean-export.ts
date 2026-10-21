@@ -463,6 +463,21 @@ export function exportLean(source: LeanSource): LeanExport {
     cases.set('Unit', [{ variant: 'unitValue', key: 'unitValue' }])
   }
 
+  // THE KERNEL'S LIST is an inductive too: `Array A` with `arrayEmpty` and `arrayPush` (the element at the end), and its
+  // eliminator `arrayElim` is that inductive's `Array.rec`, minor for minor, so the rule the kernel computes by
+  // (check/judging.tree `reduce-array`) is the one Lean's recursor has, and no list reaches Lean as an axiom
+  const ARRAY_ARITY = 1
+
+  if (!cases.has('Array') && signature.has('Array') && signature.has('arrayEmpty') && signature.has('arrayPush')) {
+    cases.set('Array', [
+      { variant: 'arrayEmpty', key: 'arrayEmpty' },
+      { variant: 'arrayPush', key: 'arrayPush' },
+    ])
+  }
+
+  const formArity = (form: string): number =>
+    form === 'Array' && !data.typeFormerArity.has(form) ? ARRAY_ARITY : (data.typeFormerArity.get(form) ?? 0)
+
   const constructors = new Map<string, { form: string; variant: string }>()
 
   for (const [form, list] of cases) {
@@ -585,7 +600,7 @@ export function exportLean(source: LeanSource): LeanExport {
       throw new Refuse(`the eliminator ${name} matches a value that is not a ${form}`)
     }
 
-    const arity = data.typeFormerArity.get(form) ?? 0
+    const arity = formArity(form)
     const read: Eliminator = {
       form,
       binders,
@@ -633,6 +648,8 @@ export function exportLean(source: LeanSource): LeanExport {
         emitProjection(name)
       } else if (eliminators.has(name) && enumDefs.has(name)) {
         emitEliminator(name)
+      } else if (name === 'arrayElim' && cases.has('Array')) {
+        emitArrayEliminator(name)
       } else if (proven.has(name) && definitions.has(name) && data.functionType.has(name)) {
         emitTask(name)
       } else {
@@ -687,7 +704,7 @@ export function exportLean(source: LeanSource): LeanExport {
       throw new Refuse(`the form ${form} has no type former in the signature`)
     }
 
-    const arity = data.typeFormerArity.get(form) ?? 0
+    const arity = formArity(form)
     const former = peelPis(formerType, arity, [], names)
 
     if (former.binders.length !== arity) {
@@ -771,6 +788,34 @@ export function exportLean(source: LeanSource): LeanExport {
     needAll(name, used)
     binders.forEach(binder => noteUniverses(binder.domain))
     blocks.set(name, `def ${constName(name)}${binderText(binders)} : ${printer.print(read.result)} :=\n  ${printer.print(body)}`)
+  }
+
+  // `arrayElim` by `Array.rec`: the element type, the motive, the two minors and the list, in the order both take them.
+  // Lean checks the definition against the type Term gives the eliminator, so a wrong rule is refused there
+  const emitArrayEliminator = (name: string): void => {
+    const type = signature.get(name)
+
+    if (!type) {
+      throw new Refuse(`the eliminator ${name} is in no signature`)
+    }
+
+    const { binders, rest } = peelPis(type, 5, ['A', 'motive', 'empty', 'push', 'list'], names)
+
+    if (binders.length !== 5) {
+      throw new Refuse(`the eliminator ${name} takes ${binders.length} arguments where Array.rec takes 5`)
+    }
+
+    const typed = binders.map((binder, i) => (i === 1 ? { ...binder, domain: anySort(binder.domain) } : binder))
+    const body = applyAll(
+      { k: 'const', name: 'Array.rec' },
+      binders.map(binder => ({ k: 'var', name: binder.name }) as Named),
+    )
+    const used = constants(rest, new Set())
+    typed.forEach(binder => constants(binder.domain, used))
+    used.add('Array')
+    needAll(name, used)
+    typed.forEach(binder => noteUniverses(binder.domain))
+    blocks.set(name, `def ${constName(name)}${binderText(typed)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`)
   }
 
   // a record's projection `R__field` by `R.casesOn`, its one case returning the field. Lean checks it against the type
@@ -880,7 +925,7 @@ export function exportLean(source: LeanSource): LeanExport {
     const indices = read.indices.map(t => substitute(t, map))
     const motive = substitute(read.motive, map)
     const variants = cases.get(read.form) ?? []
-    const arity = data.typeFormerArity.get(read.form) ?? 0
+    const arity = formArity(read.form)
 
     if (read.minors.length !== variants.length) {
       throw new Refuse(`its match has ${read.minors.length} cases where ${read.form} has ${variants.length}`)

@@ -1,7 +1,7 @@
 
 # The app host on the toolkits (native-navigation-0007): macOS, iOS and Android reach this through the `toolkit` rung of
 # their env chains, where they used to fall to ../host.tree, a signature with no body that mounted nothing. The same
-# `route(host, path)` dispatcher the browser and the server drive, mounted on the window's root and drawn from the
+# `route(host, request)` dispatcher the browser and the server drive, mounted on the window's root and drawn from the
 # navigation contract (../../navigation), with the platform's own back reaching `navigate-back`.
 #
 #   mount-app   the window, the first draw, one effect drawing each place after, and the back. Returns the root
@@ -26,6 +26,13 @@ load @term/site/view/navigation
   find start-navigation
   find current-path
   find navigate-back
+load @term/site/view/route-answer
+  find make-page-request
+load @term/site/http/http
+  find request
+  find response
+load @term/base/maybe
+  find maybe
 
 # the window's default size, in points: a phone's width, a reading height
 host app-width
@@ -39,7 +46,8 @@ task mount-app
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take title, like text
   like view
   save root
@@ -72,7 +80,8 @@ task mount-app
                     # that moves a captured text does not build on Rust (E0507)
                     call route
                       read root
-                      call current-path
+                      call make-page-request
+                        call current-path
                     send back, read root
   call on-back
     task went-back
@@ -88,7 +97,8 @@ task host
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take port, like number
   save root
     call mount-app

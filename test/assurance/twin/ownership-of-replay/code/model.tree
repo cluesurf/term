@@ -1,0 +1,248 @@
+# THE NOTES DEMO'S PURE CORE, as the site will run it: `step` takes a state and an event to the next state, `replay`
+# runs the events from the empty shelf, `view` is what one person is shown. Recursion only, no reassignment, so the
+# kernel reads every task here as a term.
+#
+# law.tree states the laws over relations these tasks are meant to implement (`steps`, `replays`, `shows`), and ties
+# each task to its relation (`view-shows`, `replay-replays`), so laws 1, 4 and 5 hold of the tasks themselves.
+#
+# The forms live here and law.tree loads them, never the other way: loading anything from law.tree brings its claims
+# into this unit without their proofs, and the per-unit build then calls each one open (term-proof-0005).
+form natural
+  case zero
+  case succ
+    link prior, like natural
+
+form rank
+  case admin
+  case member
+
+form person
+  link id, like natural
+  link rank, like rank
+
+form note
+  case live
+    link at, like natural
+    link whose, like natural
+  case gone
+    link at, like natural
+    link whose, like natural
+    link by, like person
+
+form shelf
+  case bare
+  case more
+    link top, like note
+    link rest, like shelf
+
+# an event names its actor by their id and rank, not by a `person`: a person is a record, which a proof cannot match
+# on, so a law about `step` could not say who acted. step builds the person from the two
+form event
+  case write
+    link who, like natural
+    link rank, like rank
+    link id, like natural
+  case erase
+    link who, like natural
+    link rank, like rank
+    link id, like natural
+
+form events
+  case begin
+  case after
+    link event, like event
+    link earlier, like events
+
+form flag
+  case yes
+  case no
+
+task either
+  take a, like flag
+  take b, like flag
+  like flag
+  sift a
+    case yes
+      back make yes
+    case no
+      back b
+
+# whether two naturals are the same one
+task same
+  take a, like natural
+  take b, like natural
+  like flag
+  sift a
+    case zero
+      sift b
+        case zero
+          back make yes
+        case succ
+          back make no
+    case succ
+      link p
+      sift b
+        case zero
+          back make no
+        case succ
+          link q
+          back same(p, q)
+
+task is-admin
+  take r, like rank
+  like flag
+  sift r
+    case admin
+      back make yes
+    case member
+      back make no
+
+# THE POLICY: an actor may erase a note when the actor is an admin or owns it. law.tree's `allowed` is this, as evidence
+task may
+  take actor, like person
+  take owner, like natural
+  like flag
+  back
+    either
+      is-admin(read actor/rank)
+      same
+        read actor/id
+        read owner
+
+task step
+  take s, like shelf
+  take e, like event
+  like shelf
+  sift e
+    case write
+      back
+        make more
+          bind top
+            make live
+              bind at, id
+              bind whose, who
+          bind rest, s
+    case erase
+      back
+        cross
+          read s
+          make person
+            bind id, who
+            bind rank, rank
+          read id
+
+# erase the note with this id, if the actor may
+task cross
+  take s, like shelf
+  take actor, like person
+  take id, like natural
+  like shelf
+  sift s
+    case bare
+      back make bare
+    case more
+      back
+        make more
+          bind top, settle(top, actor, id)
+          bind rest, cross(rest, actor, id)
+
+task settle
+  take n, like note
+  take actor, like person
+  take id, like natural
+  like note
+  sift n
+    case live
+      back aim(same(at, id), at, whose, actor)
+    case gone
+      back n
+
+# the note is the one named: erase it if the actor may
+task aim
+  take f, like flag
+  take at, like natural
+  take whose, like natural
+  take actor, like person
+  like note
+  sift f
+    case yes
+      # THE BREAK: the policy is asked and its answer ignored, so the named note is always buried. The relation's laws
+      # still hold, since they never mention this task; law 1 of the task does not
+      back
+        guard
+          either
+            may(actor, whose)
+            make yes
+          read at
+          read whose
+          read actor
+    case no
+      back
+        make live
+          bind at, at
+          bind whose, whose
+
+# THE CHECK: the owner or an admin
+task guard
+  take g, like flag
+  take at, like natural
+  take whose, like natural
+  take actor, like person
+  like note
+  sift g
+    case yes
+      back
+        make gone
+          bind at, at
+          bind whose, whose
+          bind by, actor
+    case no
+      back
+        make live
+          bind at, at
+          bind whose, whose
+
+task replay
+  take es, like events
+  like shelf
+  sift es
+    case begin
+      back make bare
+    case after
+      back step(replay(earlier), event)
+
+# what `viewer` is shown: their own live notes
+task view
+  take s, like shelf
+  take viewer, like person
+  like shelf
+  sift s
+    case bare
+      back make bare
+    case more
+      back pick(top, viewer, view(rest, viewer))
+
+task pick
+  take n, like note
+  take viewer, like person
+  take shown, like shelf
+  like shelf
+  sift n
+    case live
+      back show(same(whose, read viewer/id), n, shown)
+    case gone
+      back shown
+
+task show
+  take f, like flag
+  take n, like note
+  take shown, like shelf
+  like shelf
+  sift f
+    case yes
+      back
+        make more
+          bind top, n
+          bind rest, shown
+    case no
+      back shown

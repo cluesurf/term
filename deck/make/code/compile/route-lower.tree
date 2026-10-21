@@ -1,5 +1,8 @@
-# The route-lowering pass: turns `hook` route statements (the routing DSL) into a runnable `route(host, path)`
-# dispatcher function. It is the routing counterpart of `view-lower`. Because the dom layer is env-abstracted (a
+# The route-lowering pass: turns `hook` route statements (the routing DSL) into a runnable `route(host, request)`
+# dispatcher function. GET and HEAD draw the route's view and answer nothing; any other method calls the route's
+# `task <method>`, lifted out by the mill as `answer-<method>-<path>` (`handler-name`), and answers its response; a
+# method with no task answers 405 (term-site-framework-0006, decision 001 of note/project/term/site-framework). The
+# sketch below is the page part alone. It is the routing counterpart of `view-lower`. Because the dom layer is env-abstracted (a
 # browser Element or an in-memory server node behind the same `view` API), ONE dispatcher works for both client and
 # server -- the only difference is the boot (browser mounts on document.body and listens for navigation; a server
 # renders per request). So the routing API is identical across environments; this pass is env-agnostic.
@@ -29,6 +32,7 @@ load @term/base/text
   find starts-with
   find substring
   find contains
+  find to-upper-case
 
 load ../parser/diagnostic
   find span
@@ -155,15 +159,6 @@ task expression-statement
       bind expr, value
       bind span, at
 
-task return-nothing
-  take at, like span
-  like statement
-  mark private
-
-  back
-    make statement/return
-      bind span, at
-
 task two
   take first, like expression
   take second, like expression
@@ -237,7 +232,104 @@ task parameters
         push(out, one)
   back out
 
-# one `if (path == "<path>") { [set-title;] component(host, ...props); return }` per route
+# `return <value>`
+task return-value
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/return
+      bind value, make(some, value)
+      bind span, at
+
+# the dispatcher's answer when the page was drawn into the host: `return answer-nothing()`
+task return-drawn
+  take at, like span
+  like statement
+  mark private
+
+  save none-args, make list
+  back return-value(call-of(<answer-nothing>, none-args, at), at)
+
+# THE NAME OF A ROUTE'S METHOD HANDLER: `task post` under `hook /notes/:id` is lifted out by the mill
+# (compile/mint-bridge.ts `handlerName`, which spells it the same way) as the task `answer-post-notes-id`. A segment's
+# `:` is dropped, and `/` alone gives `answer-post`
+task handler-name
+  take method, like text
+  take path, like text
+  like text
+
+  save name, <answer-{method}>
+  walk split(path, </>)
+    take segment
+    fork test, is-equal(segment, <>)
+      hold
+        turn next
+    fork test, starts-with(segment, <:>)
+      hold
+        save name, <{name}-{substring(segment, 1)}>
+      miss
+        save name, <{name}-{segment}>
+  back name
+
+# a route's methods besides GET: `if (!is-page-method(method)) { if (method == "POST") { return
+# answer-route(answer-post-notes(request, read-route-params("/notes/:id", path))) } ... return refuse-method("GET,
+# HEAD, POST") }`. Every route has it, so a method no `task` serves answers 405 on a route with no tasks too
+task method-gate
+  take route, like dock-route
+  take at, like span
+  like statement
+  mark private
+
+  save allow, <GET, HEAD>
+  save inner, make list
+  walk route/methods
+    take method
+    save upper, to-upper-case(method/name)
+    save allow, <{allow}, {upper}>
+    save params, call-of(<read-route-params>, two(text-value(route/path, at), variable(<path>, at)), at)
+    save handled, call-of(handler-name(method/name, route/path), two(variable(<request>, at), params), at)
+    save answered, make list
+    push(answered, return-value(call-of(<answer-route>, one-value(handled), at), at))
+    save same
+      make expression/binary
+        bind op, make equal
+        bind left, variable(<method>, at)
+        bind right, text-value(upper, at)
+        bind span, at
+    save one
+      make statement-branch
+        bind cond, same
+        bind body, answered
+    save branches, make list
+    push(branches, one)
+    save chosen
+      make statement/if
+        bind branches, branches
+        bind span, at
+    push(inner, chosen)
+  push(inner, return-value(call-of(<refuse-method>, one-value(text-value(allow, at)), at), at))
+  save page-method, call-of(<is-page-method>, one-value(variable(<method>, at)), at)
+  save other
+    make expression/unary
+      bind op, make not
+      bind operand, page-method
+      bind span, at
+  save gate
+    make statement-branch
+      bind cond, other
+      bind body, inner
+  save gates, make list
+  push(gates, gate)
+  back
+    make statement/if
+      bind branches, gates
+      bind span, at
+
+# one `if (path == "<path>") { [method gate;] [set-title;] component(host, ...props); return answer-nothing() }` per
+# route
 task branch-of
   take route, like dock-route
   take at, like span
@@ -245,6 +337,14 @@ task branch-of
   mark private
 
   save body, make list
+
+  # the path's parameters first, so the method gate, the load and the props can read them
+  walk parameters(route/path, at)
+    take one
+    push(body, one)
+
+  # GET and HEAD go on to the page; any other method is the route's `task <method>`, or 405
+  push(body, method-gate(route, at))
 
   # a resource route: `seed proxy, text <url>` and no component. Emit `set-proxy(url); return` -- on the server the
   # host fetches the URL and streams the bytes (the page URL stays put); in the browser it does a full navigation.
@@ -255,7 +355,7 @@ task branch-of
         case some
           link url
           push(body, expression-statement(call-of(<set-proxy>, one-value(url), at), at))
-          push(body, return-nothing(at))
+          push(body, return-drawn(at))
           back
             make statement-branch
               bind cond, condition(route/path, at)
@@ -266,11 +366,6 @@ task branch-of
       save nothing, 0
 
   save component, component-of(route)
-
-  # the path's parameters first, so the load and the props can read them
-  walk parameters(route/path, at)
-    take one
-    push(body, one)
 
   # `seed load, read <task>`: the route's data, loaded where the program runs and passed to the props as `data`.
   # Where the data itself lives is the data layer's own env choice (SQLite on a device, the bridge in a cask, the
@@ -350,7 +445,7 @@ task branch-of
         push(page-args, prop)
       push(body, expression-statement(call-of(component/name, page-args, at), at))
 
-  push(body, return-nothing(at))
+  push(body, return-drawn(at))
   back
     make statement-branch
       bind cond, condition(route/path, at)
@@ -405,6 +500,30 @@ task parameter
       bind name, name
       bind type, make(some, kind)
 
+task untyped-parameter
+  take name, like text
+  like function-param
+  mark private
+
+  back
+    make function-param
+      bind name, name
+
+# `let <name> = <value>`
+task local
+  take name, like text
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/let
+      bind name, name
+      bind init, value
+      bind mutable, false
+      bind span, at
+
 task lower-routes
   take program, like list, like statement
   take env, like text, fall <node>
@@ -449,11 +568,18 @@ task lower-routes
       bind branches, branches
       bind otherwise, make(some, missing)
       bind span, at
+  # the dispatcher takes the REQUEST (decision 001 of note/project/term/site-framework): its path picks the route and
+  # its method whether the page is drawn or the route's `task <method>` answers. Every host hands one in, a host with no
+  # wire a GET (`make-page-request`). It is typed by its first use, `read-route-path` of the route runtime, so the type
+  # is the one that module imported, never a `request` the merged program holds elsewhere
   save router-body, make list
+  push(router-body, local(<path>, call-of(<read-route-path>, one-value(variable(<request>, at)), at), at))
+  push(router-body, local(<method>, call-of(<read-route-method>, one-value(variable(<request>, at)), at), at))
   push(router-body, dispatch)
+  push(router-body, return-drawn(at))
   save router-params, make list
   push(router-params, parameter(<host>, view-type))
-  push(router-params, parameter(<path>, text-type))
+  push(router-params, untyped-parameter(<request>))
   save no-generics, make list
   save router
     make statement/function

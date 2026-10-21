@@ -49,20 +49,33 @@ load @term/site/code/view/navigation
   find navigate
   find current-path
 
-# a place drawn: its path, in a span
+load @term/site/code/http/http
+  find request
+  find response
+
+load @term/site/code/view/route-answer
+  find answer-nothing
+
+load @term/base/maybe
+  find maybe
+
+# a place drawn: its path, in a span. A route takes the request and answers nothing when it drew the page
 task draw
   take host, like view
-  take path, like text
+  take request, like request
+  like maybe, like response
   save here
     call create-element
       text <span>
   call append
     read here
     call create-text
-      read path
+      read request/path
   call append
     read host
     read here
+  send back
+    call answer-nothing
 
 task main
   save root

@@ -87,6 +87,7 @@ function integerLiteral(value: number | bigint, span: Span): Expression {
   return { form: 'integer', value, span }
 }
 import { baseRefusal } from '@term/make/code/deck/resolve'
+import { handlerName } from '@term/make/code/compile/route-lower'
 
 export type MillResult =
   // `twins` sit beside the program and never in it (node.ts, `Twin`), so a reader that ignores them is correct
@@ -3890,15 +3891,19 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
     case 'bind-def':
       return bindOf(bridge, value)
 
-    case 'hook':
+    case 'hook': {
       // a top-level `hook` is the CLI command / route DSL: one dock statement carrying the whole tree
+      const route = routeOf(bridge, value)
+
       return [
         {
           form: 'dock',
-          route: routeOf(bridge, value),
+          route,
           span: spanOf(value),
         },
+        ...routeHandlers(bridge, value, route),
       ]
+    }
 
     case 'rule-def':
       return ruleOf(bridge, value)
@@ -4858,6 +4863,33 @@ function routeOf(
     children: formsAt(value, 'hook').map(child => routeOf(bridge, child)),
     span: spanOf(value),
   }
+}
+
+// A PAGE ROUTE'S METHOD HANDLERS (term-site-framework-0006, decision 001 of note/project/term/site-framework): each
+// `task <method>` with a body under a top-level page route is a task of its own, `(request, params) -> response`, named
+// by compile/route-lower.tree `handlerName` (`task post` under `hook /notes` is `answer-post-notes`), which the
+// dispatcher calls for that method. check/routes.tree refuses a method with no body, one the view answers (get, head),
+// and a handler of another shape, by this name. A nested hook's tasks are not lifted: the lowering does not reach them.
+function routeHandlers(
+  bridge: Bridge,
+  value: Form,
+  route: Extract<Statement, { form: 'dock' }>['route'],
+): Statement[] {
+  if (!route.page) {
+    return []
+  }
+
+  return formsAt(value, 'task').flatMap(method => {
+    const name = wordAt(method, 'name')
+
+    if (name === undefined || bodySteps(bridge, method).length === 0) {
+      return []
+    }
+
+    const built = functionOf(bridge, method)
+
+    return built?.form === 'function' ? [{ ...built, name: handlerName(name, route.path) }] : []
+  })
 }
 
 // A declarative native binding: one stdlib name, one native expression per environment.

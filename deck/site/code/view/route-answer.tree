@@ -1,0 +1,147 @@
+
+# What a lowered route table calls to serve a method (term-site-framework-0006, decision 001 of
+# note/project/term/site-framework). The dispatcher is `route(host, request)`: GET (and HEAD) renders the route's view
+# and answers nothing, so the host draws the page; any other method calls the route's `task <method>` and answers its
+# response; a method the route has no task for answers 405. Borne by ./route-runtime, so the lowering's names resolve
+# in the module that holds the routes.
+#
+#   page-methods         the methods a server host routes to the dispatcher
+#   make-page-request    the GET a host with no wire (the browser, a toolkit, the terminal) hands the dispatcher
+#   read-route-path      the request's path, which the route table matches
+#   read-route-method    the request's method, upper case
+#   is-page-method       GET or HEAD: the methods that render the view
+#   read-route-params    the `:name` segments of a pattern, read out of a path, for a handler's `params`
+#   answer-route         a handler's response, as the dispatcher's answer
+#   answer-nothing       no answer: the view was drawn into the host
+#   refuse-method        405, with the methods the route serves in `allow`
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/hash
+  find hash
+  find set
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find to-upper-case
+
+load ../http/http
+  find request
+  find response
+
+load ./navigation
+  find route-param
+
+# the methods a server host hands to the dispatcher: GET and HEAD draw a page, the others reach a route's task or 405
+task page-methods
+  like list, like text
+  save methods, make list
+  walk list
+    call split
+      text <GET HEAD POST PUT PATCH DELETE>
+      text < >
+    hook next
+      take site, name method
+      call push
+        read methods
+        read method
+  send back, read methods
+
+task make-page-request
+  take path, like text
+  like request
+  send back
+    make request
+      bind method, text <GET>
+      bind path, read path
+      bind body, text <>
+
+task read-route-path
+  take request, like request
+  like text
+  send back, read request/path
+
+task read-route-method
+  take request, like request
+  like text
+  send back
+    call to-upper-case
+      read request/method
+
+task is-page-method
+  take method, like text
+  like boolean
+  send back
+    meet or
+      call is-equal
+        read method
+        text <GET>
+      call is-equal
+        read method
+        text <HEAD>
+
+task read-route-params
+  take pattern, like text
+  take path, like text
+  like hash
+    like text
+    like text
+  save params, make hash
+  walk list
+    call split
+      read pattern
+      text </>
+    hook next
+      take site, name segment
+      fork test
+        hook test
+          call starts-with
+            read segment
+            text <:>
+        hook hold
+          save name
+            call substring
+              read segment
+              code 1
+          call set
+            read params
+            read name
+            call route-param
+              read pattern
+              read path
+              read name
+  send back, read params
+
+task answer-route
+  take answer, like response
+  like maybe, like response
+  send back
+    make some
+      bind value, read answer
+
+task answer-nothing
+  like maybe, like response
+  send back, make none
+
+task refuse-method
+  take allow, like text
+  like maybe, like response
+  save headers, make hash
+  call set
+    read headers
+    text <allow>
+    read allow
+  send back
+    make some
+      bind value
+        make response
+          bind status, code 405
+          bind body, text <>
+          bind headers, read headers

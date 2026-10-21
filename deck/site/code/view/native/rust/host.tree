@@ -6,6 +6,13 @@
 load ../../../dom/view
   find view
 
+load ../../../http/http
+  find request
+  find response
+
+load @term/base/maybe
+  find maybe
+
 load ../../../dom/native/terminal/routes
   find mount-routes
 
@@ -16,7 +23,8 @@ task host
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take port, like number
   call run-terminal
     call mount-routes

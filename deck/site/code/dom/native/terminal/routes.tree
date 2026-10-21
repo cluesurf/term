@@ -1,5 +1,5 @@
 
-# A routed app in the terminal (native-navigation-0005): the same `route(host, path)` dispatcher the browser, the server
+# A routed app in the terminal (native-navigation-0005): the same `route(host, request)` dispatcher the browser, the server
 # and the toolkit hosts drive (compile/route-lower.ts), drawn from the navigation contract (../../../view/navigation)
 # onto a root the terminal paints. The toolkit host is the model (../../../view/native/toolkit/host.tree): one effect
 # reads the current path and redraws the route untracked, so a signal a page reads keeps its own effects.
@@ -35,11 +35,22 @@ load ../../../view/navigation
   find current-path
   find navigate-back
 
+load ../../../view/route-answer
+  find make-page-request
+
+load ../../../http/http
+  find request
+  find response
+
+load @term/base/maybe
+  find maybe
+
 task mount-routes
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take back, like text
   like view
   save root
@@ -68,7 +79,8 @@ task mount-routes
                     # that moves a captured text does not build on Rust (E0507)
                     call route
                       read root
-                      call current-path
+                      call make-page-request
+                        call current-path
                     send back, read root
   save drop
     call listen-key

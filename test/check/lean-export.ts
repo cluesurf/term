@@ -175,6 +175,99 @@ ok(
   JSON.stringify({ exported: aboutTask.exported, refused: aboutTask.refused, axioms: aboutTask.axioms }),
 )
 
+// A CLAIM THROUGH A WALK (proof-by-default-0010): `two-last` walks a list it builds, the kernel computes the walk by its
+// list eliminator, and the export writes the list as an inductive and the eliminator as its `Array.rec`, so Lean
+// computes the same walk and nothing is an axiom
+const throughWalk = exportLean({
+  file: 'walk.tree',
+  text: `form equal
+  head a
+  head x, like a
+  head y, like a
+  case refl
+    link c, like a
+    head
+      read c
+    head
+      read c
+
+form flag
+  case yes
+  case no
+
+task two-last
+  take a, like flag
+  take b, like flag
+  like flag
+  save xs
+    make list
+      read a
+      read b
+  save out, read a
+  walk list, read xs
+    hook next
+      take x
+      save out, read x
+  send back out
+
+rule last-of-two
+  take a, like flag
+  take b, like flag
+  like equal flag
+    head
+      two-last(a, b)
+    head
+      read b
+
+task last-of-two
+  take a
+  take b
+  back
+    make equal/refl
+      bind c, read b
+
+task last-or
+  take xs, like list, like flag
+  take d, like flag
+  like flag
+  save out, read d
+  walk list, read xs
+    hook next
+      take x
+      save out, read x
+  send back out
+
+rule last-is-itself
+  take xs, like list, like flag
+  take d, like flag
+  like equal flag
+    head
+      last-or(xs, d)
+    head
+      last-or(xs, d)
+
+task last-is-itself
+  take xs
+  take d
+  back
+    make equal/refl
+      bind c
+        call last-or
+          read xs
+          read d
+`,
+})
+
+ok(
+  'a claim through a walk is exported, the list an inductive and its eliminator Array.rec, no axiom',
+  throughWalk.exported.some(e => e.name === 'last-of-two' && e.claim && e.axioms.length === 0) &&
+    throughWalk.exported.some(e => e.name === 'last-is-itself' && e.claim && e.axioms.length === 0) &&
+    throughWalk.axioms.length === 0 &&
+    throughWalk.lean.includes('inductive TermExport.«Array»') &&
+    throughWalk.lean.includes('@TermExport.«Array».rec'),
+  JSON.stringify({ exported: throughWalk.exported, refused: throughWalk.refused, axioms: throughWalk.axioms, kernel: throughWalk.kernel }),
+)
+
 // write the files for a Lean run by hand
 const writeAt = process.argv.indexOf('--write')
 
@@ -210,6 +303,24 @@ if (lean && existsSync(lean)) {
     errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'symmetry',
     `errors at ${errorLines.join(', ')}, planted line ${plantedLine}, sorry in ${sorried.join(', ')}`,
   )
+
+  // the walk: Lean checks the claim by computing the walk through Array.rec, and refuses the claim that it gives `a`
+  writeFileSync(join(dir, 'walk.lean'), throughWalk.lean)
+  const walked = spawnSync(lean, [join(dir, 'walk.lean')], { encoding: 'utf8' })
+  ok(
+    'lean checks both claims through a walk, free of axioms',
+    walked.status === 0 &&
+      /'TermExport\.«last-of-two»' does not depend on any axioms/.test(walked.stdout) &&
+      /'TermExport\.«last-is-itself»' does not depend on any axioms/.test(walked.stdout),
+    `${walked.stdout}${walked.stderr}`.slice(0, 2000),
+  )
+  // over a list it does not know, the walk stays a fold: answering `d` for it must be refused by Lean's own reduction
+  const header = throughWalk.lean.split('\n').find(line => line.startsWith('def TermExport.«last-is-itself»'))!
+  const [, dName] = [...header.matchAll(/\((\w+) : /g)].map(m => m[1]!)
+  const wrongWalk = plantLean(throughWalk.lean, 'last-is-itself', `(@TermExport.«equal».«refl» TermExport.«flag» ${dName})`)
+  writeFileSync(join(dir, 'walk-planted.lean'), wrongWalk)
+  const wrongRun = spawnSync(lean, [join(dir, 'walk-planted.lean')], { encoding: 'utf8' })
+  ok('lean refuses the claim that a walk over an unknown list gives its default', wrongRun.status !== 0, `${wrongRun.stdout}`.slice(0, 1000))
 } else {
   console.log('skip  lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)')
 }

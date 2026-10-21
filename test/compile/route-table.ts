@@ -1,5 +1,5 @@
 // One route table on every target (native-navigation-0002). The table is lowered before checking now
-// (compile/compile.ts, compile/route-lower.ts), so every backend gets a typed `route(host, path)` and `boot(url, port)`,
+// (compile/compile.ts, compile/route-lower.ts), so every backend gets a typed `route(host, request)` and `boot(url, port)`,
 // and the route runtime it calls is injected (compile/load.ts, view/route-runtime.tree). The table:
 //
 //   hook /                 the home page
@@ -93,7 +93,8 @@ task run
       text <main>
   call route
     read root
-    text </>
+    call make-page-request
+      text </>
   save at-home
     call serialize
       read root
@@ -101,7 +102,8 @@ task run
     read root
   call route
     read root
-    text </users/42>
+    call make-page-request
+      text </users/42>
   save at-user
     call serialize
       read root
@@ -117,7 +119,7 @@ task run
   ok('typescript: the route table compiles, the route runtime injected', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
 
   if (result.ok) {
-    ok('typescript: the dispatcher is typed, not inferred', /function route\(host: View, path: string\)/.test(result.typescript), result.typescript.match(/function route\([^)]*\)/)?.[0] ?? '')
+    ok('typescript: the dispatcher is typed, not inferred', /function route\(host: View, request: Request\)/.test(result.typescript), result.typescript.match(/function route\([^)]*\)/)?.[0] ?? '')
     const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
     const file = join(dir, 'app.ts')
     writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)

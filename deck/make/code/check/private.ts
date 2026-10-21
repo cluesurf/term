@@ -46,9 +46,11 @@ export interface OverloadGroup {
   members: string[]
 }
 
-type DeckOf = (file: string) => { root: string } | undefined
+export type DeckOf = (file: string) => { root: string } | undefined
 
-const deckOfList = (decks: DeckHome[]): DeckOf | undefined => {
+// check/hide.ts reads the same deck table and the same test exemption, so `mark hide` and `mark private` agree on
+// which file is a test of which package
+export const deckOfList = (decks: DeckHome[]): DeckOf | undefined => {
   if (decks.length === 0) {
     return undefined
   }
@@ -92,7 +94,7 @@ function visible(definition: Definition, file: string | undefined, deckOf?: Deck
 }
 
 // is `file` a test file of the package that holds `home`
-function testOf(file: string, home: string, deckOf?: DeckOf): boolean {
+export function testOf(file: string, home: string, deckOf?: DeckOf): boolean {
   const deck = deckOf?.(file)
 
   if (deck) {

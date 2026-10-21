@@ -1,9 +1,19 @@
 # A page route declares only what the build turns into code.
 #
-# `hook /data` / `task get` compiled clean, was counted in host/roll.json as `get /data`, and emitted nothing: the route
-# lowering (compile/route-lower.ts) builds a branch per route that renders a component or proxies an asset, and reads no
-# method (guides: applications/web/routes, 2026-10-03). A method handler under a page route is refused, naming the
-# spelling that does serve one, a `route` record handed to `route-server`.
+# A page route serves GET by drawing its `view`, and any other method by its `task <method>` (term-site-framework-0006,
+# decision 001 of note/project/term/site-framework): `hook /notes` / `view notes-page` / `task post` / `take request` /
+# `take params` / ... / `send back, redirect(</notes>)`. The mill lifts each such task out as `answer-<method>-<path>`
+# (compile/route-lower.tree `handler-name`), and the dispatcher calls it as `(request, params) -> response`, the shape of
+# the API router's `handle` (@term/site/http/http `route`). Refused here, each naming what to write instead:
+#
+#   - `task get` or `task head`: GET draws the view, so a task for it would never run
+#   - a method that is not post, put, patch or delete
+#   - a task on a route with no `view`: the lowering serves only a route that draws a page or proxies an asset
+#   - a handler that does not take exactly `request` and `params`, or takes them, or answers, at another type
+#   - a task under a NESTED hook, which the lowering does not reach
+#
+# Before 2026-10-21 every method under a page route was refused: `hook /data` / `task get` compiled clean, was counted
+# in host/roll.json as `get /data`, and emitted nothing (guides: applications/web/routes, 2026-10-03).
 #
 # A command (`hook make` / `task make-deck`) is not a route: its `task <impl>` is its handler, collected as a call, so
 # only a dock built as a route is read here. That was the PRESENCE of its `component` key, which a Term value cannot
@@ -13,9 +23,13 @@
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/maybe
   find maybe
+
+load @term/base/hash
+  find hash
 
 load ../parser/diagnostic
   find diagnostic
@@ -26,6 +40,12 @@ load ../parser/diagnostic
 load ../compile/node
   find statement
   find dock-route
+  find dock-method
+  find function-param
+  find type
+
+load ../compile/route-lower
+  find handler-name
 
 task is-in-file
   take at, like span
@@ -40,9 +60,124 @@ task is-in-file
     case none
       back false
 
+task refuse
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  take out, like list, like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save name, make not-implemented
+  push(out, diagnose(name, input))
+
+# a method a page route may serve with a task: everything but the GET and HEAD its view answers
+task is-served-method
+  take name, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(name, <post>), is-equal(name, <put>)), or(is-equal(name, <patch>), is-equal(name, <delete>)))
+
+task is-named-type
+  take kind, like type
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift kind
+    case named
+      link called
+      back is-equal(called, wanted)
+    miss
+      back false
+
+task is-map-type
+  take kind, like type
+  like boolean
+  mark private
+
+  sift kind
+    case map
+      back true
+    case named
+      link called
+      back is-equal(called, <hash>)
+    miss
+      back false
+
+# a written parameter type that is not `want`, or none when it is unwritten or fits
+task param-misfit
+  take param, like function-param
+  take request, like boolean
+  like boolean
+  mark private
+
+  sift param/type
+    case some
+      link kind
+      fork test, request
+        hold
+          back not(is-named-type(kind, <request>))
+      back not(is-map-type(kind))
+    case none
+      back false
+
+task handler-misfit
+  take handler, like statement
+  like text
+  mark private
+
+  sift handler
+    case function
+      fork test, is-unequal(params/length, 2)
+        hold
+          back <it takes {params/length} parameters>
+      fork test, param-misfit(get(params, 0), true)
+        hold
+          back <its first parameter is not a `request`>
+      fork test, param-misfit(get(params, 1), false)
+        hold
+          back <its second parameter is not a `hash` of texts>
+      sift result
+        case some
+          link kind
+          fork test, not(is-named-type(kind, <response>))
+            hold
+              back <it answers something other than a `response`>
+        case none
+          save nothing, 0
+      back <>
+    miss
+      back <>
+
+# the program's tasks by name
+task tasks-of
+  take program, like list, like statement
+  like hash, like text, like statement
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case function
+        set(out, name, one)
+      miss
+        turn next
+  back out
+
 task route-methods
   take route, like dock-route
   take file, like text
+  take tasks, like hash, like text, like statement
+  take nested, like boolean
   take out, like list, like diagnostic
   like list, like diagnostic
   mark private
@@ -51,17 +186,33 @@ task route-methods
     hold
       walk route/methods
         take method
-        save input
-          make diagnostic-input
-            bind file, file
-            bind span, method/span
-            bind message, make(some, <`task {method/name}` under the page route `{route/path}` builds no code: a page route renders a `view` or proxies an asset>)
-            bind hint, make(some, <serve an HTTP method with a `route` record (method, path, handle) passed to `route-server`, from @term/site/http/http>)
-        save name, make not-implemented
-        push(out, diagnose(name, input))
+        save hint, <a page route draws its `view` on GET; write `task post` (or put, patch, delete) with `take request` and `take params`, answering a `response`>
+        fork test, nested
+          hold
+            refuse(file, method/span, <`task {method/name}` under the nested route `{route/path}` builds no code: only a top-level `hook` serves a method>, <move the route to the top level of the file>, out)
+            turn next
+        fork test, not(is-served-method(method/name))
+          hold
+            refuse(file, method/span, <`task {method/name}` under the page route `{route/path}` builds no code: GET and HEAD draw the route's `view`, and a task serves post, put, patch or delete>, hint, out)
+            turn next
+        sift route/component
+          case none
+            refuse(file, method/span, <`task {method/name}` under the route `{route/path}` builds no code: a route with a task must also draw a `view` for GET>, <add `view <page>` under the hook>, out)
+            turn next
+          case some
+            save nothing, 0
+        save named, handler-name(method/name, route/path)
+        fork test, not(tasks/has(named))
+          hold
+            refuse(file, method/span, <`task {method/name}` under the page route `{route/path}` has no body>, hint, out)
+            turn next
+        save misfit, handler-misfit(tasks/get(named))
+        fork test, is-unequal(misfit, <>)
+          hold
+            refuse(file, method/span, <`task {method/name}` under the page route `{route/path}` is not a handler: {misfit}. A method handler is `(request, params) -\> response`>, hint, out)
   walk route/children
     take child
-    save out, route-methods(child, file, out)
+    save out, route-methods(child, file, tasks, true, out)
   back out
 
 task check-route-methods
@@ -70,13 +221,14 @@ task check-route-methods
   like list, like diagnostic
 
   save out, make list
+  save tasks, tasks-of(program)
   walk program
     take one
     sift one
       case dock
         fork test, is-in-file(span, file)
           hold
-            save out, route-methods(route, file, out)
+            save out, route-methods(route, file, tasks, false, out)
       miss
         turn next
   back out

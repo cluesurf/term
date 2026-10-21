@@ -1,6 +1,6 @@
 
 # Node host: the SSR server. Starts an HTTP server (the uniform trie router + the node transport) and renders every
-# request through the SAME `route(host, path)` dispatcher: build a fresh in-memory root, run `route` into it, serialize
+# request through the SAME `route(host, request)` dispatcher: build a fresh in-memory root, run `route` into it, serialize
 # the tree to HTML, wrap it in the document shell, and respond. The server side of the env-abstracted `host`; the
 # client side (browser/host) mounts instead. One dispatcher, two boots. `seed boot` invokes the generated
 # `boot(url, port)`, which calls this.
@@ -26,15 +26,20 @@ load @term/site/http/serve
 load @term/base/list
   find list
   find push
+load @term/base/maybe
+  find maybe
+load @term/site/view/route-answer
+  find page-methods
 
 task host
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take port, like u16
   mark async
-  # the catch-all handler: SSR-render the requested path through `route`
+  # the catch-all handler: SSR-render the requested page through `route`, or answer with the route's `task <method>`
   save render-request
     task handle
       take request, like request
@@ -46,10 +51,18 @@ task host
       # awaited: a `route` that loads its data first (an async task it calls) is async, and the page is not drawn
       # until it returns. A parameter's call cannot be seen as async, so the `wait` is written, and on a `route` that
       # is not async it waits on a plain value. Without it `/` was served as an empty `<div></div>` (web/fetching)
-      call route
-        read root
-        read request/path
-        wait true
+      save answer
+        call route
+          read root
+          read request
+          wait true
+      # a method other than GET: the route's task answered, or 405 (term-site-framework-0006)
+      sift answer
+        case some
+          link given
+          send back, read given
+        case none
+          save drawn, true
       # the status the route set, `set-status 404` for a page that is not there, else 200. Read before the proxy check
       # so a proxied request clears it too
       save status
@@ -110,13 +123,18 @@ task host
         bind method, text <GET>
         bind path, text </base/**>
         bind handle, read serve-asset
-  call push
-    bind list, read routes
-    bind item
-      make route
-        bind method, text <GET>
-        bind path, text </**>
-        bind handle, read render-request
+  # every method reaches the pages: GET and HEAD draw one, and the others are a route's `task <method>` or 405
+  walk list
+    call page-methods
+    hook next
+      take site, name method
+      call push
+        bind list, read routes
+        bind item
+          make route
+            bind method, read method
+            bind path, text </**>
+            bind handle, read render-request
   call serve
     call route-server
       read routes

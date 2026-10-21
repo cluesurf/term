@@ -48,6 +48,7 @@ import {
   resetMetas,
 } from '@term/make/code/check/judge'
 import { terminatingFunctions } from '@term/make/code/check/totality'
+import { effectRows } from '@term/make/code/check/effects'
 import { isLinearGoal, orderFollows } from '@term/make/code/check/holds'
 import { checkFold, checkFoldOrder } from '@term/make/code/check/induct'
 import { unfoldDefinitions } from '@term/make/code/check/unfold'
@@ -326,7 +327,8 @@ export function elaborateReport(
   const elaborated = elaborating.elaborationDataOf(
     program as never,
     aliasState,
-    [...collectNumberLiteralValues(program)],
+    // 0 and 1 always: a walk's index is a count the lowering builds from them (elaborating-terms.tree `walk-list-term`)
+    [...new Set(['0', '1', ...collectNumberLiteralValues(program)])],
     (left, right) =>
       sameValueArgs(
         (left as { valueArgs?: Expression[] }).valueArgs,
@@ -381,6 +383,24 @@ export function elaborateReport(
     aliasState,
     program as never,
     evaluate([], TYPE0) as never,
+  )
+  // THE TASKS A CALL OF WHICH MAY RAISE, which a guarded fork's lowering does not take inside the fork (its raise would
+  // take the handler's path, which the term does not): a raise in the task's effect row, a task with no body (a
+  // signature, a dock binding), or a separately compiled stub, whose body this unit does not see (proof-by-default-0011)
+  let rows: Map<string, string[]>
+
+  try {
+    rows = effectRows(program)
+  } catch {
+    rows = new Map()
+  }
+
+  termState.raising = new Map(
+    program.flatMap(s =>
+      s.form === 'function' && (s.stub || s.body.length === 0 || rows.get(s.name)?.includes('throw'))
+        ? [[s.name, true] as const]
+        : [],
+    ),
   )
   const caseState = cases.newCaseState()
   const inductionState = induction.newInductionState(

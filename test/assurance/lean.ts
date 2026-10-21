@@ -4,11 +4,11 @@
 // The demo's laws are the claims of test/assurance/notes/code/law.tree, over the forms and tasks of model.tree. The
 // exporter (deck/make/code/check/lean-export.ts, note/project/term/proof/lean-export/spec.md) writes every claim the
 // kernel proved as Lean 4 source, and Lean decides. What it holds:
-//   - without Lean: all 21 claims are proven by the kernel and exported, none refused, no constant written as an
+//   - without Lean: all 29 claims are proven by the kernel and exported, none refused, no constant written as an
 //     axiom, every form a Lean inductive, and the recursive laws written through a recursor, never by name
 //   - with Lean (TERM_LEAN names the binary): Lean accepts the file with no error and no warning, `#print axioms`
-//     says every one of the 21 claims depends on no axiom, and a planted wrong proof of law 1 is refused on its own
-//     line alone
+//     says every one of the 29 claims depends on no axiom, and a planted wrong proof of law 1 is refused on its own
+//     line alone, law 1 of `replay` the one other claim resting on it
 // With no Lean at TERM_LEAN or on the PATH the Lean step is reported as skipped, never as passed.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
@@ -31,7 +31,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const BASE = new URL('./notes/code/', import.meta.url).pathname
 const FILES = ['model.tree', 'law.tree']
-// the demo's 21 claims: laws 1, 4 and 5, their lemmas, and the bridge from `view` to the `shows` relation
+// the demo's 29 claims: laws 1, 4 and 5, their lemmas, the bridge from `view` to `shows`, and from `replay` to `replays`
 const CLAIMS = [
   'deleted-stays-gone',
   'isolation',
@@ -54,16 +54,38 @@ const CLAIMS = [
   'view-shows',
   'deleted-stays-gone-of-view',
   'isolation-of-view',
+  // the bridge from `step` and `replay` to `steps` and `replays`, and law 1 of `replay` itself
+  'ownership-of-replay-own',
+  'ownership-of-replay-may',
+  'ownership-of-replay-aim',
+  'ownership-of-replay-settle',
+  'ownership-of-replay-cross',
+  'ownership-of-replay-step',
+  'ownership-of-replay-run',
+  'ownership-of-replay',
 ]
 // the claims (and tasks) that call themselves, each of which must reach Lean through its form's recursor
-const RECURSIVE = ['deleted-stays-gone', 'isolation', 'ownership', 'ownership-cross', 'view-same', 'view-shows', 'same', 'view']
+const RECURSIVE = [
+  'deleted-stays-gone',
+  'isolation',
+  'ownership',
+  'ownership-cross',
+  'view-same',
+  'view-shows',
+  'same',
+  'view',
+  'ownership-of-replay-cross',
+  'ownership-of-replay-run',
+  'cross',
+  'replay',
+]
 
 const source = joinSources(FILES.map(file => ({ file: `notes/${file}`, text: readFileSync(join(BASE, file), 'utf8') })))
 const out = exportLean(source)
 
 ok('the kernel reports no error on the demo', out.kernel.diagnostics.length === 0, out.kernel.diagnostics.slice(0, 5).join('; '))
 ok(
-  'the claims read are the demo\'s 21',
+  `the claims read are the demo's ${CLAIMS.length}`,
   CLAIMS.every(c => out.claims.includes(c)) && out.claims.length === CLAIMS.length,
   out.claims.join(','),
 )
@@ -140,8 +162,8 @@ if (lean && existsSync(lean)) {
   const errorLines = [...badSaid.matchAll(/notes-planted\.lean:(\d+):\d+: error/g)].map(m => Number(m[1]))
   const sorried = [...bad.stdout.matchAll(/'TermExport\.(\S+)' depends on axioms: \[sorryAx\]/g)].map(m => m[1])
   ok(
-    'lean refuses the planted body alone, and only law 1 rests on it',
-    errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'ownership',
+    'lean refuses the planted body alone, and only law 1 and law 1 of replay rest on it',
+    errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'ownership,«ownership-of-replay»',
     `errors at ${errorLines.join(', ')}, planted line ${plantedLine}, sorry in ${sorried.join(', ')}`,
   )
 } else {

@@ -186,6 +186,195 @@ task bucket
 `
 
   expect('a closure does not see the version at its creation', about(late, 'call late(code 1)', 'code 1'), refused('unchecked-hold'))
+
+  // ---- walks (proof-by-default-0010) ----
+  //
+  // A `walk list` is the list eliminator, which computes on a list built by its constructors, so a hold about what a
+  // walk over a written list gives is decided by the kernel unfolding it. Each beside its false twin: a fold that ran
+  // the items in the wrong order, dropped one, or let a `turn next` or `halt` fall through would prove the twin
+  const listed = (task: string, items: number[]): string => `${task}
+
+hold
+  call is-equal
+    call ${task.split('\n')[0]!.replace('task ', '')}
+      make list
+${items.map(item => `        code ${item}`).join('\n')}
+    code VALUE
+`
+  const sum = `task total
+  take xs, like list, like number
+  like number
+  save t, code 0
+  walk list, read xs
+    hook next
+      take x
+      save t
+        call add
+          read t
+          read x
+  send back t`
+  const at = (value: number, task: string, items: number[]): string => listed(task, items).replace('VALUE', String(value))
+
+  expect('a walk over a list adds every item', at(6, sum, [1, 2, 3]), proven)
+  expect('not one item fewer', at(5, sum, [1, 2, 3]), refused('unchecked-hold'))
+
+  const indexed = `task weigh
+  take xs, like list, like number
+  like number
+  save t, code 0
+  walk list, read xs
+    hook next
+      take x
+      take i
+      save t
+        call add
+          read t
+          call multiply
+            read x
+            read i
+  send back t`
+
+  expect('the index counts from 0, in order', at(17, indexed, [5, 7, 5]), proven)
+  expect('not from 1', at(29, indexed, [5, 7, 5]), refused('unchecked-hold'))
+
+  // the three ways out of a turn, decided by a `fork case` (the kernel leaves `cond` standing)
+  const steps = `form step
+  case skip
+  case stop
+  case keep
+  case answer
+
+task run
+  take xs, like list, like step
+  like number
+  save n, code 0
+  walk list, read xs
+    hook next
+      take s
+      fork case, read s
+        case skip
+          turn next
+        case stop
+          halt
+        case answer
+          send back, code 99
+        case keep
+          save n
+            call add
+              read n
+              code 1
+      save n
+        call add
+          read n
+          code 10
+  send back n`
+  const runOf = (value: number, items: string[]): string =>
+    `${steps}
+
+hold
+  call is-equal
+    call run
+      make list
+${items.map(item => `        make ${item}`).join('\n')}
+    code ${value}
+`
+
+  expect('turn next skips the rest of the turn', runOf(11, ['skip', 'keep', 'skip']), proven)
+  expect('not running it', runOf(31, ['skip', 'keep', 'skip']), refused('unchecked-hold'))
+  expect('halt leaves the walk with the versions it holds', runOf(11, ['keep', 'stop', 'keep']), proven)
+  expect('not finishing it', runOf(22, ['keep', 'stop', 'keep']), refused('unchecked-hold'))
+  expect('send back answers for the task', runOf(99, ['keep', 'answer', 'keep']), proven)
+  expect('not the walk`s count', runOf(11, ['keep', 'answer', 'keep']), refused('invalid-proof'))
+
+  // a lifted `walk test` is a definition the kernel unfolds only when it has a `down`, which rests on the build failing
+  // for a `down` that does not fall
+  const measured = (step: string): string => `task move
+  take n, like number
+  like number
+  save m, read n
+  walk test
+    down m
+    hook test
+      call is-above
+        read m
+        code 0
+    hook hold
+      save m
+        call ${step}
+          read m
+          code 1
+  send back m
+`
+
+  expect('a down that grows fails the build', measured('add'), refused('unproven'))
+  expect('control: a down that falls builds', measured('subtract'), proven)
+
+  // ---- guarded forks (proof-by-default-0011) ----
+  //
+  // A raise inside a guarded fork calls its handler with the versions the path holds where it raised. A lowering that
+  // handed the handler the versions at the fork, or let the raise fall through, would prove the false twin
+  const capped = (value: number, which: string): string => `${side}
+task cap
+  take s, like side
+  take n, like number
+  like number
+  save m, read n
+  fork
+    mark unsafe
+    save m
+      call add
+        read n
+        code 1
+    sift s
+      case left
+        halt <Too far>
+      case right
+        save m
+          call add
+            read m
+            code 1
+  halt take
+    take problem
+    save m
+      call add
+        read m
+        code 100
+  send back m
+
+hold
+  call is-equal
+    call cap
+      make ${which}
+      code 3
+    code ${value}
+`
+
+  expect('a raise takes the handler with the version it holds', capped(104, 'left'), proven)
+  expect('not the version at the fork', capped(103, 'left'), refused('unchecked-hold'))
+  expect('and no raise does not take it', capped(5, 'right'), proven)
+  expect('not the handler`s value on the path that does not raise', capped(105, 'right'), refused('unchecked-hold'))
+
+  // the signature's bound is still the surface checker's: a raise it does not declare is refused
+  expect(
+    'a raise the signature does not declare is still refused',
+    `form lack
+  like absence
+
+task strict
+  take n, like number
+  like number
+  halt lack
+  fork test
+    hook test
+      call is-above
+        read n
+        code 10
+    hook hold
+      halt <Too big>
+  send back n
+`,
+    refused('raise-bound'),
+  )
 }
 
 // ---- a cited rule's `have` (term-proof-0003) ----

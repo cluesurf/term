@@ -3,7 +3,7 @@
 # kernel reads every task here as a term.
 #
 # law.tree states the laws over relations these tasks are meant to implement (`steps`, `replays`, `shows`), and ties
-# `view` to `shows` (`view-shows`, so laws 4 and 5 hold of `view` itself). `step` and `replay` are not tied yet.
+# each task to its relation (`view-shows`, `replay-replays`), so laws 1, 4 and 5 hold of the tasks themselves.
 #
 # The forms live here and law.tree loads them, never the other way: loading anything from law.tree brings its claims
 # into this unit without their proofs, and the per-unit build then calls each one open (term-proof-0005).
@@ -35,12 +35,16 @@ form shelf
     link top, like note
     link rest, like shelf
 
+# an event names its actor by their id and rank, not by a `person`: a person is a record, which a proof cannot match
+# on, so a law about `step` could not say who acted. step builds the person from the two
 form event
   case write
-    link actor, like person
+    link who, like natural
+    link rank, like rank
     link id, like natural
   case erase
-    link actor, like person
+    link who, like natural
+    link rank, like rank
     link id, like natural
 
 form events
@@ -116,10 +120,16 @@ task step
           bind top
             make live
               bind at, id
-              bind whose, read actor/id
+              bind whose, who
           bind rest, s
     case erase
-      back cross(s, actor, id)
+      back
+        cross
+          read s
+          make person
+            bind id, who
+            bind rank, rank
+          read id
 
 # erase the note with this id, if the actor may
 task cross

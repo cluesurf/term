@@ -120,6 +120,32 @@ form term-state
   link miss, like text
   # whether that body's term holds a save made a new name or a join (`assign-term`, `joined-term`)
   link lowered, like boolean
+  # the task being checked, which names each walk test it lifts (`<task>__walk<k>`), and how many it has lifted
+  link task-name, like text
+  link walk-count, like number
+  # the walks the lowering is inside, innermost last: where a `turn next` and a `halt` in them go
+  link loops, like list, like loop-frame
+  # every walk test lifted to a task of its own while the body last checked was lowered (`walk-test-term`)
+  link lifted, like list, like lifted-walk
+  # the guarded forks the lowering is inside, innermost last: the handler a raise calls (`guard-term`)
+  link guards, like list, like join-point
+  # the tasks of the program a call of which may raise: a raise in its row (check/effects.ts), or no body to see.
+  # The face sets it once per program
+  link raising, like hash, like text, like boolean
+
+# a walk the lowering is inside: the call a `turn next` makes, and the one a `halt` makes
+form loop-frame
+  link label, like text
+  link next, like join-point
+  link exit, like join-point
+
+# a walk test lifted to a global task: its name, its type and its body over the whole context it stood in, and whether
+# it carries a `down`, the measure the build holds it to (check/contracts.tree), without which it stays opaque
+form lifted-walk
+  link name, like text
+  link type, like kernel-term
+  link term, like kernel-term
+  link ends, like boolean
 
 task new-term-state
   take st, like judge-state
@@ -161,6 +187,12 @@ task new-term-state
       bind captured, make hash
       bind miss, <>
       bind lowered, false
+      bind task-name, <>
+      bind walk-count, 0
+      bind loops, make list
+      bind lifted, make list
+      bind guards, make list
+      bind raising, make hash
 
 # ---- small readings ----
 
@@ -873,6 +905,12 @@ task call-term
   sift callee
     case variable
       link callee-name
+      # inside a guarded fork, a call that may raise would take the handler's path, which its term does not: a task
+      # value, whose raises nothing here knows, or a task that raises (proof-by-default-0011)
+      fork test, and(is-above(ts/guards/length, 0), or(scope/has(callee-name), ts/raising/has(callee-name)))
+        hold
+          note-miss(ts, <a call that may raise inside a guarded fork>)
+          back no-term()
       # a call of a LOCAL function value: its variable applied, a hidden local stopping the lookup
       save local-level, level-of(scope, callee-name)
       fork test, and(is-below(local-level, 0), scope/has(callee-name))
@@ -1326,9 +1364,38 @@ task array-term
 #   - a closure reads a variable when it runs, so a save to a name any closure in the task reads or writes is not
 #     lowered (`ts/captured`): the task is checked statement by statement, and the reason is counted
 # A join point is the context level of the join task's binder and the names it takes, in order.
+#
+# A WALK (proof-by-default-0010, decision 001 of note/project/term/proof) is lowered in continuation-passing form, so
+# no loop needs a value of its own: the statements after it are a join task over the names its body saves (`exit`),
+# and inside it `turn next` and falling off the end of a turn call the next turn with the versions they hold, `halt`
+# calls `exit` with them, and `send back` is the task's own answer. The three ways out are the three variants the
+# decision names, each a call to a different continuation.
+#   - `walk list` is the list eliminator `arrayElim` (check/judging.tree `reduce-array`), a fold that ends because the
+#     list does: over the list, a task taking the turn after it and the names' versions (`walk-list-term`)
+#   - `walk test`, and `walk size`, which the mill builds as one, is LIFTED to a global task `<task>__walk<k>` over the
+#     whole context it stands in: it tests its condition and runs a turn, which ends by calling itself again
+#     (`walk-test-term`). It is a definition the kernel unfolds only when the walk has a `down` and its task is pure,
+#     and is opaque otherwise, so nothing a loop not shown to end computes is ever trusted
+# A join point whose `head` is not empty is such a lifted task: its call applies the constant to every binder below
+# `level`, with the binder each name had at the walk (`entries`) replaced by the version it has now.
 form join-point
   link level, like number
   link names, like list, like text
+  link head, like text
+  link entries, like list, like number
+
+task join-point-of
+  take level, like number
+  take names, like list, like text
+  like join-point
+  mark private
+
+  back
+    make join-point
+      bind level, level
+      bind names, names
+      bind head, <>
+      bind entries, make list
 
 task no-join
   like maybe, like join-point
@@ -1394,6 +1461,9 @@ task join-call
   like maybe, like kernel-term
   mark private
 
+  fork test, is-unequal(point/head, <>)
+    hold
+      back lifted-call(point, scope, ctx)
   save out, variable(subtract(subtract(ctx/level, point/level), 1))
   walk point/names
     take name
@@ -1402,6 +1472,34 @@ task join-call
       hold
         back no-term()
     save out, apply-term(out, variable(subtract(subtract(ctx/level, level), 1)))
+  back some-term(out)
+
+# the next turn of a lifted walk test: its constant applied to every binder it was lifted over, each saved name's binder
+# at the walk replaced by the version it has now
+task lifted-call
+  take point, like join-point
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  save out, constant(point/head)
+  save j, 0
+  walk test
+    hook test, is-below(j, point/level)
+    hook hold
+      save level, j
+      walk point/entries
+        take entry
+        take i
+        fork test, is-equal(entry, j)
+          hold
+            save level, level-of(scope, get(point/names, i))
+      fork test, is-below(level, 0)
+        hold
+          back no-term()
+      save out, apply-term(out, variable(subtract(subtract(ctx/level, level), 1)))
+      save j, add(j, 1)
   back some-term(out)
 
 # does every path through these statements end in a `send back`
@@ -1490,7 +1588,14 @@ task gather-writes
         gather-writes(body, writes, lets)
       case guard
         link body
+        link catch
         gather-writes(body, writes, lets)
+        sift catch
+          case some
+            link clause
+            gather-writes(clause/body, writes, lets)
+          case none
+            turn next
       miss
         turn next
   back true
@@ -1644,10 +1749,7 @@ task joined-term
       save i, subtract(i, 1)
   # the statement, under the join task's binder
   save point-ctx, bind-context(ctx, <many>, evaluate(st, ctx/env, join-type), <join>)
-  save point
-    make join-point
-      bind level, ctx/level
-      bind names, names
+  save point, join-point-of(ctx/level, names)
   save inner, type-zero()
   sift statement-term(ts, statement, scope, point-ctx, result-value, make(some, point))
     case some
@@ -1661,6 +1763,563 @@ task joined-term
       bind type, arrow(join-type, quote(st, add(ctx/level, 1), result-value))
   save ts/lowered, true
   back some-term(apply-term(annotated, join-lam))
+
+# ---- walks ----
+
+# a loop's name as written, the empty text for none (the field is left out when the loop has no name)
+bind label-text
+  take given, like unknown
+  like text
+  case node
+    text <($given ?? "")>
+  case browser
+    text <($given ?? "")>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+# the type of a name's version now, the kernel's own
+task type-of-name
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take name, like text
+  like kernel-value
+  mark private
+
+  back get(ctx/types, subtract(subtract(ctx/level, level-of(scope, name)), 1))
+
+# `turn next` (`is-next`) or `halt`, of the innermost walk or the one named `label`: a call of that walk's next turn or
+# of what follows it, with the versions of its names this path holds
+task loop-jump
+  take ts, like term-state
+  take label, like unknown
+  take is-next, like boolean
+  take tail, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  fork test, is-above(tail/length, 0)
+    hold
+      note-miss(ts, <a statement after a turn next or a halt>)
+      back no-term()
+  save wanted, label-text(label)
+  save i, subtract(ts/loops/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save frame, get(ts/loops, i)
+      fork test, or(is-equal(wanted, <>), is-equal(frame/label, wanted))
+        hold
+          fork test, is-next
+            hold
+              back join-call(frame/next, scope, ctx)
+          back join-call(frame/exit, scope, ctx)
+      save i, subtract(i, 1)
+  fork test, is-next
+    hold
+      note-miss(ts, <a turn next>)
+      back no-term()
+  note-miss(ts, <a halt out of a walk>)
+  back no-term()
+
+task same-names
+  take a, like list, like text
+  take b, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take one
+    take i
+    fork test, is-unequal(one, get(b, i))
+      hold
+        back false
+  back true
+
+# a walk with nothing after it in its body: its turns over the names its body saves, ending in `join`. When `join` takes
+# other names than the walk saves (a walk last in an arm), the end is a join task of its own over the walk's names,
+# which calls `join`
+task loop-term
+  take ts, like term-state
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save loop-body, make list
+  sift statement
+    case while
+      link body
+      save loop-body, body
+    case for-each
+      link body
+      save loop-body, body
+    miss
+      back no-term()
+  save writes, make list
+  save lets, make list
+  gather-writes(loop-body, writes, lets)
+  save carried, make list
+  save seen, make hash
+  walk writes
+    take name
+    fork test, and(is-equal(seen/has(name), false), is-minimum(level-of(scope, name), 0))
+      hold
+        seen/set(name, true)
+        push(carried, name)
+  save point, join-point-of(0, carried)
+  sift join
+    case some
+      link found
+      save point, found
+    case none
+      note-miss(ts, <a path that ends without a return>)
+      back no-term()
+  fork test, and(same-names(point/names, carried), is-equal(point/head, <>))
+    hold
+      back walk-term(ts, statement, carried, scope, ctx, result-value, point)
+  # the end of the walk over its own names, which calls `join` with the versions it holds
+  save exit-ctx, ctx
+  save exit-scope, scope
+  save domains, make list
+  walk carried
+    take name
+    save carried-type, type-of-name(scope, ctx, name)
+    push(domains, quote(st, exit-ctx/level, carried-type))
+    save exit-scope, scope-with(exit-scope, name, exit-ctx/level)
+    save exit-ctx, bind-context(exit-ctx, <many>, carried-type, name)
+  save exit-lam, type-zero()
+  sift join-call(point, exit-scope, exit-ctx)
+    case some
+      link called
+      save exit-lam, called
+    case none
+      back no-term()
+  save exit-type, quote(st, exit-ctx/level, result-value)
+  save i, subtract(carried/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save exit-lam, named-lam(exit-lam, get(carried, i))
+      save exit-type, arrow(get(domains, i), exit-type)
+      save i, subtract(i, 1)
+  save point-ctx, bind-context(ctx, <many>, evaluate(st, ctx/env, exit-type), <exit>)
+  save inner, type-zero()
+  sift walk-term(ts, statement, carried, scope, point-ctx, result-value, join-point-of(ctx/level, carried))
+    case some
+      link found
+      save inner, found
+    case none
+      back no-term()
+  save annotated
+    make ann
+      bind term, named-lam(inner, <exit>)
+      bind type, arrow(exit-type, quote(st, add(ctx/level, 1), result-value))
+  back some-term(apply-term(annotated, exit-lam))
+
+# a walk whose end is `exit`, a join point over exactly the names it saves
+task walk-term
+  take ts, like term-state
+  take statement, like statement
+  take carried, like list, like text
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take exit, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  sift statement
+    case while
+      link cond
+      link body
+      link label
+      link down
+      save ends, false
+      sift down
+        case some
+          link measure
+          save ends, true
+        case none
+          save ends, false
+      back walk-test-term(ts, cond, body, label-text(label), ends, carried, scope, ctx, result-value, exit)
+    case for-each
+      link item
+      link index
+      link iterable
+      link body
+      link label
+      back walk-list-term(ts, item, label-text(index), iterable, body, label-text(label), carried, scope, ctx, result-value, exit)
+    miss
+      back no-term()
+
+# Next, the type of a turn: one binder per name the walk saves, then the task's result, as a term at `depth`
+task turn-type
+  take st, like judge-state
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take carried, like list, like text
+  take depth, like number
+  take result-value, like kernel-value
+  like kernel-term
+  mark private
+
+  save domains, make list
+  walk carried
+    take name
+    take i
+    push(domains, quote(st, add(depth, i), type-of-name(scope, ctx, name)))
+  save out, quote(st, add(depth, carried/length), result-value)
+  save i, subtract(carried/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save out, arrow(get(domains, i), out)
+      save i, subtract(i, 1)
+  back out
+
+# the element type of a list, none for any other type
+task element-of
+  take st, like judge-state
+  take given, like kernel-value
+  like maybe, like kernel-value
+  mark private
+
+  save found, whnf(st, given)
+  sift found
+    case rigid
+      link name
+      link spine
+      fork test, and(is-equal(name, <Array>), is-equal(spine/length, 1))
+        hold
+          sift get(spine, 0)
+            case app
+              link arg
+              back make(some, arg)
+            miss
+              back make none
+      back make none
+    miss
+      back make none
+
+# `walk list` as the fold `arrayElim A (\_. Next -> Next) (\next. next) turn xs exit s..`, where a turn is
+# `\ys. \x. \ih. \next. ih (\s... body)`: the turns before this one run first and hand it the names' versions, and its
+# body ends by calling `next` (falling off the end, or `turn next`), `exit` (`halt`), or answers for the task (`send
+# back`). The item's index, when the walk names one, is the length of the list before it
+task walk-list-term
+  take ts, like term-state
+  take item, like text
+  take index, like text
+  take iterable, like expression
+  take body, like list, like statement
+  take label, like text
+  take carried, like list, like text
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take exit, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save n0, ctx/level
+  save xs-term, type-zero()
+  sift expr(ts, iterable, scope, ctx, no-value())
+    case some
+      link found
+      save xs-term, found
+    case none
+      back no-term()
+  save element, ts/type0-value
+  sift attempt-type(ts, ctx, xs-term)
+    case some
+      link list-type
+      sift element-of(st, list-type)
+        case some
+          link found
+          save element, found
+        case none
+          note-miss(ts, <a walk over something other than a list>)
+          back no-term()
+    case none
+      back no-term()
+  save array, constant(<Array>)
+  # the motive, `\_. Next -> Next`, at depth n0
+  save motive, named-lam(arrow(turn-type(st, scope, ctx, carried, add(n0, 1), result-value), turn-type(st, scope, ctx, carried, add(n0, 2), result-value)), <list>)
+  save empty-case, named-lam(variable(0), <next>)
+  # the turn's context: the list before this item, the item, what that list gave, the next turn, the names' versions
+  save turn-ctx, bind-context(ctx, <many>, evaluate(st, ctx/env, apply-term(array, quote(st, n0, element))), <before>)
+  save turn-ctx, bind-context(turn-ctx, <many>, element, item)
+  save ih-type, arrow(turn-type(st, scope, ctx, carried, add(n0, 2), result-value), turn-type(st, scope, ctx, carried, add(n0, 3), result-value))
+  save turn-ctx, bind-context(turn-ctx, <many>, evaluate(st, turn-ctx/env, ih-type), <turns>)
+  save next-type, turn-type(st, scope, ctx, carried, add(n0, 3), result-value)
+  save turn-ctx, bind-context(turn-ctx, <many>, evaluate(st, turn-ctx/env, next-type), <next>)
+  save turn-scope, scope-with(scope, item, add(n0, 1))
+  walk carried
+    take name
+    save turn-scope, scope-with(turn-scope, name, turn-ctx/level)
+    save turn-ctx, bind-context(turn-ctx, <many>, type-of-name(scope, ctx, name), name)
+  save counted, is-unequal(index, <>)
+  save index-level, turn-ctx/level
+  fork test, counted
+    hold
+      save number-value, evaluate(st, no-values(), constant(<Number>))
+      save turn-scope, scope-with(turn-scope, index, index-level)
+      save turn-ctx, bind-context(turn-ctx, <many>, number-value, index)
+  save frame
+    make loop-frame
+      bind label, label
+      bind next, join-point-of(add(n0, 3), carried)
+      bind exit, exit
+  push(ts/loops, frame)
+  save found-step, body-in(ts, body, turn-scope, turn-ctx, result-value, make(some, frame/next))
+  ts/loops/pop()
+  save step, type-zero()
+  sift found-step
+    case some
+      link found
+      save step, found
+    case none
+      back no-term()
+  fork test, counted
+    hold
+      # the index: the length of the list before the item, a fold of its own
+      save at, index-level
+      save before, variable(subtract(subtract(at, n0), 1))
+      save counting, named-lam(constant(<Number>), <list>)
+      save one-more, named-lam(named-lam(named-lam(apply-term(apply-term(constant(<add>), variable(0)), constant(number-literal-constant(<1>))), <count>), <last>), <before>)
+      save length, apply-term(apply-term(apply-term(apply-term(apply-term(constant(<arrayElim>), quote(st, at, element)), counting), constant(number-literal-constant(<0>))), one-more), before)
+      save indexed
+        make ann
+          bind term, named-lam(step, index)
+          bind type, arrow(constant(<Number>), quote(st, add(at, 1), result-value))
+      save step, apply-term(indexed, length)
+  save turn-body, step
+  save i, subtract(carried/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save turn-body, named-lam(turn-body, get(carried, i))
+      save i, subtract(i, 1)
+  # inside `\ys. \x. \ih. \next.`, `ih` is the variable 1
+  save turn, named-lam(named-lam(named-lam(named-lam(apply-term(variable(1), turn-body), <next>), <turns>), item), <before>)
+  save fold, apply-term(apply-term(apply-term(apply-term(apply-term(constant(<arrayElim>), quote(st, n0, element)), motive), empty-case), turn), xs-term)
+  save out, apply-term(fold, variable(subtract(subtract(n0, exit/level), 1)))
+  walk carried
+    take name
+    save level, level-of(scope, name)
+    save out, apply-term(out, variable(subtract(subtract(n0, level), 1)))
+  save ts/lowered, true
+  back some-term(out)
+
+# `walk test` lifted to the global task `<task>__walk<k>` over every binder of the context it stands in: `cond test
+# (turn, ending in a call of itself with the names' new versions) (exit with their versions)`. The task's type and
+# body are kept (`ts/lifted`): check/elaborating-main.tree checks the body before it accepts the task's own term, and
+# makes it a definition only when the walk has a `down` and the task is pure
+task walk-test-term
+  take ts, like term-state
+  take cond, like expression
+  take body, like list, like statement
+  take label, like text
+  take ends, like boolean
+  take carried, like list, like text
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take exit, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save n, ctx/level
+  save name, <{ts/task-name}__walk{ts/walk-count}>
+  save ts/walk-count, add(ts/walk-count, 1)
+  save lifted-type, quote(st, n, result-value)
+  save j, subtract(n, 1)
+  walk test
+    hook test, is-minimum(j, 0)
+    hook hold
+      save at, subtract(subtract(n, j), 1)
+      save lifted-type
+        make kernel-term/pi
+          bind mult, get(ctx/mults, at)
+          bind domain, quote(st, j, get(ctx/types, at))
+          bind codomain, lifted-type
+      save j, subtract(j, 1)
+  ctx/globals/set(name, evaluate(st, no-values(), lifted-type))
+  save entries, make list
+  walk carried
+    take one
+    push(entries, level-of(scope, one))
+  save next
+    make join-point
+      bind level, n
+      bind names, carried
+      bind head, name
+      bind entries, entries
+  save frame
+    make loop-frame
+      bind label, label
+      bind next, next
+      bind exit, exit
+  push(ts/loops, frame)
+  save found-turn, body-in(ts, body, scope, ctx, result-value, make(some, next))
+  ts/loops/pop()
+  save turn, type-zero()
+  sift found-turn
+    case some
+      link found
+      save turn, found
+    case none
+      back no-term()
+  save test, type-zero()
+  sift expr(ts, cond, scope, ctx, no-value())
+    case some
+      link found
+      save test, found
+    case none
+      back no-term()
+  save done, type-zero()
+  sift join-call(exit, scope, ctx)
+    case some
+      link found
+      save done, found
+    case none
+      back no-term()
+  save lifted-term, apply-term(apply-term(apply-term(apply-term(constant(<cond>), quote(st, n, result-value)), test), turn), done)
+  save j, subtract(n, 1)
+  walk test
+    hook test, is-minimum(j, 0)
+    hook hold
+      save lifted-term, named-lam(lifted-term, get(ctx/names, subtract(subtract(n, j), 1)))
+      save j, subtract(j, 1)
+  save made
+    make lifted-walk
+      bind name, name
+      bind type, lifted-type
+      bind term, lifted-term
+      bind ends, ends
+  push(ts/lifted, made)
+  save out, constant(name)
+  save j, 0
+  walk test
+    hook test, is-below(j, n)
+    hook hold
+      save out, apply-term(out, variable(subtract(subtract(n, j), 1)))
+      save j, add(j, 1)
+  save ts/lowered, true
+  back some-term(out)
+
+# ---- guarded forks (proof-by-default-0011) ----
+
+# A GUARDED FORK (`fork` / `mark unsafe`, its `halt take` the handler) is lowered the way a walk is: the handler is a
+# local task over the names the guarded statements save, `\s... handler`, bound once, and a raise in them calls it with
+# the versions it holds, where the raise stands. So a raise is the variant of the fork's result that is not falling
+# through, and the handler a match on it. What the lowering does not represent stays out of the term, with its reason:
+#   - what was raised: the handler's `take` is hidden, so a handler that reads it is checked statement by statement
+#   - a call inside the guarded statements that may raise (`call-term`), whose raise would take the handler's path
+#   - a raise outside every guarded fork, which leaves the task: the term is the task's answer, and has none to give
+# A fork with no handler is its statements, a raise in them reaching the guarded fork around it, if any
+task guard-term
+  take ts, like term-state
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save guarded, make list
+  save handler, make list
+  save caught, <>
+  save has-handler, false
+  sift statement
+    case guard
+      link body
+      link catch
+      save guarded, body
+      sift catch
+        case some
+          link clause
+          save handler, clause/body
+          save caught, clause/name
+          save has-handler, true
+        case none
+          save has-handler, false
+    miss
+      back no-term()
+  fork test, is-equal(has-handler, false)
+    hold
+      back body-in(ts, guarded, scope, ctx, result-value, join)
+  save writes, make list
+  save lets, make list
+  gather-writes(guarded, writes, lets)
+  save carried, make list
+  save seen, make hash
+  walk writes
+    take name
+    fork test, and(is-equal(seen/has(name), false), is-minimum(level-of(scope, name), 0))
+      hold
+        seen/set(name, true)
+        push(carried, name)
+  # the handler, over the versions of the names the guarded statements save, what was raised hidden
+  save handler-ctx, ctx
+  save handler-scope, scope
+  save domains, make list
+  walk carried
+    take name
+    save carried-type, type-of-name(scope, ctx, name)
+    push(domains, quote(st, handler-ctx/level, carried-type))
+    save handler-scope, scope-with(handler-scope, name, handler-ctx/level)
+    save handler-ctx, bind-context(handler-ctx, <many>, carried-type, name)
+  save handler-scope, scope-with(handler-scope, caught, -1)
+  save handler-lam, type-zero()
+  sift body-in(ts, handler, handler-scope, handler-ctx, result-value, join)
+    case some
+      link found
+      save handler-lam, found
+    case none
+      back no-term()
+  save handler-type, quote(st, handler-ctx/level, result-value)
+  save i, subtract(carried/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save handler-lam, named-lam(handler-lam, get(carried, i))
+      save handler-type, arrow(get(domains, i), handler-type)
+      save i, subtract(i, 1)
+  # the guarded statements, under the handler's binder
+  save point-ctx, bind-context(ctx, <many>, evaluate(st, ctx/env, handler-type), <handler>)
+  push(ts/guards, join-point-of(ctx/level, carried))
+  save found-body, body-in(ts, guarded, scope, point-ctx, result-value, join)
+  ts/guards/pop()
+  save inner, type-zero()
+  sift found-body
+    case some
+      link found
+      save inner, found
+    case none
+      back no-term()
+  save annotated
+    make ann
+      bind term, named-lam(inner, <handler>)
+      bind type, arrow(handler-type, quote(st, add(ctx/level, 1), result-value))
+  save ts/lowered, true
+  back some-term(apply-term(annotated, handler-lam))
 
 # a `fork` or a `fork case` as the last statement of a body, each arm under `join`
 task statement-term
@@ -1721,6 +2380,12 @@ task statement-term
           back no-term()
         case none
           back match-term(ts, subject, cases, scope, ctx, result-value, join)
+    case while
+      back loop-term(ts, statement, scope, ctx, result-value, join)
+    case for-each
+      back loop-term(ts, statement, scope, ctx, result-value, join)
+    case guard
+      back guard-term(ts, statement, scope, ctx, result-value, join)
     miss
       back no-term()
 
@@ -1878,6 +2543,39 @@ task body-in
         hold
           back joined-term(ts, head, tail, scope, ctx, result-value, join)
       back statement-term(ts, head, scope, ctx, result-value, join)
+    case while
+      fork test, is-above(tail/length, 0)
+        hold
+          back joined-term(ts, head, tail, scope, ctx, result-value, join)
+      back statement-term(ts, head, scope, ctx, result-value, join)
+    case for-each
+      fork test, is-above(tail/length, 0)
+        hold
+          back joined-term(ts, head, tail, scope, ctx, result-value, join)
+      back statement-term(ts, head, scope, ctx, result-value, join)
+    case guard
+      fork test, is-above(tail/length, 0)
+        hold
+          back joined-term(ts, head, tail, scope, ctx, result-value, join)
+      back statement-term(ts, head, scope, ctx, result-value, join)
+    case throw
+      # a raise inside a guarded fork calls its handler with the versions this path holds; one outside every guarded
+      # fork leaves the task, which its term cannot say
+      fork test, is-above(tail/length, 0)
+        hold
+          note-miss(ts, <a statement after a raise>)
+          back no-term()
+      fork test, is-equal(ts/guards/length, 0)
+        hold
+          note-miss(ts, statement-words(head))
+          back no-term()
+      back join-call(get(ts/guards, subtract(ts/guards/length, 1)), scope, ctx)
+    case continue
+      link label
+      back loop-jump(ts, label, true, tail, scope, ctx)
+    case break
+      link label
+      back loop-jump(ts, label, false, tail, scope, ctx)
     miss
       note-miss(ts, statement-words(head))
       back no-term()

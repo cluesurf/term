@@ -193,9 +193,29 @@ task check-task
   save st, ts/st
   save ts/miss, <>
   save ts/lowered, false
+  save ts/task-name, name
+  save ts/walk-count, 0
+  save ts/loops, make list
+  save ts/lifted, make list
+  save ts/guards, make list
   fork
     mark unsafe
     save found, body(ts, statements, scope, ctx, result-value)
+    # every walk test the lowering lifted is checked first, in the context of the signature alone, against the type it
+    # was given: a turn the kernel refuses means the task's term is not the program's (proof-by-default-0010)
+    sift found
+      case some
+        link term
+        walk ts/lifted
+          take one
+          save no-env, no-values()
+          fork test, is-equal(kernel-accepts(st, ms/base-context, one/term, evaluate(st, no-env, one/type)), false)
+            hold
+              save found, make none
+              save ts/miss, <the kernel refused a lifted walk>
+              halt
+      case none
+        save found, found
     # a term the pure lowering built (a save made a new name, or a fork a join) the kernel refuses is a defect of the
     # lowering, not of the task: the task is checked statement by statement, and the refusal is counted as its reason
     sift found
@@ -218,11 +238,13 @@ task check-task
               hold
                 check(st, ctx, term, result-value)
                 define-constant(st, name, evaluate(st, no-values(), lambda-over(term, arity)))
+                define-lifted(ms, name)
             back raised-of(<ok>, <>)
         check(st, ctx, term, result-value)
         fork test, and(ms/terminating/has(name), ms/pure/has(name))
           hold
             define-constant(st, name, evaluate(st, no-values(), lambda-over(term, arity)))
+        define-lifted(ms, name)
         push(ms/proven, name)
       case none
         save why, ts/miss
@@ -262,6 +284,24 @@ task check-task
       miss
         back raised-of(<other>, raise-message(problem))
   back raised-of(<ok>, <>)
+
+# A LIFTED WALK TEST is a definition the kernel unfolds only when its walk carries a `down`, the measure the build holds
+# to staying a natural number and falling every turn (check/contracts.tree, a contract an unproven one fails the build
+# on), and its task is pure, so the walk is too. Any other stays an opaque constant: the task's term is still checked,
+# but nothing is computed through a loop not shown to end (decision 001 of note/project/term/proof)
+task define-lifted
+  take ms, like main-state
+  take name, like text
+  like boolean
+  mark private
+
+  save st, ms/ts/st
+  walk ms/ts/lifted
+    take one
+    fork test, and(one/ends, ms/pure/has(name))
+      hold
+        define-constant(st, one/name, evaluate(st, no-values(), one/term))
+  back true
 
 task is-theorem
   take statement, like statement

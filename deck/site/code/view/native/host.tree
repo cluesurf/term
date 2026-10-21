@@ -1,4 +1,4 @@
-# The app host: boot the routed app, env-abstracted. The SAME `route(host, path)` dispatcher drives every side; only
+# The app host: boot the routed app, env-abstracted. The SAME `route(host, request)` dispatcher drives every side; only
 # this `host` differs per environment (the native-env mechanism picks it). The browser mounts the matched page on the
 # document body and re-renders on navigation; the server starts an HTTP server that renders each request through
 # `route` and responds with HTML (SSR); macOS, iOS and Android mount it on a window (./toolkit/host); a Rust binary
@@ -10,11 +10,17 @@
 
 load ../../dom/view
   find view
+load ../../http/http
+  find request
+  find response
+load @term/base/maybe
+  find maybe
 
 task host
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take port, like number
   save nothing, code 0

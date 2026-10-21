@@ -23,12 +23,20 @@ load @term/site/view/navigation
   find start-navigation
   find current-path
   find follow-address
+load @term/site/view/route-answer
+  find make-page-request
+load @term/site/http/http
+  find request
+  find response
+load @term/base/maybe
+  find maybe
 
 task host
   take route
     like task
       take host, like view
-      take path, like text
+      take request, like request
+      like maybe, like response
   take port, like number
   save body
     call page-body
@@ -57,9 +65,11 @@ task host
                       read body
                     # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
                     # that moves a captured text does not build on Rust (E0507)
+                    # a GET: the browser draws the page, and a form posts to the server, never to this dispatcher
                     call route
                       read body
-                      call current-path
+                      call make-page-request
+                        call current-path
                     send back, read body
   # the person moved the address themselves (back, forward, a same-origin link): the contract follows, and the effect
   # above draws where it now is

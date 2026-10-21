@@ -10,6 +10,10 @@ import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { elaborateReport } from '@term/make/code/check/elaborate'
 import type { ElaborationReport } from '@term/make/code/check/elaborate'
+import { judgeState } from '@term/make/code/check/judge'
+
+// the kernel's transparent definitions after the last report
+const definitions = (): Map<string, unknown> => (judgeState() as unknown as { definition: Map<string, unknown> }).definition
 
 let pass = 0
 let fail = 0
@@ -202,6 +206,259 @@ const LOOP = `task sum-below
   send back total
 `
 
+// a counted walk over a list, its index read
+const LIST_SUM = `task sum-at
+  take xs, like list, like number
+  like number
+  save total, code 0
+  walk list, read xs
+    hook next
+      take x
+      take i
+      save total
+        call add
+          read total
+          call multiply
+            read x
+            read i
+  send back total
+`
+
+// `turn next`, `halt` and a `send back` inside the walk, each in a case of its own
+const LIST_EXITS = `task first-big
+  take xs, like list, like number
+  like number
+  save seen, code 0
+  walk list, read xs
+    hook next
+      take x
+      fork test
+        hook test
+          call is-below
+            read x
+            code 0
+        hook hold
+          turn next
+      fork test
+        hook test
+          call is-above
+            read x
+            code 100
+        hook hold
+          send back x
+      fork test
+        hook test
+          call is-above
+            read seen
+            code 9
+        hook hold
+          halt
+      save seen
+        call add
+          read seen
+          code 1
+  send back seen
+`
+
+// a walk last in an arm: its end joins the fork's
+const LIST_IN_ARM = `task count-if
+  take xs, like list, like number
+  take on, like boolean
+  like number
+  save n, code 0
+  fork test
+    hook test
+      read on
+    hook hold
+      walk list, read xs
+        hook next
+          take x
+          save n
+            call add
+              read n
+              code 1
+  send back n
+`
+
+const SIZE = `task triangle
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take k
+      save total
+        call add
+          read total
+          read k
+  send back total
+`
+
+const DOWN = `task halve
+  take n, like number
+  like number
+  save m, read n
+  walk test
+    down m
+    hook test
+      call is-above
+        read m
+        code 0
+    hook hold
+      save m
+        call subtract
+          read m
+          code 1
+  send back m
+`
+
+// nested walks, the inner one leaving the outer turn by name
+const NESTED_WALKS = `task pairs
+  take xs, like list, like number
+  like number
+  save c, code 0
+  walk list
+    read xs
+    name outer
+    hook next
+      take x
+      walk list, read xs
+        hook next
+          take y
+          fork test
+            hook test
+              call is-equal
+                read x
+                read y
+            hook hold
+              turn next, name outer
+          save c
+            call add
+              read c
+              code 1
+  send back c
+`
+
+const OVER_HASH = `task keys
+  take h, like text
+  like number
+  save n, code 0
+  walk list, read h
+    hook next
+      take v
+      save n
+        call add
+          read n
+          code 1
+  send back n
+`
+
+// proof-by-default-0011: a guarded fork whose handler takes the raise
+const GUARDED = `task cap
+  take n, like number
+  like number
+  save m, read n
+  fork
+    mark unsafe
+    fork test
+      hook test
+        call is-above
+          read n
+          code 10
+      hook hold
+        halt <Too big>
+    save m
+      call add
+        read n
+        code 1
+  halt take
+    take problem
+    save m, code 10
+  send back m
+`
+
+// a raise inside a walk inside the guarded fork reaches the handler too
+const GUARDED_WALK = `task first-negative
+  take xs, like list, like number
+  like number
+  save at, code 0
+  fork
+    mark unsafe
+    walk list, read xs
+      hook next
+        take x
+        fork test
+          hook test
+            call is-below
+              read x
+              code 0
+          hook hold
+            halt <Found>
+        save at
+          call add
+            read at
+            code 1
+    save at, code -1
+  halt take
+    take problem
+    send back at
+  send back at
+`
+
+const READS_RAISE = `task why
+  take n, like number
+  like text
+  fork
+    mark unsafe
+    halt <No>
+  halt take
+    take problem
+    send back problem/note
+  send back <yes>
+`
+
+const RAISING_CALL = `task risky
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read n
+        code 10
+    hook hold
+      halt <Too big>
+  send back n
+
+task safe
+  take n, like number
+  like number
+  save m, read n
+  fork
+    mark unsafe
+    save m
+      call risky
+        read n
+  halt take
+    take problem
+    save m, code 0
+  send back m
+`
+
+const ESCAPES = `task loud
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read n
+        code 10
+    hook hold
+      halt <Too big>
+  send back n
+`
+
 const FALLS_OFF = `task falls
   take n, like number
   like number
@@ -236,7 +493,60 @@ function main(): void {
   )
 
   statementwise('a save to a name a closure reads is not lowered, and says so', CLOSURE, 'late', 'a save to a name a closure reads')
-  statementwise('a walk is checked statement by statement, and says so', LOOP, 'sum-below', 'a walk test')
+  // proof-by-default-0010: every walk is one term
+  proven('a walk test is one term, lifted to a task of its own', LOOP, 'sum-below')
+  proven('a counted walk over a list, its index read, is one term', LIST_SUM, 'sum-at')
+  proven('turn next, halt and send back inside a walk, each a case of its own', LIST_EXITS, 'first-big')
+  proven('a walk last in an arm joins the arm', LIST_IN_ARM, 'count-if')
+  proven('walk size is one term', SIZE, 'triangle')
+  proven('a walk test with a down is one term', DOWN, 'halve')
+  proven('turn next out of a nested walk, by name', NESTED_WALKS, 'pairs')
+  // a turn's body is the kernel's to check, in a fold and in a lifted walk test alike
+  for (const [what, walk] of [
+    ['a walk over a list', 'walk list, read xs\n    hook next\n      take x'],
+    ['a walk test', 'walk test\n    hook test\n      call is-below\n        read total\n        code 3\n    hook hold'],
+  ] as const) {
+    const bad = report(`task wrong-turn
+  take xs, like list, like number
+  like number
+  save total, code 0
+  ${walk}
+      save total, true
+  send back total
+`)
+    ok(
+      `the kernel refuses a save of the wrong type inside ${what}`,
+      !bad.proven.includes('wrong-turn') && bad.diagnostics.some(d => d.message.startsWith('kernel:')),
+      JSON.stringify({ proven: bad.proven, statementwise: bad.statementwise, diagnostics: bad.diagnostics.map(d => d.message) }),
+    )
+  }
+
+  const overText = report(OVER_HASH)
+  ok('a walk over a text is no fold, and is not proven', !overText.proven.includes('keys'), JSON.stringify(overText.declined))
+
+  // a lifted walk test is a definition the kernel unfolds only with a `down`, and opaque without one
+  report(DOWN)
+  ok('a walk test with a down is a definition', definitions().has('halve__walk0'), [...definitions().keys()].join(', '))
+  report(LOOP)
+  ok(
+    'one without is an opaque constant: nothing is computed through a loop not shown to end',
+    !definitions().has('sum-below__walk0') && definitions().has('sum-below'),
+    [...definitions().keys()].join(', '),
+  )
+  // proof-by-default-0011: a guarded fork is one term, its raise a call of the handler
+  proven('a guarded fork and its handler are one term', GUARDED, 'cap')
+  proven('a raise inside a walk inside the guarded fork', GUARDED_WALK, 'first-negative')
+  const reads = report(READS_RAISE)
+  // neither is one term: the statement-by-statement checker then declines the guarded fork with its own reason
+  const notOneTerm = (name: string, r: ElaborationReport, task: string): void =>
+    ok(
+      name,
+      !r.proven.includes(task) && [...r.statementwise, ...r.declined].some(one => one.name === task),
+      JSON.stringify({ statementwise: r.statementwise, declined: r.declined }),
+    )
+  notOneTerm('a handler that reads what was raised is not one term', reads, 'why')
+  notOneTerm('a call that may raise inside a guarded fork is not one term', report(RAISING_CALL), 'safe')
+  statementwise('a raise that leaves the task is not lowered, and says so', ESCAPES, 'loud', 'a raise')
   statementwise('a path that ends without a return is named', FALLS_OFF, 'falls', 'a path that ends without a return')
 
   console.log(`\nlowering: ${pass} pass, ${fail} fail`)
