@@ -34,11 +34,13 @@ load @term/site/view/route-answer
   find page-methods
 
 task host
+  # async, as on node: a `route` that loads its data first may be async (view/native/node/host.tree)
   take route
     like task
       take host, like view
       take request, like request
       like maybe, like response
+      mark async
   take port, like u16
   # the catch-all handler: SSR-render the requested page through `route`, or answer with the route's `task <method>`
   save render-request

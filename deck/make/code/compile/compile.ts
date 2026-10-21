@@ -40,6 +40,9 @@ import {
   checkPrivateReferences,
   warnPrivateNotes,
 } from '@term/make/code/check/private'
+import { checkHiddenMakes } from '@term/make/code/check/hide'
+import { checkSoleGenerics, checkSoleUses } from '@term/make/code/check/sole'
+import { checkSoleEarned } from '@term/make/code/check/sole-earned'
 import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
@@ -1185,6 +1188,21 @@ export function compileProgram(
 
   if (checkErrors.length) {
     return { ok: false, diagnostics: checkErrors }
+  }
+
+  // `mark sole` and `mark hide` on a form (affine-kinds decision 001), held here, after the checker typed every value
+  // and before any backend, so TypeScript, Rust, Swift and Kotlin refuse alike: a form holding a sole value is sole
+  // itself (check/sole-earned.ts), only the declaring file makes a hidden form (check/hide.ts, beside check/private.ts),
+  // and a sole value is used at most once (check/sole.ts)
+  const affine = [
+    ...checkSoleEarned(program, file),
+    ...checkHiddenMakes(program, file, deckHomes(program, scope, file, deckOf)),
+    ...checkSoleGenerics(program, file),
+    ...checkSoleUses(program, file),
+  ]
+
+  if (affine.length) {
+    return { ok: false, diagnostics: affine }
   }
 
   const viewErrors = viewCopy ? checkLoweredViews(viewCopy, file, merged) : []

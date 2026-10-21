@@ -1,5 +1,5 @@
 # BROKEN TWIN of law 2, no forged permit: a route makes its own permit instead of asking `grant-delete`.
-# term hold must refuse it (`hidden-make`, affine-kinds-0009). Until check/hide.ts lands it builds.
+# term hold must refuse it (`hidden-make`, affine-kinds-0009, check/hide.ts).
 load ./model
   find natural
   find person

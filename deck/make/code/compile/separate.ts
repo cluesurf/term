@@ -26,6 +26,7 @@ import type {
   Twin,
 } from '@term/make/code/compile/node'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
+import { headWord } from '@term/make/code/compile/mill-run'
 import type { ImportScope, ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
 import { awaitsOutsideTasks, compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
@@ -241,6 +242,28 @@ export function compileSeparate(
     }
   }
 
+  // THE UNITS A PROOF REACHES (term-proof-0011). A claim's type may call a task of another file, and the kernel proves
+  // it by running that task's body (term-proof-0004), so a pure task shown to end in a unit some proving unit reaches
+  // must carry its body in its stub, as a theory's own tasks do (compile/stub.ts `stubProgram`). A unit proves when one
+  // of its files states a top-level `rule` (a claim or a theorem), read off the file's parse (the build's own memo), so
+  // a unit's key depends on nothing but its files' text. Only these units' dependencies give up the early cutoff for a
+  // body edit, which is what a proof that ran the old body requires
+  const statesRule = (file: string): boolean => {
+    const result = parsed(byFile.get(file)!)
+
+    return result.ok && result.tree.nodes.some(node => node.kind === 'group' && headWord(node) === 'rule')
+  }
+  const proves = order.map(files => files.some(statesRule))
+  const underProof = order.map(() => false)
+
+  for (let j = 0; j < order.length; j++) {
+    if (proves[j]) {
+      for (const d of reach[j]!) {
+        underProof[d] = true
+      }
+    }
+  }
+
   // WHAT A UNIT IS CHECKED WITH IS ITS OWN, and what it reaches. The walk's import scope holds every file the entry
   // reached, the files that IMPORT a unit among them, and handed whole to a unit's check it let an importer decide the
   // unit's answer: `a.tree`, checked inside `main.tree`'s build, failed with main's `find` of a private task of a, and
@@ -330,6 +353,8 @@ export function compileSeparate(
       // the checker's switches: the await switch decides whether an un-ticked async call outside a task is refused
       // (check/effects.ts), and the seam and the strict switch two more refusals (check/seam.ts, check/strict.ts)
       checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
+      // whether its stubs carry the bodies a proof above it runs: the same unit under no proof has other stubs
+      underProof[i] ? 'bodies' : '',
       ...files.map(f => {
         const role = options.roleOf?.(f) ?? ''
         const lean = options.leanOf?.(f) ? '#lean' : ''
@@ -387,7 +412,8 @@ export function compileSeparate(
       cache ? cache.unit<{ portable: string }>(`surface:${surfaceKey}`, () => ({ portable: namedKeyAs(checkedAs) })).portable : namedKeyAs(checkedAs)
 
     // what the unit is built from, as `term make --explain` compares it: the same inputs its key is made of, each kept
-    // apart so a change can be named
+    // apart so a change can be named. The first SETTINGS fields of `ownKey` are its settings, then one per file
+    const SETTINGS = 6
     const inputsAs = (checkedAs: string): UnitInputs => {
       const { used, defs } = reached()
       const key = ownKey(checkedAs)
@@ -396,8 +422,8 @@ export function compileSeparate(
         compiler: cache?.versionOf('unit') ?? '',
         own: new Map(files.map(f => [f, contentHash(byFile.get(f)!.text)])),
         // everything else the key says of the file, after its text's fingerprint
-        read: new Map(files.map((f, at) => [f, key[5 + at]!.slice(portable.out(f).length + 1 + contentHash(byFile.get(f)!.text).length)])),
-        settings: hashFields(key.slice(0, 5)),
+        read: new Map(files.map((f, at) => [f, key[SETTINGS + at]!.slice(portable.out(f).length + 1 + contentHash(byFile.get(f)!.text).length)])),
+        settings: hashFields(key.slice(0, SETTINGS)),
         names: namesPrinted(defs, used),
       }
     }
@@ -529,7 +555,7 @@ export function compileSeparate(
       const known = stubKnown(program)
       const stubbed: [string, Statement[]][] = files.map(f => [
         f,
-        stubProgram(ownStatements.filter(s => s.span.file === f), known),
+        stubProgram(ownStatements.filter(s => s.span.file === f), known, underProof[i]),
       ])
 
       const surface = stubbed.flatMap(([, list]) => list)

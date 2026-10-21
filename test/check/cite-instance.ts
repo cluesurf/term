@@ -7,7 +7,8 @@
 //   2. a case's fields may be `slot`s, filled by position: `make conjunction(p, q)` (check/extend.ts `fillVariant`).
 //   3. a form that aliases a task type is called as the task, in the checker and the kernel (`seat v, like assignment`).
 //   4. separately compiled, a rule may run a task and cite a rule of a THEORY in another file (a file that states rules),
-//      because the theory's stubs carry those bodies (compile/stub.ts `stubBody`). A file with no rules carries none.
+//      because the theory's stubs carry those bodies (compile/stub.ts `stubBody`). So does a file with no rules that a
+//      file with rules reaches (term-proof-0011); one no rule reaches carries none.
 //
 // Run: npx tsx test/check/cite-instance.ts
 
@@ -308,10 +309,14 @@ report(
   `ok=${acrossFalse.ok}: ${acrossFalse.messages.join(' | ')}`,
 )
 
-// the same theory with its rules removed is a plain file: its bodies stay home, so a rule elsewhere cannot run them
+// The same theory with its rules removed is a plain file, and a rule in ANOTHER file runs one of its tasks. Until
+// term-proof-0011 (2026-10-21) the plain file's stubs carried no bodies, so the rule was refused separately while the
+// merged build proved it: the two builds disagreed, which a stub must never cause (Term's CLAUDE.md: a stub carries
+// whatever a whole-program analysis reads of a body). Now a file a proving file reaches carries the bodies of its pure
+// tasks shown to end (compile/separate.ts `underProof`), so both builds prove it. A file NO rule reaches still carries
+// none, and keeps its early cutoff: test/compile/claim-across-units.ts holds that
 const PLAIN = FLAG.slice(0, FLAG.indexOf('rule both-commutes'))
-const plain = separately(
-  `load ./theory
+const ACROSS_PLAIN = `load ./theory
   find flag
   find both
 
@@ -323,14 +328,17 @@ rule computes-across-files
         make yes
         a
       a
-`,
-  PLAIN,
+`
+const plain = separately(ACROSS_PLAIN, PLAIN)
+const plainMerged = compile(
+  { file: 'entry.tree', text: ACROSS_PLAIN },
+  { resolve: path => (path === './theory' ? { file: 'theory.tree', text: PLAIN } : undefined), ...LEAN },
 )
 
 report(
-  'a file with no rules carries no bodies to its dependents',
-  !plain.ok && plain.messages.every(m => m.startsWith('unchecked-hold') || m.startsWith('unproven')),
-  `ok=${plain.ok}: ${plain.messages.join(' | ')}`,
+  'a rule runs a task of a file with no rules, separately as merged',
+  plain.ok && plainMerged.ok,
+  `separate ok=${plain.ok}: ${plain.messages.join(' | ')}; merged ok=${plainMerged.ok}`,
 )
 
 console.log(`\ncite-instance: ${pass} pass, ${fail} fail`)

@@ -1,0 +1,21 @@
+# THE BREAK (law 3): code outside model.tree erases a note by making the erase event itself and stepping it, with no
+# permit and no `grant-delete`. `event` is `mark hide` in model.tree, so the make is refused as `hidden-make`
+load ./model
+  find natural
+  find rank
+  find shelf
+  find event
+  find step
+
+task erase-anyway
+  take s, like shelf
+  take who, like natural
+  take id, like natural
+  like shelf
+  back
+    step
+      read s
+      make erase
+        bind who, who
+        bind rank, make member
+        bind id, id

@@ -53,10 +53,21 @@ load @term/site/code/view/native/browser/host
 load @term/site/code/view/navigation
   find navigate
 
-# a place drawn: its path as text, and a same-origin link to /c
+load @term/site/code/http/http
+  find request
+  find response
+
+load @term/base/maybe
+  find maybe
+
+# a place drawn: its path as text, and a same-origin link to /c. The host's dispatcher shape is
+# route(host, request) answering maybe a response (decision 001 of note/project/term/site-framework): a GET draws
+# into the host and answers nothing
 task draw
   take host, like view
-  take path, like text
+  take request, like request
+  like maybe, like response
+  save path, read request/path
   save here
     call create-element
       text <p>
@@ -89,6 +100,7 @@ task draw
   call append
     read host
     read link
+  send back, make none
 
 task start
   call host

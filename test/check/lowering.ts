@@ -459,6 +459,30 @@ const ESCAPES = `task loud
   send back n
 `
 
+// proof-by-default-0014: a save through a field is a new version of the record (D1)
+const FIELD_SAVE = `form box
+  link a, like number
+  link b, like number
+
+task reset
+  take x, like box
+  like box
+  save x/a, code 0
+  send back x
+`
+
+// a `mark shared` form is one object every name sees: a write through it is no new version
+const SHARED_SAVE = `form counter
+  mark shared
+  link count, like number
+
+task tick
+  take c, like counter
+  like number
+  save c/count, code 1
+  send back, read c/count
+`
+
 const FALLS_OFF = `task falls
   take n, like number
   like number
@@ -547,6 +571,9 @@ function main(): void {
   notOneTerm('a handler that reads what was raised is not one term', reads, 'why')
   notOneTerm('a call that may raise inside a guarded fork is not one term', report(RAISING_CALL), 'safe')
   statementwise('a raise that leaves the task is not lowered, and says so', ESCAPES, 'loud', 'a raise')
+  // proof-by-default-0014
+  proven('a save through a field is one term, the record made again', FIELD_SAVE, 'reset')
+  statementwise('a save through a field of a mark shared form is not lowered, and says so', SHARED_SAVE, 'tick', 'a save through a member of a mark shared form')
   statementwise('a path that ends without a return is named', FALLS_OFF, 'falls', 'a path that ends without a return')
 
   console.log(`\nlowering: ${pass} pass, ${fail} fail`)

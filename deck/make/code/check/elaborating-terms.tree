@@ -132,6 +132,9 @@ form term-state
   # the tasks of the program a call of which may raise: a raise in its row (check/effects.ts), or no body to see.
   # The face sets it once per program
   link raising, like hash, like text, like boolean
+  # the forms marked `mark shared`: one object every name sees, so a write through a field is no new version. The face
+  # sets it once per program
+  link shared, like hash, like text, like boolean
 
 # a walk the lowering is inside: the call a `turn next` makes, and the one a `halt` makes
 form loop-frame
@@ -193,6 +196,7 @@ task new-term-state
       bind lifted, make list
       bind guards, make list
       bind raising, make hash
+      bind shared, make hash
 
 # ---- small readings ----
 
@@ -1551,6 +1555,15 @@ task gather-writes
           case variable
             link name
             push(writes, name)
+          # a save through a field is a new version of its record (`assign-term`)
+          case member
+            link root
+            sift root
+              case variable
+                link name
+                push(writes, name)
+              miss
+                turn next
           miss
             turn next
       case let
@@ -1616,10 +1629,31 @@ task assign-term
 
   save st, ts/st
   save name, <>
+  # a save through a field, `save r/f, v`: under D1 a record is a value, so it is a new version of `r`, its
+  # construction with that field replaced (proof-by-default-0014, decision 002 of note/project/term/proof). Every
+  # other field's fact survives the write, since the new version's other fields are the old one's
+  save field, <>
   sift target
     case variable
       link written
       save name, written
+    case member
+      link root
+      link field-name
+      link dynamic
+      sift dynamic
+        case some
+          note-miss(ts, <a save through a computed member>)
+          back no-term()
+        case none
+          save field, field-name
+      sift root
+        case variable
+          link written
+          save name, written
+        miss
+          note-miss(ts, <a save through a member of a member>)
+          back no-term()
     miss
       note-miss(ts, <a save through a member>)
       back no-term()
@@ -1640,17 +1674,24 @@ task assign-term
     case none
       back no-term()
   save value-term, type-zero()
-  sift expr(ts, value, scope, ctx, some-value(old-type))
+  save value-expected, some-value(old-type)
+  fork test, is-unequal(field, <>)
+    hold
+      save value-expected, no-value()
+  sift expr(ts, value, scope, ctx, value-expected)
     case some
       link found
       save value-term, found
     case none
       back no-term()
-  # the command checker's own typing of a save, so a lowered task is held to exactly what it was held to
+  # the command checker's own typing of a save, so a lowered task is held to exactly what it was held to. A field's
+  # new value is checked where the record is made again, against the field's type
   save primitive, <>
   sift op
     case set
-      check(st, ctx, value-term, old-type)
+      fork test, is-equal(field, <>)
+        hold
+          check(st, ctx, value-term, old-type)
     case add
       save primitive, <add>
     case subtract
@@ -1667,6 +1708,14 @@ task assign-term
       check(st, ctx, target-term, number-value)
       check(st, ctx, value-term, number-value)
       save new-term, apply-term(apply-term(constant(primitive), target-term), value-term)
+  fork test, is-unequal(field, <>)
+    hold
+      sift record-again(ts, ctx, variable(subtract(subtract(ctx/level, level), 1)), old-type, field, new-term)
+        case some
+          link made
+          save new-term, made
+        case none
+          back no-term()
   save inner, bind-context(ctx, <many>, old-type, name)
   save inner-scope, scope-with(scope, name, ctx/level)
   sift body-in(ts, tail, inner-scope, inner, result-value, join)
@@ -1682,6 +1731,52 @@ task assign-term
       back some-term(apply-term(annotated, new-term))
     case none
       back no-term()
+
+# the record `r` (of type `record-type`) made again with `field` holding `value` and every other field its own: `make__R`
+# over `R__g r` for each field g. None for anything but a record of a form with no cases and no type arguments, or a
+# `mark shared` form, which is one object every name sees, not a value
+task record-again
+  take ts, like term-state
+  take ctx, like context
+  take r, like kernel-term
+  take record-type, like kernel-value
+  take field, like text
+  take value, like kernel-term
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save data, ts/data
+  save record-name, <>
+  sift const-name(quote(st, ctx/level, record-type))
+    case some
+      link found
+      save record-name, found
+    case none
+      note-miss(ts, <a save through a member of something that is not a record>)
+      back no-term()
+  fork test, ts/shared/has(record-name)
+    hold
+      note-miss(ts, <a save through a member of a mark shared form>)
+      back no-term()
+  fork test, is-equal(data/record-fields/has(record-name), false)
+    hold
+      note-miss(ts, <a save through a member of something that is not a record>)
+      back no-term()
+  save out, constant(<make__{record-name}>)
+  save seen, false
+  walk data/record-fields/get(record-name)
+    take one
+    fork test, is-equal(one, field)
+      hold
+        save seen, true
+        save out, apply-term(out, value)
+      miss
+        save out, apply-term(out, apply-term(constant(<{record-name}__{one}>), r))
+  fork test, is-equal(seen, false)
+    hold
+      back no-term()
+  back some-term(out)
 
 # a `fork` or `fork case` some path through which falls through to `tail`: the join task over the names its arms save
 # again, then the statement with every falling arm ending in a call of it

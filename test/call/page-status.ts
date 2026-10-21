@@ -205,6 +205,13 @@ load @term/site/dom/page
 load @term/site/view/native/{platform}/host
   find host
 
+load @term/site/http/http
+  find request
+  find response
+
+load @term/base/maybe
+  find maybe
+
 view home
   take host, like view
   view h1, <Shelf>
@@ -218,8 +225,10 @@ view missing
 
 task route
   take host, like view
-  take path, like text
+  take request, like request
+  like maybe, like response
 
+  save path, read request/path
   fork test, is-equal path, </>
     hold
       set-title <Shelf>
@@ -227,6 +236,7 @@ task route
     miss
       set-status 404
       missing host, path
+  send back, make none
 
 task boot
   take url, like text
@@ -293,6 +303,13 @@ load @term/site/view/native/{platform}/host
 load @term/base/clock
   find sleep
 
+load @term/site/http/http
+  find request
+  find response
+
+load @term/base/maybe
+  find maybe
+
 view home
   take host, like view
   view h1, <Shelf>
@@ -303,10 +320,12 @@ task load-books
 
 task route
   take host, like view
-  take path, like text
+  take request, like request
+  like maybe, like response
 
   load-books()
   home host
+  send back, make none
 
 task boot
   take url, like text

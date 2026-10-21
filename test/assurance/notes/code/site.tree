@@ -1,0 +1,467 @@
+# THE NOTES SITE: the web layer over model.tree and permit.tree (term-assurance-demo-0002). Page routes on the methods
+# of decision 001 of note/project/term/site-framework: GET draws a page, `task post` / `patch` / `delete` change it.
+#
+#   GET    /notes               the signed-in person's notes: `view(replay(log), person)`, laws 4 and 5 of `view`
+#   POST   /notes               write a note: a `write` event, run through `step` by `replay`
+#   GET    /notes/:id           one note, found in that same view, so another person's note is not there
+#   POST   /notes/:id           change its title (an HTML form can only post), the same as PATCH
+#   PATCH  /notes/:id           change its title, after asking `grant-delete` for a permit on the note
+#   DELETE /notes/:id           erase it: the permit from `grant-delete` becomes the `erase` event `step` runs
+#   POST   /notes/:id/delete    the same, for an HTML form
+#
+# The state is the list of events taken, and the shelf every route reads is `replay` of it, so law 1 (ownership, proven
+# of `replay`) and laws 4 and 5 (proven of `view`) are about the state these routes serve and the pages they draw.
+#
+# SIGN-IN: this demo has none. A request names its person in the header `x-person` (a whole number from 1 to 1000) and
+# its rank in `x-rank` (`admin`, anything else is a member). A request without `x-person` is nobody: it sees an empty
+# list and every change it asks is refused with 401. A real site reads a signed session in `person-of`, and nowhere else.
+#
+# TEXT INTO HTML: a page is a `view`, which escapes every text it places. The answers a handler writes as markup itself
+# (the 401, 403 and 404 pages) put each text through `escape-html`.
+load ./model
+  find natural
+  find rank
+  find person
+  find note
+  find shelf
+  find event
+  find events
+  find replay
+  find view
+  find permit
+  find grant-delete
+  find write-of
+  find erase-of
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/hash
+  find hash
+  find set
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/site/http/http
+  find request
+  find response
+
+load @term/site/http/body
+  find read-body
+  find redirect
+
+load @term/site/http/escape
+  find escape-html
+
+load @term/site/http/tell
+  find expose
+
+load @term/face/code/component/text
+  find text
+
+# what a form posts to write or retitle a note
+form note-input
+  link title, like text
+
+# one note as a page shows it: its id and title as text
+form row
+  link id, like text
+  link title, like text
+
+# every event the site has taken, oldest first. The shelf is `replay` of these
+host log
+  like list, like event
+  make list
+
+# each note's title by its id. The model knows a note by its id and owner only, so the title lives beside it
+host titles
+  like hash
+    like text
+    like text
+  make hash
+
+# ---- the model's numbers ----
+
+task natural-of
+  take n, like number
+  like natural
+  save k, make zero
+  walk size
+    bind base, 0
+    bind head, n
+    hook next
+      take site, name at
+      save k
+        make succ
+          bind prior, k
+  back k
+
+task number-of
+  take n, like natural
+  like number
+  sift n
+    case zero
+      back 0
+    case succ
+      back add(number-of(prior), 1)
+
+# the id the next note takes: one more than the events so far, so no two notes share one
+task next-id
+  like natural
+  save k
+    make succ
+      bind prior, make zero
+  walk log
+    take e
+    save k
+      make succ
+        bind prior, k
+  back k
+
+# ---- the state ----
+
+task events-of
+  take taken, like list, like event
+  like events
+  save es, make begin
+  walk taken
+    take e
+    save es
+      make after
+        bind event, e
+        bind earlier, es
+  back es
+
+# the shelf every route reads: the model's own `replay` of the events taken
+task shelf-now
+  like shelf
+  back replay(events-of(log))
+
+# ---- who is asking ----
+
+task person-of
+  take request, like request
+  like maybe, like person
+  save id-text, request/headers/get-or-default(<x-person>, <>)
+  fork test, is-equal(id-text, <>)
+    hold
+      back make none
+  save n, 0
+  fork
+    mark unsafe
+    save n, parse-integer(id-text)
+  halt take
+    take problem
+    back make none
+  fork test, or(is-below(n, 1), is-above(n, 1000))
+    hold
+      back make none
+  save r, make member
+  fork test, is-equal(request/headers/get-or-default(<x-rank>, <>), <admin>)
+    hold
+      save r, make admin
+  back
+    make some
+      bind value
+        make person
+          bind id, natural-of(n)
+          bind rank, r
+
+# ---- what a page shows ----
+
+task row-of
+  take n, like note
+  like row
+  sift n
+    case live
+      save id, <{number-of(at)}>
+      back
+        make row
+          bind id, id
+          bind title, titles/get-or-default(id, <>)
+    case gone
+      save id, <{number-of(at)}>
+      back
+        make row
+          bind id, id
+          bind title, <>
+
+task rows-of
+  take s, like shelf
+  take into, like list, like row
+  like list, like row
+  sift s
+    case bare
+      back into
+    case more
+      push(into, row-of(top))
+      back rows-of(rest, into)
+
+# the asker's notes, as the model's `view` shows them
+task listed
+  take request, like request
+  like list, like row
+  sift person-of(request)
+    case none
+      back make list
+    case some
+      link asker
+      back rows-of(view(shelf-now(), asker), make list)
+
+# the asker's note `id`, when their view shows it: none, or one
+task listed-one
+  take request, like request
+  take id, like text
+  like list, like row
+  save found, make list
+  walk listed(request)
+    take one
+    fork test, is-equal(one/id, id)
+      hold
+        push(found, one)
+  back found
+
+# a live note on the shelf by its id, whoever owns it
+task find-note
+  take s, like shelf
+  take id, like text
+  like maybe, like note
+  sift s
+    case bare
+      back make none
+    case more
+      sift top
+        case live
+          fork test, is-equal(<{number-of(at)}>, id)
+            hold
+              back
+                make some
+                  bind value, top
+        case gone
+          save passed, 0
+      back find-note(rest, id)
+
+# ---- answers ----
+
+# a refusal as a page: the message goes through `escape-html`, since it may carry a path the asker wrote
+task refuse
+  take status, like u16
+  take message, like text
+  like response
+  save headers, make hash
+  set(headers, <content-type>, <text/html; charset=utf-8>)
+  back
+    make response
+      bind status, status
+      bind body, <\<!doctype html\>\<p\>{escape-html(message)}\</p\>>
+      bind headers, headers
+
+# ---- the permit ----
+
+# A route asks permit.tree's `grant-delete` for a permit on the note, inside a guarded fork: it raises when the asker
+# may not, and the fork's handler answers 403. The permit is `mark sole`, so it is never held in a `maybe` or a list:
+# it goes straight to the one task that spends it
+
+# the erase the permit allows: its person, its note, nothing the route chose. An event is model.tree's to make
+# (`mark hide`), and its only erase takes the permit
+task erase-by
+  take p, like permit
+  like event
+  back erase-of(p)
+
+# ---- the changes ----
+
+task create
+  take request, like request
+  like response
+  sift person-of(request)
+    case none
+      back refuse(401, <Sign in to write a note>)
+    case some
+      link asker
+      fork
+        mark unsafe
+        save posted
+          fill
+            read-body(request)
+            like note-input
+        fork test, is-equal(posted/title, <>)
+          hold
+            back refuse(400, <A note needs a title>)
+        save id, next-id()
+        push(log, write-of(asker, id))
+        save shown, <{number-of(id)}>
+        set(titles, shown, posted/title)
+        back redirect(</notes/{shown}>)
+      halt take
+        take problem
+        back expose(problem)
+
+task retitle
+  take request, like request
+  take id, like text
+  like response
+  sift person-of(request)
+    case none
+      back refuse(401, <Sign in to change a note>)
+    case some
+      link asker
+      sift find-note(shelf-now(), id)
+        case none
+          back refuse(404, <There is no note {id}>)
+        case some
+          link n
+          sift n
+            case live
+              fork
+                mark unsafe
+                save p, grant-delete(asker, at, whose)
+                back retitle-with(request, p, id)
+              halt take
+                take problem
+                back refuse(403, <Only the owner of note {id} or an admin may change it>)
+            case gone
+              back refuse(404, <There is no note {id}>)
+
+# the change a permit allows: the note it names takes the title the body holds. The body's own problems answer here
+# (400, 415), never as the caller's 403
+task retitle-with
+  take request, like request
+  take p, like permit
+  take id, like text
+  like response
+  fork
+    mark unsafe
+    save posted
+      fill
+        read-body(request)
+        like note-input
+    fork test, is-equal(posted/title, <>)
+      hold
+        back refuse(400, <A note needs a title>)
+    set(titles, <{number-of(p/note)}>, posted/title)
+    back redirect(</notes/{id}>)
+  halt take
+    take problem
+    back expose(problem)
+
+task remove
+  take request, like request
+  take id, like text
+  like response
+  sift person-of(request)
+    case none
+      back refuse(401, <Sign in to delete a note>)
+    case some
+      link asker
+      sift find-note(shelf-now(), id)
+        case none
+          back refuse(404, <There is no note {id}>)
+        case some
+          link n
+          sift n
+            case live
+              fork
+                mark unsafe
+                save p, grant-delete(asker, at, whose)
+                push(log, erase-by(p))
+                back redirect(</notes>)
+              halt take
+                take problem
+                back refuse(403, <Only the owner of note {id} or an admin may delete it>)
+            case gone
+              back refuse(404, <There is no note {id}>)
+
+# ---- the pages ----
+
+view notes-page
+  take host, like view
+  take rows, like list, like row
+  view h1, <Notes>
+  view ul
+    walk list, read rows
+      hook next
+        take site, name r
+        view li
+          view a
+            bind href, </notes/{r/id}>
+            view text
+              bind content, r/title
+  view form
+    bind method, <post>
+    bind action, </notes>
+    view input
+      bind name, <title>
+    view button, <Write>
+
+view note-page
+  take host, like view
+  take rows, like list, like row
+  walk list, read rows
+    hook next
+      take site, name r
+      view h1
+        view text
+          bind content, r/title
+      view form
+        bind method, <post>
+        bind action, </notes/{r/id}>
+        view input
+          bind name, <title>
+          bind value, r/title
+        view button, <Save>
+      view form
+        bind method, <post>
+        bind action, </notes/{r/id}/delete>
+        view button, <Delete>
+
+# ---- the routes ----
+
+# the `:id` a route's handler is given in `params`
+task id-of
+  take params
+    like hash
+      like text
+      like text
+  like text
+  back params/get-or-default(<id>, <>)
+
+hook /notes
+  view notes-page
+    bind rows, listed(request)
+  task post
+    take request
+    take params
+    back create(request)
+
+hook /notes/:id
+  take path
+    take id
+      like text
+  view note-page
+    bind rows, listed-one(request, id)
+  task post
+    take request
+    take params
+    back retitle(request, id-of(params))
+  task patch
+    take request
+    take params
+    back retitle(request, id-of(params))
+  task delete
+    take request
+    take params
+    back remove(request, id-of(params))
+
+hook /notes/:id/delete
+  take path
+    take id
+      like text
+  view note-page
+    bind rows, listed-one(request, id)
+  task post
+    take request
+    take params
+    back remove(request, id-of(params))

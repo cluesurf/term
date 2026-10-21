@@ -36,8 +36,13 @@ form shelf
     link rest, like shelf
 
 # an event names its actor by their id and rank, not by a `person`: a person is a record, which a proof cannot match
-# on, so a law about `step` could not say who acted. step builds the person from the two
+# on, so a law about `step` could not say who acted. step builds the person from the two.
+#
+# LAW 3, EVERY ERASE ASKS: an event is `mark hide`, so only this file makes one, and the only erase it makes is
+# `erase-of`, which takes a permit (check/hide.ts refuses `make erase` anywhere else as `hidden-make`,
+# ../../twin/erase-without-permit). `step` and `replay` stay public: no event reaches them that the policy did not allow
 form event
+  mark hide
   case write
     link who, like natural
     link rank, like rank
@@ -56,6 +61,50 @@ form events
 form flag
   case yes
   case no
+
+# THE PERMIT (laws 2 and 3, affine-kinds decision 001): `mark hide`, so only this file makes one, the one way being
+# `grant-delete`, and `mark sole`, so one is spent once. It lives beside `event` because the erase it allows is made here
+form permit
+  mark hide
+  mark sole
+  link note, like natural
+  link person, like person
+
+# THE AUTHORIZATION TASK: the only maker of a permit
+task grant-delete
+  take actor, like person
+  take at, like natural
+  take whose, like natural
+  like permit
+  sift may(actor, whose)
+    case yes
+      back
+        make permit
+          bind note, at
+          bind person, actor
+    case no
+      halt <Not allowed>
+
+# THE ONLY WRITE EVENT, for a writer naming the note's id
+task write-of
+  take writer, like person
+  take id, like natural
+  like event
+  back
+    make write
+      bind who, writer/id
+      bind rank, writer/rank
+      bind id, id
+
+# THE ONLY ERASE EVENT: the permit's person erases the permit's note, nothing the caller chose
+task erase-of
+  take p, like permit
+  like event
+  back
+    make erase
+      bind who, p/person/id
+      bind rank, p/person/rank
+      bind id, p/note
 
 task either
   take a, like flag

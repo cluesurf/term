@@ -172,8 +172,9 @@ task run
       read p
 `
 
-// the same permit handed on twice to a task that owns what it is given (it hands it back), which the usage gate will
-// refuse (`sole-reused`): the first hand-off is not the name's last read, so the emitter has to clone it
+// the same permit handed on twice to a task that owns what it is given (it hands it back), which the usage gate
+// refuses before any backend (`sole-reused`, check/sole.ts, test/check/sole-hide.ts). This front end skips that gate
+// on purpose, to hold the emitter's own assertion: the first hand-off is not the name's last read, so it would clone
 const TWICE = (marks: string): string => `form permit
 ${marks}  link note, like text
   link person, like text

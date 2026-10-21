@@ -1,43 +1,26 @@
 # LAWS 2 AND 3, THE PERMIT, in the form affine-kinds decision 001 gives (note/project/term/affine-kinds/decision/
 # 001-many-by-default-sole-and-hide-declared-per-form.md). They hold by construction, not by a claim:
 #
-#   no forged permit       `mark hide`: only this file makes a permit, so the one way to get one is `grant-delete`
-#   every mutating route   the one public mutator, `delete-note`, takes a permit for the note it erases, and the
-#   asks                   mutator under it, `bury-at`, is `mark private`. `mark sole`: a permit is spent once
+#   no forged permit       `mark hide`: only model.tree makes a permit, so the one way to get one is `grant-delete`
+#   every mutating route   the one public mutator here, `delete-note`, takes a permit for the note it erases, and
+#   asks                   the mutator under it, `bury-at`, is `mark private`. The event log's one erase, model.tree's
+#                          `erase-of`, takes a permit too. `mark sole`: a permit is spent once
 #
-# PENDING, 2026-10-20: `mark sole` and `mark hide` parse (compile/mint-bridge.ts FORM_MARKS) but nothing enforces them
-# yet (check/hide.ts and check/sole.ts are affine-kinds-0007..0009). So a route in another file that makes its own
-# permit, or spends one twice, still builds: see ../../twin/no-forged-permit and ../../twin/permit-reused. The private
-# mutator IS enforced today (check/private.ts): ../../twin/route-skips-permit is refused.
+# ENFORCED since 2026-10-21: a route in another file that makes its own permit is refused as `hidden-make`
+# (check/hide.ts, ../../twin/no-forged-permit), one that spends a permit twice as `sole-reused` (check/sole.ts,
+# ../../twin/permit-reused), and one that skips the permit by calling the private mutator as `private-name`
+# (check/private.ts, ../../twin/route-skips-permit).
+#
+# The permit and its one maker, `grant-delete`, live in model.tree beside `event`, since the one erase event
+# (`erase-of`) is made there from a permit.
 load ./model
   find natural
   find person
   find note
   find shelf
   find flag
-  find may
   find same
-
-form permit
-  mark hide
-  mark sole
-  link note, like natural
-  link person, like person
-
-# THE AUTHORIZATION TASK: the only maker of a permit
-task grant-delete
-  take actor, like person
-  take at, like natural
-  take whose, like natural
-  like permit
-  sift may(actor, whose)
-    case yes
-      back
-        make permit
-          bind note, at
-          bind person, actor
-    case no
-      halt <Not allowed>
+  find permit
 
 # THE MUTATING TASK takes the permit and nothing that names the target, so a permit for one note cannot erase another
 task delete-note

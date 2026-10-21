@@ -215,12 +215,14 @@ function factsOf(name: string, known: StubKnown): string[] {
 }
 
 // the stub of one checked program: its public, body-less surface, in original order
-export function stubProgram(program: Program, known?: StubKnown): Program {
+export function stubProgram(program: Program, known?: StubKnown, underProof = false): Program {
   const out: Program = []
   // A FILE THAT STATES RULES IS A THEORY, and the bodies of its definitions are part of what it says: a proof in another
-  // file computes `both(yes, a)` by running `both`. Any other file keeps a body edit from reaching its dependents (the
-  // early cutoff test/compile/separate.ts holds), so only a theory's definitions carry their bodies
-  const theory = program.some(statement => statement.form === 'function' && statement.theorem)
+  // file computes `both(yes, a)` by running `both`. So is a file a proving unit reaches (`underProof`, compile/separate.ts):
+  // a claim there may call one of its tasks in its type, and the kernel proves it by running the body (term-proof-0011).
+  // Any other file keeps a body edit from reaching its dependents (the early cutoff test/compile/separate.ts holds), so
+  // only these files' definitions carry their bodies
+  const theory = underProof || program.some(statement => statement.form === 'function' && statement.theorem)
 
   for (const statement of program) {
     switch (statement.form) {

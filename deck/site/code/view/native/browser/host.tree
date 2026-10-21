@@ -32,11 +32,13 @@ load @term/base/maybe
   find maybe
 
 task host
+  # async, as on node: a `route` that loads its data first may be async (view/native/node/host.tree)
   take route
     like task
       take host, like view
       take request, like request
       like maybe, like response
+      mark async
   take port, like number
   save body
     call page-body
@@ -65,8 +67,9 @@ task host
                       read body
                     # the path read again, untracked, and not the `path` of the effect: a closure inside a closure
                     # that moves a captured text does not build on Rust (E0507)
-                    # a GET: the browser draws the page, and a form posts to the server, never to this dispatcher
-                    call route
+                    # a GET: the browser draws the page, and a form posts to the server, never to this dispatcher.
+                    # Started and not waited for: the build is not async, and a route that waits draws when it is done
+                    tick route
                       read body
                       call make-page-request
                         call current-path

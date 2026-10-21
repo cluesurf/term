@@ -354,6 +354,44 @@ hold
   expect('and no raise does not take it', capped(5, 'right'), proven)
   expect('not the handler`s value on the path that does not raise', capped(105, 'right'), refused('unchecked-hold'))
 
+  // ---- a save through a field (proof-by-default-0014, decision 002) ----
+  //
+  // Under D1 a record is a value, so `save x/a, v` is a new version of `x` with `a` replaced, and the other fields keep
+  // what they held. A lowering that dropped the write, kept the field's old value, or lost `b` would prove a twin
+  const boxed = (value: number): string => `form box
+  link a, like number
+  link b, like number
+
+task bump
+  take p, like number
+  take q, like number
+  like number
+  save x
+    make box
+      bind a, read p
+      bind b, read q
+  save x/a, code 5
+  save x/a
+    call add
+      read x/a
+      code 1
+  send back
+    call add
+      read x/a
+      read x/b
+
+hold
+  call is-equal
+    call bump
+      code 1
+      code 2
+    code ${value}
+`
+
+  expect('a write through a field is the record made again, every other field kept', boxed(8), proven)
+  expect('not the field it held before the write', boxed(3), refused('unchecked-hold'))
+  expect('not the first write alone', boxed(7), refused('unchecked-hold'))
+
   // the signature's bound is still the surface checker's: a raise it does not declare is refused
   expect(
     'a raise the signature does not declare is still refused',

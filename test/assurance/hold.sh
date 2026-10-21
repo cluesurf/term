@@ -6,8 +6,8 @@
 # usage: sh /Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/hold.sh
 line=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/host/line.js
 here=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance
-# pending: no-forged-permit and permit-reused wait on affine-kinds (check/hide.ts, check/sole.ts)
-EXPECTED_HOLD="no-forged-permit permit-reused"
+# none pending: no-forged-permit (check/hide.ts) and permit-reused (check/sole.ts) are refused since 2026-10-21
+EXPECTED_HOLD=""
 bad=0
 
 verdict() {

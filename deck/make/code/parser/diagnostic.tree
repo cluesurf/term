@@ -757,6 +757,12 @@ form diagnostic-name
   case typed-hole, text <typed-hole>
   case unknown-grammar, text <unknown-grammar>
   case scope-refused, text <scope-refused>
+  case sole-reused, text <sole-reused>
+  case sole-captured, text <sole-captured>
+  case sole-generic, text <sole-generic>
+  case sole-unknown, text <sole-unknown>
+  case sole-unearned, text <sole-unearned>
+  case hidden-make, text <hidden-make>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -937,6 +943,22 @@ task entry-of
     # registered, an operator Term gives no meaning yet. The message names the place in the scope's text
     case scope-refused
       back error-entry(0x38, <this scope's text is not what its grammar reads>, <correct it at the place named. note/project/term/mill/03-note-grammar.md is what the note grammar reads>)
+    # `mark sole` on a form: a value of it has one owner and is used at most once, on every path (check/sole.ts,
+    # affine-kinds decision 001). A second use built clean on TypeScript, and cloned or failed late on Rust
+    case sole-reused
+      back error-entry(0x39, <a `mark sole` value is used after it was handed on>, <hand it on once: read what you need of it first, or take a fresh one for the second use>)
+    case sole-captured
+      back error-entry(0x3a, <a closure names a `mark sole` value from outside it>, <pass the value to the closure as a parameter, or use it outside the closure>)
+    case sole-generic
+      back error-entry(0x3b, <a `mark sole` form is a type argument or an element>, <hold one in a field of its own, or in a form that is `mark sole` itself>)
+    case sole-unknown
+      back error-entry(0x3c, <a `mark sole` value reaches `unknown` or `dynamic`>, <give the place the sole form's own type, so its one use is tracked>)
+    # a form that holds a sole value and does not say `mark sole` would be copied with it (check/sole-earned.ts)
+    case sole-unearned
+      back error-entry(0x3d, <this form holds a `mark sole` value and is not `mark sole` itself>, <add `mark sole` to the form>)
+    # `mark hide` on a form: only the file that declares it makes one (check/hide.ts)
+    case hidden-make
+      back error-entry(0x3e, <a `mark hide` form is made outside the file that declares it>, <get one from a task in the declaring file, or remove `mark hide`>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1000,3 +1022,9 @@ task diagnostic-names
       make typed-hole
       make unknown-grammar
       make scope-refused
+      make sole-reused
+      make sole-captured
+      make sole-generic
+      make sole-unknown
+      make sole-unearned
+      make hidden-make

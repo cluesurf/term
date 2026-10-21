@@ -402,6 +402,10 @@ export function elaborateReport(
         : [],
     ),
   )
+  // the `mark shared` forms, which are no values: a save through a field of one is not lowered (proof-by-default-0014)
+  termState.shared = new Map(
+    program.flatMap(s => (s.form === 'record-type' && s.shared ? [[s.name, true] as const] : [])),
+  )
   const caseState = cases.newCaseState()
   const inductionState = induction.newInductionState(
     termState,

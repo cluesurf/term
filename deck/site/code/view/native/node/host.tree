@@ -32,11 +32,14 @@ load @term/site/view/route-answer
   find page-methods
 
 task host
+  # async: a `route` that loads its data first, or a `task <method>` that waits, answers once it is done. Without the
+  # mark such a route is refused as `async-argument` since the route answers a value (term-site-framework-0006)
   take route
     like task
       take host, like view
       take request, like request
       like maybe, like response
+      mark async
   take port, like u16
   mark async
   # the catch-all handler: SSR-render the requested page through `route`, or answer with the route's `task <method>`
