@@ -48,6 +48,8 @@ import { renderReport } from '@term/test/code/prove-file'
 import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
 import { projectHome } from '@term/call/code/home'
 import * as plan from '@term/call/code/hold-plan'
+import { holdLean, reportLean } from '@term/call/code/hold-lean'
+import type { HoldLean } from '@term/call/code/hold-lean'
 
 // where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
 // that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
