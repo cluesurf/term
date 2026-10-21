@@ -1,5 +1,5 @@
 // A native program written one file per Term module (compile/unit-split.ts, emit-target.ts `emitTargetUnits`,
-// note/term/plan/incremental-best-in-class.md, step 15). Every representation is still decided over the whole program;
+// note/project/term/incremental-best-in-class.md, step 15). Every representation is still decided over the whole program;
 // each module's statements go in a file of their own beside a shared one. Held here: the split program builds and
 // answers exactly what the one file answers, on rustc, swiftc and kotlinc (each skipped when absent); and a body edit
 // to one module changes that module's file and no other, which is what lets the toolchain's own incremental build redo

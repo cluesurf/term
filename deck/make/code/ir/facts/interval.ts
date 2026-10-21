@@ -1,4 +1,4 @@
-// Integer operations proven inside the safe integers by intervals (note/term/codegen/passes.md, P2). Every `+`, `-`
+// Integer operations proven inside the safe integers by intervals (note/project/term/compiler/codegen/passes.md, P2). Every `+`, `-`
 // and `*` on two numbers is checked on every backend (`__termInt`, `checked_add`, `Math.addExact`), because a result
 // past the range is a different integer or a rounded one. A check whose operands are bounded can never fire, and this
 // fact names the operations where that is proven, so an emitter writes them plain; and a `/` or `%` whose divisor is

@@ -1,4 +1,4 @@
-// The vocabulary words no toolkit host drew until native-dom-0049 (note/term/view/11-vocabulary.md): spacer, divider,
+// The vocabulary words no toolkit host drew until native-dom-0049 (note/project/term/view/11-vocabulary.md): spacer, divider,
 // image and scroll, and frame's min and max bounds, on AppKit (macOS), UIKit (the iPhone simulator) and Android views
 // (the emulator). One program mounts each on the window's root and says what it reads back FROM THE VIEWS: frames, the
 // picture's pixel size and accessibility label as the platform holds them, and a scroll's content extent. Built and run

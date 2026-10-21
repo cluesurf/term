@@ -10,7 +10,7 @@
 // templating story the Term API already has its own answers for. Hummingbird is the thin one, which is the layer
 // this belongs at.
 //
-// Reached only through the public network/server API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/server API. See note/project/term/stdlib/native-async-file-and-server.md.
 import Foundation
 import HTTPTypes
 import Hummingbird

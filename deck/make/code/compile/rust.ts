@@ -393,7 +393,7 @@ function emitRustPass(
     }
   }
 
-  // THE RESULT LOWERING (note/term/hive/11-native-exceptions.md, "Way 2"). A task whose raise set is not empty returns
+  // THE RESULT LOWERING (note/project/term/hive/11-native-exceptions.md, "Way 2"). A task whose raise set is not empty returns
   // `Result<T, TermException>`; `halt <form>` is `return Err(..)`; a call to a raising task is `call()?` inside a
   // raising task or a guarded body, and `.unwrap_or_else(exit 1 with form and note)` elsewhere, so a raise nothing
   // handles ends the program the way it does on every backend (compile/rust-emit.tree, `raise-suffix`)
@@ -469,7 +469,7 @@ function emitRustPass(
       .map(n => [n.name, n.params.map(p => p.type)]),
   )
 
-  // F2 escape (note/term/codegen/shared.md): a function parameter the task only CALLS is `impl Fn(..)`, statically
+  // F2 escape (note/project/term/compiler/codegen/shared.md): a function parameter the task only CALLS is `impl Fn(..)`, statically
   // dispatched and inlinable, where every other function value is an `Rc<dyn Fn>`, a heap allocation per closure
   // and an indirect call. Only for a top-level task that is synchronous, no trait method, defined once, and never
   // used as a value (a generic function cannot become an `Rc<dyn Fn>`). Passing the parameter on counts as an
@@ -598,7 +598,7 @@ function emitRustPass(
   // (`host current, like context`, filled later by a `save`) is a RefCell<Option<T>>, since rust has no lateinit,
   // whose reads unwrap and writes fill; and a binding to a number, float, boolean or text LITERAL that nothing assigns
   // is a Rust `const`, read by name with no thread-local lookup and no clone, and folded by rustc wherever it is used
-  // (note/term/codegen/rust.md, R7). A text one is a `&'static str`
+  // (note/project/term/compiler/codegen/rust.md, R7). A text one is a `&'static str`
   const bindings = rustTables.moduleBindingsOf(program as never)
   const moduleSlots = new Set<string>(bindings.slots)
   const scalarConsts = new Set<string>(bindings.scalars)
@@ -611,7 +611,7 @@ function emitRustPass(
     rustTables.phantomForms(program as never, rustContext as never).map(p => [p.form, p.marker] as const),
   )
 
-  // `is-equal` on two records compares their fields, on every backend (note/term/optimize/meaning.md, question 4). A
+  // `is-equal` on two records compares their fields, on every backend (note/project/term/optimize/meaning.md, question 4). A
   // form derives `PartialEq` when every field can be compared, and `Eq + Hash` as well when every field can also be
   // hashed, which is what lets a record be a map key. A closure, a boxed unknown, or a form that does not qualify
   // keeps the form out. Floats compare but do not hash, and a list or a map compares by its items but is not a key.
@@ -622,6 +622,11 @@ function emitRustPass(
   const equatableForms = new Set(traits.equatable)
   const hashableForms = new Set(traits.hashable)
   const keyableForms = new Set(traits.keyable)
+  // the `mark sole` forms (term/affine-kinds decision 001): each derives no `Clone`, and a clone of one written by
+  // this pass fails the build below
+  const soleForms = new Set(
+    program.flatMap(n => (n.form === 'record-type' && n.sole === true ? [n.name] : [])),
+  )
   // the forms whose tag the program reads as a field, each given `term_tag`
   const taggedNames = new Set(taggedForms(program))
 
@@ -662,6 +667,7 @@ function emitRustPass(
     equatable: equatableForms,
     hashable: hashableForms,
     keyable: keyableForms,
+    sole: soleForms,
     raising,
     instanceTargets,
     implFn,
@@ -900,7 +906,7 @@ function emitRustPass(
 
   // the wake chain: one `hive_wake` per deck with its static entries, when the program has the stdlib hive and the
   // compile driver handed over the roll. A static entry's `base` is the declaration as JSON text, boxed; an entry
-  // with a `ref` (a declared kind's constant) binds the live module constant instead. See note/term/hive/05-hive.md.
+  // with a `ref` (a declared kind's constant) binds the live module constant instead. See note/project/term/hive/05-hive.md.
   const wake: string[] = []
 
   if (
@@ -928,6 +934,18 @@ function emitRustPass(
   }
 
   lastBudgetStats = { checked: st.budgetUses, elided: st.budgetElided }
+
+  // A SOLE VALUE IS NEVER CLONED (term/affine-kinds decision 001). The usage gate makes a second use impossible, so a
+  // clone here means the emitter copied a value it should have moved: the build fails at the emitter, naming the form,
+  // rather than at rustc with an error about a missing `Clone`. Asked before `melt`'s clones are noted below: a melt
+  // walker reads a value through a reference and copies its fields, never the value itself
+  for (const form of st.cloneForms.keys()) {
+    if (soleForms.has(form)) {
+      throw new Error(
+        `sole-cloned: the Rust emitter would clone a value of \`${form}\`, which is \`mark sole\`. A sole value is moved, never copied`,
+      )
+    }
+  }
 
   // `melt` clones every field of each form it melts (item 0029)
   for (const form of st.meltSpecs.keys()) {

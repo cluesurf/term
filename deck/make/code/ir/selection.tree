@@ -1,4 +1,4 @@
-# The selection pass (note/term/optimize/pipeline.md, optimize-0008): put a CHOSEN implementation of a task behind
+# The selection pass (note/project/term/optimize/pipeline.md, optimize-0008): put a CHOSEN implementation of a task behind
 # every call to it, for one target. A choice is the reference, a twin's label, or a size check that splits two choices.
 # It comes from a pin (`bake.json`, optimize-0014) or from the caller of compile(); with none, nothing here runs and
 # every build is the reference, which is always correct.

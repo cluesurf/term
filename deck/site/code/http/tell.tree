@@ -3,7 +3,7 @@
 # the roll carries into the runtime hive, so this reads the same data the compiler checked. A told exception goes
 # out with its `note` and the props its `tell` named; a private one goes out as which of the seventeen it is and
 # its occurrence code, nothing else. The status is a table of seventeen rows, written once here. See
-# note/term/hive/06-tell.md.
+# note/project/term/hive/06-tell.md.
 
 load @term/base/hive
   find hive-roll
@@ -33,6 +33,9 @@ load @term/base/exception
 
 load ./http
   find response
+
+load ./escape
+  find escape-html
 
 # The seventeen and their statuses. A `bundle` answers with the highest status among its entries, which the caller
 # computes over the entries it holds; here it is 500, the floor of a failure it did not unpack.
@@ -374,8 +377,9 @@ task error-row
     hook test, read entry/base/alias
     hook hold
       save case, call case-of(read entry/base/alias)
-  save path, call case-path(read case)
-  save note, read entry/base/note
+  save path, call escape-html(call case-path(read case))
+  save case, call escape-html(read case)
+  save note, call escape-html(read entry/base/note)
   send back
     call concat
       call concat
@@ -453,7 +457,7 @@ task error-page
         call concat
           call concat
             text <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\<title\>No such error\</title\>\</head\>\<body\>\<h1\>No such error\</h1\>\<p\>\<code\>>
-            read case
+            call escape-html(read case)
           text <\</code\> is not an error this build tells.\</p\>\</body\>\</html\>>
 
 task render-error
@@ -467,7 +471,9 @@ task render-error
       read entry/host
       read form
   save status, call status-of(read like)
-  save note, read entry/base/note
+  save safe, call escape-html(read case)
+  save kind, call escape-html(read like)
+  save note, call escape-html(read entry/base/note)
   save hint, text <>
   fork test
     hook test, read entry/base/hint
@@ -476,7 +482,7 @@ task render-error
         call concat
           call concat
             text <\<p\>>
-            read entry/base/hint
+            call escape-html(read entry/base/hint)
           text <\</p\>>
   save props, text <>
   walk list
@@ -489,7 +495,7 @@ task render-error
             call concat
               read props
               text <\<li\>\<code\>>
-            read prop
+            call escape-html(read prop)
           text <\</code\>\</li\>>
   save routes, text <>
   walk list
@@ -503,7 +509,7 @@ task render-error
             call concat
               read routes
               text <\<li\>\<code\>>
-            read route
+            call escape-html(read route)
           text <\</code\>\</li\>>
   send back
     make response
@@ -519,10 +525,10 @@ task render-error
                       call concat
                         call concat
                           text <\<!doctype html\>\<html\>\<head\>\<meta charset="utf-8"\>\<title\>>
-                          read case
+                          read safe
                         text <\</title\>\</head\>\<body\>\<h1\>\<code\>>
                       call concat
-                        read case
+                        read safe
                         text <\</code\>\</h1\>\<p\>>
                     call concat
                       read note
@@ -531,7 +537,7 @@ task render-error
                     read hint
                     text <\<p\>A \<code\>>
                 call concat
-                  read like
+                  read kind
                   text <\</code\>, status >
               call concat
                 call stringify

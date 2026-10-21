@@ -1,4 +1,4 @@
-// One unit cache for the machine (note/term/plan/incremental-best-in-class.md, step 1). A unit's key is its content
+// One unit cache for the machine (note/project/term/incremental-best-in-class.md, step 1). A unit's key is its content
 // and the surfaces it reaches, never which project asked, so the standard library's units one project builds answer
 // every other project's first build. Two projects here, each with its own local cache and one shared store between
 // them, as `projectCache` lays them out (`~/.base/@term/code/base` for the shared kinds).

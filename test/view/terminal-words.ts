@@ -1,7 +1,7 @@
 // The vocabulary's controls in the terminal (deck/site/code/dom/native/terminal/paint.tree and input.tree): FACE's
 // switch, slider, select, dialog and scroll, as their generic implementations build them from plain elements, painted
 // into the cell grid and driven by keys. Each EXPECTED screen is worked out by hand from the cell grid column of
-// note/term/view/11-vocabulary.md: a toggle `[ ]` or `[x]` with its label, a range a bar of 10 cells and its value, a
+// note/project/term/view/11-vocabulary.md: a toggle `[ ]` or `[x]` with its label, a range a bar of 10 cells and its value, a
 // choice its label and `▾`, a dialog a bordered box over its title and content, a scroll a column of what it holds. It
 // runs on TypeScript, Rust, Swift and Kotlin, and every backend must draw the same cells.
 // Run: npx tsx test/view/terminal-words.ts   (TERMINAL_ONLY=rust for one backend)

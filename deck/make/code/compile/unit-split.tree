@@ -1,4 +1,4 @@
-# A NATIVE PROGRAM WRITTEN ONE FILE PER TERM MODULE (note/term/plan/incremental-best-in-class.md, step 15).
+# A NATIVE PROGRAM WRITTEN ONE FILE PER TERM MODULE (note/project/term/incremental-best-in-class.md, step 15).
 #
 # The native emitters decide representations from the whole program: Rust boxes a recursive form only when nothing
 # clones it, and every backend reads list, field and purity facts across every task. Those decisions stay whole. What

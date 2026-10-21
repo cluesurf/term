@@ -2,7 +2,7 @@ mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-os2-table, proven by deck/mill/test/feed/otf-os2.tree (both an unversioned and a fully-versioned table).
 # Replaces the old pre-rename draft entirely. Through version 2 only, matching ./code.tree. This is the file
-# note/term/feed/01-grammar.md's `mine maybe` / `test is-minimum` example is drawn from — the real thing, not a
+# note/project/term/feed/01-grammar.md's `mine maybe` / `test is-minimum` example is drawn from — the real thing, not a
 # standalone sketch.
 
 mine os2-table

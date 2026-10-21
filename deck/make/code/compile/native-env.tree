@@ -26,7 +26,7 @@ form native-env
   case browser
   case cloudflare
   # the page inside a native app cask: TypeScript in the platform WebView, reaching every native through the cask's
-  # bridge. Borrows the browser natives for everything that is pure page work. See note/term/cask/readme.md
+  # bridge. Borrows the browser natives for everything that is pure page work. See note/project/term/cask/readme.md
   case webview
   case rust
   case swift
@@ -35,11 +35,11 @@ form native-env
   case shared
   # a host written in pure Term, with no runtime shim: the in-memory dom tree every backend can run
   # (deck/site/code/dom/native/memory). Never a build target of its own. It is what `swift` and `kotlin` fall back to
-  # where they have no host, so the renderer runs headless there. See note/term/app/10-native-dom.md
+  # where they have no host, so the renderer runs headless there. See note/project/term/app/10-native-dom.md
   case memory
   # the PLATFORMS, above the languages. Each compiles with its language's backend and falls back through it
   # (`env-fallback`), so iOS and macOS share every Swift native and differ only where a module ships an `ios` or
-  # `macos` impl: the view host first. See note/term/app/11-uniform-interface.md
+  # `macos` impl: the view host first. See note/project/term/app/11-uniform-interface.md
   case ios
   case macos
   case android

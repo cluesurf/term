@@ -1,4 +1,4 @@
-// Phase 2 of note/term/gaps/plan.md, "Exit codes that tell the truth": a command that failed at what it was asked
+// Phase 2 of note/project/term/guides/research/gaps/plan.md, "Exit codes that tell the truth": a command that failed at what it was asked
 // exits non-zero, and a command that wrote nothing does not say it wrote something. Each case is the run a term.surf
 // guide made, against the built CLI.
 //

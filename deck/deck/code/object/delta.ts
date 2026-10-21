@@ -9,7 +9,7 @@
 // reconstruct. Binary gets nothing from this, since a line is not a meaningful unit
 // there, and `.tree` gets nothing either, since it is records rather than lines.
 //
-// See note/library/base/design/content-types.md.
+// See note/project/base/design/content-types.md.
 
 import { changeHunks, tokenize, detokenize } from '@cluesurf/save/text/diff'
 import type { ChangeHunk } from '@cluesurf/save/text/diff'

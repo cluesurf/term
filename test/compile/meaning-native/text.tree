@@ -12,7 +12,7 @@ load @term/base/text
 load @term/base/list
   find list
 
-# text is counted in code points on every backend (note/term/stdlib/semantics.md). Each value here crosses a surrogate
+# text is counted in code points on every backend (note/project/term/stdlib/semantics.md). Each value here crosses a surrogate
 # pair, where UTF-16 positions and code point positions part. Ordering two texts is not here: the checker refuses
 # `is-below` on text, so the emitters' text comparison is held by test/compile/text-order.ts instead
 task compute

@@ -1,0 +1,1074 @@
+# THE NOTES DEMO'S LAWS, each a CLAIM (a `rule` with no `show`) proven by the task of its name, so the kernel checks
+# the proof as one term and keeps it for the Lean export. A law's lemmas are claims too, named after the law, so a
+# broken model is refused under the law's name.
+#
+# THE MODEL HERE IS RELATIONAL. `step`, `replay` and `view` are inductive relations (`steps s e t`: event e takes
+# state s to t), not the tasks of model.tree, because a claim's type cannot name a call of a defined task today: the
+# kernel reads a value index only as a variable, a literal, a construction, or a call of a function PARAMETER
+# (check/elaborating-data.tree `index-term-at`). So `fair-shelf(replay(es))` cannot be written, and these laws are
+# proven of the relation, which model.tree's tasks are meant to implement. The bridge (each task inhabits its
+# relation) is the claim that waits on that gap. The relations are nondeterministic where safety allows: an erase may
+# always leave a note as it was, a view may always leave a note out, so each law holds of every way to resolve them.
+form natural
+  case zero
+  case succ
+    link prior, like natural
+
+form rank
+  case admin
+  case member
+
+form person
+  link id, like natural
+  link rank, like rank
+
+# a note is live, or gone with the person who erased it (the tombstone a soft delete keeps)
+form note
+  case live
+    link at, like natural
+    link whose, like natural
+  case gone
+    link at, like natural
+    link whose, like natural
+    link by, like person
+
+form shelf
+  case bare
+  case more
+    link top, like note
+    link rest, like shelf
+
+form event
+  case write
+    link actor, like person
+    link id, like natural
+  case erase
+    link actor, like person
+    link id, like natural
+
+# the events so far, newest first
+form events
+  case begin
+  case after
+    link event, like event
+    link earlier, like events
+
+# THE POLICY: a person may erase a note when the person is an admin, or owns it
+form allowed
+  head by, like person
+  head whose, like natural
+  case as-admin
+    link i, like natural
+    link w, like natural
+    head
+      make person
+        bind id, i
+        bind rank, make admin
+    head
+      read w
+  case as-owner
+    link w, like natural
+    link r, like rank
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      read w
+
+# ONE NOTE UNDER AN ERASE by `actor` of note `id`: n becomes m
+form settles
+  head n, like note
+  head actor, like person
+  head id, like natural
+  head m, like note
+  # the note named, and the policy allows it: it is buried, by the actor
+  case hit
+    link at, like natural
+    link whose, like natural
+    link doer, like person
+    link allowed-by
+      like allowed
+        head
+          read doer
+        head
+          read whose
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      read doer
+    head
+      read at
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, doer
+  # any live note may stay as it was: another note, or a refusal
+  case keep
+    link at, like natural
+    link whose, like natural
+    link doer, like person
+    link aim, like natural
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      read doer
+    head
+      read aim
+    head
+      make live
+        bind at, at
+        bind whose, whose
+  # a gone note stays gone
+  case still
+    link at, like natural
+    link whose, like natural
+    link by, like person
+    link doer, like person
+    link aim, like natural
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+    head
+      read doer
+    head
+      read aim
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+
+# THE WHOLE SHELF UNDER AN ERASE: each note settles
+form crosses
+  head s, like shelf
+  head actor, like person
+  head id, like natural
+  head t, like shelf
+  case cross-end
+    link doer, like person
+    link aim, like natural
+    head
+      make bare
+    head
+      read doer
+    head
+      read aim
+    head
+      make bare
+  case cross-on
+    link top, like note
+    link rest, like shelf
+    link doer, like person
+    link aim, like natural
+    link top-after, like note
+    link rest-after, like shelf
+    link one
+      like settles
+        head
+          read top
+        head
+          read doer
+        head
+          read aim
+        head
+          read top-after
+    link others
+      like crosses
+        head
+          read rest
+        head
+          read doer
+        head
+          read aim
+        head
+          read rest-after
+    head
+      make more
+        bind top, top
+        bind rest, rest
+    head
+      read doer
+    head
+      read aim
+    head
+      make more
+        bind top, top-after
+        bind rest, rest-after
+
+# STEP: event e takes state s to t
+form steps
+  head s, like shelf
+  head e, like event
+  head t, like shelf
+  # a write puts a live note, owned by the writer, on the shelf
+  case wrote
+    link before, like shelf
+    link i, like natural
+    link r, like rank
+    link aim, like natural
+    head
+      read before
+    head
+      make write
+        bind actor
+          make person
+            bind id, i
+            bind rank, r
+        bind id, aim
+    head
+      make more
+        bind top
+          make live
+            bind at, aim
+            bind whose, i
+        bind rest, before
+  case erased
+    link before, like shelf
+    link doer, like person
+    link aim, like natural
+    link after-erase, like shelf
+    link crossing
+      like crosses
+        head
+          read before
+        head
+          read doer
+        head
+          read aim
+        head
+          read after-erase
+    head
+      read before
+    head
+      make erase
+        bind actor, doer
+        bind id, aim
+    head
+      read after-erase
+
+# REPLAY: the events es, from the empty shelf, reach s
+form replays
+  head es, like events
+  head s, like shelf
+  case from-start
+    head
+      make begin
+    head
+      make bare
+  case then
+    link last, like event
+    link sooner, like events
+    link was, like shelf
+    link now, like shelf
+    link reached
+      like replays
+        head
+          read sooner
+        head
+          read was
+    link stepped
+      like steps
+        head
+          read was
+        head
+          read last
+        head
+          read now
+    head
+      make after
+        bind event, last
+        bind earlier, sooner
+    head
+      read now
+
+# VIEW: what `viewer` is shown of shelf s is v. A person sees their own live notes, and any note may be left out
+form shows
+  head s, like shelf
+  head viewer, like person
+  head v, like shelf
+  case show-end
+    link doer, like person
+    head
+      make bare
+    head
+      read doer
+    head
+      make bare
+  case show-own
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link rest, like shelf
+    link shown, like shelf
+    link others
+      like shows
+        head
+          read rest
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read shown
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, shown
+  case show-skip
+    link n, like note
+    link rest, like shelf
+    link doer, like person
+    link shown, like shelf
+    link others
+      like shows
+        head
+          read rest
+        head
+          read doer
+        head
+          read shown
+    head
+      make more
+        bind top, n
+        bind rest, rest
+    head
+      read doer
+    head
+      read shown
+
+# every note on the shelf is live
+form all-live
+  head v, like shelf
+  case live-end
+    head
+      make bare
+  case live-on
+    link at, like natural
+    link whose, like natural
+    link rest, like shelf
+    link rest-live
+      like all-live
+        head
+          read rest
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, whose
+        bind rest, rest
+
+# every note on the shelf is owned by `who`, live or gone
+form owned
+  head who, like person
+  head v, like shelf
+  case owned-end
+    link doer, like person
+    head
+      read doer
+    head
+      make bare
+  case owned-live
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link rest, like shelf
+    link rest-owned
+      like owned
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, rest
+  case owned-gone
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link by, like person
+    link rest, like shelf
+    link rest-owned
+      like owned
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make gone
+            bind at, at
+            bind whose, w
+            bind by, by
+        bind rest, rest
+
+# LAW 4, DELETED STAYS GONE: no view of any state shows an erased note.
+rule deleted-stays-gone
+  take s, like shelf
+  take viewer, like person
+  take v, like shelf
+  take seen
+    like shows
+      head
+        read s
+      head
+        read viewer
+      head
+        read v
+  like all-live
+    head
+      read v
+
+task deleted-stays-gone
+  take s
+  take viewer
+  take v
+  take seen
+  sift seen
+    case show-end
+      back make live-end
+    case show-own
+      back
+        make live-on
+          bind at, at
+          bind whose, w
+          bind rest, shown
+          bind rest-live
+            deleted-stays-gone
+              read rest
+              make person
+                bind id, w
+                bind rank, r
+              read shown
+              read others
+    case show-skip
+      back deleted-stays-gone(rest, doer, shown, others)
+
+# LAW 5, ISOLATION: a person's view never shows another person's note.
+rule isolation
+  take s, like shelf
+  take viewer, like person
+  take v, like shelf
+  take seen
+    like shows
+      head
+        read s
+      head
+        read viewer
+      head
+        read v
+  like owned
+    head
+      read viewer
+    head
+      read v
+
+task isolation
+  take s
+  take viewer
+  take v
+  take seen
+  sift seen
+    case show-end
+      back
+        make owned-end
+          bind doer, doer
+    case show-own
+      back
+        make owned-live
+          bind at, at
+          bind w, w
+          bind r, r
+          bind rest, shown
+          bind rest-owned
+            isolation
+              read rest
+              make person
+                bind id, w
+                bind rank, r
+              read shown
+              read others
+    case show-skip
+      back isolation(rest, doer, shown, others)
+
+# A FAIR note: live, or gone by someone the policy allowed
+form fair
+  head n, like note
+  case fresh
+    link at, like natural
+    link whose, like natural
+    head
+      make live
+        bind at, at
+        bind whose, whose
+  case buried
+    link at, like natural
+    link whose, like natural
+    link by, like person
+    link allowed-by
+      like allowed
+        head
+          read by
+        head
+          read whose
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+
+form fair-shelf
+  head s, like shelf
+  case clean
+    head
+      make bare
+  case also
+    link top, like note
+    link rest, like shelf
+    link top-fair
+      like fair
+        head
+          read top
+    link rest-fair
+      like fair-shelf
+        head
+          read rest
+    head
+      make more
+        bind top, top
+        bind rest, rest
+
+# LAW 1, OWNERSHIP: after any sequence of events, every erased note was erased by its owner or an admin.
+rule ownership
+  take es, like events
+  take s, like shelf
+  take run
+    like replays
+      head
+        read es
+      head
+        read s
+  like fair-shelf
+    head
+      read s
+
+task ownership
+  take es
+  take s
+  take run
+  sift run
+    case from-start
+      back make clean
+    case then
+      back ownership-carry(was, now, ownership-step(was, last, now, stepped), ownership(sooner, was, reached))
+
+# apply a step's preservation to the evidence before it
+rule ownership-carry
+  take a, like shelf
+  take b, like shelf
+  take keep
+    like task
+      take ok
+        like fair-shelf
+          head
+            read a
+      like fair-shelf
+        head
+          read b
+  take x
+    like fair-shelf
+      head
+        read a
+  like fair-shelf
+    head
+      read b
+
+task ownership-carry
+  take a
+  take b
+  take keep
+  take x
+  back keep(x)
+
+# one step keeps every note fair. THE CONVOY: the shelf's evidence is taken after the match, so the match rewrites it
+rule ownership-step
+  take s, like shelf
+  take e, like event
+  take t, like shelf
+  take st
+    like steps
+      head
+        read s
+      head
+        read e
+      head
+        read t
+  like task
+    take ok
+      like fair-shelf
+        head
+          read s
+    like fair-shelf
+      head
+        read t
+
+task ownership-step
+  take s
+  take e
+  take t
+  take st
+  sift st
+    case wrote
+      back
+        task
+          take ok
+            like fair-shelf
+              head
+                read before
+          like fair-shelf
+            head
+              make more
+                bind top
+                  make live
+                    bind at, aim
+                    bind whose, i
+                bind rest, before
+          back
+            make also
+              bind top
+                make live
+                  bind at, aim
+                  bind whose, i
+              bind rest, before
+              bind top-fair
+                make fresh
+                  bind at, aim
+                  bind whose, i
+              bind rest-fair, ok
+    case erased
+      back ownership-cross(before, doer, aim, after-erase, crossing)
+
+rule ownership-cross
+  take s, like shelf
+  take actor, like person
+  take id, like natural
+  take t, like shelf
+  take c
+    like crosses
+      head
+        read s
+      head
+        read actor
+      head
+        read id
+      head
+        read t
+  like task
+    take ok
+      like fair-shelf
+        head
+          read s
+    like fair-shelf
+      head
+        read t
+
+task ownership-cross
+  take s
+  take actor
+  take id
+  take t
+  take c
+  sift c
+    case cross-end
+      back
+        task
+          take ok
+            like fair-shelf
+              head
+                make bare
+          like fair-shelf
+            head
+              make bare
+          back make clean
+    case cross-on
+      back
+        ownership-join
+          read top
+          read rest
+          read top-after
+          read rest-after
+          ownership-settle(top, doer, aim, top-after, one)
+          ownership-cross(rest, doer, aim, rest-after, others)
+
+# a fair shelf whose top and rest each stay fair stays fair
+rule ownership-join
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  like task
+    take ok
+      like fair-shelf
+        head
+          make more
+            bind top, a
+            bind rest, r
+    like fair-shelf
+      head
+        make more
+          bind top, a2
+          bind rest, r2
+
+task ownership-join
+  take a
+  take r
+  take a2
+  take r2
+  take keep-top
+  take keep-rest
+  back
+    task
+      take ok
+        like fair-shelf
+          head
+            make more
+              bind top, a
+              bind rest, r
+      like fair-shelf
+        head
+          make more
+            bind top, a2
+            bind rest, r2
+      back ownership-apply(a, r, a2, r2, ownership-split(a, r, a2, r2, ok), keep-top, keep-rest)
+
+# THE MATCH on a fair shelf that is not empty: its one case is `also`. A convoy, so the match rewrites the two keeps
+rule ownership-split
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take ok
+    like fair-shelf
+      head
+        make more
+          bind top, a
+          bind rest, r
+  like task
+    take keep-top
+      like task
+        take ok
+          like fair
+            head
+              read a
+        like fair
+          head
+            read a2
+    take keep-rest
+      like task
+        take ok
+          like fair-shelf
+            head
+              read r
+        like fair-shelf
+          head
+            read r2
+    like fair-shelf
+      head
+        make more
+          bind top, a2
+          bind rest, r2
+
+task ownership-split
+  take a
+  take r
+  take a2
+  take r2
+  take ok
+  sift ok
+    case also
+      back
+        task
+          take keep-top
+            like task
+              take ok
+                like fair
+                  head
+                    read top
+              like fair
+                head
+                  read a2
+          take keep-rest
+            like task
+              take ok
+                like fair-shelf
+                  head
+                    read rest
+              like fair-shelf
+                head
+                  read r2
+          like fair-shelf
+            head
+              make more
+                bind top, a2
+                bind rest, r2
+          back ownership-build(top, rest, a2, r2, keep-top, keep-rest, top-fair, rest-fair)
+
+# a proof may call a parameter of its task, not of a `task` written inside it, so the keeps are called here
+rule ownership-build
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  take top-was
+    like fair
+      head
+        read a
+  take rest-was
+    like fair-shelf
+      head
+        read r
+  like fair-shelf
+    head
+      make more
+        bind top, a2
+        bind rest, r2
+
+task ownership-build
+  take a
+  take r
+  take a2
+  take r2
+  take keep-top
+  take keep-rest
+  take top-was
+  take rest-was
+  back
+    make also
+      bind top, a2
+      bind rest, r2
+      bind top-fair, keep-top(top-was)
+      bind rest-fair, keep-rest(rest-was)
+
+rule ownership-apply
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take join
+    like task
+      take keep-top
+        like task
+          take ok
+            like fair
+              head
+                read a
+          like fair
+            head
+              read a2
+      take keep-rest
+        like task
+          take ok
+            like fair-shelf
+              head
+                read r
+          like fair-shelf
+            head
+              read r2
+      like fair-shelf
+        head
+          make more
+            bind top, a2
+            bind rest, r2
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  like fair-shelf
+    head
+      make more
+        bind top, a2
+        bind rest, r2
+
+task ownership-apply
+  take a
+  take r
+  take a2
+  take r2
+  take join
+  take keep-top
+  take keep-rest
+  back join(keep-top, keep-rest)
+
+rule ownership-settle
+  take n, like note
+  take actor, like person
+  take id, like natural
+  take m, like note
+  take st
+    like settles
+      head
+        read n
+      head
+        read actor
+      head
+        read id
+      head
+        read m
+  like task
+    take ok
+      like fair
+        head
+          read n
+    like fair
+      head
+        read m
+
+task ownership-settle
+  take n
+  take actor
+  take id
+  take m
+  take st
+  sift st
+    case hit
+      back
+        task
+          take ok
+            like fair
+              head
+                make live
+                  bind at, at
+                  bind whose, whose
+          like fair
+            head
+              make gone
+                bind at, at
+                bind whose, whose
+                bind by, doer
+          back
+            make buried
+              bind at, at
+              bind whose, whose
+              bind by, doer
+              bind allowed-by, allowed-by
+    case keep
+      back
+        task
+          take ok
+            like fair
+              head
+                make live
+                  bind at, at
+                  bind whose, whose
+          like fair
+            head
+              make live
+                bind at, at
+                bind whose, whose
+          back ok
+    case still
+      back
+        task
+          take ok
+            like fair
+              head
+                make gone
+                  bind at, at
+                  bind whose, whose
+                  bind by, by
+          like fair
+            head
+              make gone
+                bind at, at
+                bind whose, whose
+                bind by, by
+          back ok

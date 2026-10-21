@@ -1,6 +1,6 @@
 // The race log (deck/call/code/race-log.ts, optimize-0013): records are written under the project's .base, read
 // back whole, keyed so that noise does not split one measurement into many, and a lookup answers only under the same
-// region, facts, target, compiler and rules (level one of note/term/optimize/learning.md).
+// region, facts, target, compiler and rules (level one of note/project/term/optimize/learning.md).
 // Run: npx tsx test/call/race-log.ts
 
 import { mkdtempSync, readdirSync } from 'node:fs'

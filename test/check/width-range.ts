@@ -1,4 +1,4 @@
-// A width is a range (note/term/plan/decisions-2026-10.md, D12). With TERM_WIDTH_RANGES on, a value passed to a
+// A width is a range (note/project/term/decisions-2026-10/decisions-2026-10.md, D12). With TERM_WIDTH_RANGES on, a value passed to a
 // width-typed parameter, or sent back from a width-typed result, owes `low <= value <= high` as a tier-0 obligation;
 // the task may assume it of its parameter, and a call to a width-typed result is known to fit. Off, nothing is owed.
 // Run: npx tsx test/check/width-range.ts

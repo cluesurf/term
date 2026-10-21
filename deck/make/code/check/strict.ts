@@ -1,4 +1,4 @@
-// THE TWO INFERENCE REFUSALS THAT WAIT ON A DECISION (note/term/plan/decisions-2026-10.md, D10). Each refuses code that
+// THE TWO INFERENCE REFUSALS THAT WAIT ON A DECISION (note/project/term/decisions-2026-10/decisions-2026-10.md, D10). Each refuses code that
 // builds today, so each is built behind this switch, off until the decision, and on for a census with
 // TERM_INFER_STRICT=1 (`pnpm term:inference-census`), exactly as the gradual seam waits behind TERM_UNKNOWN_SEAM:
 //
@@ -30,7 +30,7 @@ export function ambiguousRefused(): boolean {
 }
 
 // THE GRADUAL SEAM'S SWITCH: whether an `unknown` must be narrowed before it flows into a typed place (check/seam.tree).
-// Off until the decision (note/term/plan/decisions-2026-10.md, D1), on for a census with TERM_UNKNOWN_SEAM=1
+// Off until the decision (note/project/term/decisions-2026-10/decisions-2026-10.md, D1), on for a census with TERM_UNKNOWN_SEAM=1
 let seam = process.env.TERM_UNKNOWN_SEAM === '1'
 
 export function setUnknownSeam(value: boolean): void {

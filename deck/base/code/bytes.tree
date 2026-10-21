@@ -98,7 +98,7 @@ task from-base64
     call octets-from-base64
       read text
 
-# the number of bytes. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+# the number of bytes. `length` on every collection (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
 task length
   take value, like bytes
   like number

@@ -3,7 +3,7 @@
 // NAMED GAP on `listen`: the JVM has no portable signal API. `sun.misc.Signal` exists and is internal, and
 // depending on it makes the stdlib break on a JDK that closes it off. A shutdown hook is the supported answer and
 // it fires for SIGTERM and SIGINT alike, so "terminate" and "interrupt" both register there and "hangup" cannot
-// be told apart from either. Recorded in note/term/stdlib/native-async-file-and-server.md.
+// be told apart from either. Recorded in note/project/term/stdlib/native-async-file-and-server.md.
 object current {
   fun id(): Long = ProcessHandle.current().pid()
 

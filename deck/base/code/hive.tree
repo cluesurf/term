@@ -1,7 +1,7 @@
 # The hive: the runtime every deck reports to. The roll (what a build knows about every deck) wakes into it at
 # boot, and a deck tells it anything that only exists once the program runs. `hive-roll` reads the roster, `hive-hear`
 # subscribes. One per Term context. The compiler emits `wake-hive`, which calls `hive-wake` once per deck with the
-# deck's static entries, and `boot` calls that first. See note/term/hive/05-hive.md.
+# deck's static entries, and `boot` calls that first. See note/project/term/hive/05-hive.md.
 #
 # The roster keeps every entry of every kind as `hive-entry unknown`, because its kinds carry different payloads and a
 # form arm over an `unknown` is refused. The three kinds the language itself writes (`exception`, `tell`, `dock`) are

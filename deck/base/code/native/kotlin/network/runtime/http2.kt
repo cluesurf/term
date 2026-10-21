@@ -10,7 +10,7 @@
 //            negotiation through the JDK's own ALPN, so no tcnative and no native library to ship.
 //   clear    h2c with prior knowledge (`enableH2c`). No ALPN, no upgrade dance.
 //
-// Reached only through the public network/http2 API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/http2 API. See note/project/term/stdlib/native-async-file-and-server.md.
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.engine.EmbeddedServer

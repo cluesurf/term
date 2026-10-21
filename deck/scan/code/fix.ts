@@ -49,7 +49,7 @@ export function planUpgrades(findings: DependencyFinding[]): Upgrade[] {
 // rewrite a manifest's `link <name>, mark <range>` lines to the fixed versions (as a caret range). Returns the new
 // manifest text. Only lines whose dependency name matches an upgrade are touched; everything else is byte-identical,
 // except that a line it rewrites is written in the current spelling: `mark`, where the old one said `code`
-// (note/term/plan/manifest-mark-and-code-root.md).
+// (note/project/term/manifest/manifest-mark-and-code-root.md).
 export function applyUpgradesToManifest(
   manifestText: string,
   upgrades: Upgrade[],

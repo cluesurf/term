@@ -1,4 +1,4 @@
-// `term` on Windows, end to end (note/term/plan/term-load-install.md, the Windows half): the Windows payload published
+// `term` on Windows, end to end (note/project/term/term-load-install.md, the Windows half): the Windows payload published
 // to a loopback registry on THIS machine, reached from the Windows machine WINDOWS_VM names through an ssh reverse
 // tunnel, installed there by THE LOADER term.surf serves at /load.ps1, and then the INSTALLED term run there:
 //

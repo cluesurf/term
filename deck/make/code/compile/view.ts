@@ -10,7 +10,7 @@
 //
 // The body reuses the component AST rather than restating it, so a document lowers through view-lower.ts and
 // every backend emits it as an ordinary function. What this reader will NOT build is as much the point as what
-// it will: no computed local, no attribute or event handler, no unbounded loop. See note/term/view/.
+// it will: no computed local, no attribute or event handler, no unbounded loop. See note/project/term/view/.
 //
 // The reader, every check, the gate (`checkView`), the lowering and the query manifest are compile/view-document.tree
 // (self-hosting, 2026-10-06). This face keeps the types callers hold, turns a catalog's `Set`s and `Map`s into the
@@ -178,7 +178,7 @@ export type ViewCheck = {
   caps?: ViewCaps
   // the already-parsed tree, when the caller has one
   tree?: RootNode
-  // every template in the module graph, not only this file's own. See note/term/view/02-macro.md.
+  // every template in the module graph, not only this file's own. See note/project/term/view/02-macro.md.
   templates?: Map<string, Template>
   // `mark lean` on the document's role rule: inside a placement, a plain-name child with a value is a `bind`
   lean?: boolean
@@ -225,7 +225,7 @@ export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
 
 // ---- lowering ----
 // A document becomes one `view` Statement per `view`. A `find` becomes a PARAMETER, never a fetch, and a `host`
-// constant folds into the body at its use sites. See note/term/view/03-find.md and 07-lowering.md.
+// constant folds into the body at its use sites. See note/project/term/view/03-find.md and 07-lowering.md.
 
 export function lowerView(file: ViewFile): Program {
   return port.lowerView(file as never) as unknown as Program

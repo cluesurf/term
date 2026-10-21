@@ -35,7 +35,7 @@ load @term/base/exception
 
 # parse one JSON value. A text that is not JSON raises `json-mismatch` with the code point position and the reason,
 # the same on every backend: `check-json` decides, written once in Term, and the host parser only ever sees a text it
-# accepts (note/term/stdlib/semantics.md). The host parsers disagreed at the edges: JavaScript threw, Rust and Swift
+# accepts (note/project/term/stdlib/semantics.md). The host parsers disagreed at the edges: JavaScript threw, Rust and Swift
 # returned null, and a lone surrogate escape was accepted by one and refused by another.
 task parse
   take text, like text

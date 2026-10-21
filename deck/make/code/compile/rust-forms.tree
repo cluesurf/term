@@ -48,6 +48,8 @@ form rust-form-facts
   link equatable, like hash, like text, like boolean
   link hashable, like hash, like text, like boolean
   link keyable, like hash, like text, like boolean
+  # the `mark sole` forms, which never derive `Clone` (term/affine-kinds decision 001)
+  link sole, like hash, like text, like boolean
   link raising, like hash, like text, like boolean
   link instance-targets, like hash, like text, like list, like text
   link impl-fn, like hash, like text, like statement
@@ -186,7 +188,10 @@ task emit-form
           save keyed, key-params(node)
       save write-it, and(equatable, is-above(keyed/length, 0))
       save derived, make list
-      push(derived, <Clone>)
+      # a sole form has one owner, so nothing may copy it: no `Clone`, and rustc refuses any clone of one
+      fork test, not(facts/sole/has(form-name))
+        hold
+          push(derived, <Clone>)
       fork test, and(equatable, not(write-it))
         hold
           push(derived, <PartialEq>)
@@ -194,7 +199,10 @@ task emit-form
         hold
           push(derived, <Eq>)
           push(derived, <Hash>)
-      save derive, <#[derive({join-texts(derived, <, >)})]\n{pad(depth)}>
+      save derive, <>
+      fork test, is-above(derived/length, 0)
+        hold
+          save derive, <#[derive({join-texts(derived, <, >)})]\n{pad(depth)}>
       save written, <>
       fork test, write-it
         hold

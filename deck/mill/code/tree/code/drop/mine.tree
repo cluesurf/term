@@ -12,7 +12,7 @@
 # whole reason the code role is moving onto a grammar is that a reader which quietly accepts anything cannot be
 # checked. Adding a word here is a decision, and it should stay one.
 #
-# Closing these is quirk 6 in note/term/mint-bridge/quirks.md. Until then they are matched and dropped, which
+# Closing these is quirk 6 in note/project/term/mill/review/mint-bridge/quirks.md. Until then they are matched and dropped, which
 # is exactly what the reader does with them today.
 mine drop
   mine any

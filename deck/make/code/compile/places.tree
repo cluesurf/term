@@ -1,4 +1,4 @@
-# F4 (note/term/codegen/readme.md): a record in a list, updated IN PLACE, and record reuse, Perceus's in-place update
+# F4 (note/project/term/compiler/codegen/readme.md): a record in a list, updated IN PLACE, and record reuse, Perceus's in-place update
 # for the backends whose records are objects. compile/place.ts stays as the face and says why each rule is shaped as it
 # is: which forms are SLOT-PRIVATE (`private-forms`), which slot writes are made in place (`place-writes`), which slot
 # locals Swift reads through their slot, and where a task may build its result in the record it was given

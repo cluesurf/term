@@ -19,7 +19,13 @@
 // Consent is macOS Automation for iTerm2, for the process running this test. Without it, or without iTerm2, the test
 // prints SKIP with what to allow, and exits 0: a skip is not a pass of anything.
 //
-//   sh tmp/dec-tsx.sh test/compile/find-native.ts
+// OPT IN ONLY: TERM_NATIVE_ITERM=1. The window this opens is a real one on the person's screen, and the user stopped
+// these runs on 2026-10-13 after `term-find-0008-<id>-server/-other/-dup` windows appeared mid-work. Without the
+// variable the test prints a `skip` line and exits 0 before it sends a single Apple event. `pnpm term:test` never sets
+// it, and strips it from every suite's environment (task/term/test.ts `child`), so only a person running this file by
+// hand opens a window:
+//
+//   TERM_NATIVE_ITERM=1 sh tmp/dec-tsx.sh test/compile/find-native.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -47,6 +53,13 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function skip(why: string): never {
   console.log(`SKIP  find-native (mac): ${why}`)
+  process.exit(0)
+}
+
+// the opt-in, first: nothing below runs, so no window opens, unless the person asked for it. A lowercase `skip` line,
+// which the gate (task/term/test.ts) reads as skipped rather than as a pass of nothing
+if (process.env.TERM_NATIVE_ITERM !== '1') {
+  console.log('skip  find-native (mac): opens a real iTerm2 window, so it runs only with TERM_NATIVE_ITERM=1')
   process.exit(0)
 }
 

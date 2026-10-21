@@ -6,7 +6,7 @@
 #
 # A `call` names an operator in the closed catalog and can never define one, because the dialect has no `task`
 # statement head. Its arguments are positional or named with the operator's own parameter names, never both in
-# one call. See note/term/view/04-catalog.md.
+# one call. See note/project/term/view/04-catalog.md.
 
 mine view-seed
   mine any

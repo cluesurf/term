@@ -1,5 +1,5 @@
 // `pnpm term:release`: build the `term` command for every platform, as the payload `@term/code` ships through the Term
-// registry (note/term/plan/term-load-install.md, note/term/self-host/09-distribution.md).
+// registry (note/project/term/term-load-install.md, note/term/self-host/09-distribution.md).
 //
 //   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop
 //   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag, and tell
@@ -17,14 +17,14 @@
 //   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/need.mjs`
 //                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe, and
 //                            bin\term.exe beside it, task/launcher/term.go, for winget, which puts only an .exe on PATH)
-//   term/host/need.mjs       the first module: which version runs here (note/term/plan/term-versions.md). It
+//   term/host/need.mjs       the first module: which version runs here (note/project/term/term-versions.md). It
 //                            imports line.js in-process when the answer is this version, else hands over
 //   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
 //   term/host/line.js        the CLI, every pure-JS dependency (yargs, chalk) BUNDLED
 //   term/host/dock.mjs       the hook dispatcher, chalk bundled
 //   term/package.json        the name and version `--version` and the build cache key read
 //   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
-//                            first holds alike (note/term/plan/term-versions.md, "Disk")
+//                            first holds alike (note/project/term/term-versions.md, "Disk")
 //   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`)
 //   term/deck/mill/          `@term/mill`, every grammar: the format readers (code/text, code/blob, the cursors in
 //                            code/feed.tree) and the tree dialects (code/tree), its deck.tree and code/, reached by
@@ -104,7 +104,7 @@ const BANNER = [
 // The launcher on PATH. It follows its own symlink, because `~/.base/@term/code/call/term` and a Homebrew
 // `bin/term` are both links to it, and the install is beside the file, not beside the link
 const LAUNCHER = `#!/bin/sh
-# The term command. Installed by https://term.surf/load or Homebrew; see note/term/plan/term-load-install.md.
+# The term command. Installed by https://term.surf/load or Homebrew; see note/project/term/term-load-install.md.
 self="$0"
 while [ -L "$self" ]; do
   link="$(readlink "$self")"
@@ -126,7 +126,7 @@ exec node "$root/host/need.mjs" "$@"
 // one replaced while it runs. CRLF, which cmd.exe reads either way and Notepad shows right
 const WINDOWS_LAUNCHER = [
   '@echo off',
-  'rem The term command. Installed by https://term.surf/load.ps1; see note/term/plan/term-load-install.md.',
+  'rem The term command. Installed by https://term.surf/load.ps1; see note/project/term/term-load-install.md.',
   'where node >nul 2>nul',
   `if errorlevel 1 (echo term needs Node.js ${NODE_FLOOR} or newer on PATH: https://nodejs.org 1>&2 & exit /b 69)`,
   'node "%~dp0..\\host\\need.mjs" %*',
@@ -286,7 +286,7 @@ function copyStdlib(into: string): void {
 // the packages that ship beside the stdlib, each with its manifest so the sibling resolver (resolve.ts
 // `siblingResolver`) reaches it by name from an installed `term`, as it does in this repository. `@term/mill` holds the
 // format readers (JSON, hex, gzip, PDF and OpenType), which were `@term/feed` until 2026-10-06
-// (note/term/plan/mill-merge-and-role-scopes.md). Its tests stay here, and a shelved draft builds nothing
+// (note/project/term/mill-merge-and-role-scopes.md). Its tests stay here, and a shelved draft builds nothing
 const SHIPPED_PACKAGES = ['mill']
 
 function copyShippedPackages(into: string): void {

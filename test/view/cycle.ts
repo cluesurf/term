@@ -3,7 +3,7 @@
 // Two graphs, checked in two places. A MACRO cycle is caught before expansion, because expansion is what it
 // destroys: `compile/template.ts` recurses on a `fuse`, so a macro that fuses itself overflows the stack and a
 // crash is not a diagnostic. A VIEW that places itself is caught after reading, where a component use and a view
-// definition are told apart. See note/term/view/05-sandbox.md.
+// definition are told apart. See note/project/term/view/05-sandbox.md.
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView, viewCycles } from '@term/make/code/compile/view'

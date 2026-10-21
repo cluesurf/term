@@ -1,6 +1,6 @@
 // Supervision trees (deck/base/code/supervisor.tree): restarts by OTP's protocol, compiled to TypeScript and run, and
 // the build's refusals, which are what Term adds over OTP: a tree whose limits mean nothing, and a transient worker that
-// can never restart, both fail before anything runs. note/term/research/beam-otp-lessons.md, design 4.
+// can never restart, both fail before anything runs. note/project/term/research/beam-otp-lessons.md, design 4.
 // Run: npx tsx test/compile/supervisor.ts
 
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'

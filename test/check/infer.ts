@@ -359,7 +359,7 @@ task use-two
   )
 
   // same name AND same parameters in ONE file is not an overload, and it is refused rather than letting the last win in
-  // silence (check/duplicates.ts, note/term/gaps/plan.md phase 1). Overloading distinguishes arity or a written
+  // silence (check/duplicates.ts, note/project/term/guides/research/gaps/plan.md phase 1). Overloading distinguishes arity or a written
   // parameter type, and a second file's definition (a native shim) is the overload binder's business
   expectError(
     'same-name same-parameters in one file is refused (not an overload, not last-wins)',

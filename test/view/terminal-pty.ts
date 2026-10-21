@@ -31,7 +31,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 const ESC = '\u001b'
 
 // the blog's golden grid, kept with the project it proves (terminal-target-0005)
-const BLOG_GOLDEN = join(import.meta.dirname, '../../../../../../note/term/project/terminal-target/blog.golden')
+const BLOG_GOLDEN = join(import.meta.dirname, '../../../../../../note/project/term/archive/terminal-target/blog.golden')
 
 // an app run in a terminal: its program, the terminal's size, the keys typed once its screen is up (ctrl-c follows),
 // the screen it must leave, and the backends it runs on
@@ -325,7 +325,7 @@ const APPS: App[] = [
     // fields have no placeholder (`[ ]`), and the post is a stack of an h2 and a span. The fields are cleared and focus
     // stays on the button. The click `tick`s an asynchronous task: node's loop yields for it, and Rust's queues it and
     // drains the queue (compile/rust.ts `__term_spawn`, `__term_drain`)
-    // The screen is the project's golden grid, note/term/project/terminal-target/blog.golden, one row per line
+    // The screen is the project's golden grid, note/project/term/archive/terminal-target/blog.golden, one row per line
     name: 'blog',
     program: BLOG_PROGRAM,
     columns: 30,

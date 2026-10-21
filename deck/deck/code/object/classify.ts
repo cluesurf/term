@@ -1,7 +1,7 @@
 // Which of the three treatments a file gets.
 //
 // A repository holds three kinds of file and what makes a change small differs for
-// each. See note/library/base/design/content-types.md.
+// each. See note/project/base/design/content-types.md.
 //
 //   binary  content-defined chunks over the bytes; a small edit costs the chunks that moved
 //   text    chunks, plus a hunk delta against a base the receiver holds

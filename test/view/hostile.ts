@@ -1,7 +1,7 @@
 // One document per bound, each trying to break it.
 //
 // Assume the author is hostile and skilled: they can craft any input the editor accepts, and any input the editor
-// would never produce, by calling the API directly. Every row of the table in note/term/view/05-sandbox.md is a
+// would never produce, by calling the API directly. Every row of the table in note/project/term/view/05-sandbox.md is a
 // case here, and each asserts the MESSAGE and not only the refusal, because a bound that fires without saying
 // which bound it was is a bug report nobody can act on.
 //

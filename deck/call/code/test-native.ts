@@ -1,4 +1,4 @@
-// `term test --env rust|swift|kotlin`: a project's tests run on a native backend (note/term/guides/tests/backends.md).
+// `term test --env rust|swift|kotlin`: a project's tests run on a native backend (note/project/term/guides/draft/tests/backends.md).
 //
 // A test file builds for every backend, and a test that holds on node and not on Rust is a defect nobody sees until
 // the program ships there. The standard library has had this as a repository gate (task/term/base-gate.ts); this is

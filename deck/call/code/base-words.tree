@@ -1,4 +1,4 @@
-# `term base`: what its verbs decide and print, over a repository of records (note/library/base/readme.md). A commit
+# `term base`: what its verbs decide and print, over a repository of records (note/project/base/readme.md). A commit
 # named by a prefix of its hash, the log's lines with each commit's time, a diff's lines by kind of change, a record's
 # fields as `show` lists them, what `check` prints and how it counts missing chunks, what `status` says the working
 # files would change, and a projected row's cells.

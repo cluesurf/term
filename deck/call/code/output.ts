@@ -1,4 +1,4 @@
-// The CLI's side of the terminal output library (code/work/item/, note/term/output/readme.md): the one run a command
+// The CLI's side of the terminal output library (code/work/item/, note/project/term/output/readme.md): the one run a command
 // prints through, the global flags of sections 18 and 20, and the compiler's diagnostics as Problem items (section 12).
 //
 // TypeScript, not Term, because it is GLUE between two things that are TypeScript today: yargs, which parses the

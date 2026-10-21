@@ -1,4 +1,4 @@
-// ONE TABLE OF WHAT A NATIVE LIST AND MAP ANSWER (compile/lowered-members.ts, note/term/plan/backends-complete.md
+// ONE TABLE OF WHAT A NATIVE LIST AND MAP ANSWER (compile/lowered-members.ts, note/project/term/backends-complete.md
 // step 5). A member call on a list or a hash is a member every emitter lowers, else the Term form's method of that
 // name, else refused on Rust, Swift and Kotlin before emit (check/lowered.ts), where it is the host's own on
 // TypeScript.

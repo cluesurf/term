@@ -49,7 +49,7 @@ form integer-sign
 # `position` and `bytes` are one-element lists, not plain `like number` / `like list, like u8` fields, on
 # purpose — not for any reason internal to this package. Confirmed by a minimal, reproducible probe (not
 # guessed): a `form` field mutated by one task and read by another, across separate calls against the same
-# instance, silently loses the mutation on the Rust and Swift backends (`note/term/feed/02-cursor.md`,
+# instance, silently loses the mutation on the Rust and Swift backends (`note/project/term/feed/02-cursor.md`,
 # `feedback_term_rust_swift_struct_field_mutation_bug` in memory — the same bug also confirmed to affect
 # `@term/host`'s own `stream-reader`, never caught because its native test suite never exercises `stream.tree`).
 # A `like list` field does not have this problem: `array` gets unconditional `Rc<RefCell<...>>` reference
@@ -545,7 +545,7 @@ task read-int
 #
 # The underlying divergence is a real stdlib defect and it is NOT fixed here: closing it means picking one index
 # space and making all four emitters honor it, which changes every `text.tree` caller in the ecosystem. This
-# package is merely made immune to it. See note/term/feed/02-cursor.md.
+# package is merely made immune to it. See note/project/term/feed/02-cursor.md.
 form text-cursor
   link text
     like list

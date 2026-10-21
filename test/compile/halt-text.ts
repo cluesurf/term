@@ -36,7 +36,7 @@ const out = compile({ file: '/gate/code/halt-text.tree', text })
 ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
 
 if (out.ok) {
-  // the `failure` carrier since 2026-10-03 (note/term/gaps/plan.md phase 1): an Error named TermException with the
+  // the `failure` carrier since 2026-10-03 (note/project/term/guides/research/gaps/plan.md phase 1): an Error named TermException with the
   // exception's fields, so a handler reads `form` and `note` as it does from any raise
   ok(
     'an interpolated halt throws the failure carrier, an Error',

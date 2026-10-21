@@ -12,7 +12,7 @@
 // `Rc<dyn Fn(Request) -> Response>` and an Rc cannot cross a thread. hyper's http2 builder wants an executor to
 // spawn per-stream tasks on, so this supplies one that spawns LOCALLY.
 //
-// Reached only through the public network/http2 API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/http2 API. See note/project/term/stdlib/native-async-file-and-server.md.
 mod http2 {
     use super::{Header, Request, Response};
     use bytes::Bytes;

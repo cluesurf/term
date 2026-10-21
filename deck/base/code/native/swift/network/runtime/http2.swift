@@ -10,7 +10,7 @@
 // package IS the TLS package (NIOSSL). network/runtime/server.swift uses it too now, and no longer serves
 // plaintext while apologising for it.
 //
-// Reached only through the public network/http2 API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/http2 API. See note/project/term/stdlib/native-async-file-and-server.md.
 import Foundation
 import HTTPTypes
 import Hummingbird

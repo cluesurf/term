@@ -1,6 +1,6 @@
 # Resolution for the `load` term. `load` is a mill (it mints a load record); this module resolves that record's target
 # to a concrete module: a local file, a package in the store, or a host-native module. It is the semantic step the
-# elaboration resolver runs for import holes (see note/research/vibe/computation/plans/16-package-manager.md and
+# elaboration resolver runs for import holes (see note/project/term/archive/computation/plans/16-package-manager.md and
 # 11-elaboration.md). Browser-safe: no host APIs. The files that exist are handed in, so it is testable and usable in
 # the sandbox.
 #
@@ -262,7 +262,7 @@ task package-rest
       bind rest, rest
 
 # the refusal a `base <dir>` under a load earns, or `<>` when it agrees with the path: it forces the PACKAGE root, and
-# must name the path's first segment (note/term/plan/manifest-mark-and-code-root.md). One sentence, wherever it
+# must name the path's first segment (note/project/term/manifest/manifest-mark-and-code-root.md). One sentence, wherever it
 # surfaces: the resolver refuses with it and the reader reports it at the `load`.
 task base-refusal
   take import-path, like text

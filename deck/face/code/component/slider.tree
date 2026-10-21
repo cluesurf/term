@@ -3,7 +3,7 @@
 # `{platform}` from its env chain: macOS, iOS and Android reach ./native/toolkit/slider.tree (NSSlider, UISlider,
 # SeekBar) through their `toolkit` rung, and every other target, the web among them, falls to the generic
 # ./native/slider.tree, the browser's range input. Both take `host`, `class`, `control` (a range from logic/range),
-# `min`, `max` and `step`. See note/term/app/11-uniform-interface.md.
+# `min`, `max` and `step`. See note/project/term/app/11-uniform-interface.md.
 #
 # This replaced a set of headless parts (slider, slider-track, slider-range, slider-thumb) that nothing used and that
 # had no value of their own: a slider is now one control that holds a number, two ways.

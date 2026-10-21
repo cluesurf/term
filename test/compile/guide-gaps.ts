@@ -1,4 +1,4 @@
-// Phase 1 of note/term/gaps/plan.md: programs the term.surf guides showed building clean and then behaving wrongly.
+// Phase 1 of note/project/term/guides/research/gaps/plan.md: programs the term.surf guides showed building clean and then behaving wrongly.
 // Each block is the guide's own sample, held two ways where it can be: the wrong behavior is gone, and the right one
 // (or a refusal that names the problem) is there. Where behavior is the point, the emitted TypeScript is run.
 //

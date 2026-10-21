@@ -20,7 +20,7 @@
  *     are files external systems fetch by exact name
  *     (web crawlers, FedCM, OAuth providers, etc.).
  *
- * Spec: `note/platform/infrastructure/site-asset-sync.md`.
+ * Spec: `note/project/mesh/site-asset-sync.md`.
  */
 
 export type FontFaceDeclaration = {
@@ -66,7 +66,7 @@ export const ASSET_DECLARATIONS: AssetDeclaration[] = [
      * and uses the cached real font on the next navigation.
      *
      * Spec endorsement under "Robustness improvements" in
-     * `note/platform/plan/text-component-optimization.md`. */
+     * `note/project/mesh/text-component-optimization.md`. */
     fontDisplay: 'optional',
   },
 ]

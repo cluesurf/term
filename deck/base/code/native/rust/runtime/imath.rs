@@ -1,7 +1,7 @@
 // Integer math over rust (i64). Mirrors the host Math operations the other targets use. Reached only through the
 // public math API.
 mod imath {
-    // the integer or a stop (note/term/proof-by-default/numbers.md): `abs(i64::MIN)` has no i64 answer, and a release
+    // the integer or a stop (note/project/term/proof/numbers.md): `abs(i64::MIN)` has no i64 answer, and a release
     // build's `.abs()` and `.pow()` wrap in silence. A negative exponent is the real result truncated toward zero:
     // 0, except for a base of 1 or -1, as on Kotlin and Swift
     pub fn abs(value: i64) -> i64 { value.checked_abs().expect("excess: a number past i64") }

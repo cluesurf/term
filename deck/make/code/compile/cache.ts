@@ -6,7 +6,7 @@
 // The in-memory path is pure and browser-safe (a pure-JS content hash, no node:crypto). Persistence is OPTIONAL and
 // injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.base/@term/code/cache`
 // (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
-// See note/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
+// See note/project/term/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
 
 import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
@@ -24,7 +24,7 @@ import { hashText } from '@term/make/code/term/hash'
 // `7` is the grammar reader (mint-bridge-0004, 2026-09-01). There is one reader again, so the epoch is a plain
 // number again, and the bump is what retires every entry the hand-written one left behind.
 //
-// `8` is the lean surface (note/term/lean.md, 2026-09-12): the bridge partitions a marked construct's
+// `8` is the lean surface (note/project/term/mill/lean.md, 2026-09-12): the bridge partitions a marked construct's
 // arguments, `mine task` reads an anonymous task's name with `mine word`, a bare path operand is a member
 // read, `void` is the literal in an open call's arguments, and the open call folds builtins. Every one changes
 // what a unit mills to with its text unchanged, and the Sanskrit port spent an hour on `term make` reporting
@@ -72,7 +72,7 @@ function readEntry<T>(stored: string | undefined, kind = 'output'): T | undefine
   }
 }
 
-// WHETHER A STORED ENTRY HAS THE SHAPE ITS KIND READS (note/term/plan/incremental-best-in-class.md, step 14). A torn or
+// WHETHER A STORED ENTRY HAS THE SHAPE ITS KIND READS (note/project/term/incremental-best-in-class.md, step 14). A torn or
 // flipped entry fails gzip's checksum and a cut one fails to parse, and both are misses already. One that parses to the
 // wrong shape, a `{}` where a unit's build belongs, was handed back as a hit, and the first read of a field it lacked
 // crashed the build. It is a miss too, and the build that follows writes a good entry over it
@@ -330,7 +330,7 @@ export class CompileCache {
 
   // one unit of the separate build (compile/separate.ts): the same tiers as `output`, under its own kind, which the
   // store keeps machine-wide beside the mill. A unit's key is its content and the surfaces it reaches, so the standard
-  // library's units one project built answer every other project's (note/term/plan/incremental-best-in-class.md,
+  // library's units one project built answer every other project's (note/project/term/incremental-best-in-class.md,
   // step 1)
   unit<T>(key: string, build: () => T): T {
     return this.output(key, build, 'unit')

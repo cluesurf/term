@@ -68,7 +68,7 @@ face hint
   have font-size, text <0.875rem>
 
 # native form controls (input / textarea / select) are used as plain elements with this class, per the headless naming
-# rule (a self-rendering tag is a native element + class, not a zone component). See note/library/face/native-elements.md.
+# rule (a self-rendering tag is a native element + class, not a zone component). See note/project/term/face/native-elements.md.
 face control
   have background, text <var(--surface)>
   have color, text <var(--on-surface)>

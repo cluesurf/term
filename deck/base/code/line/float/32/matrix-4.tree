@@ -33,7 +33,7 @@ form matrix-4
             code 4
           read column
 
-  # the matrix product: `multiply(a, b)`, as on two numbers (note/term/plan/decisions-2026-10.md, D5)
+  # the matrix product: `multiply(a, b)`, as on two numbers (note/project/term/decisions-2026-10/decisions-2026-10.md, D5)
   wear multiplication
     task multiply
       take self

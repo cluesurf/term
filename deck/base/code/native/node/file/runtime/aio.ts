@@ -9,7 +9,7 @@
 // TOTAL, like the rest of the native surface: a failure reads as the empty / false / zero answer, except a handle
 // open, where a missing file cannot be papered over.
 //
-// Reached only through the public file API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'

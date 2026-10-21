@@ -1,7 +1,7 @@
 // Every bound the dialect claims has a number, and exceeding one says which cap was hit.
 //
 // A closed vocabulary stops a document doing what we did not write. It does not stop it doing what we DID write,
-// ten million times. See note/term/view/05-sandbox.md.
+// ten million times. See note/project/term/view/05-sandbox.md.
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView } from '@term/make/code/compile/view'

@@ -1,5 +1,5 @@
 # MODULE SCOPE FOR FORMS (module-scope-0003). A form belongs to the module that defines it and reaches another module
-# only through `load ... / find` (note/term/project/module-scope.md). The build merges every module into one flat
+# only through `load ... / find` (note/project/term/module-scope/readme.md). The build merges every module into one flat
 # program, so two forms of one name from two files met in it and the one merged last took the other's place: a field
 # read off the wrong record, a variant matched against the wrong enum, with the error surfacing in a third file.
 #

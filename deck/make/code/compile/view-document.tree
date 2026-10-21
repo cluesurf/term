@@ -4,7 +4,7 @@
 # approved catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host resolves
 # before rendering, and `view` defines the document. `tree` and `fuse` never arrive: the expander removes them on the
 # parse tree before any reader runs. What this reader will NOT build is as much the point as what it will: no computed
-# local, no attribute or event handler, no unbounded loop. Every refusal is `document-refused`. See note/term/view/.
+# local, no attribute or event handler, no unbounded loop. Every refusal is `document-refused`. See note/project/term/view/.
 #
 # Ported from compile/view.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
 #   - every form is the original's type field for field and tag for tag (`form`), so a read document passes to and

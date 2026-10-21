@@ -1,6 +1,6 @@
 // An app's SCOPE (app-scope): what it may reach outside its own process, and over what. Deny by default, declared in
 // ONE dialect, the app's `scope.tree`, a Term data file (note/term/host/), so there is nothing new to parse and `term
-// lint` already reads it. Tauri says the same thing in four formats (note/term/app/04-do-better.md, "Capability in
+// lint` already reads it. Tauri says the same thing in four formats (note/project/term/app/research/04-do-better.md, "Capability in
 // the grammar"); this keeps its scope model, which is right, and drops the other three encodings.
 //
 //   host file
@@ -14,7 +14,7 @@
 //
 //   at BUILD time, every app target   a program that reaches a capability its scope does not name is refused, naming
 //                                     the capability and the module it was reached through. A `view` document cannot
-//                                     reach one at all: its dialect has no word for a call (note/term/view/05-sandbox.md)
+//                                     reach one at all: its dialect has no word for a call (note/project/term/view/05-sandbox.md)
 //   at RUN time, where a boundary is  the cask's dispatcher (deck/call/code/cask-generate.ts) checks each scoped
 //                                     argument of each call from the WebView page against the scope before anything
 //                                     runs, which is where Tauri checks. A native build is one compiled program with no

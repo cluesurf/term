@@ -10,7 +10,7 @@
 // error channel, so a failure reads as the empty / false / zero answer. A handle open is the exception: a missing
 // file there cannot be papered over.
 //
-// Reached only through the public file API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
 import Foundation
 import NIOCore
 import _NIOFileSystem

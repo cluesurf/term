@@ -1,4 +1,4 @@
-# Which files of the compiler are read with the LEAN surface (note/term/lean.md, note/term/self-host/03-lean.md).
+# Which files of the compiler are read with the LEAN surface (note/project/term/mill/lean.md, note/term/self-host/03-lean.md).
 #
 # Every compiler module ported to Term is written lean: that is the house style of the self-hosting port. The two
 # ports that predate it (`code/term/hash.tree`, `code/term/name.tree`) were converted by `pnpm term:lean-convert`

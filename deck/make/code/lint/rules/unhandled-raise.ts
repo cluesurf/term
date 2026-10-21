@@ -1,7 +1,7 @@
 // L041: a call to a task that can raise, outside any guard, with no `halt kink` under it. The call passes the callee's
 // exception on to the caller without saying so; `halt kink` says so, and a guard (`fork` / `mark unsafe`, then
 // `halt take`) handles it
-// (note/term/hive/04-reach.md, the open diagnostic; note/term/hive/11-native-exceptions.md). Advice, not an error:
+// (note/project/term/hive/04-reach.md, the open diagnostic; note/project/term/hive/11-native-exceptions.md). Advice, not an error:
 // the stdlib was written before the word existed, so the count on it is the measure of the migration, and a call
 // whose only exception is `failure` (a native shim's, which any foreign call can raise) is left alone.
 

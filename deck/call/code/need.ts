@@ -1,4 +1,4 @@
-// Which `term` runs here, and why (note/term/plan/term-versions.md, "Resolution").
+// Which `term` runs here, and why (note/project/term/term-versions.md, "Resolution").
 //
 // Every command asks this first, from `host/need.mjs` before the CLI loads, so it reads only small files and imports
 // only the parser: no registry, no network. Its answer is one of three things: RUN a version that is here, LOAD one
@@ -19,7 +19,7 @@
 // itself rather than handing over to an older 2.6.4 under code/, and on a tie it wins, because it costs no handoff.
 //
 // THE PARSER READS EVERY FILE. A `deck.tree`, a `lock.tree` and the default are read with `readTree`, never a pattern:
-// one parser for `.tree` (note/term/one-parser.md). A cheap test on the text decides only whether to parse at all: a
+// one parser for `.tree` (note/project/term/one-parser.md). A cheap test on the text decides only whether to parse at all: a
 // manifest with no line starting `need` cannot hold one, so most projects cost one file read.
 
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync, writeFileSync } from 'fs'

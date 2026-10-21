@@ -1,6 +1,6 @@
 // Read a `.tree` source a top-level group at a time, without holding the whole file.
 //
-// THE UNIT IS A COMPLETED TOP-LEVEL GROUP, decided in note/term/feed/tree-stream-unit.md and measured there: the
+// THE UNIT IS A COMPLETED TOP-LEVEL GROUP, decided in note/project/term/feed/decision/tree-stream-unit.md and measured there: the
 // consumers that exist want a PREFIX of the groups, and the import block is the first 6.4% of a Term file (716
 // files, 94,178 lines). `importPathsOf`, `isDataTree`, `isDraftTree` and `scanDefs` all stop before the first
 // definition. A cold compile parses every transitive module whole today just to read its imports.

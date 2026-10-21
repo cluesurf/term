@@ -316,7 +316,7 @@ mine deck-cite
           site base
 
 # `need @term/code, mark <2.6.x>`: the toolchain the project builds with, a range in a `link`'s constraint syntax.
-# `term` reads it at startup and runs a matching version (note/term/plan/term-versions.md)
+# `term` reads it at startup and runs a matching version (note/project/term/term-versions.md)
 mine deck-need
   mine term, term need
     mine path

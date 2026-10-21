@@ -51,6 +51,7 @@ load ./judging
   find quote
   find whnf
   find infer
+  find check
   find fresh-meta
   find close-over
   find convertible-modulo
@@ -112,6 +113,13 @@ form term-state
   link generic-levels, like list, like number
   link generics, like hash, like text, like number
   link type0-value, like kernel-value
+  # the names a closure in the task being checked reads or writes, which the face sets: a closure reads a variable when
+  # it RUNS, so a save to one of them has no version a lowering could name (`assign-term`)
+  link captured, like hash, like text, like boolean
+  # why the body last checked was not lowered to one term, the first reason met, empty when none was named
+  link miss, like text
+  # whether that body's term holds a save made a new name or a join (`assign-term`, `joined-term`)
+  link lowered, like boolean
 
 task new-term-state
   take st, like judge-state
@@ -150,6 +158,9 @@ task new-term-state
       bind generic-levels, make list
       bind generics, make hash
       bind type0-value, type0-value
+      bind captured, make hash
+      bind miss, <>
+      bind lowered, false
 
 # ---- small readings ----
 
@@ -1304,6 +1315,65 @@ task array-term
 
 # ---- bodies ----
 
+# THE PURE LOWERING (proof-by-default-0009, note/project/term/proof/semantics.md). An imperative body means one pure
+# term, so a proof about the task is about what it computes:
+#   - every `save` of a name already bound is a NEW binder of the same type (`assign-term`), so a read after it reads
+#     the new version and nothing about the old one can go stale. `x += v` is `x = x + v` over numbers
+#   - a `fork` (or a `fork case`) that does not return on every path is a JOIN: the statements after it become a local
+#     task over the names its arms save, `\x1 .. xk. tail`, bound once, and every arm that falls through ends by calling
+#     it with the versions it holds (`joined-term`). Nothing is copied, and the condition of an arm is about the versions
+#     at the fork, because that is all the arm's own terms can name
+#   - a closure reads a variable when it runs, so a save to a name any closure in the task reads or writes is not
+#     lowered (`ts/captured`): the task is checked statement by statement, and the reason is counted
+# A join point is the context level of the join task's binder and the names it takes, in order.
+form join-point
+  link level, like number
+  link names, like list, like text
+
+task no-join
+  like maybe, like join-point
+  mark private
+
+  back make none
+
+# a statement the lowering does not cover, as the reason a task names (`walk` is 0010, `halt` 0011)
+task statement-words
+  take statement, like statement
+  like text
+  mark private
+
+  sift statement
+    case expression
+      back <a call made for its effect>
+    case throw
+      back <a raise>
+    case while
+      back <a walk test>
+    case for-each
+      back <a walk over a list>
+    case break
+      back <a halt out of a walk>
+    case continue
+      back <a turn next>
+    case guard
+      back <a guarded fork>
+    case hold
+      back <a hold>
+    miss
+      back <a {statement/form} statement>
+
+# the first reason a body was not lowered, kept until the task is done
+task note-miss
+  take ts, like term-state
+  take reason, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(ts/miss, <>)
+    hold
+      save ts/miss, reason
+  back true
+
 # a statement body as one kernel term of the result type, none outside the fragment. The result type is a value,
 # quoted at the current depth wherever a term is needed
 task body
@@ -1314,10 +1384,366 @@ task body
   take result-value, like kernel-value
   like maybe, like kernel-term
 
+  back body-in(ts, statements, scope, ctx, result-value, no-join())
+
+# the end of an arm that falls through: the join task applied to the versions of its names the arm holds
+task join-call
+  take point, like join-point
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like maybe, like kernel-term
+  mark private
+
+  save out, variable(subtract(subtract(ctx/level, point/level), 1))
+  walk point/names
+    take name
+    save level, level-of(scope, name)
+    fork test, is-below(level, 0)
+      hold
+        back no-term()
+    save out, apply-term(out, variable(subtract(subtract(ctx/level, level), 1)))
+  back some-term(out)
+
+# does every path through these statements end in a `send back`
+task always-returns
+  take statements, like list, like statement
+  like boolean
+  mark private
+
+  fork test, is-equal(statements/length, 0)
+    hold
+      back false
+  sift get(statements, subtract(statements/length, 1))
+    case return
+      back true
+    case if
+      link branches
+      link otherwise
+      sift otherwise
+        case some
+          link more
+          fork test, is-equal(always-returns(more), false)
+            hold
+              back false
+          walk branches
+            take branch
+            fork test, is-equal(always-returns(branch/body), false)
+              hold
+                back false
+          back true
+        case none
+          back false
+    miss
+      back false
+
+# the names these statements save again (`assign` to a variable) and the names they bind (`let`), at any depth
+task gather-writes
+  take statements, like list, like statement
+  take writes, like list, like text
+  take lets, like list, like text
+  like boolean
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case assign
+        link target
+        sift target
+          case variable
+            link name
+            push(writes, name)
+          miss
+            turn next
+      case let
+        link name
+        push(lets, name)
+      case if
+        link branches
+        link otherwise
+        walk branches
+          take branch
+          gather-writes(branch/body, writes, lets)
+        sift otherwise
+          case some
+            link more
+            gather-writes(more, writes, lets)
+          case none
+            turn next
+      case match
+        link cases
+        link otherwise
+        walk cases
+          take arm
+          gather-writes(arm/body, writes, lets)
+        sift otherwise
+          case some
+            link more
+            gather-writes(more, writes, lets)
+          case none
+            turn next
+      case while
+        link body
+        gather-writes(body, writes, lets)
+      case for-each
+        link body
+        gather-writes(body, writes, lets)
+      case guard
+        link body
+        gather-writes(body, writes, lets)
+      miss
+        turn next
+  back true
+
+# `save x, v` where `x` is bound: a new binder `x` of the type `x` had, the rest of the body under it
+task assign-term
+  take ts, like term-state
+  take target, like expression
+  take op, like assign-op
+  take value, like expression
+  take tail, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save name, <>
+  sift target
+    case variable
+      link written
+      save name, written
+    miss
+      note-miss(ts, <a save through a member>)
+      back no-term()
+  fork test, ts/captured/has(name)
+    hold
+      note-miss(ts, <a save to a name a closure reads>)
+      back no-term()
+  save level, level-of(scope, name)
+  fork test, is-below(level, 0)
+    hold
+      back no-term()
+  save old-type, get(ctx/types, subtract(subtract(ctx/level, level), 1))
+  save target-term, type-zero()
+  sift expr(ts, target, scope, ctx, no-value())
+    case some
+      link found
+      save target-term, found
+    case none
+      back no-term()
+  save value-term, type-zero()
+  sift expr(ts, value, scope, ctx, some-value(old-type))
+    case some
+      link found
+      save value-term, found
+    case none
+      back no-term()
+  # the command checker's own typing of a save, so a lowered task is held to exactly what it was held to
+  save primitive, <>
+  sift op
+    case set
+      check(st, ctx, value-term, old-type)
+    case add
+      save primitive, <add>
+    case subtract
+      save primitive, <sub>
+    case multiply
+      save primitive, <mul>
+    case divide
+      save primitive, <div>
+  save new-term, value-term
+  fork test, is-unequal(primitive, <>)
+    hold
+      save no-env, no-values()
+      save number-value, evaluate(st, no-env, constant(<Number>))
+      check(st, ctx, target-term, number-value)
+      check(st, ctx, value-term, number-value)
+      save new-term, apply-term(apply-term(constant(primitive), target-term), value-term)
+  save inner, bind-context(ctx, <many>, old-type, name)
+  save inner-scope, scope-with(scope, name, ctx/level)
+  sift body-in(ts, tail, inner-scope, inner, result-value, join)
+    case some
+      link rest
+      save lambda, named-lam(rest, name)
+      save pi-type, arrow(quote(st, ctx/level, old-type), quote(st, add(ctx/level, 1), result-value))
+      save annotated
+        make ann
+          bind term, lambda
+          bind type, pi-type
+      save ts/lowered, true
+      back some-term(apply-term(annotated, new-term))
+    case none
+      back no-term()
+
+# a `fork` or `fork case` some path through which falls through to `tail`: the join task over the names its arms save
+# again, then the statement with every falling arm ending in a call of it
+task joined-term
+  take ts, like term-state
+  take statement, like statement
+  take tail, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  save writes, make list
+  save lets, make list
+  save one, make list
+  push(one, statement)
+  gather-writes(one, writes, lets)
+  # a name an arm binds again would stand for the outer one at the join: the arm's `host x` is not the `x` after it
+  walk lets
+    take name
+    fork test, scope/has(name)
+      hold
+        note-miss(ts, <an arm that binds a name the task already has>)
+        back no-term()
+  save names, make list
+  save seen, make hash
+  walk writes
+    take name
+    fork test, and(is-equal(seen/has(name), false), is-minimum(level-of(scope, name), 0))
+      hold
+        seen/set(name, true)
+        push(names, name)
+  # the join task, `\names. tail`, in the context at the fork: the tail reads each joined name as its parameter, and
+  # nothing an arm bound for itself
+  save join-ctx, ctx
+  save join-scope, scope
+  save domains, make list
+  walk names
+    take name
+    save joined-type, get(ctx/types, subtract(subtract(ctx/level, level-of(scope, name)), 1))
+    push(domains, quote(st, join-ctx/level, joined-type))
+    save join-scope, scope-with(join-scope, name, join-ctx/level)
+    save join-ctx, bind-context(join-ctx, <many>, joined-type, name)
+  walk lets
+    take name
+    save join-scope, scope-with(join-scope, name, -1)
+  save tail-term, type-zero()
+  sift body-in(ts, tail, join-scope, join-ctx, result-value, join)
+    case some
+      link found
+      save tail-term, found
+    case none
+      back no-term()
+  save join-lam, tail-term
+  save join-type, quote(st, join-ctx/level, result-value)
+  save i, subtract(names/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save join-lam, named-lam(join-lam, get(names, i))
+      save join-type, arrow(get(domains, i), join-type)
+      save i, subtract(i, 1)
+  # the statement, under the join task's binder
+  save point-ctx, bind-context(ctx, <many>, evaluate(st, ctx/env, join-type), <join>)
+  save point
+    make join-point
+      bind level, ctx/level
+      bind names, names
+  save inner, type-zero()
+  sift statement-term(ts, statement, scope, point-ctx, result-value, make(some, point))
+    case some
+      link found
+      save inner, found
+    case none
+      back no-term()
+  save annotated
+    make ann
+      bind term, named-lam(inner, <join>)
+      bind type, arrow(join-type, quote(st, add(ctx/level, 1), result-value))
+  save ts/lowered, true
+  back some-term(apply-term(annotated, join-lam))
+
+# a `fork` or a `fork case` as the last statement of a body, each arm under `join`
+task statement-term
+  take ts, like term-state
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
+  save st, ts/st
+  sift statement
+    case if
+      link branches
+      link otherwise
+      save else-statements, make list
+      sift otherwise
+        case some
+          link written
+          save else-statements, written
+        case none
+          save else-statements, else-statements
+      sift body-in(ts, else-statements, scope, ctx, result-value, join)
+        case some
+          link last
+          save result, last
+          save i, subtract(branches/length, 1)
+          walk test
+            hook test, is-minimum(i, 0)
+            hook hold
+              save branch, get(branches, i)
+              save condition, expr(ts, branch/cond, scope, ctx, no-value())
+              save consequent, body-in(ts, branch/body, scope, ctx, result-value, join)
+              sift condition
+                case some
+                  link c
+                  sift consequent
+                    case some
+                      link t
+                      save result, apply-term(apply-term(apply-term(apply-term(constant(<cond>), quote(st, ctx/level, result-value)), c), t), result)
+                    case none
+                      back no-term()
+                case none
+                  back no-term()
+              save i, subtract(i, 1)
+          back some-term(result)
+        case none
+          back no-term()
+    case match
+      link subject
+      link cases
+      link otherwise
+      sift otherwise
+        case some
+          note-miss(ts, <a match with a miss arm>)
+          back no-term()
+        case none
+          back match-term(ts, subject, cases, scope, ctx, result-value, join)
+    miss
+      back no-term()
+
+task body-in
+  take ts, like term-state
+  take statements, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take join, like maybe, like join-point
+  like maybe, like kernel-term
+  mark private
+
   save st, ts/st
   fork test, is-equal(statements/length, 0)
     hold
-      back no-term()
+      sift join
+        case some
+          link point
+          back join-call(point, scope, ctx)
+        case none
+          note-miss(ts, <a path that ends without a return>)
+          back no-term()
   save head, get(statements, 0)
   save tail, make list
   walk statements
@@ -1331,6 +1757,7 @@ task body
       link value
       fork test, is-above(tail/length, 0)
         hold
+          note-miss(ts, <a statement after a return>)
           back no-term()
       sift value
         case none
@@ -1341,6 +1768,11 @@ task body
         case some
           link returned
           back expr(ts, returned, scope, ctx, some-value(result-value))
+    case assign
+      link target
+      link op
+      link value
+      back assign-term(ts, target, op, value, tail, scope, ctx, result-value, join)
     case let
       link name
       link init
@@ -1352,7 +1784,7 @@ task body
               link value-type
               save inner, bind-context(ctx, <many>, value-type, name)
               save inner-scope, scope-with(scope, name, ctx/level)
-              sift body(ts, tail, inner-scope, inner, result-value)
+              sift body-in(ts, tail, inner-scope, inner, result-value, join)
                 case some
                   link rest
                   # `let x = v; rest` as an immediately applied lambda, annotated with its arrow
@@ -1372,6 +1804,32 @@ task body
     case if
       link branches
       link otherwise
+      # the fork as it always was, every arm returning: the tail is the miss arm, or there is no tail
+      save plain, false
+      sift join
+        case none
+          fork test, is-equal(tail/length, 0)
+            hold
+              save plain, true
+            miss
+              sift otherwise
+                case none
+                  save plain, true
+                  walk branches
+                    take branch
+                    fork test, is-equal(always-returns(branch/body), false)
+                      hold
+                        save plain, false
+                case some
+                  save plain, false
+        case some
+          save plain, false
+      fork test, is-equal(plain, false)
+        hold
+          fork test, is-equal(tail/length, 0)
+            hold
+              back statement-term(ts, head, scope, ctx, result-value, join)
+          back joined-term(ts, head, tail, scope, ctx, result-value, join)
       save else-statements, tail
       sift otherwise
         case some
@@ -1384,6 +1842,7 @@ task body
           save else-statements, tail
       fork test, is-equal(else-statements/length, 0)
         hold
+          note-miss(ts, <a path that ends without a return>)
           back no-term()
       sift body(ts, else-statements, scope, ctx, result-value)
         case some
@@ -1417,13 +1876,10 @@ task body
       link otherwise
       fork test, is-above(tail/length, 0)
         hold
-          back no-term()
-      sift otherwise
-        case some
-          back no-term()
-        case none
-          back match-term(ts, subject, cases, scope, ctx, result-value)
+          back joined-term(ts, head, tail, scope, ctx, result-value, join)
+      back statement-term(ts, head, scope, ctx, result-value, join)
     miss
+      note-miss(ts, statement-words(head))
       back no-term()
 
 # the binder name a match arm gives field `index`: its rename, else the field's own
@@ -1463,11 +1919,24 @@ task match-term
   take scope, like hash, like text, like number
   take ctx, like context
   take result-value, like kernel-value
+  take join, like maybe, like join-point
   like maybe, like kernel-term
   mark private
 
   save st, ts/st
   save data, ts/data
+  # the names the join takes, which an arm's field must not stand for at the join call
+  save joined, make hash
+  save has-join, false
+  sift join
+    case some
+      link point
+      save has-join, true
+      walk point/names
+        take name
+        joined/set(name, true)
+    case none
+      save joined, joined
   save subject-found, expr(ts, subject-node, scope, ctx, no-value())
   save subject, type-zero()
   sift subject-found
@@ -1500,6 +1969,11 @@ task match-term
   fork test, data/type-former-indices/has(enum-name)
     hold
       save index-count, data/type-former-indices/get(enum-name)/length
+  # an arm that falls through to a join is typed at the join's result, which a dependent motive would refine away
+  fork test, and(has-join, is-above(index-count, 0))
+    hold
+      note-miss(ts, <a match on an indexed family that falls through>)
+      back no-term()
   # INVERSION: a constructor-headed subject index makes the variants of another head impossible
   save impossible, make hash
   save subject-index-head, <>
@@ -1592,11 +2066,15 @@ task match-term
           take field
           take field-index
           save local-name, arm-name(arm, field-index, field)
+          fork test, joined/has(local-name)
+            hold
+              note-miss(ts, <an arm that binds a name the task already has>)
+              back no-term()
           save branch-scope, scope-with(branch-scope, local-name, branch-ctx/level)
           save no-env, no-values()
           save field-value, evaluate(st, no-env, read-field-type(field/type))
           save branch-ctx, bind-context(branch-ctx, <many>, field-value, local-name)
-        sift body(ts, arm/body, branch-scope, branch-ctx, result-value)
+        sift body-in(ts, arm/body, branch-scope, branch-ctx, result-value, join)
           case some
             link inner
             save term, inner
@@ -1629,6 +2107,10 @@ task match-term
           save motive-body, substitute-vars(written, refine, 0)
           fork test, is-unequal(show-term(motive-body), show-term(written))
             hold
+              fork test, has-join
+                hold
+                  note-miss(ts, <a dependent match that falls through>)
+                  back no-term()
               save out, constant(<matchType__{enum-name}>)
               walk subject-type-args
                 take a

@@ -1,5 +1,5 @@
 // Eight programs that compiled with NO message and emitted WRONG code, found writing the guides lean on 2026-10-02
-// (note/term/guides/readme.md, "Code samples are lean"). Each is held here two ways: the output it must emit now, and
+// (note/project/term/guides/draft/readme.md, "Code samples are lean"). Each is held here two ways: the output it must emit now, and
 // the wrong output it emitted before, which must be gone. Where the answer is a refusal, the message is held.
 //
 //   1. a bare call over `bind` lines dropped the names and passed the values in written order

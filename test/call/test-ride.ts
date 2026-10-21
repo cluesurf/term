@@ -1,4 +1,4 @@
-// `term test --ride` (note/term/guides/tests/running.md): the tests run, then run again on every edit, and only the
+// `term test --ride` (note/project/term/guides/draft/tests/running.md): the tests run, then run again on every edit, and only the
 // test files whose closure holds the edited file run. A project of two modules, each with a test file of its own, is
 // watched; one module is edited into a failing test and back. The CLI runs as a person runs it, and is stopped with
 // ctrl-c, which closes the run.

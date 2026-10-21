@@ -1,7 +1,7 @@
 
 # Switch, the GENERIC implementation: what every platform without its own gets, the web among them. A platform with a
 # switch of its own (macOS, iOS, Android) gets ./toolkit/switch.tree instead, through `component/switch.tree` and the
-# build's env chain. Both take the same props, which is the contract (note/term/app/11-uniform-interface.md).
+# build's env chain. Both take the same props, which is the contract (note/project/term/app/11-uniform-interface.md).
 #
 # Headless, behavior-complete. A toggle backed by the shared `disclosure` controller (on = open). The consumer
 # passes one controller:
@@ -47,7 +47,7 @@ view switch
   view button
     bind type, text <button>
     bind role, text <switch>
-    # its name, what a screen reader speaks before on or off (note/term/view/11-vocabulary.md, "Accessibility")
+    # its name, what a screen reader speaks before on or off (note/project/term/view/11-vocabulary.md, "Accessibility")
     bind aria-label, read label
     bind data-slot, text <switch>
     bind data-state

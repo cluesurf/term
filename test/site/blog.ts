@@ -38,7 +38,7 @@ const resolve = projectResolver(SEED, 'browser')
 // a minimal DOM stub. Inputs carry a `value`; get-value/set-value read and write it. Elements support the subset the
 // render runtime + bind use: setAttribute, appendChild, addEventListener, replaceWith, before, remove, textContent,
 // value. As in a browser, `childNodes` holds every child, text nodes included, and `children` only the elements: a list
-// keeps its place with an empty text node as a marker (note/term/view/12-render-seam.md), which is a child node and
+// keeps its place with an empty text node as a marker (note/project/term/view/12-render-seam.md), which is a child node and
 // not an element child.
 function makeStubElement(tag: string): any {
   return {

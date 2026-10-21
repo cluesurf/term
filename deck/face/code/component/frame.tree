@@ -1,5 +1,5 @@
 
-# Frame: the vocabulary's word for a fixed size around one child (note/term/view/11-vocabulary.md). Each bound is in
+# Frame: the vocabulary's word for a fixed size around one child (note/project/term/view/11-vocabulary.md). Each bound is in
 # points, and one left out (0) is not set, so the child keeps its own size on that axis:
 #
 #   width, height                          a fixed size

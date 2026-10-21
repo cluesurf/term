@@ -30,7 +30,7 @@ import { projectLeanOf } from '@term/call/code/role-of'
 const TERM = process.cwd()
 
 // the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call`,
-// `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output standard every command prints through (note/term/output/): the
+// `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output standard every command prints through (note/project/term/output/): the
 // rest of its .tree is the console (`line/base.tree`) and its verbs, which `term boot` builds as a program and
 // nothing imports as a library.
 const DECKS: Record<string, string[]> = {

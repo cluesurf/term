@@ -5,7 +5,7 @@
 //
 // Expo answers this with @expo/fingerprint, which sha1-hashes a heuristic list of files with opt-outs, because an
 // Expo app's native half is a hand-edited Xcode and Gradle project. Term's native half is GENERATED, so the input is
-// a closed set the build already holds, and nothing is guessed. See note/term/app/13-expo-lessons.md, rank 2.
+// a closed set the build already holds, and nothing is guessed. See note/project/term/app/research/13-expo-lessons.md, rank 2.
 //
 // The driver line that hands `boot` its page directory or dev URL is NOT an input: it differs between a dev build and
 // a release of the same binary surface, and a dev URL must not make two identical natives incompatible.

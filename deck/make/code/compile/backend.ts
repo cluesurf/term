@@ -209,7 +209,7 @@ export function hasValuedReturn(body: import('@term/make/code/compile/node').Sta
   return shapes.hasValuedReturn(body as never)
 }
 
-// The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3, in its first and
+// The function-typed parameters a task may keep past its call (note/project/term/compiler/codegen/passes.md, P3, in its first and
 // most conservative form). A parameter stays NON-escaping only when every mention of it is the callee of a call made
 // directly in the task's body; anything this cannot see is treated as escaping, so a mistake can only cost the
 // optimization and never the build.
@@ -227,7 +227,7 @@ export function swapAt(body: Statement[], at: number): Swap | undefined {
   return unbox(shapes.swapAt(body as never, at)) as Swap | undefined
 }
 
-// F1, the first and narrowest slice (note/term/codegen/shared.md): the list PARAMETERS a task may take LENT, as
+// F1, the first and narrowest slice (note/project/term/compiler/codegen/shared.md): the list PARAMETERS a task may take LENT, as
 // `&mut [T]` ('write') or `&[T]` ('read'), where every list is otherwise an `Rc<RefCell<Vec<T>>>` borrowed again at
 // each element. The caller lends once for the whole call. A wrong answer here does not merely slow a program down: a
 // second name reaching the same list while it is lent panics on its `RefCell`. So it is refused unless nothing else
@@ -305,7 +305,7 @@ export function nativeForms(program: Statement[]): Set<string> {
   return new Set(lending.nativeForms(program as never))
 }
 
-// F1 for lists held in a variant (note/term/codegen/shared.md): the variant fields of list type that OWN their list,
+// F1 for lists held in a variant (note/project/term/compiler/codegen/shared.md): the variant fields of list type that OWN their list,
 // keyed `variant/field`, so a backend may hold it as the plain list (`Vec<T>` on Rust) where it was a shared one. A list
 // owned by its node is never seen by a second name, so whether it is shared or copied cannot be observed. A field owns
 // its list when:
@@ -328,7 +328,7 @@ export function ownedFields(
   return new Set(lending.ownedFields(program as never, flags(fresh), lend as never, flags(slotPrivate)))
 }
 
-// F1 for lists of lists (note/term/codegen/shared.md): the element types E for which every `list of list of E` in the
+// F1 for lists of lists (note/project/term/compiler/codegen/shared.md): the element types E for which every `list of list of E` in the
 // program OWNS its inner lists, so a backend may hold each inner list as the plain list (`Vec<E>` on Rust) where it
 // was a shared one. Decided per type, program-wide, since the inner representation is part of the outer list's type
 // wherever it flows. Nothing can then tell an owned inner list from a shared one, because:
@@ -552,7 +552,7 @@ export function redeclaredLets(fn: Extract<Statement, { form: 'function' }>): We
   return new WeakSet(loops.redeclaredLets(fn as never) as Statement[])
 }
 
-// F4 `walked` (note/term/codegen/shared.md): the texts a task reads by position in a loop, each given a CURSOR, the
+// F4 `walked` (note/project/term/compiler/codegen/shared.md): the texts a task reads by position in a loop, each given a CURSOR, the
 // code-point index of its last read and that code point's byte (Rust, Swift) or unit (Kotlin, TypeScript) offset. A
 // read steps from the cursor, so a loop reading a text forward, or around one place (`i - 1`, `i + 1`), is O(1) per
 // read where every read walked from the start (`chars().nth(i)`, `offsetBy`, a code-point count), O(n^2) over the
@@ -589,11 +589,49 @@ export type RecordCopies = { params: Map<string, Map<number, boolean>>; lets: Ma
 // write through `copy` changed the caller's record, 2026-10-05)
 export function recordCopies(program: Statement[], context: Statement[] = []): RecordCopies {
   const copies = copying.recordCopiesOf(program as never, context as never)
-
-  return {
+  const out = {
     params: copies.params as Map<string, Map<number, boolean>>,
     lets: new Map(copies.lets.map(one => [one.node as Statement, one.deep])),
     plain: new Set(copies.plain),
+  }
+
+  refuseSoleCopies(out, [...program, ...context])
+
+  return out
+}
+
+// A `mark sole` value has one owner and is moved, never copied (term/affine-kinds decision 001). The usage gate makes a
+// second use impossible, so a copy here would mean a backend duplicating a value it should hand on: the build fails at
+// the emitter, naming the form and the task or local
+function refuseSoleCopies(copies: RecordCopies, program: Statement[]): void {
+  const sole = new Set(program.flatMap(n => (n.form === 'record-type' && n.sole === true ? [n.name] : [])))
+
+  if (sole.size === 0) {
+    return
+  }
+
+  const soleName = (type: Type | undefined): string | undefined =>
+    type?.kind === 'named' && sole.has(type.name) ? type.name : undefined
+
+  for (const [task, at] of copies.params) {
+    const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === task)
+
+    for (const index of at.keys()) {
+      const form = soleName(fn?.params[index]?.type)
+
+      if (form) {
+        throw new Error(`sole-copied: \`${task}\` would copy its parameter of \`${form}\`, which is \`mark sole\`. A sole value is moved, never copied`)
+      }
+    }
+  }
+
+  for (const node of copies.lets.keys()) {
+    const local = node as Extract<Statement, { form: 'let' }>
+    const form = soleName(local.type ?? local.init?.type)
+
+    if (form) {
+      throw new Error(`sole-copied: \`${local.name}\` would copy a value of \`${form}\`, which is \`mark sole\`. A sole value is moved, never copied`)
+    }
   }
 }
 

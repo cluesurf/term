@@ -5,7 +5,7 @@
 # O(log n) with up to 127 keys to a node, `length` is O(1), and a walk is in key order. Until 2026-10-05 it was two
 # parallel lists, so a `put` or a `drop` moved every later entry, O(n). A native ordered map cannot stand in for it:
 # Rust's `BTreeMap` and Java's `TreeMap` order by the key type or a fixed comparator, and the order here is a Term task
-# chosen at run time (note/term/plan/decisions-2026-10.md, D8).
+# chosen at run time (note/project/term/decisions-2026-10/decisions-2026-10.md, D8).
 #
 # The nodes live in an ARENA of shared lists, each node an index: its keys, their values, and its children's indexes,
 # none for a leaf. So no recursive form is ever released one node per frame (Swift released a long recursive one that

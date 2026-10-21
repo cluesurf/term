@@ -1,7 +1,7 @@
 // Declarative native bindings (`bind <name>` with per-environment `case <env>` templates). A bind is a stdlib leaf: it
 // has no body to lower, so each backend renders the matching environment's native expression at the call site instead
 // of emitting a function. The verb that dispatches to a bind folds away under specialization (code/ir/simplify.ts),
-// leaving a direct bind call. See note/research/vibe/computation/plans/20-specialization-and-bind.md. Pure and
+// leaving a direct bind call. See note/project/term/archive/computation/plans/20-specialization-and-bind.md. Pure and
 // browser-safe.
 
 import { envFallback, type NativeEnv } from '@term/make/code/compile/native-env'

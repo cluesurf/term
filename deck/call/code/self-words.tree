@@ -1,5 +1,5 @@
 # `term self`: the decisions and the words of the verbs that manage the versions of `term` on this machine
-# (note/term/plan/term-load-install.md, note/term/plan/term-versions.md). Which package manager owns a copy and how it
+# (note/project/term/term-load-install.md, note/project/term/term-versions.md). Which package manager owns a copy and how it
 # updates it, what `check` says of a copy this did not install, which version `back` moves to, which versions `wash`
 # keeps and why, how long ago a version was used, and the default `pick` writes.
 #

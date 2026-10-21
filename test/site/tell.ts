@@ -1,4 +1,4 @@
-// The funnel of note/term/hive/06-tell.md, live: `expose` turns a raised exception into the response the app's
+// The funnel of note/project/term/hive/06-tell.md, live: `expose` turns a raised exception into the response the app's
 // `tell` table decided at build time, the status table maps the seventeen, and the `/errors` pages come from the
 // roll. Compiles a small app against the real stdlib and @term/site, wakes its hive, raises, and reads the wire.
 // Run: npx tsx test/site/tell.ts
@@ -170,6 +170,14 @@ async function main(): Promise<void> {
   const page = M.errorPage('too-large')
   ok('/errors/<case> shows note, hint, props and status', page.status === 200 && page.body.includes('Files may be up to 5 MB') && page.body.includes('<code>limit</code>') && page.body.includes('status 413'), page.body)
   ok('/errors/<unknown> is an absence', M.errorPage('nothing').status === 404)
+
+  // the URL's `case` is the reader's input: it reaches the 404 body as text, never as markup
+  const hostile = M.errorPage('<script>alert("x")</script>&\'')
+  ok(
+    '/errors/<script> comes back escaped',
+    hostile.status === 404 && !hostile.body.includes('<script>') && hostile.body.includes('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;&amp;&#39;'),
+    hostile.body,
+  )
 
   // the bait test of mesh/task/error/check.ts, against the roll: EVERY exception of the build is raised with bait
   // props named `secret` and `api-key`, and nothing that comes out of `expose` carries the bait, told or private.

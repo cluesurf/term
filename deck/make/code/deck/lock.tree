@@ -1,6 +1,6 @@
 # The lockfile: the deterministic, resolved dependency graph. It is written in tree syntax, so we parse it with our own
 # parser and serialize it back deterministically (stable ordering), guaranteeing reproducible installs.
-# See note/research/vibe/computation/plans/16-package-manager.md. Browser-safe.
+# See note/project/term/archive/computation/plans/16-package-manager.md. Browser-safe.
 #
 # Ported from deck/lock.ts (self-hosting, 2026-10-05). The original ordered names by `localeCompare`, which no Term
 # text comparison is, so the order is the host's own through `locale-compare`: JavaScript's on node and the browser,

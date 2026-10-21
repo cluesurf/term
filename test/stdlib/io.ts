@@ -1830,7 +1830,7 @@ async function main(): Promise<void> {
     mathTs.includes('function absolute'),
     false,
   )
-  // power is exact integer arithmetic written in Term (note/term/stdlib/semantics.md), never the host's float pow
+  // power is exact integer arithmetic written in Term (note/project/term/stdlib/semantics.md), never the host's float pow
   expect(
     'math: power is computed in Term, not by the host float pow',
     mathTs.includes('function power') && !mathTs.includes('math.pow'),

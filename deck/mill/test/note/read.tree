@@ -1,4 +1,4 @@
-# The `note` grammar's reader, on every form note/term/mill/01-note-research.md names: each written expression and
+# The `note` grammar's reader, on every form note/project/term/mill/research/01-note-research.md names: each written expression and
 # the tree it must read to, shown by show-note, or the mistake it must be refused with and where.
 
 load @term/base/unit

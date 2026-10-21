@@ -23,10 +23,15 @@ load @term/site/http/http
 load @term/site/http/serve
   find serve
 
+load @term/site/http/body
+  find answer-json
+
+load @term/host/base
+  find data
+
 load @term/base/list
   find list
   find push
-  find join
 
 load @term/base/maybe
   find unwrap-or
@@ -34,26 +39,22 @@ load @term/base/maybe
 load @term/base/hash
   find get
 
-# one post as a JSON object
-task post-json
+# one post as data, for the one JSON writer (`answer-json`): a title holding a `"` is escaped there, where joining
+# texts by hand broke the response (term-site-framework-0007)
+task post-data
   take p, like post
-  like text
+  like data
   send back
-    call join
-      make list
-        text <{"id":">
-        read p/id
-        text <","title":">
-        read p/title
-        text <","body":">
-        read p/body
-        text <"}>
-      text <>
+    call melt
+      read p
+      like post
 
-# a list of posts as a JSON array
-task posts-json
-  take posts, like list
-  like text
+# a list of posts as a data array
+task posts-data
+  take posts
+    like list
+      like post
+  like data
   save items
     make list
   walk list, read posts
@@ -62,17 +63,11 @@ task posts-json
       call push
         bind list, read items
         bind item
-          call post-json
+          call post-data
             read p
   send back
-    call join
-      make list
-        text <[>
-        call join
-          read items
-          text <,>
-        text <]>
-      text <>
+    make data/array
+      bind list, read items
 
 # GET /posts -> every post as a JSON array
 task list-handler
@@ -83,11 +78,10 @@ task list-handler
   save posts
     call list-posts
   send back
-    make response
-      bind status, code 200
-      bind body
-        call posts-json
-          read posts
+    call answer-json
+      call posts-data
+        read posts
+      code 200
 
 # GET /posts/:id -> one post as a JSON object
 task get-handler
@@ -105,11 +99,10 @@ task get-handler
     call get-post
       read id
   send back
-    make response
-      bind status, code 200
-      bind body
-        call post-json
-          read p
+    call answer-json
+      call post-data
+        read p
+      code 200
 
 task build-app
   like server

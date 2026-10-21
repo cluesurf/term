@@ -1,6 +1,6 @@
 # The parts of loading a role's mill that read a grammar file's own parse tree: its text without the import block and
 # the paths it imports, the rules it holds with the lines each occupies, and the rule names it defines. There is one
-# parser for `.tree` (note/term/one-parser.md), so all of it is read off the tree, never by pattern.
+# parser for `.tree` (note/project/term/one-parser.md), so all of it is read off the tree, never by pattern.
 #
 # Ported from compile/mill-load.ts (self-hosting, 2026-10-06), which stays as the face: it reads the files, resolves
 # each import against the mill and walks the load graph, and these are the questions it asks of each file's text.

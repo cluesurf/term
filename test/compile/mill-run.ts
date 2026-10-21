@@ -369,7 +369,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
     const text = readFileSync(file, 'utf8')
 
     // the grammar text WITHOUT its import block, and the paths it imports, read from the parse tree. There is ONE
-    // parser for `.tree` (note/term/one-parser.md): the regexes this replaced stripped a `load` line written inside
+    // parser for `.tree` (note/project/term/one-parser.md): the regexes this replaced stripped a `load` line written inside
     // a `text <...>` literal and missed a path carrying an interpolation. tree-parser-0010.
     const parsed = parse({ file, text })
     const lines = text.split('\n')
@@ -464,7 +464,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       const name = words(fields.get('name'))[0] ?? ''
       const wantName = reference.host ? `@${reference.host}/${reference.name}` : reference.name
       // the version: `mark <x>`, else the OLD spelling `code <x>` (a text literal, where `code ./dir` is the code
-      // root and captures a path instead), defaulting 0.0.0 (note/term/plan/manifest-mark-and-code-root.md)
+      // root and captures a path instead), defaulting 0.0.0 (note/project/term/manifest/manifest-mark-and-code-root.md)
       const markCap = fields.get('mark')?.[0]
       const versionMatch = (cap: typeof markCap): string =>
         cap?.kind === 'match' ? (words(cap.match.get('text'))[0] ?? '') : ''

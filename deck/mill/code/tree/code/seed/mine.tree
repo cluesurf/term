@@ -165,7 +165,7 @@ mine seed-wait
 #
 # `mark lean` OPTS THIS RULE IN to the lean surface: in a file whose role carries `mark lean`, an argument that
 # is itself a bare-head call with a plain name is read as a NAMED argument instead, the head becoming the label.
-# See note/term/lean.md.
+# See note/project/term/mill/lean.md.
 #
 # DECLARED HERE RATHER THAN DERIVED. The first design derived the set from "a rule with a `bind` site", and the
 # measurement killed it: thirty `mine` rules have one, and at least seven must never take labels, because `bind`

@@ -1,5 +1,5 @@
 # GRAMMAR SCOPES: a stretch of a file written in another grammar, read by that grammar and lowered to the code it
-# means, before the code grammar ever sees it (note/term/mill/02-role-scopes.md).
+# means, before the code grammar ever sees it (note/project/term/mill/02-role-scopes.md).
 #
 #   something x, role note, x + y          ->  something x, add(read(x), read(y))
 #   load @term/mill/text/note / find note

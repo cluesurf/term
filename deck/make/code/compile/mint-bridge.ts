@@ -1,6 +1,6 @@
 // The bridge: the mill executor's minted values (the language's own AST, as one form per grammar rule) into
 // the compiler's `Program` (the nodes every later pass reads). This is the half of mill-self-hosting-0006 that
-// was never built, opened as its own project: note/term/mint-bridge/readme.md.
+// was never built, opened as its own project: note/project/term/mill/review/mint-bridge/readme.md.
 //
 // WHAT BELONGS HERE. A structural rename, and nothing else. A `task` form becomes a `function` statement, its
 // `take` list becomes `params`, its `flow` becomes `body`. If a decision here ever needs to ask "what head word
@@ -9,7 +9,7 @@
 //
 // WHAT IT MUST REPRODUCE. Exactly what `compile/mill.ts` produces, including spans, including behaviour that
 // looks wrong. Parity has to stay mechanical: the moment the bridge is allowed to fix things while porting,
-// every difference becomes an argument instead of a check. Suspicions go in note/term/mint-bridge/quirks.md and
+// every difference becomes an argument instead of a check. Suspicions go in note/project/term/mill/review/mint-bridge/quirks.md and
 // are fixed after the switch, when there is one implementation left to change.
 //
 // EVERY minted form is named for the grammar rule that built it, so the switches below are total and a rule
@@ -1097,7 +1097,7 @@ function expressionOf(
 
       // the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`:
       // `and a, b` is `a && b`, not a call to something named `and`. Probed 2026-09-12 that it was not
-      // (note/term/lean.md, "meet and becomes and"), and the fold was only ever run from callOf.
+      // (note/project/term/mill/lean.md, "meet and becomes and"), and the fold was only ever run from callOf.
       const plain = foldBuiltin(plainName(callee), args, span)
 
       return finish(
@@ -2699,7 +2699,7 @@ const WALK_MODES = new Set(['list', 'size', 'test'])
 const WALK_TEST_PARTS = new Set(['hook', 'must', 'down', 'bind', 'take'])
 
 // the marks a task takes, each read by something: `async`, `private` and `roam` here, `open` on a claim, `unsafe` as a
-// guard, `deprecated` by check/deprecated.ts. `exact`, the opt-in overflow proof (note/term/gaps/plan.md), joins when
+// guard, `deprecated` by check/deprecated.ts. `exact`, the opt-in overflow proof (note/project/term/guides/research/gaps/plan.md), joins when
 // something reads it.
 const TASK_MARKS = new Set(['async', 'private', 'roam', 'open', 'unsafe', 'deprecated'])
 
@@ -2707,6 +2707,11 @@ const TASK_MARKS = new Set(['async', 'private', 'roam', 'open', 'unsafe', 'depre
 // parses (call/code/draft.ts), `stable` and `unstable` by `pnpm term:base-marks`. Under a task they were accepted and
 // read by nothing (guides: language/notes, 2026-10-04)
 const FILE_MARKS = new Set(['draft', 'stable', 'unstable'])
+
+// the marks a form takes, each read by something: `text` (a closed set of texts), `prop` (a truncation), `shared` (one
+// object through every binding), `tag` (the field a union discriminates on), `deprecated` (check/deprecated.tree),
+// `sole` and `hide` (term/affine-kinds decision 001). Any other word under a form is refused as `unknown-mark`
+const FORM_MARKS = new Set(['text', 'prop', 'shared', 'tag', 'deprecated', 'sole', 'hide'])
 
 // the width aliases of `number` whose range a literal argument is held to (check/literals.ts)
 const WIDTH_WORDS = new Set(['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'])
@@ -3443,7 +3448,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
 
   // A `free x, like T` inside the body supplies the TASK's result type when the task declares none. That is
   // what the mill does and it looks wrong (a `free` forward-declares a binding, it is not a return annotation),
-  // so it is reproduced here and written down: note/term/mint-bridge/quirks.md entry 3.
+  // so it is reproduced here and written down: note/project/term/mill/review/mint-bridge/quirks.md entry 3.
   const freed = at(value, 'flow')
     .filter(isForm)
     .find(step => step.form === 'free' && firstAt(step, 'like'))
@@ -3580,7 +3585,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   }
 }
 
-// `twin <task>, name <label>`: another implementation of a named task (note/term/optimize/words.md). Read into a
+// `twin <task>, name <label>`: another implementation of a named task (note/project/term/optimize/words.md). Read into a
 // `Twin` beside the program, never into it, so nothing that does not choose between implementations ever sees one.
 function twinOf(bridge: Bridge, value: Form): Twin | undefined {
   const of = wordAt(value, 'name')
@@ -4404,7 +4409,7 @@ function refuseMarkBinders(bridge: Bridge, value: Form): void {
 // A `rule` is a named THEOREM or AXIOM, and it desugars to a FUNCTION: its universal `seat` binders become the
 // parameters, so the goal is checked as a law over them by the same prover stack a `hold` uses. A theorem's body
 // is the goal held under its hypotheses; an axiom's is the hypotheses and the claim bound as values, postulated
-// rather than proved. See note/term/law-and-proof.md.
+// rather than proved. See note/project/term/proof/law-and-proof.md.
 //
 // TWO SHAPES, told apart by one thing: whether the rule states a `show` goal.
 //
@@ -4422,7 +4427,7 @@ function refuseMarkBinders(bridge: Bridge, value: Form): void {
 // Until 2026-09-18 a signature-shaped rule fell through to the theorem path, found no goal, and emitted a
 // function whose body was `return <first param>`. It owed nothing, so a `rule` was a comment with a type on it
 // and its paired `test` was connected to it by nothing but a shared spelling. See
-// note/term/project/law-proof-gate.md.
+// note/project/term/proof/archive/law-proof-gate.md.
 function ruleOf(bridge: Bridge, value: Form): Statement[] {
   const span = spanOf(value)
   const named = firstAt(value, 'name')
@@ -5169,6 +5174,27 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       }
     })
 
+    // A word under a form that nothing reads is refused (`unknown-mark`), as a task's is: a misspelled `mark sloe`
+    // would otherwise build a copyable, forgeable form in silence. A `mark <uuid>` identity has no word and passes.
+    // The grammar mints the note-metadata words (`mark async`, `mark draft`) as a `note` holding a bare word, which is
+    // also the old `note shared` spelling, so a bare-word `note` is held to the same list. A `note <text>` is
+    // documentation and passes
+    const bareNotes = formsAt(value, 'note').filter(note => firstAt(note, 'text')?.kind === 'word')
+
+    for (const mark of [...formsAt(value, 'mark'), ...bareNotes]) {
+      const kind = wordAt(mark, 'kind') ?? (mark.form === 'note' ? wordAt(mark, 'text') : undefined)
+
+      if (kind !== undefined && !FORM_MARKS.has(kind)) {
+        bridge.diagnostics.push(
+          diagnose('unexpected-node', {
+            file: bridge.file,
+            span: spanOf(mark),
+            message: `unknown-mark: \`mark ${kind}\` is not a mark a form takes. The marks are ${[...FORM_MARKS].join(', ')}`,
+          }),
+        )
+      }
+    }
+
     out.push({
       form: 'record-type',
       name,
@@ -5202,6 +5228,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       formsAt(value, 'note').some(note => wordAt(note, 'text') === 'deprecated')
         ? { deprecated: true }
         : {}),
+      // `mark sole` and `mark hide` (term/affine-kinds decision 001): a value with one owner, and a form only its own
+      // file makes. Written only when present, so every other form builds the Program it always did. `mark` only: the
+      // words are new, so no older `note` spelling of them exists
+      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'sole') ? { sole: true } : {}),
+      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'hide') ? { hide: true } : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:
@@ -5497,7 +5528,7 @@ export function millByGrammar(
   // passes the one it loaded from disk so a grammar edit is measured before it is baked.
   grammar: Grammar = bakedGrammar(),
   // `mark lean` on the file's role rule. The pass runs over the MATCH below, before anything mints, so every
-  // reader downstream of it sees the longhand shape and cannot tell the two spellings apart. note/term/lean.md.
+  // reader downstream of it sees the longhand shape and cannot tell the two spellings apart. note/project/term/mill/lean.md.
   lean?: boolean,
 ): MillResult {
   const named = namesInFile(tree)

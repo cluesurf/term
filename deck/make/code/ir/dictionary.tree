@@ -7,7 +7,7 @@
 # records of functions, member calls, extra parameters -- so every backend emits it through machinery it already has,
 # with no per-backend trait support. Concrete dispatch (a trait-method call on a known form) is already resolved by
 # the checker, so this pass only fires when a program actually has trait-bounded generic functions; otherwise it
-# returns the program untouched. See note/research/vibe/computation/plans/05-ir.md and code/check/traits.ts. Pure
+# returns the program untouched. See note/project/term/archive/computation/plans/05-ir.md and code/check/traits.ts. Pure
 # and browser-safe.
 #
 # Ported from ir/dictionary.ts (self-hosting, 2026-10-05). Its two body rewrites are compile/node-rewrite's

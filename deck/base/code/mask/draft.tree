@@ -7,7 +7,7 @@
 # native/javascript/integer/), so nothing live was built on them.
 #
 # A mask in the current syntax lists its tasks with their types, and a task with a body is a default
-# (note/term/guides/types/masks.md, test/compile/mask-native.ts). One of these comes back by rewriting it so, with a
+# (note/project/term/guides/draft/types/masks.md, test/compile/mask-native.ts). One of these comes back by rewriting it so, with a
 # form that wears it and a test, and moving it out of this folder or deleting this file once all of them are.
-# The language gap is in note/term/stdlib-gaps.md, "Masks".
+# The language gap is in note/project/term/stdlib/stdlib-gaps.md, "Masks".
 mark draft

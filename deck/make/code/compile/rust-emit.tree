@@ -13,7 +13,7 @@
 #   - MUTABLE CAPTURES. A closure is an `Rc<dyn Fn>`, which cannot mutate what it captured, so a local ASSIGNED inside a
 #     closure body is held in an `Rc<RefCell<T>>`: its declaration wraps the value, a read borrows and clones, a write
 #     goes through `borrow_mut`, and each closure clones the handle before its `move` (`cell-vars`)
-#   - PREEMPTION BY BUDGET (note/term/research/beam-otp-lessons.md, design 5). A loop in an ASYNCHRONOUS task checks a
+#   - PREEMPTION BY BUDGET (note/project/term/research/beam-otp-lessons.md, design 5). A loop in an ASYNCHRONOUS task checks a
 #     per-thread budget at the top of each turn and yields when it runs out, so one task's long loop cannot starve the
 #     others on the runtime. A loop whose condition bounds its counter by a small literal is left out: a reading of the
 #     condition, not a proof, so a counter starting far below zero runs longer and only fairness suffers

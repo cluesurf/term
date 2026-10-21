@@ -1,6 +1,6 @@
 # Patterns: one regular expression language that means the same thing on every backend, with lookaround of any
 # length, back references, named groups, atomic groups and possessive repetition, \b, \p{...}, and the i, m, s and x
-# flags (note/term/stdlib/regex-engine.md).
+# flags (note/project/term/stdlib/regex-engine.md).
 #
 #   save digits, make pattern, <\d+>
 #   save found

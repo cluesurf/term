@@ -3,7 +3,7 @@
 // in-process CacheStore is synchronous and HTTP is not, the remote cache is a warm-before / push-after step around
 // the build (not a per-key fetch): `pull` downloads missing artifacts into the local dir before compiling, `push`
 // uploads new local artifacts after. Content addressing makes both safe (a key's bytes never change).
-// See note/research/repo/turborepo/04-remote-cache.md.
+// See note/project/term/research/repo/turborepo/04-remote-cache.md.
 //
 // THE VERSION IS PART OF THE ADDRESS because it is part of the local layout, and this module does not get to have
 // its own opinion about that layout. It used to list `<kind>/*.json` and write back to the same flat path, which

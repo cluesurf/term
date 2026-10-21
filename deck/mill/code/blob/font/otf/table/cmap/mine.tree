@@ -1,7 +1,7 @@
 mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-cmap-table, proven by deck/mill/test/feed/otf-cmap.tree. Replaces the old pre-rename draft (raw opentype.js
-# JS comments left mid-file — see note/term/feed/04-otf-case-study.md, which called this out directly) entirely.
+# JS comments left mid-file — see note/project/term/feed/04-otf-case-study.md, which called this out directly) entirely.
 # Formats 4 and 12 only; every other format sends a `format-unsupported` value rather than failing, matching
 # ./code.tree's `otf-cmap-format-unsupported` case. `mine case` here branches on a plain number (`format`), so the
 # real reader uses `mine test`/`is-equal` for it (`feedback_term_fork_case_needs_form`, memory) — shown as `mine

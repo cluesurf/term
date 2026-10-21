@@ -1,0 +1,2 @@
+export { deletedStaysGone, isolation, ownership, ownershipCarry, ownershipStep, ownershipCross, ownershipJoin, ownershipSplit, ownershipBuild, ownershipApply, ownershipSettle } from '../.unit/_assurance_notes_code_law'
+export type { Natural, Rank, Person, Note, Shelf, Event, Events, Allowed, Settles, Crosses, Steps, Replays, Shows, AllLive, Owned, Fair, FairShelf } from '../.unit/_assurance_notes_code_law'

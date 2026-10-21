@@ -11,7 +11,7 @@
 # the call site), `try-get-site-asset-path` (null on missing), `get-site-asset-entry` (the full entry or null), plus
 # `site-assets` (the bare table) and `site-assets-manifest` (the whole manifest).
 #
-# Spec: note/platform/infrastructure/site-asset-sync.md
+# Spec: note/project/mesh/site-asset-sync.md
 
 dock load
   load <global:asset>, name asset

@@ -1,6 +1,6 @@
 # The real, compiling gzip header/trailer codec (RFC 1952). `compressed-data` stays an opaque block — no DEFLATE
-# here, matching note/term/feed/07-implementation.md's step 5 scope. Matches the spec sketch in
-# note/term/feed/03-worked-examples.md field for field: the flags-byte bitwise tests, the NUL-terminated latin1
+# here, matching note/project/term/feed/07-implementation.md's step 5 scope. Matches the spec sketch in
+# note/project/term/feed/03-worked-examples.md field for field: the flags-byte bitwise tests, the NUL-terminated latin1
 # name/comment fields, the trailer.
 
 load @term/base/boolean

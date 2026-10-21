@@ -3,7 +3,7 @@
 # as the view vocabulary and laid out in the cell grid (../../../view/cells/grid). The tree is the memory host's
 # (../memory/dom), so the render ABI runs over it unchanged; this file only reads it.
 #
-# It reads what face places, the same words the toolkit hosts read (note/term/view/11-vocabulary.md):
+# It reads what face places, the same words the toolkit hosts read (note/project/term/view/11-vocabulary.md):
 #
 #   a text node                  its text. An empty one is a placeholder the runtime left (`show`, a gate) and
 #                                takes no room

@@ -22,14 +22,14 @@ export function isScoped(input: { name: string }): boolean {
 
 // The custom registry at `tool.base.surf`, with its object store at
 // `land.base.surf`, was never deployed and is retired: `@term` publishes to and
-// installs from an OCI registry (note/term/registry/18-oci-registry-default.md).
+// installs from an OCI registry (note/project/term/registry/18-oci-registry-default.md).
 // `object/http.ts` and `object/serve.ts` survive as the in-process registry the
 // object tests run against.
 
 // Where the `@term` packages are published: an OCI registry, with each package a
 // repository under the namespace (`@term/bind` is `ghcr.io/cluesurf/term/bind`) and
 // the scope's key set at the namespace itself (`ghcr.io/cluesurf/term:keys`). See
-// note/term/registry/18-oci-registry-default.md.
+// note/project/term/registry/18-oci-registry-default.md.
 export const TERM_REGISTRY = 'oci://ghcr.io/cluesurf/term'
 
 // the default scope -> registry map. any scope not listed falls back to the

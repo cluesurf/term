@@ -5,7 +5,7 @@
 // places: path facts are equations over NAMES, and a name is not a mathematical variable. `save` gives it a new value,
 // a branch or a loop may have, a closure may at any call, a call may write through a record, and two calls to an
 // impure task may answer differently. check/facts.ts holds the rules both provers now share, and a proof (a claim's
-// fill) must be verified by the kernel, terminate, and be pure. See note/term/proof-by-default/readme.md.
+// fill) must be verified by the kernel, terminate, and be pure. See note/project/term/proof/readme.md.
 //
 // A suite of false statements is only half a test: a checker that refused everything would pass it. So every refusal
 // sits beside a control that must still be PROVEN.
@@ -59,6 +59,134 @@ function expectEnds(name: string, source: string, ends: boolean): void {
 
 const proven = { ok: true } as const
 const refused = (code: string) => ({ ok: false, code }) as const
+
+// ---- the pure lowering (proof-by-default-0009) ----
+//
+// A task that saves a name again, or saves it in one arm of a fork, is lowered to the kernel as one term: every save a
+// new name, every join a local task over the names the arms saved (check/elaborating-terms.tree `assign-term`,
+// `joined-term`). So the kernel unfolds it as a definition, and a hold about its VALUE is decided by what it computes.
+// Each fact below beside its false twin: before the lowering every one of them was out of reach (`unchecked-hold`), and
+// a lowering that kept the first save, or a branch's value on the path that skips it, would prove the false twin.
+function lowering(): void {
+  const saved = `task twice-saved
+  take n, like number
+  like number
+  save x, code 0
+  save x
+    call add
+      read n
+      code 5
+  send back x
+`
+  const about = (task: string, call: string, value: string): string =>
+    `${task}
+hold
+  call is-equal
+    ${call}
+    ${value}
+`
+
+  expect('a task saved twice computes its last save', about(saved, 'call twice-saved(code 1)', 'code 6'), proven)
+  expect('not its first', about(saved, 'call twice-saved(code 1)', 'code 0'), refused('unchecked-hold'))
+
+  // The kernel computes a `fork case` (its eliminator reduces on a constructor), and leaves `cond` and a comparison of
+  // numbers standing, so a join's VALUE is decided here through `fork case`. A `fork test` join is held to being one
+  // term by test/check/lowering.ts
+  const side = `form side
+  case left
+  case right
+`
+  const choose = `${side}
+task choose
+  take s, like side
+  take n, like number
+  like number
+  save m, read n
+  fork case, read s
+    case left
+      save m, code 3
+    case right
+      save m, read m
+  send back m
+`
+  const chosen = (which: string): string => `call choose\n      make ${which}\n      code 10`
+
+  expect('a fork that saves joins its value: the arm taken', about(choose, chosen('left'), 'code 3'), proven)
+  expect('and an arm that keeps it passes the old version', about(choose, chosen('right'), 'code 10'), proven)
+  expect('the value before the arm is not a fact after it', about(choose, chosen('left'), 'code 10'), refused('invalid-proof'))
+  expect('nor is the arm`s value on the other path', about(choose, chosen('right'), 'code 3'), refused('invalid-proof'))
+
+  const spread = `${side}
+task spread
+  take s, like side
+  take a, like number
+  take b, like number
+  like number
+  save low, read a
+  save high, read b
+  fork case, read s
+    case left
+      save low, read b
+      save high, read a
+    case right
+      save low, read low
+  send back
+    call subtract
+      read high
+      read low
+`
+  const spreadOf = (which: string): string => `call spread\n      make ${which}\n      code 2\n      code 5`
+
+  expect('a join over two names swapped in one arm', about(spread, spreadOf('left'), 'code -3'), proven)
+  expect('and unswapped in the other', about(spread, spreadOf('right'), 'code 3'), proven)
+  expect('not the unswapped difference after the swap', about(spread, spreadOf('left'), 'code 3'), refused('unchecked-hold'))
+
+  const nested = `${side}
+task bucket
+  take s, like side
+  take t, like side
+  like number
+  save b, code 0
+  fork case, read s
+    case left
+      save b, code 1
+      fork case, read t
+        case left
+          save b, code 2
+        case right
+          save b, read b
+    case right
+      save b, read b
+  send back b
+`
+  const bucketOf = (s: string, t: string): string => `call bucket\n      make ${s}\n      make ${t}`
+
+  expect('a fork inside an arm joins into the outer join', about(nested, bucketOf('left', 'left'), 'code 2'), proven)
+  expect('the inner arm that keeps the value', about(nested, bucketOf('left', 'right'), 'code 1'), proven)
+  expect('the outer arm that keeps the value', about(nested, bucketOf('right', 'left'), 'code 0'), proven)
+  expect('not the inner value on the path that skips it', about(nested, bucketOf('left', 'right'), 'code 2'), refused('invalid-proof'))
+  expect('not the outer arm`s value on the path that skips it', about(nested, bucketOf('right', 'left'), 'code 1'), refused('invalid-proof'))
+
+  // a closure reads the variable when it RUNS, so it sees the later save. A lowering that gave it the version at its
+  // creation would prove late(1) == 1, and the program returns 2. Such a task is not lowered
+  const late = `task late
+  take n, like number
+  like number
+  save x, read n
+  host f
+    task g
+      like number
+      send back, read x
+  save x
+    call add
+      read n
+      code 1
+  send back
+    call f
+`
+
+  expect('a closure does not see the version at its creation', about(late, 'call late(code 1)', 'code 1'), refused('unchecked-hold'))
+}
 
 function main(): void {
   // ---- reassignment ----
@@ -1937,6 +2065,8 @@ task count
     setting('call xs/push\n        code 0'),
     refused('unproven'),
   )
+
+  lowering()
 
   console.log(`\nsoundness: ${pass} pass, ${fail} fail`)
 

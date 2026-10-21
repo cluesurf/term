@@ -1,5 +1,5 @@
 # tree/code bodies for a Term app: a handler answers with Term data as `application/tree+code`, and reads a request
-# sent the same way, without ever touching bytes (note/term/host/10-code.md).
+# sent the same way, without ever touching bytes (note/project/term/host/10-code.md).
 #
 # A body is text in `request` and `response`, so tree/code crosses the program's edge the way a binary asset already
 # does: as base64 inside, bytes on the wire. The transport (native/node and native/cloudflare runtime/transport.ts)

@@ -1,6 +1,6 @@
 // pnpm term:bench: every program under mark/, built from Term and by hand on each installed target, checked for the
 // expected output, then timed in shuffled rounds. The number reported is the ratio of the medians, Term over the hand
-// version, with a 95% bootstrap interval over the rounds (note/term/codegen/measurement.md). Reports by default, and
+// version, with a 95% bootstrap interval over the rounds (note/project/term/compiler/codegen/measurement.md). Reports by default, and
 // writes mark/<program>/results/<machine>.json only on --commit. The programs were under bench/ until 2026-10-05, when
 // that folder took the name mark/ and the suite package that held it moved to deck/mark.
 //
@@ -70,7 +70,7 @@ function spec(dir: string): Spec {
 
   const value = toJsonValue(read.data.root) as Record<string, unknown>
 
-  // a kernel of the suite (deck/mark/kernels, note/term/bench/rules.md): its entry is `run`, its sizes and expected output
+  // a kernel of the suite (deck/mark/kernels, note/project/term/bench/rules.md): its entry is `run`, its sizes and expected output
   // are the contract's own, and its hand versions are `same.*`
   if (value.input) {
     const sizes = (value.input as { sizes: { check: number; timed: number } }).sizes

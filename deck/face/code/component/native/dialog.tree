@@ -3,7 +3,7 @@
 # A `role=dialog` element with `aria-modal`, its title as a heading and its content drawn inside, shown and hidden as
 # the control opens and closes. A platform with its own (macOS, iOS, Android) gets ./toolkit/dialog.tree instead,
 # through `component/dialog.tree` and the build's env chain. Both take the same props, which is the contract
-# (note/term/app/11-uniform-interface.md, native-dom-0026).
+# (note/project/term/app/11-uniform-interface.md, native-dom-0026).
 #
 # On the web the content closes it, with a control that closes the disclosure. Esc and a click outside are not wired:
 # the dom contract has no document listener a component can hold yet, and the browser's own `<dialog>` needs a
@@ -44,7 +44,7 @@ task mount-dialog
     read frame
     text <aria-modal>
     text <true>
-  # named by its title, which a screen reader speaks on entering it (note/term/view/11-vocabulary.md, "Accessibility")
+  # named by its title, which a screen reader speaks on entering it (note/project/term/view/11-vocabulary.md, "Accessibility")
   call write-attribute
     read frame
     text <aria-label>

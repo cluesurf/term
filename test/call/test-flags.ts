@@ -1,4 +1,4 @@
-// `term test --case` and `term test --env` (note/term/guides/tests/running.md, backends.md). A project of one task and
+// `term test --case` and `term test --env` (note/project/term/guides/draft/tests/running.md, backends.md). A project of one task and
 // three tests, one of which does not hold, run as a person runs it: whole, one test by its phrase, a phrase no test
 // holds, and on each native backend this machine has the toolchain for, where the same test must fail on the same line.
 // Run: npx tsx test/call/test-flags.ts

@@ -1,6 +1,6 @@
 # A view catalog read out of its data file: the components, operators and packages a document may name, and per
 # query what it returns, its own result cap, and per field the predicates it accepts and whether it sorts. See
-# compile/view-catalog.ts for the format and why it is data, and note/term/view/04-catalog.md.
+# compile/view-catalog.ts for the format and why it is data, and note/project/term/view/04-catalog.md.
 #
 # Ported from `readCatalog` in compile/view-catalog.ts (self-hosting, 2026-10-06), which stays as the face and turns
 # the lists into the `Set`s its callers hold. The original read the file through JSON (`toJsonValue` with the keys

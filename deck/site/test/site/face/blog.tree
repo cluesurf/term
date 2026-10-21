@@ -5,7 +5,7 @@
 # + reactive runtime, so the same component runs in a browser, in a cask, against the in-memory tree, or on the
 # platform toolkits with no WebView (test/compile/blog-native.ts).
 #
-# Written in the view vocabulary's words only (note/term/view/11-vocabulary.md, view-vocabulary-0004): `stack` lays
+# Written in the view vocabulary's words only (note/project/term/view/11-vocabulary.md, view-vocabulary-0004): `stack` lays
 # it out, `text` draws a post's title (a level 2 heading) and body, a field is the `input` element and the button the
 # `button` element (the tags those two words draw on every target), and the list is a `walk`.
 

@@ -14,7 +14,7 @@
 #
 # THE NATIVE SHIMS, each one expression per backend, for what the stdlib does not
 # have (logged in
-# note/term/plan/silent-defects-third-batch.md): whether STDERR is a terminal (the
+# note/project/term/silent-defects-third-batch.md): whether STDERR is a terminal (the
 # stdlib's `is-terminal` asks about
 # stdout, and the human view is on stderr), an unbuffered write without a newline to
 # either stream (a live region

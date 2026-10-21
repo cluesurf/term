@@ -5,7 +5,7 @@
 #
 # It pairs with the incremental query graph (compile/incremental.ts): a `usedClasses` query derived from the milled
 # program backdates while the class set is unchanged, so editing a component recomputes the stylesheet only when its
-# classes change. See note/library/face/tailwind-jit.md.
+# classes change. See note/project/term/face/research/tailwind-jit.md.
 #
 # Ported from compile/used-classes.ts (self-hosting, 2026-10-05). Its set is a list, each token once, sorted.
 

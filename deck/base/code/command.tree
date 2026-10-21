@@ -1,6 +1,6 @@
 # Command-line arguments: declare a command's flags and arguments, then `parse` the words a program was given
 # (`process/current` `read` / `arguments`) into their values, or the errors a person should see. Pure Term, so a
-# command reads its arguments the same way on every backend (note/term/stdlib/semantics.md).
+# command reads its arguments the same way on every backend (note/project/term/stdlib/semantics.md).
 #
 #   --name=value   --name value   a flag that takes a value
 #   --name         a flag of kind `boolean`: true          --no-name   false

@@ -1,4 +1,4 @@
-# Which entries of a project a rebuild must build again (note/term/plan/incremental-best-in-class.md, step 3).
+# Which entries of a project a rebuild must build again (note/project/term/incremental-best-in-class.md, step 3).
 #
 # A separate build (compile/separate.ts) builds every file of a project as an entry, and each entry walks its whole
 # closure: on @term/bind that is 3,091 walks of the standard library for an edit to one file. A unit nobody changed is

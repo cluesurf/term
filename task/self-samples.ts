@@ -1,4 +1,4 @@
-// The samples in note/term/guides/commands/self.md and basics/install.md: real output of the version commands. A
+// The samples in note/project/term/guides/draft/commands/self.md and basics/install.md: real output of the version commands. A
 // loopback registry holding two releases, each this machine's release payload with its own version, the loader's
 // install of the older into a scratch home, and each command run as a person would, printed with its command line.
 //

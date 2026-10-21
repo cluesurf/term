@@ -1,5 +1,5 @@
 # The engine: a tree-walking interpreter for the imperative vibe language. The reference semantics the compiler will
-# be checked against. See note/research/vibe/computation/engine/03-execution-model.md.
+# be checked against. See note/project/term/research/computation/engine/03-execution-model.md.
 #
 # Ported from engine/engine.ts (self-hosting, 2026-10-04). The original was async throughout, every evaluation an
 # `await`, and held a JavaScript Promise for each async call. This one is a plain recursive interpreter. What follows

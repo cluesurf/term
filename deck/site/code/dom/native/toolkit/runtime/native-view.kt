@@ -1,7 +1,7 @@
 // The toolkit view host on Android (native-dom-0006): the dom's node contract over REAL Android views, so a Term program renders
 // with no WebView and no JavaScript engine. The render runtime (site/code/view/render.tree) is Solid-style: it creates
 // a node, sets a property, appends, removes. An Android View tree is retained and mutated exactly that way, so each
-// call is one platform call. See note/term/app/10-native-dom.md. Reached only through ../dom.tree, whose tasks map to
+// call is one platform call. See note/project/term/app/10-native-dom.md. Reached only through ../dom.tree, whose tasks map to
 // the functions of `object nativeView` below. Its Apple twin is native-view.swift beside it.
 //
 // What a tag becomes:
@@ -1199,7 +1199,7 @@ object nativeView {
 
     // `child` goes in under `reference`'s parent just before it, moved there if it has a parent. The render runtime keeps
     // a list in its place among its siblings this way: its items go in before a marker, never at the end of the parent
-    // (note/term/view/12-render-seam.md)
+    // (note/project/term/view/12-render-seam.md)
     fun insertBefore(childHandle: Any, referenceHandle: Any) {
         val child = node(childHandle)
         val reference = node(referenceHandle)

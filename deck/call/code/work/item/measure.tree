@@ -2,7 +2,7 @@
 #
 # WRITTEN HERE, IN TERM, BECAUSE THE STDLIB HAS NEITHER. `@term/base/text/unicode` counts grapheme clusters
 # (`grapheme-count`) but cannot split text into them, and nothing in the stdlib knows a character's East Asian width.
-# Both are logged as gaps in note/term/plan/silent-defects-third-batch.md. The tables below are the Unicode 15.1
+# Both are logged as gaps in note/project/term/silent-defects-third-batch.md. The tables below are the Unicode 15.1
 # ranges that decide a width, and the clustering is the part of UAX #29 a terminal's width depends on: a base
 # character and everything that extends it (combining marks, variation selectors, skin tones, tag characters, the
 # vowel and final jamo of a Hangul syllable), emoji joined by ZWJ, and regional indicators in pairs. Pure Term over

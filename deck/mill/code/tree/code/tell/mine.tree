@@ -1,5 +1,5 @@
 # `tell @deck/form`: the app's decision about what a customer sees when an exception reaches them. Absent means
-# private, and a `tell` for an exception nothing can raise fails the build. See note/term/hive/.
+# private, and a `tell` for an exception nothing can raise fails the build. See note/project/term/hive/.
 #
 #   tell @probe/tell/upload-excess
 #     note <That file is too large.>

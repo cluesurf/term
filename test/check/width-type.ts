@@ -1,4 +1,4 @@
-// A width word is part of a number's type (note/term/plan/decisions-2026-10.md, D12 a). `like list, like u8` checks as
+// A width word is part of a number's type (note/project/term/decisions-2026-10/decisions-2026-10.md, D12 a). `like list, like u8` checks as
 // an array of a number that carries `u8`, a diagnostic prints it, and nothing is owed or refused yet (width/spec.md
 // 3.1). Run: npx tsx test/check/width-type.ts
 //

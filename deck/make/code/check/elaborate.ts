@@ -1,6 +1,6 @@
 // Elaboration: the bridge that makes the sound dependent kernel (judge.ts) the single type-checking authority. The
 // surface pass (resolve + infer) is the inference front-end; here the annotated surface AST becomes explicit kernel terms
-// and the KERNEL verifies them (note/research/vibe/computation/plans/12-type-systems.md, step 5).
+// and the KERNEL verifies them (note/project/term/archive/computation/plans/12-type-systems.md, step 5).
 //
 // The elaborator is Term (self-hosting, 2026-10-06), in ten parts under check/, each a module with a header that says
 // what it does and what it decided: elaborating-data (the program's types, data and signature), -rewrite (term
@@ -121,6 +121,9 @@ export type ElaborationReport = {
   // every task the kernel did not verify, with the reason, so "the kernel checked it" and "the kernel never looked"
   // can be told apart and counted (proof-by-default-0005)
   declined: { name: string; reason: string }[]
+  // every task checked statement by statement (verified, not proven), with why the pure lowering did not make its body
+  // one term: the first construct it met that it cannot lower (proof-by-default-0009). No such task goes uncounted
+  statementwise: { name: string; reason: string }[]
   discharged: Span[]
 }
 
@@ -193,12 +196,16 @@ export function elaborate(
 function kindsApart(program: Program): Program {
   const tasks = new Set(program.flatMap(s => (s.form === 'function' && !s.method ? [s.name] : [])))
   const params = new Set(program.flatMap(s => (s.form === 'function' ? s.params.map(p => p.name) : [])))
+  // and a top-level `host` VALUE is the same collision once more: grammar/v4's participle table is `host non-finite`, a
+  // list of the form `non-finite`, and `size(non-finite)` in a hold found the form, `kernel: type mismatch: expected
+  // (Array ?), found Type 0` (mesh deck-build, 2026-10-13)
+  const constants = new Set(program.flatMap(s => (s.form === 'let' && typeof s.name === 'string' ? [s.name] : [])))
   // and a form named `type` is the same collision with the kernel's UNIVERSE, which `like type` names when no form
   // does: the compiler's own AST declares one (compile/node.tree), and every task answering it failed as `kernel: type
   // mismatch` (2026-10-05, test/check/form-named-type.ts)
   const shared = new Set(
     program.flatMap(s =>
-      s.form === 'record-type' && (tasks.has(s.name) || params.has(s.name) || s.name === 'type') ? [s.name] : [],
+      s.form === 'record-type' && (tasks.has(s.name) || params.has(s.name) || constants.has(s.name) || s.name === 'type') ? [s.name] : [],
     ),
   )
   const kernelNames = new Set(BASE_SIGNATURE.map(entry => entry.name))
@@ -308,6 +315,7 @@ export function elaborateReport(
   const verified: string[] = []
   const proven: string[] = []
   const declined: { name: string; reason: string }[] = []
+  const statementwise: { name: string; reason: string }[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
   // the named, proven lemmas, their rewrite rules, and the program's theorems (check/elaborating-proof.tree)
   const lemmaState = proofs.newLemmaState(
@@ -567,11 +575,13 @@ export function elaborateReport(
         const task = stub ? { ...fn, body: fn.stubBody! } : fn
         factsLocal = localNames(task)
         factsVolatile = volatileNames(task.body)
+        termState.captured = new Map([...closureNames(task.body)].map(name => [name, true]))
         ruleMarks = fn.theorem ? new Set(fn.params.map(param => param.name)) : new Set()
 
         return true
       },
       leaveTask: () => {
+        termState.captured = new Map()
         factsLocal = new Set()
         factsVolatile = new Set()
         ruleMarks = new Set()
@@ -594,11 +604,74 @@ export function elaborateReport(
     verified,
     proven,
     declined,
+    statementwise,
   }
 
   viaKernel(() => main.checkProgram(mainState as never, program as never, file))
 
-  return { diagnostics, verified, proven, declined, discharged }
+  return { diagnostics, verified, proven, declined, statementwise, discharged }
+}
+
+// EVERY NAME A CLOSURE IN THE BODY READS OR WRITES. A closure reads a variable when it runs, not when it is made, so a
+// later save to one of these is seen by the closure, and the pure lowering, which gives each save a new name, cannot
+// say which version a call of the closure reads (check/elaborating-terms.tree `assign-term`). Read by reflection: every
+// `variable` under every `closure`, at any depth
+function closureNames(body: Statement[]): Set<string> {
+  const names = new Set<string>()
+
+  const collect = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(collect)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'variable' && typeof record.name === 'string') {
+      names.add(record.name)
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type' && key !== 'binding') {
+        collect(value)
+      }
+    }
+  }
+
+  const find = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(find)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'closure') {
+      collect(record)
+
+      return
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type' && key !== 'binding') {
+        find(value)
+      }
+    }
+  }
+
+  find(body)
+
+  return names
 }
 
 // the span of an expression the kernel builds for the ring from its own terms (`ringCase`), which no source wrote

@@ -7,7 +7,7 @@
 # THE MESSAGE IS A TYPE. `make-channel` answers `channel t` for whatever the first `send` or the declared `like` says,
 # and a message that is a form with `case` variants is received with a `fork case`, which the checker holds to every
 # variant. A message the receiver has no case for is a build error, which is what Erlang's untyped `receive` cannot
-# give (note/term/research/beam-otp-lessons.md, design 2). `make-text-channel` is the old text channel by name.
+# give (note/project/term/research/beam-otp-lessons.md, design 2). `make-text-channel` is the old text channel by name.
 
 mark stable
 

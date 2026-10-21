@@ -1,4 +1,4 @@
-# The native app cask's decisions that are not its file system or its toolchain (note/term/cask/readme.md): which
+# The native app cask's decisions that are not its file system or its toolchain (note/project/term/cask/readme.md): which
 # compilers a target needs, the app's name and bundle identifier, the crate name and cargo manifest of a Rust cask, the
 # driver line that calls a Swift program's `boot` with its labels, the device a list of them offers, and the manifests
 # an app declares itself in (Info.plist, AndroidManifest.xml, the simulator's entitlements, the page's index.html).
@@ -308,7 +308,7 @@ task cargo-dependencies
 # the manifest of the app's cargo project: the stdlib's crates it reaches, SQLite for the database native, and each
 # platform's toolkit under its own `cfg`, so a project written on one platform checks on any other. A Term raise is a
 # Result and never a panic, so a panic is a stop: aborting drops the unwinding tables, and fat LTO runs across every
-# crate (note/term/codegen/rust.md, Build profile)
+# crate (note/project/term/compiler/codegen/rust.md, Build profile)
 task cargo-manifest
   take crate, like text
   take stdlib-manifest, like text

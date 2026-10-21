@@ -10,7 +10,7 @@ mark draft
 # Term module picks its backend by the native path (`native/{platform}/...`) rather than by a glob mapping.
 #
 # Kept, not deleted, because it records how the binding library was laid out where it was generated, which is
-# what package-builds-0013 is about. Nothing reads it. See note/term/project/package-builds.md.
+# what package-builds-0013 is about. Nothing reads it. See note/project/term/archive/package-builds.md.
 
 load @term/mesh
   find mill code

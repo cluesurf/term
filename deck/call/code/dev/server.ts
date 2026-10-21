@@ -1,7 +1,7 @@
 // The seed dev server (Tier 3). Compiles the app in per-module mode and serves each module lazily over native ESM, so
 // cold start scales with the first route, not the whole app. A file change recompiles (the persistent cache makes it
 // fast), walks the module graph to the nearest HMR boundary, and pushes an update over SSE (no websocket dependency).
-// The transport is hono via @hono/node-server. See note/research/repo/vite/ and note/seed/plan/compilation-performance.md.
+// The transport is hono via @hono/node-server. See note/project/term/research/repo/vite/ and note/seed/plan/compilation-performance.md.
 
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'

@@ -9,7 +9,7 @@
 # adapter (section 15) must keep a
 # log line's keys in the order the child wrote them, because unknown keys become
 # fields in that order. Logged in
-# note/term/plan/silent-defects-third-batch.md.
+# note/project/term/silent-defects-third-batch.md.
 #
 # The human view and this one are two renderings of the same event (principle 7):
 # every value here is read off the

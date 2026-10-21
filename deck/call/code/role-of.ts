@@ -48,7 +48,7 @@ export function projectRoleOf(root: string): RoleOf {
 
 /**
  * Whether a file's role rule carries `mark lean`: the files it matches are read with the lean surface, where a
- * bare head is a call and a property head is a named argument. See note/term/lean.md.
+ * bare head is a call and a property head is a named argument. See note/project/term/mill/lean.md.
  *
  * A SECOND FUNCTION over the same cache rather than a widened `RoleOf`, because every existing caller wants
  * the name and only the mill wants the flag.

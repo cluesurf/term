@@ -1,5 +1,5 @@
 // MODULE SCOPE FOR FORMS (module-scope-0003). A form belongs to the module that defines it and reaches another module
-// only through `load ... / find` (note/term/project/module-scope.md). The build merges every module into one flat
+// only through `load ... / find` (note/project/term/module-scope/readme.md). The build merges every module into one flat
 // program, so two forms of one name from two files met in it and the one merged last took the other's place: a field
 // read off the wrong record, a variant matched against the wrong enum, with the error surfacing in a third file.
 //
@@ -289,6 +289,21 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
   // nothing is refused yet (see the header): the strict step fills this
   const diagnostics: Diagnostic[] = []
 
+  // every task and method name, so a lean call to one is never taken for a construction (see `rewrite`)
+  const tasks = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      tasks.add(statement.name)
+
+      if (statement.method) {
+        tasks.add(statement.method.name)
+      }
+    }
+  }
+
+  const isTask = (name: string): boolean => tasks.has(name)
+
   // the name a reference to `group` in `file` binds to. A reference written through an alias (`make chart-element`,
   // with `find element, name chart-element`) reaches the files ITS find named, and a bare one the plain finds only, as
   // a task's does (overload.ts `reached`). Both read every find of the name until 2026-10-04, so a file that loaded
@@ -350,7 +365,7 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
       statement.target = rebind(statement.target, statement.span) ?? statement.target
     }
 
-    rewrite(statement, statement.span, rebind)
+    rewrite(statement, statement.span, rebind, isTask)
   }
 
   bindSharedCases(program, scope)
@@ -437,13 +452,18 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
 
 // every named type, construction and raise under a node, renamed where `rebind` says. Generic over the tree, so no
 // statement or expression shape that carries a type is missed; a span is the nearest one above, for the diagnostic
-function rewrite(node: unknown, span: Span, rebind: (name: string, span: Span, alias?: string) => string | undefined): void {
+function rewrite(
+  node: unknown,
+  span: Span,
+  rebind: (name: string, span: Span, alias?: string) => string | undefined,
+  isTask: (name: string) => boolean = () => true,
+): void {
   if (!node || typeof node !== 'object') {
     return
   }
 
   if (Array.isArray(node)) {
-    node.forEach(item => rewrite(item, span, rebind))
+    node.forEach(item => rewrite(item, span, rebind, isTask))
 
     return
   }
@@ -470,9 +490,27 @@ function rewrite(node: unknown, span: Span, rebind: (name: string, span: Span, a
     record.raise = rebind(record.raise, here) ?? record.raise
   }
 
+  // A LEAN BARE HEAD THAT NAMES A FORM is a construction of it (`pair feature(<a>), value <b>`), and is still a
+  // `call` here: the checker rewrites it into a `record` only later (infer.ts `arrangeArguments`). So its callee is
+  // rebound as a `make` is, or a form split by file (a grammar's `pair` beside @term/base/pair's) left no form of the
+  // written name and the resolver called it undefined (mesh deck-build, 2026-10-13). A task or method of the name
+  // keeps it: a bare call to a name that is both means the task, as the checker reads it
+  if (record.form === 'call' && record.lean === true && !isTask(calleeName(record))) {
+    const callee = record.callee as Record<string, unknown>
+
+    callee.name = rebind(callee.name as string, here) ?? callee.name
+  }
+
   for (const [key, value] of Object.entries(record)) {
     if (key !== 'span') {
-      rewrite(value, here, rebind)
+      rewrite(value, here, rebind, isTask)
     }
   }
+}
+
+// the name a call's callee is written as, when it is a bare variable, else `''` (which no group or task has)
+function calleeName(call: Record<string, unknown>): string {
+  const callee = call.callee as Record<string, unknown> | undefined
+
+  return callee?.form === 'variable' && typeof callee.name === 'string' ? callee.name : ''
 }

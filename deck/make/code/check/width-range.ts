@@ -1,4 +1,4 @@
-// A WIDTH IS A RANGE (note/term/plan/decisions-2026-10.md, D12). `like u8` is a `number`, and until this a value
+// A WIDTH IS A RANGE (note/project/term/decisions-2026-10/decisions-2026-10.md, D12). `like u8` is a `number`, and until this a value
 // computed into a `u8` parameter was never checked: only a literal was (check/literals.ts). With the switch on, each
 // call into a width-typed parameter owes `low <= value <= high` as a tier-0 obligation, the way a division owes a
 // divisor other than zero (check/contract.ts), and the task may assume it of its parameter (check/holds.ts). Unproven,

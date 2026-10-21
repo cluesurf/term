@@ -1,4 +1,4 @@
-// GRAMMAR SCOPES, end to end (note/term/mill/02-role-scopes.md, 03-note-grammar.md): a program written with
+// GRAMMAR SCOPES, end to end (note/project/term/mill/02-role-scopes.md, 03-note-grammar.md): a program written with
 // `role note, ...`, with a name imported as a grammar, inline, in parentheses and as a block, compiled through the
 // whole pipeline and RUN, each answer held to the value the notation means. Then what must be refused, with the
 // message and the place. A scope that compiled to the wrong code would pass any test that only looked at the tree.
@@ -283,7 +283,7 @@ ok(
   build('role mill\n  take @/code/**/*.tree\n', []).problems.every(p => p.name !== 'unknown-grammar' && p.name !== 'scope-refused'),
 )
 
-// ---- the guide's samples, as written there (note/term/guides/language/dsls/roles.md) ----
+// ---- the guide's samples, as written there (note/project/term/guides/draft/language/dsls/roles.md) ----
 
 const GUIDE_ROLE = `task speed
   take distance, like float

@@ -113,7 +113,7 @@ export function readMineGrammar(tree: RootNode): MineGrammar {
 // The `mine` rules that carry a `mark lean` child: the constructs that take the lean surface, where a bare-head
 // argument becomes a NAMED argument in a file whose role is marked lean. Declared per rule and read here, never
 // derived from the rule's shape. The shape-derived version ("a rule with a `bind` site") was measured on
-// 2026-09-12 and refused: thirty rules have one, and at least seven must never take labels. note/term/lean.md.
+// 2026-09-12 and refused: thirty rules have one, and at least seven must never take labels. note/project/term/mill/lean.md.
 export function readLeanRules(tree: RootNode): Set<string> {
   return new Set(port.readLeanRules(tree as never))
 }

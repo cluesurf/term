@@ -443,7 +443,7 @@ task tokenize
 #
 # A stretch of a line written in another grammar: `something x, role note, x + y`. The lexer never reads it as `.tree`,
 # which could not tokenize `+` at all. It hands the text over as one literal, verbatim, and the mill gives it to the
-# grammar the scope names (note/term/mill/02-role-scopes.md). The opener is one of two:
+# grammar the scope names (note/project/term/mill/02-role-scopes.md). The opener is one of two:
 #
 #   role <name>     anywhere a part may start, for any `<name>` that is not a FILE role (`role mill` in a role.tree
 #                   is a file's role, and those seven names are reserved for it)

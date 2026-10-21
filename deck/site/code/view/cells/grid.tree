@@ -1,7 +1,7 @@
 
 # THE CELL GRID (terminal-target-0001): the view vocabulary's layout model, measured and placed in the cells of a
 # terminal, and painted. Written in Term so the same layout runs on every backend that draws a grid (TypeScript now,
-# Rust in terminal-target-0004). The model is note/term/view/11-vocabulary.md, "The layout model", and its defaults
+# Rust in terminal-target-0004). The model is note/project/term/view/11-vocabulary.md, "The layout model", and its defaults
 # are CSS's: a stack with no direction is a column, a column stretches its children across, a child keeps its own size
 # until it grows, growers share the free cells equally, and a child too big for its room is clipped, never shrunk.
 #

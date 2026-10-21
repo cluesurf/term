@@ -818,7 +818,7 @@ task syntax-error-hint
 
 # `lean`: the file's role carries `mark lean`, and a head the dialect does not know, carrying a value, is a `host`
 # entry keyed by that head. `a 10` is `host a, 10`, and a head over a block is a map entry. `list` stays `list`, so a
-# one-element list is still written `list x / 5`. The lean form is only ever read under the mark. note/term/lean.md
+# one-element list is still written `list x / 5`. The lean form is only ever read under the mark. note/project/term/mill/lean.md
 task read-data
   take tree, like root-node
   take file, like text
@@ -2410,7 +2410,7 @@ task format-compact
 
 # a compact stream: one form per line, a `t(` line declaring (or re-declaring) an anchor for every line after it,
 # `h(` / `l(` lines the entries of a map or `m(` lines the items of a list, never both. Blank lines and `#` lines are
-# skipped. Each line is expanded against the anchors declared so far. See note/term/host/07-streaming.md
+# skipped. Each line is expanded against the anchors declared so far. See note/project/term/host/07-streaming.md
 task anchor-table
   like hash, like text, like host-anchor
   mark private

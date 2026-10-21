@@ -8,7 +8,7 @@
 #   wait-within   the same, or `timeout` after the given milliseconds, cancelling the job it gave up on
 #   gather        every result in source order, or the FIRST raise, with every other job cancelled before it surfaces
 #
-# Erlang's `Task.await` and its links are the model (note/term/research/beam-otp-lessons.md, G6, G8, G13): a failure
+# Erlang's `Task.await` and its links are the model (note/project/term/research/beam-otp-lessons.md, G6, G8, G13): a failure
 # is not left running beside the caller that stopped listening. Held by test/compile/concurrency.ts.
 
 mark stable

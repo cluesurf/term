@@ -13,7 +13,7 @@ mine lock-file
         site deck
 
 # `need @term/code` with its `code <2.6.4>` and `hash <sha256:…>`: the toolchain release the manifest's `need`
-# resolved to, the hash being the release's image index digest (note/term/plan/term-versions.md)
+# resolved to, the hash being the release's image index digest (note/project/term/term-versions.md)
 mine lock-need
   mine term, term need
     mine path

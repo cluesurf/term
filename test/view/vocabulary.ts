@@ -1,4 +1,4 @@
-// The view vocabulary's words as face components (view-vocabulary-0004, note/term/view/11-vocabulary.md): every word
+// The view vocabulary's words as face components (view-vocabulary-0004, note/project/term/view/11-vocabulary.md): every word
 // face did not have before (text, stack, image, spacer, divider, frame, scroll) placed in one page, rendered against the
 // in-memory dom on TypeScript, and the tree read back. Each word must draw the element and the style words the
 // vocabulary says, and a component's children must sit directly inside it, never under a `seed-fragment`.

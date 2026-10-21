@@ -1,4 +1,4 @@
-// THE PARALLEL SEPARATE BUILD (note/term/plan/incremental-best-in-class.md, step 5).
+// THE PARALLEL SEPARATE BUILD (note/project/term/incremental-best-in-class.md, step 5).
 //
 // The separate build checks one unit at a time, a module or a cycle of modules, against the stubs of the units it
 // reaches (compile/separate.ts). Units that do not reach one another can be checked at once, and on @term/bind that is

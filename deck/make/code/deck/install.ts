@@ -1,7 +1,7 @@
 // The package-manager install: resolve a project's dependencies, fetch them into the content-addressed store,
 // link them into the project, and write the lockfile. End to end against a registry (a directory of packages; the
 // network registry is a swappable source). Node-only (filesystem), runs at build/install time, not in the browser.
-// See note/research/vibe/computation/plans/16-package-manager.md.
+// See note/project/term/archive/computation/plans/16-package-manager.md.
 //
 // The install is Term, deck/installing.tree (self-hosting, 2026-10-06): reading a manifest, picking a version,
 // resolving the dependencies depth first, and the lockfile. This face is the disk and the hash: each read, listing,

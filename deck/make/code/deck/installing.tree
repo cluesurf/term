@@ -1,6 +1,6 @@
 # The package-manager install: resolve a project's dependencies, fetch them into the content-addressed store, link them
 # into the project, and write the lockfile. End to end against a registry (a directory of packages; the network registry
-# is a swappable source). See note/research/vibe/computation/plans/16-package-manager.md.
+# is a swappable source). See note/project/term/archive/computation/plans/16-package-manager.md.
 #
 # Ported from deck/install.ts (self-hosting, 2026-10-06), which stays as the face and holds the disk and the hash: every
 # read, listing, copy, link and write goes through a task of `install-disk`, called where the original called it and in

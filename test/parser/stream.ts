@@ -3,9 +3,9 @@
 // A streaming reader is only worth having if it is the SAME reader. This compares the groups `walkGroups` reports
 // against the top-level groups `parse` produces for the same file, printed with the parser's own `printTree` so
 // the comparison is on structure rather than on object identity. Any disagreement is a second grammar, which is
-// the thing that must not exist (note/term/one-parser.md).
+// the thing that must not exist (note/project/term/one-parser.md).
 //
-// It also holds the two properties the unit decision rests on (note/term/feed/tree-stream-unit.md):
+// It also holds the two properties the unit decision rests on (note/project/term/feed/decision/tree-stream-unit.md):
 //
 //   STOPPING EARLY IS FREE. A consumer that wants the imports reads the first groups and abandons the generator.
 //   The measured claim is that the import block is the first 6.4% of a file; this checks the mechanism that makes

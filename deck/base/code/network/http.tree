@@ -1,6 +1,6 @@
 # HTTP client. One primitive per backend (fetch, reqwest, URLSession, java.net.http) answers the status, the body
 # and the headers; this module builds the response from them, so every backend gives the same one
-# (note/term/stdlib/semantics.md). Async on every target.
+# (note/project/term/stdlib/semantics.md). Async on every target.
 #
 # `header` is a map of name to value, and may be empty. WITHOUT IT NOTHING AUTHENTICATED CAN BE CALLED: every API
 # worth reaching wants `Authorization`, and any that takes a body wants `Content-Type`.

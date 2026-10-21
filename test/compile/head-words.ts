@@ -10,7 +10,7 @@
 // literals can stand alone on a line as a value, and are values rather than heads, so they are not held either.
 //
 // The grammars are read with the compiler's own parser through deck/deck/code/read.ts. There is one parser for
-// `.tree` (note/term/one-parser.md), and a regex over `term <word>` cannot tell a head from a leaf.
+// `.tree` (note/project/term/one-parser.md), and a regex over `term <word>` cannot tell a head from a leaf.
 //
 // KNOWN holds the heads outside the list on the day this gate went up (2026-10-02), each with its replacement
 // still to be decided. It may only shrink: a new head outside the list fails, and a KNOWN head that is gone fails too,

@@ -1,4 +1,4 @@
-// THE MEMBERS A NATIVE LIST AND A NATIVE MAP ANSWER THEMSELVES, ONE TABLE (note/term/plan/backends-complete.md, step 5).
+// THE MEMBERS A NATIVE LIST AND A NATIVE MAP ANSWER THEMSELVES, ONE TABLE (note/project/term/backends-complete.md, step 5).
 // A `list` value is the host's array and a `hash` the host's map, and a member call on one is either a member every
 // emitter lowers (these, camelCase as a member call emits them: `xs/index-of` is `indexOf`) or a method of the Term
 // form, which the checker dispatches to (check/infer.ts `bindMemberMethod`).
@@ -54,7 +54,7 @@ export function loweredMapRead(): string {
 }
 
 // THE LIST TASKS THAT ARE THE ARRAY'S OWN LENGTH: `length`, and `size` and `count`, its older names
-// (note/term/plan/decisions-2026-10.md, D2). Every emitter writes a call of one as the native length, and the interval
+// (note/project/term/decisions-2026-10/decisions-2026-10.md, D2). Every emitter writes a call of one as the native length, and the interval
 // prover reads it as the list's length. Only `list_size` was known until 2026-10-05, so `length(xs)` became a function
 // call where `size(xs)` was `xs.length`, and proved nothing about an index
 export function listLengthTasks(): string[] {

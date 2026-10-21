@@ -79,7 +79,7 @@ task index-of
       read search
       read start-index
 
-# the last position where `search` starts, counted in code points, else -1 (note/term/stdlib/semantics.md). It takes
+# the last position where `search` starts, counted in code points, else -1 (note/project/term/stdlib/semantics.md). It takes
 # no start: a left-out start read as the empty value 0 on the native backends and as the end on JavaScript, so the
 # same call searched two different ranges
 task last-index-of

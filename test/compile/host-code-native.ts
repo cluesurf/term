@@ -121,7 +121,7 @@ const ROOTS = ['code-hex', 'recode-hex']
 const ALL_INPUTS: string[] = [
   'list member\n  mesh\n    host name, <ada>\n    host age, 36\n    host active, true\n  mesh\n    host name, <alan>\n    host age, 41\n    host active, false\n',
   // `1e300` is left out: @term/host's own text reader panics on it on Rust (a decimal with an exponent, read past the
-  // end of its text), before the codec is reached. Recorded in note/term/host/10-code.md
+  // end of its text), before the codec is reached. Recorded in note/project/term/host/10-code.md
   'host a, -3.5\nhost b, true\nhost c, void\nhost f, 2.0\nhost g, 0.1\nhost h, -40\nhost i, 1099511627776\nhost k, -0.0\nhost l, <>\n',
   'host a, <é 世界 😀 👩‍👩‍👧>\nhost b, <line\\nbreak \\<x\\>>\n',
   readFileSync(join(FIXTURE, 'basic.tree'), 'utf8'),

@@ -1,4 +1,4 @@
-# Every text operation at its edges, held to note/term/stdlib/semantics.md on every backend by `pnpm term:base-gate`.
+# Every text operation at its edges, held to note/project/term/stdlib/semantics.md on every backend by `pnpm term:base-gate`.
 # Positions count code points: `𝄞` (U+1D11E) is one, where JavaScript and Kotlin count two and Swift's grapheme
 # count happens to agree only because it is a single scalar. A test written in ASCII alone would pass on every
 # wrong implementation.

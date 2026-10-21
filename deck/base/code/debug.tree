@@ -1,6 +1,6 @@
 # Checks for a program's own assumptions. `assert-that` stops the run with the stdlib's `defect` when its condition is
 # false, on every backend, the way a list read past the end does: a broken assumption is a stop, not an exception a
-# caller handles (note/term/stdlib/semantics.md, "Two kinds of failure"). To print while debugging, `log/debug`; for the
+# caller handles (note/project/term/stdlib/semantics.md, "Two kinds of failure"). To print while debugging, `log/debug`; for the
 # call stack, `error/trace`.
 #
 # RENAMED AND CUT 2026-10-02 (base-v1-0020): this module declared `inspect`, `print`, `pause` and `assert` with no

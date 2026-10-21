@@ -1,0 +1,99 @@
+# LAWS 2 AND 3, THE PERMIT, in the form affine-kinds decision 001 gives (note/project/term/affine-kinds/decision/
+# 001-many-by-default-sole-and-hide-declared-per-form.md). They hold by construction, not by a claim:
+#
+#   no forged permit       `mark hide`: only this file makes a permit, so the one way to get one is `grant-delete`
+#   every mutating route   the one public mutator, `delete-note`, takes a permit for the note it erases, and the
+#   asks                   mutator under it, `bury-at`, is `mark private`. `mark sole`: a permit is spent once
+#
+# PENDING, 2026-10-20: `mark sole` and `mark hide` parse (compile/mint-bridge.ts FORM_MARKS) but nothing enforces them
+# yet (check/hide.ts and check/sole.ts are affine-kinds-0007..0009). So a route in another file that makes its own
+# permit, or spends one twice, still builds: see ../../twin/no-forged-permit and ../../twin/permit-reused. The private
+# mutator IS enforced today (check/private.ts): ../../twin/route-skips-permit is refused.
+load ./model
+  find natural
+  find person
+  find note
+  find shelf
+  find flag
+  find may
+  find same
+
+form permit
+  mark hide
+  mark sole
+  link note, like natural
+  link person, like person
+
+# THE AUTHORIZATION TASK: the only maker of a permit
+task grant-delete
+  take actor, like person
+  take at, like natural
+  take whose, like natural
+  like permit
+  sift may(actor, whose)
+    case yes
+      back
+        make permit
+          bind note, at
+          bind person, actor
+    case no
+      halt <Not allowed>
+
+# THE MUTATING TASK takes the permit and nothing that names the target, so a permit for one note cannot erase another
+task delete-note
+  take s, like shelf
+  take permit, like permit
+  like shelf
+  back
+    bury-at
+      read s
+      read permit/note
+      read permit/person
+
+# bury the live note `at`, by `by`, with no check of its own: the permit was the check
+task bury-at
+  mark private
+  take s, like shelf
+  take at, like natural
+  take by, like person
+  like shelf
+  sift s
+    case bare
+      back make bare
+    case more
+      back
+        make more
+          bind top, bury-one(top, at, by)
+          bind rest, bury-at(rest, at, by)
+
+task bury-one
+  mark private
+  take n, like note
+  take aim, like natural
+  take by, like person
+  like note
+  sift n
+    case live
+      back bury-if(same(at, aim), n, by)
+    case gone
+      back n
+
+task bury-if
+  mark private
+  take f, like flag
+  take n, like note
+  take by, like person
+  like note
+  sift f
+    case yes
+      sift n
+        case live
+          back
+            make gone
+              bind at, at
+              bind whose, whose
+              bind by, by
+        case gone
+          back n
+    case no
+      back n

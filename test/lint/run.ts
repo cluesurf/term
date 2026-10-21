@@ -672,7 +672,7 @@ function main(): void {
     )
   }
 
-  // L037, L038, L039: the tell advice of note/term/hive/06-tell.md, on a program that makes decisions (declares a tell)
+  // L037, L038, L039: the tell advice of note/project/term/hive/06-tell.md, on a program that makes decisions (declares a tell)
   {
     const STDLIB = `form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\nform absence\n  like exception\n    bind note, <Not found>\n    link thing, like text\n\nform outage\n  like exception\n    bind note, <Down>\n    link thing, like text\n\nform denial\n  like exception\n    bind note, <Not allowed>\n    link thing, like text\n\nform missing-user\n  like absence\n    bind note, <No such user>\n\nform database-outage\n  like outage\n    bind note, <Database down>\n\nform private-document\n  like denial\n    bind note, <Not yours>\n`
     const RAISES = `task find-user\n  take id, like text\n  like text\n  halt missing-user\n    bind thing, read id\n\ntask query\n  like text\n  halt database-outage\n    bind thing, text <primary>\n\ntask open-document\n  like text\n  halt private-document\n    bind thing, text <doc>\n`

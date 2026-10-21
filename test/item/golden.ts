@@ -1,9 +1,9 @@
-// Every mockup of note/term/output/mockups.html as a golden test of the item library (deck/call/code/work/item/).
+// Every mockup of note/project/term/output/mockups.html as a golden test of the item library (deck/call/code/work/item/).
 //
 // Each card's EVENTS (cards.ts) are drawn at the card's width and compared with the card: every line's text, and the
 // role of every character, so color is checked as well as layout. A card that disagrees with the spec is compared
 // with its spec-correct form, the mockup plus patches that each name their entry in
-// note/term/output/mockup-differences.md. Then every card is drawn three ways, in color, without color and in ASCII,
+// note/project/term/output/mockup-differences.md. Then every card is drawn three ways, in color, without color and in ASCII,
 // and every line of every one must satisfy `display_width(line) <= cols` (section 21). The color is checked twice:
 // in the layout, and again in the escapes the truecolor and 16-color targets write, read back into roles.
 //

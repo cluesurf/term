@@ -3,7 +3,7 @@
 // bytes, never by a flag), or stdin, and prints it as the canonical long form, the compact one-line-per-entry form
 // (`--pack`), JSON (`--json`, `--keep` leaves keys kebab), `tree/code` (`--code`, Zstandard frames where they are
 // smaller, `--canonical` for the canonical uncompressed bytes), or only its diagnostics (`--check`). Never writes a file
-// in place: `term form` is the in-place formatter. See note/term/host/06-package-and-cli.md and 10-code.md.
+// in place: `term form` is the in-place formatter. See note/project/term/host/06-package-and-cli.md and 10-code.md.
 //
 // The shaped data is DATA, on stdout through `printData`, byte for byte as before, so `term mold x.tree --json | jq`
 // reads it clean. The run around it, and every diagnostic as a Problem item with its frame, is the human view on

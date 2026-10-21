@@ -1,7 +1,7 @@
 // The app's `tell` decisions, checked. A `tell @deck/form` must name an exception this program can raise from one
 // of its own tasks or routes (a stale or misspelled entry is the failure the mesh table had), each `link` must be a
 // prop that exception declares, one exception is told once, and two told exceptions may not share a wire name.
-// See note/term/hive/06-tell.md. Pure over the program.
+// See note/project/term/hive/06-tell.md. Pure over the program.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'

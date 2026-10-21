@@ -754,7 +754,7 @@ task empty-mine-grammar
 
   back make hash
 
-# the `mine` rules that carry a `mark lean` child: the constructs that take the lean surface. note/term/lean.md
+# the `mine` rules that carry a `mark lean` child: the constructs that take the lean surface. note/project/term/mill/lean.md
 task read-lean-rules
   take tree, like root-node
   like list, like text

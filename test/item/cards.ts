@@ -1,6 +1,6 @@
-// The 31 mockup cards of note/term/output/mockups.html, each as the EVENTS a command would hand the library, and the
+// The 31 mockup cards of note/project/term/output/mockups.html, each as the EVENTS a command would hand the library, and the
 // patches that turn the mockup into the spec-correct rendering. Every patch names its entry in
-// note/term/output/mockup-differences.md (D01 ...): a mockup line is never changed without one, and golden.ts holds
+// note/project/term/output/mockup-differences.md (D01 ...): a mockup line is never changed without one, and golden.ts holds
 // the note and these patches to the same set of entries.
 
 import { blankEvent, plainSubject } from '@term/call/code/work/item/event'

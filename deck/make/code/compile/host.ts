@@ -146,7 +146,7 @@ export function readDataText(
 // `host` entry keyed by that head. `a 10` is `host a, 10`, `key <tense>` is `host key, <tense>`, and a head over
 // a block is a map entry. `list` stays `list`, so a one-element list is still written `list x / 5` and the count
 // of values never decides what an entry is. The lean form is only ever read under the mark: the content rule
-// (`isDataTree`) does not know it, so an unmarked file full of bare heads is not data. note/term/lean.md.
+// (`isDataTree`) does not know it, so an unmarked file full of bare heads is not data. note/project/term/mill/lean.md.
 export function readData(
   tree: RootNode,
   file: string,
@@ -288,7 +288,7 @@ export function formatData(tree: RootNode, file: string): string {
 
 // a compact stream: one form per line, a `t(` line declaring (or re-declaring) an anchor for every line after it,
 // `h(` / `l(` lines the entries of a map or `m(` lines the items of a list, never both. Blank lines and `#` lines
-// are skipped. Each line is expanded against the anchors declared so far. See note/term/host/07-streaming.md.
+// are skipped. Each line is expanded against the anchors declared so far. See note/project/term/host/07-streaming.md.
 export function readStream(source: {
   file: string
   text: string

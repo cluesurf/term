@@ -368,7 +368,7 @@ deck @cluesurf/base
   })
 })
 
-// `term lint` reports these and `term lint --fix` applies them (note/term/plan/manifest-mark-and-code-root.md)
+// `term lint` reports these and `term lint --fix` applies them (note/project/term/manifest/manifest-mark-and-code-root.md)
 describe('manifestSpellings', () => {
   const old = `# a comment that stays
 deck @cluesurf/old

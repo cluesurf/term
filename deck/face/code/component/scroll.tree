@@ -1,5 +1,5 @@
 
-# Scroll: the vocabulary's word for a frame whose content may be larger than it (note/term/view/11-vocabulary.md).
+# Scroll: the vocabulary's word for a frame whose content may be larger than it (note/project/term/view/11-vocabulary.md).
 # Vertical only for now: both axes at once, paging and the scroll position as a signal are left out. Give it a height
 # (inside a `frame`, or a stack that bounds it), or it grows to its content and never scrolls.
 #

@@ -32,7 +32,7 @@ const TERM = join(HERE, '../..')
 // and took the only `sort` with it, and then 13 until zone left for the repository's deck/zone the same day and
 // took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses. Then 7 the same day
 // again: the version became `mark` (where it had been `code`) and `bear ./code`, the old spelling of the default
-// code root, left every manifest (note/term/plan/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`). Then 8
+// code root, left every manifest (note/project/term/manifest/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`). Then 8
 // on 2026-10-05, when the benchmark suite moved into deck/mark and brought its `line ./code/line`.
 const CHECKED = 8
 
@@ -166,7 +166,7 @@ ok(
 
 // `mark` is the version and `code` the code root, written here as a folder that is NOT the default, so the writer
 // keeps it. `bear` is gone from the surface: it was the old spelling of `code <path>` and is read as one, and the
-// writer emits the new spelling (note/term/plan/manifest-mark-and-code-root.md)
+// writer emits the new spelling (note/project/term/manifest/manifest-mark-and-code-root.md)
 const WHOLE = `deck @scope/whole
   mark <0.0.2>
   code ./src

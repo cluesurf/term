@@ -1,5 +1,5 @@
 // The installer behind `curl -fsSL https://term.surf/load | sh`, built to `load.mjs` and served beside the script
-// (note/term/plan/term-load-install.md, note/term/output/standard.md).
+// (note/project/term/term-load-install.md, note/project/term/output/standard.md).
 //
 // The shell script (load.ps1 on Windows) only checks for Node and runs this. Everything else is the CLI's own code, bundled:
 //

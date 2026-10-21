@@ -1,6 +1,6 @@
 
 # Keys into the terminal host (terminal-target-0003): what a person types, turned into the vocabulary's events on the
-# focused node, the way a platform turns a tap into `click` (note/term/view/11-vocabulary.md, the cell grid column).
+# focused node, the way a platform turns a tap into `click` (note/project/term/view/11-vocabulary.md, the cell grid column).
 #
 #   tab, shift-tab   focus moves to the next or the previous control in tree order, wrapping at the ends
 #   enter, space     a focused button or link fires `click`

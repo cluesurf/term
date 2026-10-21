@@ -5,7 +5,7 @@
 # variable: `save x` gives it a new value, a branch or a loop may have done so, a closure may do so whenever it is
 # called, and a call to a task that writes through a record changes what `read b/size` means. A fact that outlives the
 # value it was about proves false things, which is what this module exists to stop. See
-# note/term/proof-by-default/semantics.md: in the pure core every assignment is a new name, so nothing is ever retracted.
+# note/project/term/proof/semantics.md: in the pure core every assignment is a new name, so nothing is ever retracted.
 # Until the core exists, retracting is how the surface provers get the same answer.
 #
 # The second half is purity. The kernel registers every task as a constant, so two calls with equal arguments are equal

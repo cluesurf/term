@@ -1,13 +1,13 @@
 /**
  * `term base`: the read verbs.
  *
- * The Git-not-GitHub split in `note/library/base/readme.md` promises the protocol works fully
+ * The Git-not-GitHub split in `note/project/base/readme.md` promises the protocol works fully
  * offline with no server. Until now that promise was true only through a TypeScript import,
  * so nobody could use base without writing code, the flagship dataset could not be driven by
  * hand, and the authoring loop had never been experienced by a person.
  *
  * A subcommand of `term` rather than a binary of its own, decided in
- * `note/library/base/12-naming.md`: it inherits Term's install path, the overload the naming
+ * `note/project/base/design/12-naming.md`: it inherits Term's install path, the overload the naming
  * doc worried about is always qualified by the verb in front of it, and it is the reversible
  * choice, because a standalone binary can be added later without breaking anyone.
  *
@@ -60,7 +60,7 @@ function shownOf(name: string, value: unknown): words.ShownField {
   return { name, kind: '', value: String(value), target: '' }
 }
 
-// THE OUTPUT (note/term/output/readme.md). Each verb opens a run with its own verb and closes it with a verdict on
+// THE OUTPUT (note/project/term/output/readme.md). Each verb opens a run with its own verb and closes it with a verdict on
 // stderr, and what the person asked to SEE (a log, a diff, a record, a listing, a commit hash) is data on stdout,
 // through `printData`, so `term base log > log.txt` holds the log and nothing else.
 

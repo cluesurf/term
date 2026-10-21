@@ -1581,7 +1581,7 @@ task divisions-in-expression
 # The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
 # callee raises (least fixed point over the call graph), minus what a `mark unsafe` / `halt take` catches, plus what
 # the handler itself raises. A thrown text is `failure`. A guard with no handler catches everything. This is the raise
-# set of note/term/hive/04-reach.md, and it is what the roll reports per task and per route.
+# set of note/project/term/hive/04-reach.md, and it is what the roll reports per task and per route.
 #
 # `via` records, for each function and each exception, the callee that brought it in (`<>` for a direct raise), so a
 # reader can walk one call path from an entry point to the raise site.
@@ -1920,7 +1920,7 @@ task thrown-exception
 # A CLOSURE'S RAISES ARE ITS MAKER'S. A closure's type carries no raise set, so what its body raises surfaces wherever
 # it is called: through `wait` and `gather` its raise is re-raised unchanged, and through any other call it unwinds the
 # caller. Attributing it to the task that MAKES the closure keeps the set sound for the usual shape (make the work,
-# spawn or gather it, wait in the same task) (note/term/research/beam-otp-lessons.md, design 3)
+# spawn or gather it, wait in the same task) (note/project/term/research/beam-otp-lessons.md, design 3)
 task expression-calls
   take state, like raise-state
   take node, like expression

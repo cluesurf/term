@@ -17,7 +17,7 @@
 #   walk  down m      at the top of a turn, a hold that m is a natural number, and its value kept; at the end of the
 #                     turn and before every `turn next`, a hold that m is below the kept value ('down')
 #
-# See note/term/proof-by-default/vocabulary.md for the words and readme.md for why it is a copy.
+# See note/project/term/proof/vocabulary.md for the words and readme.md for why it is a copy.
 #
 # Ported from check/contract.ts (self-hosting, 2026-10-06), which stays as the face: it reads the width switch
 # (check/width-range.ts) and hands it in, and it says whether a node carries a contract at all, since an absent list and

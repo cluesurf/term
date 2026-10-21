@@ -1,6 +1,6 @@
 // Forwarding bounded generics: a bounded generic that forwards its dictionary to another bounded generic must
 // compile AND be callable with a concrete type. Regression for the kernel metavariable-scoping limitation noted in
-// note/term/compiler/trait-dictionary-passing.md. Run: npx tsx test/check/trait-forwarding.ts
+// note/project/term/compiler/trait-dictionary-passing.md. Run: npx tsx test/check/trait-forwarding.ts
 
 import { compile } from '@term/make/code/compile/compile'
 import { transformSync } from 'esbuild'

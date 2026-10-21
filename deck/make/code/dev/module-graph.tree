@@ -1,7 +1,7 @@
 # The dev-server module graph (Tier 3, the Vite model). One node per compiled `.tree` module. The `importers` edge
 # (who imports me) is what HMR walks upward to find a boundary. The graph is built as a side effect of compiling each
 # module: after a module is compiled, its imports are recorded, which adds this module to each dep's importers.
-# Pure data, no I/O, so it is unit-testable. See note/research/repo/vite/01-module-graph.md.
+# Pure data, no I/O, so it is unit-testable. See note/project/term/research/repo/vite/01-module-graph.md.
 #
 # Ported from dev/module-graph.ts (self-hosting, 2026-10-04). The original was a class whose nodes pointed at each
 # other: `importers: Set<ModuleNode>`, and a caller mutated a node it held and the graph saw it. Under value

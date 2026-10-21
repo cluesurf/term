@@ -1,4 +1,4 @@
-// The mockup page as fixtures (note/term/output/mockups.html): every card's caption, command, column width, and its
+// The mockup page as fixtures (note/project/term/output/mockups.html): every card's caption, command, column width, and its
 // lines as plain text with the role of each character, so a golden test can check color as well as text.
 //
 // Each `<div style="white-space: pre">` inside a card's body is one terminal line and each `<div style="height:
@@ -108,9 +108,9 @@ export function readMockups(html: string): Mockup[] {
 }
 
 // the repository root, from the Term package root every suite runs in
-export const MOCKUP_PAGE = join(process.cwd(), '../../../../note/term/output/mockups.html')
+export const MOCKUP_PAGE = join(process.cwd(), '../../../../note/project/term/output/mockups.html')
 export const MOCKUP_FIXTURE = join(process.cwd(), 'test/item/mockups.json')
-export const MOCKUP_DIFFERENCES = join(process.cwd(), '../../../../note/term/output/mockup-differences.md')
+export const MOCKUP_DIFFERENCES = join(process.cwd(), '../../../../note/project/term/output/mockup-differences.md')
 
 export function loadMockups(): Mockup[] {
   return JSON.parse(readFileSync(MOCKUP_FIXTURE, 'utf8')) as Mockup[]

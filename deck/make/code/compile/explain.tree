@@ -1,4 +1,4 @@
-# Why a unit was built (note/term/plan/incremental-best-in-class.md, step 6, `term make --explain`).
+# Why a unit was built (note/project/term/incremental-best-in-class.md, step 6, `term make --explain`).
 #
 # A unit's answer is looked up by a key made of its inputs (compile/separate.ts): its own modules' texts, the settings
 # it was built under, the compiler, and the fingerprint of every dependency definition it reaches by name

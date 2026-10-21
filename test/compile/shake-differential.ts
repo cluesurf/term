@@ -1,4 +1,4 @@
-// Tree-shaking differential harness (note/term/tree-streaming-and-perf.md "Gate + proof"): compile every stdlib
+// Tree-shaking differential harness (note/project/term/compiler/tree-streaming-and-perf.md "Gate + proof"): compile every stdlib
 // module as an entry, with and without `treeShake`, and require:
 //   1. the same verdict (ok with ok, failure with failure, matching diagnostics on failure)
 //   2. every root of the entry survives the prune

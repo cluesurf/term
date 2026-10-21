@@ -186,7 +186,7 @@ const cli = yargs(hideBin(process.argv))
     default: 'line',
     description: 'Response format',
   })
-  // the global output flags of the terminal output standard (note/term/output/standard.md, sections 18 and 20), on
+  // the global output flags of the terminal output standard (note/project/term/output/standard.md, sections 18 and 20), on
   // every command, read once by the middleware below into the run every command prints through (code/output.ts)
   .option('quiet', { alias: 'q', type: 'boolean', description: 'Print only failed items and the closing item' })
   .option('verbose', { type: 'boolean', description: 'Also print debug items' })

@@ -3,7 +3,7 @@
 #
 # `serve` builds its own current-thread runtime and blocks, so a Term rust binary needs no `#[tokio::main]`.
 # `start` binds and answers without blocking, and must be called from inside a LocalSet: the handler a Term
-# program hands in is an `Rc`, which cannot cross a thread. See note/term/stdlib/native-async-file-and-server.md.
+# program hands in is an `Rc`, which cannot cross a thread. See note/project/term/stdlib/native-async-file-and-server.md.
 
 dock type
   load <runtime::Server>, name server-dock

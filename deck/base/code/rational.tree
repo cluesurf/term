@@ -3,7 +3,7 @@
 # in lowest terms with the denominator positive, so two equal fractions have equal terms. Every operation is big-integer
 # multiply, add and subtract plus a greatest-common-divisor reduction, whose divisions are exact, so the result is the
 # same on every backend. A rational wears the arithmetic masks, so `add`, `subtract`, `multiply` and `divide` take two
-# rationals as they take two numbers (note/term/plan/decisions-2026-10.md, D5). test/stdlib/rational-native.ts.
+# rationals as they take two numbers (note/project/term/decisions-2026-10/decisions-2026-10.md, D5). test/stdlib/rational-native.ts.
 
 mark unstable
 

@@ -52,7 +52,7 @@ function applyEdits(text: string, edits: TextEdit[]): string {
 
 // ---- findings that need the FILESYSTEM, so they live here rather than among the pure AST rules ----
 //
-// note/term/plan/manifest-mark-and-code-root.md. Three, each a warning:
+// note/project/term/manifest/manifest-mark-and-code-root.md. Three, each a warning:
 //
 //   L050 manifest-code-version  a manifest's `code <version>` (or a link's `code <range>`): the old spelling of
 //                               `mark`. `--fix` rewrites the word

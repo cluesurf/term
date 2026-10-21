@@ -77,7 +77,7 @@ export async function install(input: {
   })
 
   // step 7: pin the toolchain the manifest's `need` asks for, keeping the previous pin while it still satisfies the
-  // request (note/term/plan/term-versions.md). A manifest with no `need` writes none, and drops a stale one
+  // request (note/project/term/term-versions.md). A manifest with no `need` writes none, and drops a stale one
   const need = loaded.need
     ? await pinNeed({ need: loaded.need, previous: lockfile?.need, offline: input.offline })
     : undefined

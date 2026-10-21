@@ -3,7 +3,7 @@
 # is the browser's text input on the web, and the toolkit host makes it NSTextField on macOS, UITextField on iOS and
 # EditText on Android, with each platform's keyboard, selection and input methods. So there is no ./toolkit/input.tree:
 # it would repeat this file line for line. A platform that ever needs its own adds one there, held to these props
-# by test/compile/face-contract.ts (note/term/app/11-uniform-interface.md).
+# by test/compile/face-contract.ts (note/project/term/app/11-uniform-interface.md).
 #
 #   save name, call make-signal / bind value, text <>
 #   call input / read root / text <> / read name / text <Your name>

@@ -1,7 +1,7 @@
 // The TypeScript backend's in-process runners: the emitted text run with `new Function` against the RT runtime
 // (runtime.ts), for validation against the interpreter. The emitter is Term, engine/backend/typescript-text.tree
 // (`compileToTypescript` for the standalone module, `compileForRun` and `compileDeclarations` for these two). See
-// note/research/vibe/computation/backend/03-backends.md.
+// note/project/term/research/computation/backend/03-backends.md.
 
 import type { Program } from '@term/make/code/engine/ast'
 import type { Value } from '@term/make/code/engine/value'

@@ -1,6 +1,6 @@
 # `role <name>` with its `take` globs, and any `mark` flags that change how the
 # files it matches are READ rather than which mill reads them. `mark lean` is the
-# only one today: see note/term/lean.md.
+# only one today: see note/project/term/mill/lean.md.
 #
 # ONE LIST HOLDING BOTH, so a `mark` may be written above or below the `take`
 # lines. Two separate `mine list`s would fix the order, and there is no reason a

@@ -179,7 +179,7 @@ function kotlinMainClass(name: string): string {
   return `${stem.charAt(0).toUpperCase()}${stem.slice(1)}Kt`
 }
 
-// THE TWO TARGETS THROUGH RUST (note/term/plan/backends-complete.md, step 4): the program's Rust, and then
+// THE TWO TARGETS THROUGH RUST (note/project/term/backends-complete.md, step 4): the program's Rust, and then
 //
 //   llvm   rustc's LLVM IR, a `.ll`. Built by `llc` from rustup's `llvm-tools`, the one whose LLVM is rustc's own, and
 //          linked against rustc's std. Apple's clang reads an older LLVM and refuses the IR rustc writes (measured on

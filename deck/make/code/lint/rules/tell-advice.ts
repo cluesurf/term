@@ -1,4 +1,4 @@
-// The three `tell` conditions of note/term/hive/06-tell.md that are advice, not errors (the four errors are in
+// The three `tell` conditions of note/project/term/hive/06-tell.md that are advice, not errors (the four errors are in
 // check/tell.ts). Each is about the SEVENTEEN: the generic exception an app's exception descends from decides what a
 // caller should be told, so the rules read the root of every exception's chain.
 //

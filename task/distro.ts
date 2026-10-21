@@ -1,5 +1,5 @@
 // `pnpm term:distro`: the `term` command for the package managers Linux and Windows already have, made from the
-// payloads `pnpm term:release` built (note/term/plan/term-distro.md).
+// payloads `pnpm term:release` built (note/project/term/term-distro.md).
 //
 //   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
 //   pnpm term:distro --commit   also write the signed apt and dnf indexes into the term.surf site's public/ (served at

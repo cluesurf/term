@@ -1,4 +1,4 @@
-// A build graph kept across rebuilds (note/term/plan/incremental-best-in-class.md, steps 2 and 3). A watch keeps one
+// A build graph kept across rebuilds (note/project/term/incremental-best-in-class.md, steps 2 and 3). A watch keeps one
 // `BuildSession`: each module's walk, each load's answer, each module's parse, each unit's answer and each entry's
 // outcome. What it must never do is answer an edited file with the text it had before, which a kept resolver and a
 // kept walk both could, since an answer to a load is a file AND its text. And an entry no edit reaches must be

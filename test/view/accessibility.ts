@@ -5,7 +5,7 @@
 // without text, hr, h1 to h6, a with an href); a name from `aria-label`, else `alt`, else `placeholder`, else its text.
 //
 // Two witnesses that must agree: the computed role is what this test EXPECTS for the case, and it must also appear in
-// that word's DOM cell of the contract table (note/term/view/11-vocabulary.md, "Accessibility"), so the note and the
+// that word's DOM cell of the contract table (note/project/term/view/11-vocabulary.md, "Accessibility"), so the note and the
 // markup cannot drift apart. Run: npx tsx test/view/accessibility.ts
 
 import { spawnSync } from 'node:child_process'
@@ -239,7 +239,7 @@ function nameOf(element: Element): string {
 }
 
 // the contract's DOM cell per word
-const note = readFileSync(join(process.cwd(), '../../../../note/term/view/11-vocabulary.md'), 'utf8')
+const note = readFileSync(join(process.cwd(), '../../../../note/project/term/view/11-vocabulary.md'), 'utf8')
 const table = note.slice(note.indexOf('## Accessibility'), note.indexOf('## The layout model'))
 const domCell = new Map(
   table

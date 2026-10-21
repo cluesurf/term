@@ -1,7 +1,7 @@
 // The four closed vocabularies, and the messages a document gets when it steps outside one.
 //
 // A name outside a catalog fails the compile, fails the save, and is underlined in the editor, and the three read
-// the SAME registry, so they cannot answer differently. See note/term/view/04-catalog.md.
+// the SAME registry, so they cannot answer differently. See note/project/term/view/04-catalog.md.
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView } from '@term/make/code/compile/view'

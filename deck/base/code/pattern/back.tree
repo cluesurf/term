@@ -1,7 +1,7 @@
 # Tier C: the backtracking matcher, for what has no known linear-time algorithm: a back reference the analysis could
 # not rewrite away, and an atomic group. It runs ./program.tree one path at a time, keeps a stack of the choices it
 # has not tried and of the slots to put back, and counts every instruction. Past the budget it raises
-# `pattern-budget` instead of running on, so a pattern cannot hang a program (note/term/stdlib/regex-engine.md).
+# `pattern-budget` instead of running on, so a pattern cannot hang a program (note/project/term/stdlib/regex-engine.md).
 #
 # A lookaround and an atomic group run their part as a match of its own, from where they stand: its first match is
 # taken and never revisited, which is what both mean.

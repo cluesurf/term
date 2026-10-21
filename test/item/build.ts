@@ -142,7 +142,7 @@ export const BLANK: Expected = { text: '', marks: [] }
 // the indent of the body column: 2 in v3's compact nesting
 export const I = ' '.repeat(2)
 
-// a patch to a mockup's lines, naming the entry of note/term/output/mockup-differences.md that justifies it
+// a patch to a mockup's lines, naming the entry of note/project/term/output/mockup-differences.md that justifies it
 export type Patch =
   | { entry: string; at: number; remove: number; insert: Expected[] }
   | { entry: string; retint: number; from: number; to: number; role: string }

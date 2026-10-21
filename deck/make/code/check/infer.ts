@@ -1,7 +1,7 @@
 // The type checker: gradual, bidirectional inference over the compile AST. Type variables are inference holes,
 // solved by unification. `unknown` is the gradual any: consistent with everything, never an error. Concrete
 // mismatches are reported with spans. This is the formal type-checking pass that runs after resolution. See
-// note/research/vibe/computation/plans/04-typecheck.md and 11-elaboration.md.
+// note/project/term/archive/computation/plans/04-typecheck.md and 11-elaboration.md.
 
 import type {
   Diagnostic,
@@ -1387,7 +1387,7 @@ function checkProgram(
             }
           }
         } else if ((target.kind === 'array' || target.kind === 'string') && node.name === 'length') {
-          // a list's length, or a text's (counted in code points on every backend, note/term/stdlib/semantics.md)
+          // a list's length, or a text's (counted in code points on every backend, note/project/term/stdlib/semantics.md)
           type = numberType()
         } else if (target.kind === 'map' && (node.name === 'size' || node.name === 'length')) {
           // A COLLECTION'S LENGTH IS `length`, A MAP'S TOO (decisions-2026-10.md, D2): `m/length` is the map's entry
@@ -1812,7 +1812,7 @@ function checkProgram(
                 nativeResult = { kind: 'boolean' }
               }
             } else if (receiver.kind === 'string') {
-              // a TEXT's own members, which every emitter lowers (counting code points, note/term/stdlib/semantics.md):
+              // a TEXT's own members, which every emitter lowers (counting code points, note/project/term/stdlib/semantics.md):
               // their results are what @term/base/text declares them, where they were the gradual unknown, and each
               // task there sending one back was a value the gradual seam had to refuse (D1)
               nativeResult = TEXT_MEMBER_RESULTS.get(op)
@@ -2376,7 +2376,7 @@ function checkProgram(
             }
           } else {
             // a `hook miss` arm that answers one case or none says less than listing it would, and a case added
-            // later is answered by it without a word (note/term/gaps/decisions.md, the catch-all)
+            // later is answered by it without a word (note/project/term/guides/decision/gaps-decisions.md, the catch-all)
             const rest = [...variants].filter(v => !covered.has(v))
 
             if (rest.length <= 1) {
@@ -3068,7 +3068,7 @@ function checkProgram(
     // THE LEAN SURFACE, where a bare head that names a FORM rather than a task is a construction of that form,
     // with the labels as its fields. Rewritten in place into a `record` node, which the record case then types
     // exactly as a `make` would. Only under lean: outside it a call to a form's name is the unknown-callee
-    // diagnostic it always was. note/term/lean.md, "position first, then the name".
+    // diagnostic it always was. note/project/term/mill/lean.md, "position first, then the name".
     // A FORM or a VARIANT: `point a 10, b 20` builds a point, and `feature feature <case>, value <nominative>`
     // builds the `feature` case of whichever sum declares it, typed as that sum by the record case exactly as
     // `make feature` would be. A variant shared by several sums is left to the kernel there, the same as `make`.

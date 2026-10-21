@@ -1,5 +1,5 @@
 // Separate compilation with cross-boundary early cutoff: what `term make` runs since 2026-10-05 (`--merged` is the
-// whole-program build). See note/term/incremental-compilation.md.
+// whole-program build). See note/project/term/compiler/incremental-compilation.md.
 //
 // Where `compile()` merges the whole import closure into one program and checks + emits it as a blob,
 // `compileSeparate()` partitions the module graph into UNITS (the strongly connected components of the graph
@@ -74,7 +74,7 @@ export type SeparateResult =
       reused: string[]
       // every unit's key in the entry's closure, as one: it moves exactly when a file the entry reaches, a role, a
       // lean or a setting does, so what is computed from the whole closure (the roll) is cached by it
-      // (note/term/plan/incremental-best-in-class.md, step 8)
+      // (note/project/term/incremental-best-in-class.md, step 8)
       closureKey: string
       // every native module the closure docks, from its units' stubs, which carry them whole: what a program built from
       // these modules needs in front of it (compile/native.ts `nativePrelude`), as the merged program's statements gave

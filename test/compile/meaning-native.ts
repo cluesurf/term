@@ -8,7 +8,7 @@
 //             (optimize-0003, -0041)
 //
 // Every native program runs TWICE, because a per-process hash seed is exactly what one run cannot see.
-// note/term/optimize/meaning.md. MN_ONLY=rust (or swift, kotlin, typescript) runs one backend.
+// note/project/term/optimize/meaning.md. MN_ONLY=rust (or swift, kotlin, typescript) runs one backend.
 // Run: npx tsx test/compile/meaning-native.ts
 
 import { execFileSync } from 'node:child_process'

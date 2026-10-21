@@ -4,7 +4,7 @@
 // a named argument, and nothing else changes. So the whole bug class the feature can have is the two spellings
 // building different programs. Every fixture here is written twice, lean and long, milled with the flag on
 // and off respectively, and compared after the checker has resolved the labels, which is where the two
-// spellings are meant to converge. A difference is a failure. note/term/lean.md.
+// spellings are meant to converge. A difference is a failure. note/project/term/mill/lean.md.
 //
 // Run: npx tsx test/compile/lean.ts
 
@@ -721,7 +721,7 @@ task go
   },
   {
     // A NESTED TASK CALL IS POSITIONAL. A head that names no parameter of the callee and names a task is a call
-    // to that task, by note/term/lean.md's own rule (position first, then the name). It used to be read as a
+    // to that task, by note/project/term/mill/lean.md's own rule (position first, then the name). It used to be read as a
     // label and refused: `"shout" has no parameter "shout"`. Found by `pnpm term:lean-equal` on the CLI's .tree,
     // 21 of 29 files (self-hosting-0013, check/lean-nest.ts)
     name: 'a nested task call under a task call is positional, not a label',

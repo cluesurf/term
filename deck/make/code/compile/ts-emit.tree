@@ -388,6 +388,31 @@ task join-texts
         save out, <{out}{between}{part}>
   back out
 
+# The items of an array, a map or a record literal, between its brackets. On one line while that line stays short,
+# and ONE ITEM PER LINE past it, so no table is a single giant line. tsgo's source-map writer is quadratic in line
+# length: a 2.8-million-character table (a generated grammar's sutra list) took over sixteen minutes to map, where
+# the same table broken per item maps in normal time. Only the layout changes, never the value: a newline inside
+# brackets is whitespace to JavaScript, and an item's own text is never split. Short literals keep their exact
+# one-line spelling, so nothing small changes.
+#
+# `pad` is what sits inside each bracket on the one-line form: none for `[a, b]`, a space for `{ a: 1 }`.
+task join-items
+  take parts, like list, like text
+  take open, like text
+  take close, like text
+  take pad, like text
+  like text
+  mark private
+
+  save width, 0
+  walk parts
+    take part
+    save width, add(width, add(part/length, 2))
+  fork test, is-above(width, 1000)
+    hold
+      back <{open}\n{join-texts(parts, <,\n>)}\n{close}>
+  back <{open}{pad}{join-texts(parts, <, >)}{pad}{close}>
+
 task pad
   take depth, like number
   like text
@@ -1265,7 +1290,7 @@ task emit-expression
               back <([] as {ts-type-of(make(some, element), facts)}[])>
         case none
           save nothing, 0
-      back <[{join-texts(emit-all(items, st, facts), <, >)}]>
+      back join-items(emit-all(items, st, facts), <[>, <]>, <>)
     case map
       link entries
       save ann, <>
@@ -1293,7 +1318,7 @@ task emit-expression
           miss
             save st/equal-used, true
             push(rendered, <[__termKey({key}), {emit-expression(entry/value, 0, st, facts)}]>)
-      back <new Map{ann}([{join-texts(rendered, <, >)}])>
+      back <new Map{ann}({join-items(rendered, <[>, <]>, <>)})>
     case record
       back emit-record(node, st, facts)
     case member
@@ -1888,12 +1913,12 @@ task emit-record
           walk in-declared-order(variant-case(record-name, node-type, facts), record-fields, fields)
             take one
             push(members, one)
-          back <\{ {join-texts(members, <, >)} \}>
+          back join-items(members, <\{>, <\}>, < >)
       save own-fields, make list
       fork test, facts/record-fields/has(record-name)
         hold
           save own-fields, facts/record-fields/get(record-name)
-      save made, <\{ {join-texts(in-declared-order(own-fields, record-fields, fields), <, >)} \}>
+      save made, join-items(in-declared-order(own-fields, record-fields, fields), <\{>, <\}>, < >)
       # a `mark shared` value carries a hidden marker
       fork test, facts/shared-forms/has(record-name)
         hold

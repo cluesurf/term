@@ -18,7 +18,7 @@
 # deterministic, and the second turns text into a shape nothing typed. The host passes the time in as a `host`
 # parameter, which also makes a document testable.
 #
-# See note/term/view/04-catalog.md.
+# See note/project/term/view/04-catalog.md.
 
 host deck, <reference>
 
@@ -124,7 +124,7 @@ list call
   # macro, not a function, and giving it a calling convention would be a second spelling of `walk` and `fork`.
   # An author filters by walking the list and forking inside it, which is the same power with the bound in the
   # head rather than in an operator's argument. `sort` and `dedupe` are cut with them because both are only
-  # useful here with a key, and a key is a callback. See note/term/view/04-catalog.md.
+  # useful here with a key, and a key is a callback. See note/project/term/view/04-catalog.md.
   <chain>
   <count>
   <flatten>

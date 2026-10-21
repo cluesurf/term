@@ -1,5 +1,5 @@
 // `term make --env <rust|swift|kotlin|node>`: every program of the project for one backend, one file each under
-// host/<env>/ (call/code/make-native.ts, note/term/plan/backends-complete.md step 2). A program is a file with a
+// host/<env>/ (call/code/make-native.ts, note/project/term/backends-complete.md step 2). A program is a file with a
 // `run`, `boot` or `main` task taking nothing; a library is not written on its own. One program that does not build is
 // reported, the rest are written, and the run fails. `--build` builds each beside its source.
 // Run: npx tsx test/call/make-env.ts   (MAKE_ENV_ONLY=node, rust, swift or kotlin runs one)

@@ -4,7 +4,7 @@ mark draft
 # PDF content-stream operator catalog (text positioning, graphics state, path construction, painting, color,
 # dictionaries, xref/trailer), pointed at directly by the user as worth porting. ../code.tree ports the operator
 # catalog for real; the object-model/xref parts (`pdf-tree`, `definition`, `end`) stay here, not yet attempted —
-# see note/term/feed/07-implementation.md.
+# see note/project/term/feed/07-implementation.md.
 #
 # https://ghostscript.com/~robin/pdf_reference17.pdf
 

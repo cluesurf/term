@@ -1,7 +1,7 @@
 // The dev HMR client (Tier 3). Served to the browser at `/@seed/client.mjs`. It opens an SSE connection, and on each
 // message either full-reloads or hot-applies an update: re-import the changed module (cache-busted), then run the
 // boundary's accept callback. The pure decision logic (`applyHmr`) is split out so it is unit-testable without a DOM.
-// See note/research/repo/vite/04-websocket-protocol.md and 07-hmr-api.md.
+// See note/project/term/research/repo/vite/04-websocket-protocol.md and 07-hmr-api.md.
 
 // the messages the dev server pushes
 export type HmrMessage =

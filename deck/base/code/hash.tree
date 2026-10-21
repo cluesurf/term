@@ -61,7 +61,7 @@ form hash
       call self/delete
         read key
 
-  # how many entries it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  # how many entries it holds. `length` on every collection (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
   task length
     take self
     like number
@@ -134,7 +134,7 @@ form hash
     send back, read self
 
   # every entry as a pair of its key (`first`) and value (`second`), in the order the keys were first set, the same
-  # order on every backend (note/term/stdlib/semantics.md)
+  # order on every backend (note/project/term/stdlib/semantics.md)
   task entries
     take self
     like list

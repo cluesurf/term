@@ -1,7 +1,7 @@
 // The fine-grained reactive runtime that zone components compile onto: signals, memoized computeds, and effects,
 // with automatic dependency tracking and batched, dedup'd propagation. This is the Solid model (run-once, no
 // virtual DOM), the structure zones target. Browser-safe, no host APIs. See
-// note/research/vibe/computation/plans/14-reactivity.md and 15-components.md.
+// note/project/term/archive/computation/plans/14-reactivity.md and 15-components.md.
 
 type Observer = { run: () => void; sources: Set<Source> }
 type Source = { observers: Set<Observer> }

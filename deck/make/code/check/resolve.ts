@@ -1,7 +1,7 @@
 // The resolver: bind every name to its definition. Walks the compile AST with a scope stack, attaches a binding
 // to each variable, handles forward references to functions, and reports unknown names with a did-you-mean. An
 // unresolved name that is not legally runtime-deferred becomes an unknown-name diagnostic. This is the hole-filling
-// pass (the part that fills name and import holes). See note/research/vibe/computation/plans/11-elaboration.md.
+// pass (the part that fills name and import holes). See note/project/term/archive/computation/plans/11-elaboration.md.
 //
 // The resolver is check/resolving.tree (self-hosting, 2026-10-06). It writes each binding into the program it is
 // handed, as this did, and a variable named `hole` that nothing binds is replaced in its place by a typed hole. This

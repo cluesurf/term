@@ -1,5 +1,5 @@
 # Unused-binding warnings: a `let`/`save` binding that is never read is reported as a warning (not an error, so
-# it does not fail compilation). A usability nicety. See note/research/vibe/computation/plans/04-typecheck.md.
+# it does not fail compilation). A usability nicety. See note/project/term/archive/computation/plans/04-typecheck.md.
 #
 # Ported from check/unused.ts (self-hosting, 2026-10-05). The names read are a hash on a `mark shared` record, since
 # every step of the walk adds to them, and the bindings a list of names beside their spans, the first of each kept.

@@ -1,4 +1,4 @@
-// A unit shared between projects imports what each of them has (note/term/plan/incremental-best-in-class.md, steps 1
+// A unit shared between projects imports what each of them has (note/project/term/incremental-best-in-class.md, steps 1
 // and 13). The standard library's units are built once for the machine, and their emitted imports name the modules they
 // load. Those names were relative to the project root, so a unit one project built named files a project at another
 // depth never wrote. Two projects at different depths here share one store, and every relative import either one

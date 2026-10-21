@@ -1,5 +1,5 @@
-# F4, the first text fact (note/term/codegen/shared.md): which text expressions are ASCII. A Term text counts code
-# points (note/term/stdlib/semantics.md), so `char-at(s, i)` must walk `s` from its start on Rust (`chars().nth(i)`),
+# F4, the first text fact (note/project/term/compiler/codegen/shared.md): which text expressions are ASCII. A Term text counts code
+# points (note/project/term/stdlib/semantics.md), so `char-at(s, i)` must walk `s` from its start on Rust (`chars().nth(i)`),
 # Swift and Kotlin (`offsetByCodePoints`): O(i) per read, O(n^2) over a loop. On ASCII text a code point is one byte
 # and one UTF-16 unit, so the same read is a direct index on every backend.
 #

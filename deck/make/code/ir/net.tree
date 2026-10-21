@@ -2,7 +2,7 @@
 # reduced by purely local rewrites on "active pairs" (two agents touching principal port to principal port). This is
 # Lafont's universal system (the model HVM and the hyperbolic substrate run on); the pure fragment of the language
 # lowers to it. Three agents: `con` (a binary constructor/application node), `dup` (a binary duplicator), and `era` (a
-# nullary eraser). See note/research/vibe/computation/plans/06-runtime-substrate.md. Pure and browser-safe.
+# nullary eraser). See note/project/term/archive/computation/plans/06-runtime-substrate.md. Pure and browser-safe.
 #
 # Ported from ir/net.ts (self-hosting, 2026-10-04). The original was a class mutated in place; a net is a value here
 # (D1), so every task that changes one RETURNS it, and its callers (ir/lower-net, ir/lattice, test/ir/net.ts) moved:

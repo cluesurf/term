@@ -1,4 +1,4 @@
-// A portable unit cache (note/term/plan/incremental-best-in-class.md, step 13). A unit's key, its fingerprints and its
+// A portable unit cache (note/project/term/incremental-best-in-class.md, step 13). A unit's key, its fingerprints and its
 // stored answer write each deck's root as a token, so a second clone of the repository at another path reuses what
 // the first one built, and reads it back with its own paths. Two clones here, each with its own copy of the standard
 // library at a different depth and a project beside it, one store between them.

@@ -74,7 +74,7 @@ mine call
 
 # `tick f(x)`, `tick f, x` and `tick f` over arguments: the same call as `call`, started and NOT waited for. It is
 # `call f / ... / wait false`, so the task goes on at once, and in a value position the call's value is the
-# pending one (a `Promise` on TypeScript). note/term/plan/await-by-default-and-mark-metadata.md, section 2.
+# pending one (a `Promise` on TypeScript). note/project/term/await-by-default-and-mark-metadata.md, section 2.
 #
 # The same sites as `call`, so a ticked call is written exactly as a called one. The bridge tells the two apart
 # by the head word, the way it tells a lean call from a longhand one by the file.

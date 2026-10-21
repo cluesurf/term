@@ -6,7 +6,7 @@
 // handler had to be bridged by blocking a thread), and a TLS story that is an `HttpsConfigurator` nobody wants to
 // write. It also passed an EMPTY header map to the handler, so no Term handler could read a header at all.
 //
-// Reached only through the public network/server API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/server API. See note/project/term/stdlib/native-async-file-and-server.md.
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.application.install

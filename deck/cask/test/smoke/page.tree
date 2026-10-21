@@ -32,7 +32,7 @@ task boot
   # the cask pushes `smoke` after every reply; the verdict requires having heard it, so a bridge that only answers
   # and never pushes fails here
   # a list rather than a boolean: a local a closure reassigns is folded to its literal by the TypeScript path today
-  # (filed in note/workflow/learnings.md), and a list is pushed into rather than reassigned
+  # (filed in note/project/workflow/learnings.md), and a list is pushed into rather than reassigned
   save heard
     make list
   call listen

@@ -1,5 +1,5 @@
 # The analysis: which tier runs a pattern on one engine, and the rewrites that move a pattern to a cheaper one
-# (note/term/stdlib/regex-engine.md, "Capability sets").
+# (note/project/term/stdlib/regex-engine.md, "Capability sets").
 #
 #   A  native     the target's own engine, given the pattern written for it (`native-text`), when every feature the
 #                 pattern uses is in the engine's capability set (./feature.tree, `engine-profile`), no class is

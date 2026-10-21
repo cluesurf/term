@@ -84,7 +84,7 @@ task warn-deprecated
   save out, make list
 
   # A FORM MARKED DEPRECATED IS WARNED ABOUT WHERE ANOTHER FILE USES IT: a `make` of it, and a task's input or result
-  # typed by it (note/term/plan/decisions-2026-10.md, D13: `ordered-set` toward `set`)
+  # typed by it (note/project/term/decisions-2026-10/decisions-2026-10.md, D13: `ordered-set` toward `set`)
   save form-names, make list
   save form-files, make list
   walk program

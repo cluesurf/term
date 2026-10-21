@@ -1,4 +1,4 @@
-// Phase 2 of note/term/gaps/plan.md: diagnostics that name the problem. Each block is a term.surf guide's own
+// Phase 2 of note/project/term/guides/research/gaps/plan.md: diagnostics that name the problem. Each block is a term.surf guide's own
 // sample, held two ways: the message a reader could not act on is gone, and the one they can is there.
 //
 // Run: npx tsx test/check/diagnostics.ts

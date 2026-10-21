@@ -11,7 +11,7 @@
 # What is NOT here is the point. `view-node` also carries `save` (a computed local) and `view-element` also
 # carries `seed` (an attribute or an event handler), and this grammar has no way to reach either, so the mint
 # cannot build one. `walk test`, the while loop, is likewise unreachable: only `walk list` is matched, so a
-# document's every loop carries its own end. See note/term/view/05-sandbox.md.
+# document's every loop carries its own end. See note/project/term/view/05-sandbox.md.
 #
 # Both walks land in one site, because both mean the same thing by the time anything downstream sees them: the
 # reader normalises `walk size` into a `walk list` over `range(base, head)`, `range` being a render-runtime task.

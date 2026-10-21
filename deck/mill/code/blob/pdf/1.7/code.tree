@@ -6,7 +6,7 @@
 # model (dictionaries, arrays, indirect references, streams) and the xref/trailer — ./lace.tree's `pdf-tree`/
 # `definition`/`end` are genuinely procedural (sorting keys, walking a document tree, formatting a running
 # byte-offset table), not a fixed template catalog the way every operator below is, so porting them is a
-# different, larger piece of work, not more of this one. See note/term/feed/07-implementation.md.
+# different, larger piece of work, not more of this one. See note/project/term/feed/07-implementation.md.
 
 task text-start
   like text

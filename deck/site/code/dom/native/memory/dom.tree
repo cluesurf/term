@@ -2,7 +2,7 @@
 # The in-memory DOM in pure, typed Term: the host every backend can run, with no browser, no runtime shim and no
 # native view toolkit. It is what the `swift` and `kotlin` envs resolve the dom to until an `ios`, `macos` or
 # `android` host stands in front of it (compile/native.ts, NATIVE_ENV_FALLBACK), and it is the tree the differential
-# test renders on TypeScript, Swift and Kotlin and compares (native-dom-0004). See note/term/app/10-native-dom.md.
+# test renders on TypeScript, Swift and Kotlin and compares (native-dom-0004). See note/project/term/app/10-native-dom.md.
 #
 # Three rules keep it identical on every backend:
 #

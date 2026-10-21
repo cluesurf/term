@@ -12,7 +12,7 @@ mine load
         site host
     # `base make` beside the `find` lines: resolve the path from the PACKAGE root rather than its code root first.
     # Not a `find`: it imports nothing. Its value must be the path's first segment, which the reader checks
-    # (note/term/plan/manifest-mark-and-code-root.md)
+    # (note/project/term/manifest/manifest-mark-and-code-root.md)
     mine maybe
       mine form, like load-base
         site base

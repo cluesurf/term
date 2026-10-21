@@ -1,0 +1,38 @@
+# One HTML escape for markup a Term task builds as text. Every value that did not come from the page's own literals
+# goes through `escape-html` before it is joined into a body: `&` first, so an entity already written is not read
+# twice, then `<`, `>`, `"` and `'`, which makes the result safe both as element text and inside a quoted attribute.
+# It is the same set the node serializer's `escapeText` and `escapeAttr` apply (dom/native/node/runtime/html.ts),
+# written in Term so it runs on every backend a site is cast to.
+
+load @term/base/text
+  find replace-all
+
+task escape-html
+  take value, like text
+  like text
+  save out
+    call replace-all
+      read value
+      text <&>
+      text <&amp;>
+  save out
+    call replace-all
+      read out
+      text <\<>
+      text <&lt;>
+  save out
+    call replace-all
+      read out
+      text <\>>
+      text <&gt;>
+  save out
+    call replace-all
+      read out
+      text <">
+      text <&quot;>
+  save out
+    call replace-all
+      read out
+      text <'>
+      text <&#39;>
+  send back, read out

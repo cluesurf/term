@@ -16,7 +16,7 @@
 // concurrent (that is what the runtime is for), they are just not parallel. Making them parallel means making
 // emitted task values Send, which is a compiler change and its own piece of work.
 //
-// Reached only through the public network/server API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public network/server API. See note/project/term/stdlib/native-async-file-and-server.md.
 mod runtime {
     use super::{Header, Request, Response};
     use bytes::Bytes;

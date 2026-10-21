@@ -1,4 +1,4 @@
-// The second pass over the lean surface (note/term/plan/lean-surface-second-pass.md). Each section is held by what
+// The second pass over the lean surface (note/project/term/lean/lean-surface-second-pass.md). Each section is held by what
 // the compiler EMITS, never by what the parser builds alone:
 //
 //   1. `sift x` is `fork case, x`: the same TypeScript, Rust, Swift and Kotlin, in a longhand file and a lean one

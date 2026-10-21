@@ -1,6 +1,6 @@
 // Tailwind JIT + incremental + subscription tests. Covers the styling pipeline added on the Salsa query graph:
 // used-class extraction from the milled program, the JIT catalog filter, the backdated `usedClasses` query, and the
-// side-effect subscription layer. Run: `npx tsx deck/test/code/demo-jit.ts`. See note/library/face/tailwind-jit.md.
+// side-effect subscription layer. Run: `npx tsx deck/test/code/demo-jit.ts`. See note/project/term/face/research/tailwind-jit.md.
 
 import { parse } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'

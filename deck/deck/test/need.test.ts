@@ -1,4 +1,4 @@
-// A project's toolchain request (note/term/plan/term-versions.md): `need` in deck.tree, its pin in lock.tree, both read
+// A project's toolchain request (note/project/term/term-versions.md): `need` in deck.tree, its pin in lock.tree, both read
 // by the mill grammar and by the hand reference reader alike, written back unchanged, and resolved against a registry
 // the way `term load` resolves it.
 

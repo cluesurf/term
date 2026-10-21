@@ -1,7 +1,7 @@
 // The toolkit view host on Apple (native-dom-0005): the dom's node contract over REAL platform views, so a Term program renders
 // with no WebView and no JavaScript engine. The render runtime (site/code/view/render.tree) is Solid-style: it creates
 // a node, sets a property, appends, removes, and never re-describes the screen. AppKit and UIKit are retained trees of
-// exactly that shape, so each call maps to one platform call. See note/term/app/10-native-dom.md.
+// exactly that shape, so each call maps to one platform call. See note/project/term/app/10-native-dom.md.
 //
 // Reached only through ../dom.tree, whose tasks map to `nativeView.*`. Its Android twin is native-view.kt beside it. ONE FILE, TWO TOOLKITS, the way the cask runtime
 // is written: AppKit under `#if canImport(AppKit)`, UIKit under `#if canImport(UIKit)`, and everything between the
@@ -20,7 +20,7 @@
 //   swiftui                a SwiftUI view in a slot of the tree: its `name` picks a registered view, hosted in an
 //                          NSHostingView or a UIHostingController; its other attributes reach the view through an
 //                          observable `TermSlot`, and the view's events come back as the node's events
-//                          (swiftui-target-0001, note/term/view/12-render-seam.md)
+//                          (swiftui-target-0001, note/project/term/view/12-render-seam.md)
 //   anything else          a vertical stack: the container every layout starts from
 //
 // The window's root (a vertical stack) is pinned to all four edges of the window's safe area (UIKit: the root controller's
@@ -149,7 +149,7 @@ final class TermNode {
         // face's dialog: a stack of content the platform presents itself, an NSPanel sheet on macOS and a presented
         // view controller on iOS, never placed in the page it is appended to (native-dom-0026)
         case sheet
-        // the vocabulary's image, divider and scroll (native-dom-0049, note/term/view/11-vocabulary.md)
+        // the vocabulary's image, divider and scroll (native-dom-0049, note/project/term/view/11-vocabulary.md)
         case image
         case divider
         case scroll
@@ -339,7 +339,7 @@ final class TermNode {
             rule.backgroundColor = .separator
             #endif
             // a line is a picture of separation, not content: out of the accessibility tree, as the contract has it
-            // for the toolkits (note/term/view/11-vocabulary.md, "Accessibility")
+            // for the toolkits (note/project/term/view/11-vocabulary.md, "Accessibility")
             #if canImport(AppKit)
             rule.setAccessibilityElement(false)
             rule.setAccessibilityHidden(true)
@@ -1588,7 +1588,7 @@ enum nativeView {
     }
 
     // what the platform's accessibility API reports for a node (native-accessibility-0007): `role|name`, the role in the
-    // contract's own spelling (note/term/view/11-vocabulary.md, "Accessibility"). AppKit: `accessibilityRole()` without its
+    // contract's own spelling (note/project/term/view/11-vocabulary.md, "Accessibility"). AppKit: `accessibilityRole()` without its
     // `AX` (`AXCheckBox` is `checkBox`). UIKit: the traits, by name, joined with `+`, empty for none. A node out of the
     // tree is `hidden`. The name is the accessibility label, else a label's own text
     static func accessibilityOf(_ handle: Any) -> String {
@@ -2215,7 +2215,7 @@ enum nativeView {
 
     // `child` goes in under `reference`'s parent just before it, moved there if it has a parent. The render runtime keeps
     // a list in its place among its siblings this way: its items go in before a marker, never at the end of the parent
-    // (note/term/view/12-render-seam.md)
+    // (note/project/term/view/12-render-seam.md)
     static func insertBefore(_ childHandle: Any, _ referenceHandle: Any) {
         onMain {
             let child = node(childHandle)

@@ -3,7 +3,7 @@
 // Jetpack Compose (the emulator), with the props that name it, and what each PLATFORM'S ACCESSIBILITY API reports for it
 // read back (`accessibility-of`: AppKit's accessibilityRole and label, UIKit's traits and label, the
 // AccessibilityNodeInfo a view fills in on Android, Compose's semantics tree on both Compose legs). Each role must be
-// one the contract's column for that platform names (note/term/view/11-vocabulary.md, "Accessibility"), and each named
+// one the contract's column for that platform names (note/project/term/view/11-vocabulary.md, "Accessibility"), and each named
 // word must carry its name. The dialog is presented by the platform rather than placed, and is not measured here.
 // A11Y_ONLY=macos (or ios, android, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-accessibility.ts
 
@@ -190,7 +190,7 @@ ${report}
 `
 
 // the contract's column per platform: the cell for each word
-const note = readFileSync(join(process.cwd(), '../../../../note/term/view/11-vocabulary.md'), 'utf8')
+const note = readFileSync(join(process.cwd(), '../../../../note/project/term/view/11-vocabulary.md'), 'utf8')
 const table = note.slice(note.indexOf('## Accessibility'), note.indexOf('## The layout model'))
 const rows = new Map(
   table

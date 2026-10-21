@@ -27,7 +27,7 @@ load @term/call/work/tint
 # WHAT THAT DOES AND DOES NOT BUY. On TypeScript this is complete. On Rust the dock resolves to a module that does
 # not exist, so the verb is not native until whatever it docks is Term too. That is the honest shape of the
 # conversion: the source becomes `.tree` first, and each dock is then a named thing to replace, in one place, rather
-# than a TypeScript file nobody is looking at. See note/term/project/cli-in-term.md.
+# than a TypeScript file nobody is looking at. See note/project/term/cli-in-term/readme.md.
 
 load @term/base/path
   find join

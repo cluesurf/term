@@ -1,4 +1,4 @@
-# Installing a version of `term`, verified, beside the others (note/term/plan/term-versions.md, "Installing a
+# Installing a version of `term`, verified, beside the others (note/project/term/term-versions.md, "Installing a
 # version"): the texts an install writes and the decisions it makes about a payload's files. The install.tree that
 # says what an install is, the payload's file list (every file with its sha256 and mode, written inside the signed
 # layer), the Windows front's one-line shim, which files of a new payload are hard-linked to a version already

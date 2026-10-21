@@ -20,7 +20,7 @@ bind f64-maximum-value
     text <Double.MAX_VALUE>
 
 # the eight bytes of the double, IEEE 754, big-endian: the exact value, for an encoder that must carry it bit for bit
-# (`@term/host` tree/code, note/term/host/10-code.md)
+# (`@term/host` tree/code, note/project/term/host/10-code.md)
 bind f64-to-bytes
   take value, like float
   like bytes

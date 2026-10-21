@@ -1,4 +1,4 @@
-// The slow half of dispatch (note/term/plan/term-versions.md, "Dispatch"): what `host/need.mjs` imports only when a
+// The slow half of dispatch (note/project/term/term-versions.md, "Dispatch"): what `host/need.mjs` imports only when a
 // command cannot simply run, built on its own to `host/need-hand.mjs` so the fast half stays a few kilobytes.
 //
 // Two jobs, both printed through the terminal output library like every other command's lines:

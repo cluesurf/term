@@ -2,7 +2,7 @@
 #
 # 1. Strict positivity (hard error). A datatype may not refer to itself in a negative position (to the left of an
 #    arrow) within its own fields. Negative occurrences let you build a non-terminating loop and thus a proof of
-#    falsehood, so they are rejected outright. See note/research/vibe/computation/plans/18-type-theory-gaps.md.
+#    falsehood, so they are rejected outright. See note/project/term/archive/computation/plans/18-type-theory-gaps.md.
 # 2. Termination (warning). A recursive function should decrease some argument on every self-call, so it cannot spin
 #    forever. The structural / numeric-descent fragment is verified; recursion that cannot be shown to end is flagged
 #    (a warning today, because functions are still opaque postulates to the kernel; it becomes a hard error once

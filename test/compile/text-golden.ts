@@ -6,7 +6,7 @@
 //
 // Each row is set in the family the font contract picks for its script (deck/face/code/font/font.tree,
 // `resolve-font`), so the page asks for what a Term app asks for. Until a font is bundled for a script (its licence
-// first, note/term/project/native-text-fonts.md) the platform's own fonts are what draw it, and on a phone that leaves
+// first, note/project/term/native-text/native-text-fonts.md) the platform's own fonts are what draw it, and on a phone that leaves
 // boxes in the ancient and minority scripts. So the gate is a BASELINE that may only shrink, like `hold.json`:
 // text-golden.baseline.json holds the boxes per platform per script, a count over it fails, and
 // TEXT_GOLDEN_COMMIT=1 rewrites it for the platforms that ran. The counts are printed either way, never hidden.

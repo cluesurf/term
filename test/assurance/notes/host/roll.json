@@ -1,0 +1,606 @@
+{
+  "deck": [
+    {
+      "host": "@assurance/notes",
+      "kind": "deck",
+      "name": "@assurance/notes",
+      "site": "",
+      "file": 2
+    }
+  ],
+  "exception": [],
+  "task": [
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "aim",
+      "site": "code/model.tree:152:1",
+      "take": [
+        {
+          "name": "f",
+          "like": "flag"
+        },
+        {
+          "name": "at",
+          "like": "natural"
+        },
+        {
+          "name": "whose",
+          "like": "natural"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        }
+      ],
+      "like": "note",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "cross",
+      "site": "code/model.tree:126:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        },
+        {
+          "name": "id",
+          "like": "natural"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "deleted-stays-gone",
+      "site": "code/law.tree:461:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "viewer",
+          "like": "person"
+        },
+        {
+          "name": "v",
+          "like": "shelf"
+        },
+        {
+          "name": "seen",
+          "like": "shows"
+        }
+      ],
+      "like": "all-live",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "either",
+      "site": "code/model.tree:57:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "flag"
+        },
+        {
+          "name": "b",
+          "like": "flag"
+        }
+      ],
+      "like": "flag",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "guard",
+      "site": "code/model.tree:168:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "flag"
+        },
+        {
+          "name": "at",
+          "like": "natural"
+        },
+        {
+          "name": "whose",
+          "like": "natural"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        }
+      ],
+      "like": "note",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "is-admin",
+      "site": "code/model.tree:88:1",
+      "take": [
+        {
+          "name": "r",
+          "like": "rank"
+        }
+      ],
+      "like": "flag",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "isolation",
+      "site": "code/law.tree:505:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "viewer",
+          "like": "person"
+        },
+        {
+          "name": "v",
+          "like": "shelf"
+        },
+        {
+          "name": "seen",
+          "like": "shows"
+        }
+      ],
+      "like": "owned",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "may",
+      "site": "code/model.tree:98:1",
+      "take": [
+        {
+          "name": "actor",
+          "like": "person"
+        },
+        {
+          "name": "owner",
+          "like": "natural"
+        }
+      ],
+      "like": "flag",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership",
+      "site": "code/law.tree:594:1",
+      "take": [
+        {
+          "name": "es",
+          "like": "events"
+        },
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "run",
+          "like": "replays"
+        }
+      ],
+      "like": "fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-apply",
+      "site": "code/law.tree:981:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "note"
+        },
+        {
+          "name": "r",
+          "like": "shelf"
+        },
+        {
+          "name": "a2",
+          "like": "note"
+        },
+        {
+          "name": "r2",
+          "like": "shelf"
+        },
+        {
+          "name": "join",
+          "like": "task(task(fair) -> fair, task(fair-shelf) -> fair-shelf) -> fair-shelf"
+        },
+        {
+          "name": "keep-top",
+          "like": "task(fair) -> fair"
+        },
+        {
+          "name": "keep-rest",
+          "like": "task(fair-shelf) -> fair-shelf"
+        }
+      ],
+      "like": "fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-build",
+      "site": "code/law.tree:911:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "note"
+        },
+        {
+          "name": "r",
+          "like": "shelf"
+        },
+        {
+          "name": "a2",
+          "like": "note"
+        },
+        {
+          "name": "r2",
+          "like": "shelf"
+        },
+        {
+          "name": "keep-top",
+          "like": "task(fair) -> fair"
+        },
+        {
+          "name": "keep-rest",
+          "like": "task(fair-shelf) -> fair-shelf"
+        },
+        {
+          "name": "top-was",
+          "like": "fair"
+        },
+        {
+          "name": "rest-was",
+          "like": "fair-shelf"
+        }
+      ],
+      "like": "fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-carry",
+      "site": "code/law.tree:625:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "shelf"
+        },
+        {
+          "name": "b",
+          "like": "shelf"
+        },
+        {
+          "name": "keep",
+          "like": "task(fair-shelf) -> fair-shelf"
+        },
+        {
+          "name": "x",
+          "like": "fair-shelf"
+        }
+      ],
+      "like": "fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-cross",
+      "site": "code/law.tree:714:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        },
+        {
+          "name": "id",
+          "like": "natural"
+        },
+        {
+          "name": "t",
+          "like": "shelf"
+        },
+        {
+          "name": "c",
+          "like": "crosses"
+        }
+      ],
+      "like": "task(fair-shelf) -> fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-join",
+      "site": "code/law.tree:779:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "note"
+        },
+        {
+          "name": "r",
+          "like": "shelf"
+        },
+        {
+          "name": "a2",
+          "like": "note"
+        },
+        {
+          "name": "r2",
+          "like": "shelf"
+        },
+        {
+          "name": "keep-top",
+          "like": "task(fair) -> fair"
+        },
+        {
+          "name": "keep-rest",
+          "like": "task(fair-shelf) -> fair-shelf"
+        }
+      ],
+      "like": "task(fair-shelf) -> fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-settle",
+      "site": "code/law.tree:1015:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "note"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        },
+        {
+          "name": "id",
+          "like": "natural"
+        },
+        {
+          "name": "m",
+          "like": "note"
+        },
+        {
+          "name": "st",
+          "like": "settles"
+        }
+      ],
+      "like": "task(fair) -> fair",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-split",
+      "site": "code/law.tree:838:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "note"
+        },
+        {
+          "name": "r",
+          "like": "shelf"
+        },
+        {
+          "name": "a2",
+          "like": "note"
+        },
+        {
+          "name": "r2",
+          "like": "shelf"
+        },
+        {
+          "name": "ok",
+          "like": "fair-shelf"
+        }
+      ],
+      "like": "task(task(fair) -> fair, task(fair-shelf) -> fair-shelf) -> fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "ownership-step",
+      "site": "code/law.tree:654:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "e",
+          "like": "event"
+        },
+        {
+          "name": "t",
+          "like": "shelf"
+        },
+        {
+          "name": "st",
+          "like": "steps"
+        }
+      ],
+      "like": "task(fair-shelf) -> fair-shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "pick",
+      "site": "code/model.tree:207:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "note"
+        },
+        {
+          "name": "viewer",
+          "like": "person"
+        },
+        {
+          "name": "shown",
+          "like": "shelf"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "replay",
+      "site": "code/model.tree:187:1",
+      "take": [
+        {
+          "name": "es",
+          "like": "events"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "same",
+      "site": "code/model.tree:68:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "natural"
+        },
+        {
+          "name": "b",
+          "like": "natural"
+        }
+      ],
+      "like": "flag",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "settle",
+      "site": "code/model.tree:140:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "note"
+        },
+        {
+          "name": "actor",
+          "like": "person"
+        },
+        {
+          "name": "id",
+          "like": "natural"
+        }
+      ],
+      "like": "note",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "show",
+      "site": "code/model.tree:218:1",
+      "take": [
+        {
+          "name": "f",
+          "like": "flag"
+        },
+        {
+          "name": "n",
+          "like": "note"
+        },
+        {
+          "name": "shown",
+          "like": "shelf"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "step",
+      "site": "code/model.tree:109:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "e",
+          "like": "event"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "view",
+      "site": "code/model.tree:197:1",
+      "take": [
+        {
+          "name": "s",
+          "like": "shelf"
+        },
+        {
+          "name": "viewer",
+          "like": "person"
+        }
+      ],
+      "like": "shelf",
+      "halt": []
+    }
+  ],
+  "dock": [],
+  "tell": [],
+  "kind": [],
+  "supervision": []
+}

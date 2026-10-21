@@ -1,4 +1,4 @@
-// A raise is caught on the native backends the way it is on TypeScript (note/term/hive/11-native-exceptions.md):
+// A raise is caught on the native backends the way it is on TypeScript (note/project/term/hive/11-native-exceptions.md):
 // a program with a guarded call and an unguarded one, compiled against the real stdlib for each backend, built on
 // the real toolchain, and run. The guarded path returns the handler's answer with the exception's fields whole; the
 // unguarded raise ends the program with a non-zero exit and the exception's form and note on stderr. GN_ONLY=swift

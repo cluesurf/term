@@ -1,7 +1,7 @@
 # What the runner asks of the machine it runs on, which the standard library does not answer yet: a clock with the
 # fraction of a millisecond, the directory it was started in, and the machine's description. The runner runs on node
 # only (`term mark` boots it there), so these bind node modules directly. Each one is a stdlib gap, listed in
-# note/term/guides/commands/mark.md.
+# note/project/term/guides/draft/commands/mark.md.
 
 load @term/base/json
   find array-size

@@ -2,7 +2,7 @@
 // real DOM through the existing render runtime with its queries passed in as parameters.
 //
 // This is the one test that closes the whole chain: `.tree` document -> reader -> zone -> view-lower -> emitted
-// component -> mounted nodes. Everything else in test/view asserts a stage. See note/term/view/07-lowering.md.
+// component -> mounted nodes. Everything else in test/view asserts a stage. See note/project/term/view/07-lowering.md.
 //
 //   npx tsx test/view/document.ts
 
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   const host = mod.makeElement('root')
 
   // the query arrives RESOLVED. The renderer never fetches: the host resolves every query first and passes the
-  // result in, which is what keeps the component free of input and output. See note/term/view/03-find.md.
+  // result in, which is what keeps the component free of input and output. See note/project/term/view/03-find.md.
   mod.page(host, [{ symbol: 'a' }, { symbol: 'e' }, { symbol: 'i' }])
 
   const said = texts(host)

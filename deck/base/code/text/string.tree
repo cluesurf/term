@@ -5,7 +5,7 @@
 # Seven tasks here repeated `text`'s under other names (guides: library/text, 2026-10-05). Each is now `mark
 # deprecated`, says which of `text`'s to call, and calls it, so a call from another file warns and still does the same
 # thing. NOTE `replace` here replaces EVERY occurrence, which is `text`'s `replace-all`; `text`'s own `replace` replaces
-# the first. They go at the next minor, once the repository's calls are moved (note/term/plan/backends-complete.md).
+# the first. They go at the next minor, once the repository's calls are moved (note/project/term/backends-complete.md).
 
 mark unstable
 

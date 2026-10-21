@@ -3,6 +3,6 @@
 # `{platform}` from its env chain, and every target reaches ./native/input.tree today, because an `input` element is
 # already the platform's field on each: the browser's on the web, NSTextField, UITextField and EditText through the
 # toolkit host. Takes `host`, `class`, `control` (the text, a signal) and `placeholder`.
-# See note/term/app/11-uniform-interface.md.
+# See note/project/term/app/11-uniform-interface.md.
 
 bear @term/face/component/native/{platform}/input

@@ -2,7 +2,7 @@
 # Slider, the GENERIC implementation: what every platform without its own gets, the web among them, where it is the
 # browser's own range control. A platform with a slider of its own (macOS, iOS, Android) gets ./toolkit/slider.tree
 # instead, through `component/slider.tree` and the build's env chain. Both take the same props, which is the contract
-# (note/term/app/11-uniform-interface.md, native-dom-0026).
+# (note/project/term/app/11-uniform-interface.md, native-dom-0026).
 #
 #   save volume, call make-range / bind start, code 40.0
 #   call slider / read root / text <> / read volume / code 0.0 / code 100.0 / code 1.0
@@ -44,7 +44,7 @@ task mount-slider
     read input
     text <type>
     text <range>
-  # its name, what a screen reader speaks before its value (note/term/view/11-vocabulary.md, "Accessibility")
+  # its name, what a screen reader speaks before its value (note/project/term/view/11-vocabulary.md, "Accessibility")
   call write-attribute
     read input
     text <aria-label>

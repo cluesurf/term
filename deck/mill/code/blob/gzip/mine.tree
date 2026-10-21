@@ -1,6 +1,6 @@
 mark draft
 # Checked spec, not compiled code — see the note at the top of ../hex/mine.tree. The real reader is ./code.tree's
-# read-gzip. Matches it field for field; see note/term/feed/03-worked-examples.md for the walkthrough.
+# read-gzip. Matches it field for field; see note/project/term/feed/03-worked-examples.md for the walkthrough.
 #
 # `mine let` (new): binds a computed intermediate value — an embedded Term expression, the same "grammar
 # describes shape, ordinary Term computes values" split `mine value` already uses in ../hex/mine.tree — usable

@@ -1,5 +1,5 @@
 # The diagnostic system: every phase of the compiler reports through it. See
-# note/research/vibe/computation/plans/02-diagnostics.md.
+# note/project/term/archive/computation/plans/02-diagnostics.md.
 #
 # Ported from parser/diagnostic.ts (self-hosting, 2026-10-05), the compiler's second shared type after compile/node.
 # The decisions:
@@ -830,7 +830,7 @@ task entry-of
     case impure-proof
       back error-entry(0x19, <this proof calls something impure>, <a proof may call only pure tasks: no native calls, no async, no writes through a record it did not make>)
     # A `twin` is another implementation of a task, which the compiler may choose in its place, so it must be able to
-    # agree with it (note/term/optimize/admission.md). Each of these is a twin that could not.
+    # agree with it (note/project/term/optimize/admission.md). Each of these is a twin that could not.
     case twin-unknown
       back error-entry(0x1a, <this twin names no task>, <a twin is written `twin \<task\>, name \<label\>` beside a task this module can see>)
     case twin-of-impure
@@ -848,7 +848,7 @@ task entry-of
     case twin-choice
       back error-entry(0x22, <this choice of implementation cannot be made>, <choose a twin the task has, eligible on this target, whose conditions the selection pass can honor>)
     case ease-unknown
-      back error-entry(0x21, <this relaxation is not one Term defines>, <the relaxations are `float-order` and `float-fused` (note/term/optimize/words.md)>)
+      back error-entry(0x21, <this relaxation is not one Term defines>, <the relaxations are `float-order` and `float-fused` (note/project/term/optimize/words.md)>)
     # A supervision tree OTP would start and then misbehave: a `transient` worker restarts only when it raises, so one
     # whose work can raise nothing never restarts, and is a `temporary` under a misleading name (check/supervise.ts)
     case dead-restart
@@ -863,12 +863,12 @@ task entry-of
       back warning-entry(0x25, <`note private` is the old spelling of `mark private`>, <write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation>)
     # a call to an async task OUTSIDE every task (a top-level `host`, a component's body, a closure in either that is
     # not async), where nothing can wait for it: it hands back a pending value. `tick` says that is meant. Behind
-    # the await switch (compile/compile.ts, `setAwaitOutsideTasks`). note/term/plan/await-by-default-and-mark-metadata.md
+    # the await switch (compile/compile.ts, `setAwaitOutsideTasks`). note/project/term/await-by-default-and-mark-metadata.md
     case async-outside-task
       back error-entry(0x27, <a call to an async task outside any task, where nothing waits for it>, <move the call into a task, or write `tick` before it to start it without waiting>)
     # `note async`, `note unsafe`, `note draft` ...: metadata is `mark` since 2026-10-02, and `note <word>` is the
     # old spelling. Still read the same (the mill mints both as one form), so code written before keeps building.
-    # note/term/plan/await-by-default-and-mark-metadata.md, section 4
+    # note/project/term/await-by-default-and-mark-metadata.md, section 4
     case note-metadata
       back warning-entry(0x26, <`note` is the old spelling of metadata, which is `mark`>, <write `mark` for the `note`: `term lint --fix` rewrites it, and `note` is left for documentation>)
     # A task that promises a value and has a path that ends without `back`. It built, and the TypeScript it emitted fell
@@ -881,7 +881,7 @@ task entry-of
       back error-entry(0x29, <this pattern literal is not a pattern>, <correct the pattern at the position named, or build the text at run time and handle `pattern-mismatch`>)
     # a `make pattern, <...>` literal that needs a backtracking matcher: tier C wherever the platform's engine cannot run
     # it safely, the one tier whose work can grow faster than its input, held to a budget proportional to the input and
-    # raising `pattern-budget` past it (note/term/stdlib/regex-engine.md)
+    # raising `pattern-budget` past it (note/project/term/stdlib/regex-engine.md)
     case pattern-backtracks
       back warning-entry(0x2a, <this pattern needs a backtracking matcher>, <rewrite it without the part named, or handle `pattern-budget` where it is searched>)
     # The `halt <form>` lines on a task's signature do not match what it raises: a name that is no exception, one the
@@ -896,7 +896,7 @@ task entry-of
     case document-refused
       back error-entry(0x2d, <this document uses something a document may not>, <write what the message names. A document places views and reads data, and code goes in a file of the `code` role>)
     # A `hook miss` arm that answers one case of the match or none: listing the case says more, and a case added
-    # later goes to the arm without a word (note/term/gaps/decisions.md, the catch-all)
+    # later goes to the arm without a word (note/project/term/guides/decision/gaps-decisions.md, the catch-all)
     case thin-catch-all
       back warning-entry(0x2e, <this `hook miss` arm answers one case or none>, <list the case it answers, or remove the arm>)
     # A match arm's field named like a variable already in scope, which it hides for the whole arm without a word
@@ -930,13 +930,13 @@ task entry-of
     case typed-hole
       back error-entry(0x36, <this hole is a value still to be written>, <write a value of the type named in its place. Each name in scope of that type is offered as a fix>)
     # A grammar scope (`role <name>`, or a name a load imports as a grammar) naming a grammar the compiler does not
-    # have. It would otherwise be read as code, and fail somewhere unrelated (note/term/mill/02-role-scopes.md)
+    # have. It would otherwise be read as code, and fail somewhere unrelated (note/project/term/mill/02-role-scopes.md)
     case unknown-grammar
       back error-entry(0x37, <this scope names no grammar the compiler has>, <the grammars are `note` (@term/mill/text/note). Check the spelling, or write the text as code>)
     # A grammar scope whose text its grammar refuses, or reads to something nothing lowers: a unit that is not
     # registered, an operator Term gives no meaning yet. The message names the place in the scope's text
     case scope-refused
-      back error-entry(0x38, <this scope's text is not what its grammar reads>, <correct it at the place named. note/term/mill/03-note-grammar.md is what the note grammar reads>)
+      back error-entry(0x38, <this scope's text is not what its grammar reads>, <correct it at the place named. note/project/term/mill/03-note-grammar.md is what the note grammar reads>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names

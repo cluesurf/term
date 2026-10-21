@@ -1,4 +1,4 @@
-# The `bench.tree` contract (note/term/bench/rules.md, "The file, exactly"). Every program under
+# The `bench.tree` contract (note/project/term/bench/rules.md, "The file, exactly"). Every program under
 # `mark/<family>/<program>/` states what it measures before it is timed. The file is Term data, read by @term/host, the
 # compiler's own data reader. A program missing any key is REFUSED with every reason named, and never run.
 

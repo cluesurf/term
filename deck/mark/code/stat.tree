@@ -1,4 +1,4 @@
-# The statistics of note/term/codegen/measurement.md. The median is the point estimate. The 95% interval of a ratio
+# The statistics of note/project/term/compiler/codegen/measurement.md. The median is the point estimate. The 95% interval of a ratio
 # comes from a bootstrap over PAIRED samples, drawn from a seeded generator so the same samples always give the same
 # interval. A suite is summarized by the geometric mean of its ratios, because an arithmetic mean of ratios scores 2x
 # slower and 2x faster as a net loss.

@@ -1,4 +1,4 @@
-// The first module every `term` command starts in, built to `host/need.mjs` (note/term/plan/term-versions.md,
+// The first module every `term` command starts in, built to `host/need.mjs` (note/project/term/term-versions.md,
 // "Dispatch"). The launcher runs THIS, not the 3.5 MB `host/line.js`, so choosing a version costs one small module.
 //
 //   1  resolve (need.ts): files and one variable, no network

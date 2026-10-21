@@ -12,7 +12,7 @@
 # IT COULD NOT BE WIRED AS NAMED. The native's task was also called `get`, and names are PACKAGE-GLOBAL, so the
 # two unified and the delegation emitted `function get1(kind) { return get1(kind) }`. The native is `read-path`
 # now, which is the convention code/environment.tree already follows for `current-directory` and `get-variable`.
-# Twelve more public modules are in the same state for the same reason: see note/term/stdlib-gaps.md.
+# Twelve more public modules are in the same state for the same reason: see note/project/term/stdlib/stdlib-gaps.md.
 
 mark stable
 

@@ -1,4 +1,4 @@
-// Cache health (note/term/plan/incremental-best-in-class.md, step 14). Every entry the build reads may be damaged: cut
+// Cache health (note/project/term/incremental-best-in-class.md, step 14). Every entry the build reads may be damaged: cut
 // short by a full disk, garbage from a bad sector, or a well-formed file of the wrong shape. Each is a miss, the build
 // is the same build, and the entry it writes afterwards is a good one. Here every entry of every kind a separate build
 // stores (mill, scan, unit) is damaged in one of those three ways, and the project is built again from disk.

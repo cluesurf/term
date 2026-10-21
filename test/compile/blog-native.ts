@@ -8,7 +8,7 @@
 //
 // The check: the new post's title is in the tree after the press and not before, so the store (SQLite) and the
 // renderer (the toolkit host) both ran natively. SNAPSHOT_BLOG, SNAPSHOT_BLOG_IOS and SNAPSHOT_BLOG_ANDROID name where
-// each PNG goes; they are how the screenshots in note/term/project/native-dom/ are made. The same program also runs as
+// each PNG goes; they are how the screenshots in note/project/term/archive/native-dom/ are made. The same program also runs as
 // Jetpack Compose on the emulator (compose-target-0005), SNAPSHOT_BLOG_COMPOSE_ANDROID its PNG. BLOG_ONLY=macos (or ios,
 // android, compose-android) runs one platform. Run: npx tsx test/compile/blog-native.ts
 

@@ -1,5 +1,5 @@
 // THE MAIN THAT CALLS A PROGRAM, written once for every backend: what `term make --emit X --build` appends and what the
-// test harnesses append, so a program runs the same way under both (note/term/plan/backends-complete.md, step 1).
+// test harnesses append, so a program runs the same way under both (note/project/term/backends-complete.md, step 1).
 //
 // It drives the entry the way its signature asks: an asynchronous one on the program's executor (Rust's
 // `__term_block_on`, Kotlin's `termLoop`, Swift's top-level `await`), a raising one to its raise on stderr and exit 1,

@@ -3,7 +3,7 @@
 // subclass per variant), `match` to an exhaustive `when (subject) { is MaybeSome -> ... }` whose smart-casts make a
 // variant's fields directly accessible (no rewrite needed), and struct forms to `data class`es. A variant subclass
 // carries only the generics its own fields use, filling the rest with `Nothing` (valid under `out` variance), so
-// construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
+// construction infers cleanly. Pure, browser-safe. See note/project/term/archive/computation/plans/07-codegen.md.
 //
 // The emitter is Term in three parts (self-hosting, 2026-10-06): compile/kotlin-names.tree, the helpers that read no
 // emitter state (the names, a type's inference variables, a float literal, the form walkers), compile/kotlin-facts.tree,
@@ -41,7 +41,7 @@ function pascal(name: string): string {
   return kotlinNames.kotlinPascal(name)
 }
 
-// The text operations by code point (note/term/stdlib/semantics.md). Kotlin's String is UTF-16, so a position counts
+// The text operations by code point (note/project/term/stdlib/semantics.md). Kotlin's String is UTF-16, so a position counts
 // code points by stepping through the string where it lies: nothing is converted to an array, and a call allocates
 // only its result. Matching itself (indexOf, split, replace) is the String's own UTF-16 search, which finds exactly the
 // code point matches because a needle is whole code points. It converted every string to an IntArray on almost every
@@ -233,7 +233,7 @@ export const KOTLIN_TEXT = `object TermText {
     }
 }`
 
-// A float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
+// A float as text, the same on every backend (note/project/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
 // that read back as the same float (the JDK's Double.toString gives them since 19), laid out as ECMAScript's
 // Number::toString lays them out. Kotlin's own rendering prints two as `2.0` and 1e21 as `1.0E21`.
 const KOTLIN_NUMBER = `fun termNumber(x: Double): String {
@@ -407,7 +407,7 @@ const KOTLIN_HELPERS = {
   remainder: 'fun termRemainder(a: Long, b: Long): Long = if (b == 0L) throw termByZero() else a % b',
   // integer lists in a LongArray (KOTLIN_LONGS)
   longs: KOTLIN_LONGS,
-  // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md): the shared
+  // the one exception value of a Term program on this backend (note/project/term/hive/11-native-exceptions.md): the shared
   // fields of every exception, the props as `link`, the raised record as `base`. No stack trace: filling one walks
   // the stack on every raise, and the hive keeps Term's own `flow`. `termException` is the boundary that makes a
   // foreign throw a `failure`.
@@ -985,7 +985,7 @@ export function emitKotlin(
   const prelude = (Object.keys(KOTLIN_HELPERS) as KotlinHelper[]).filter(h => needs.has(h)).map(h => KOTLIN_HELPERS[h])
 
   // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
-  // the compile driver handed over the roll. See note/term/hive/05-hive.md.
+  // the compile driver handed over the roll. See note/project/term/hive/05-hive.md.
   const wake: string[] = []
 
   if (

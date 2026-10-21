@@ -1,4 +1,4 @@
-# A program built one unit at a time, written out for a bundler (note/term/plan/incremental-best-in-class.md, steps 9
+# A program built one unit at a time, written out for a bundler (note/project/term/incremental-best-in-class.md, steps 9
 # and 10): the reading of the emitted modules that decides what each unit imports from the prelude, and which names the
 # run reaches the program by.
 #

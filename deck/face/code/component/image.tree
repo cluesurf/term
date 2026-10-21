@@ -1,5 +1,5 @@
 
-# Image: the vocabulary's word for a picture (note/term/view/11-vocabulary.md). `source` is a URL, a path or a `data:`
+# Image: the vocabulary's word for a picture (note/project/term/view/11-vocabulary.md). `source` is a URL, a path or a `data:`
 # URI. `text` is what it shows, for a reader that cannot see it, and is required: a cell grid draws only that. `fit` is
 # `contain` (the default) or `cover`.
 #

@@ -9,7 +9,7 @@
 #
 # code/text/ and code/blob/ hold the format grammars (what @term/feed held until 2026-10-06), and those are NOT this
 # role: `term make` builds each `mine.tree` there into a reader (call/code/make.ts), so they are left to the code
-# role. note/term/plan/mill-merge-and-role-scopes.md.
+# role. note/project/term/mill-merge-and-role-scopes.md.
 #
 # The `mill` role is read by deck/make/code/compile/mill-check.ts: the file parses, every `load` resolves, every
 # `find` names something its target declares, and every `mint <x>, like <form>` names a form a load brings in.

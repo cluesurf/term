@@ -1,7 +1,7 @@
 # The formatter: re-print a `.tree` CST in canonical form. Operates on the concrete syntax tree (so comments are
 # preserved) and prints from the tree, never from the input's layout, so it is idempotent by design.
 #
-# THE LAYOUT is the five rules in note/term/format-rules.md, "Where each part of a line goes":
+# THE LAYOUT is the five rules in note/project/term/compiler/format-rules.md, "Where each part of a line goes":
 #
 #   1. a statement is one line: `push items, 2`
 #   2. Term's own words chain with commas: `save items, make list, 3, 1`, `like list, like number`

@@ -1,5 +1,5 @@
 # List indexes proven inside their list for a whole counted loop, once a guard written before the loop holds
-# (note/term/codegen/passes.md, P2; F3 ranges in note/term/codegen/shared.md). The emitter writes the loop twice: the
+# (note/project/term/compiler/codegen/passes.md, P2; F3 ranges in note/project/term/compiler/codegen/shared.md). The emitter writes the loop twice: the
 # guard true runs a copy with no bounds checks, the guard false runs the original, checked, unchanged. So a run that
 # could reach outside a list takes the checked copy and stops exactly where it always did.
 #

@@ -256,7 +256,7 @@ task compute
       read x
       code 1
 `,
-    // a sum of two numbers is range-checked (note/term/proof-by-default/numbers.md), tested where it stands before it
+    // a sum of two numbers is range-checked (note/project/term/proof/numbers.md), tested where it stands before it
     // is returned (typescript.ts, `testedInPlace`); the propagation is inside it
     'const __n0 = p + 1; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )

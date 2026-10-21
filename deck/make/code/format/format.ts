@@ -1,4 +1,4 @@
-// The formatter: re-print a `.tree` CST in canonical form, by the five rules in note/term/format-rules.md, and refuse
+// The formatter: re-print a `.tree` CST in canonical form, by the five rules in note/project/term/compiler/format-rules.md, and refuse
 // any layout that mills to a different program. The pass is Term, format/layout.tree (self-hosting, 2026-10-06), and its
 // header says what each rule does. This face keeps the options as its callers write them (a `Set` of extra stacking
 // heads, `undefined` for a choice left to the file) and hands in the meaning check, the milled program and the import

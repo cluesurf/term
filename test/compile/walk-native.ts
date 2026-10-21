@@ -1,4 +1,4 @@
-// Nested `walk size` loops on the native backends (note/term/gaps/plan.md, phase 1). Both loops named their counter
+// Nested `walk size` loops on the native backends (note/project/term/guides/research/gaps/plan.md, phase 1). Both loops named their counter
 // `i`, so on TypeScript the outer loop never ended (guides: language/loops, 2026-10-03). The bridge now renames each
 // counter apart, and a `take` beside the `bind` lines names it. test/compile/guide-gaps.ts runs both samples on
 // TypeScript; this builds and runs them with rustc, swiftc and kotlinc. A backend whose toolchain is missing is

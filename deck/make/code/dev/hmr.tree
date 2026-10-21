@@ -2,7 +2,7 @@
 # modules that can accept the update. A `zone` is self-accepting (handles its own change). A module that explicitly
 # accepts a dep (dep-accept) is a boundary for that dep. If any path reaches the top without an accepting module, the
 # update cannot be applied in place and the page must full-reload. Pure: takes a graph, returns a decision.
-# See note/research/repo/vite/03-hmr-propagation.md and 08-lessons-for-seed.md.
+# See note/project/term/research/repo/vite/03-hmr-propagation.md and 08-lessons-for-seed.md.
 #
 # Ported from dev/hmr.ts (self-hosting, 2026-10-04) with dev/module-graph, whose nodes now name their importers by id.
 # The result keeps its wire shape, a union tagged on `type`, because the dev server sends it to the browser as JSON.

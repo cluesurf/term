@@ -1,5 +1,5 @@
 // A TOOLCHAIN RELEASE in an OCI registry: `@term/code`, the `term` command, one payload per platform
-// (note/term/plan/term-load-install.md, note/term/self-host/09-distribution.md items R1 and R2).
+// (note/project/term/term-load-install.md, note/term/self-host/09-distribution.md items R1 and R2).
 //
 // A package version (artifact.ts) is a commit of source files in packs, and a release is not: it is a built payload
 // for ONE platform, installed whole and never checked out file by file. So it has its own shape:

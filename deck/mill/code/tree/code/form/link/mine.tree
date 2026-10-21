@@ -122,7 +122,7 @@ mine link
 # site is called `drop` because that is what happens to it: the mint reads it so the grammar's own health check
 # can see it is accounted for, and the bridge builds nothing from it.
 #
-# Reproduced rather than fixed, so the switch stays mechanical. See quirk 6 in note/term/mint-bridge/quirks.md.
+# Reproduced rather than fixed, so the switch stays mechanical. See quirk 6 in note/project/term/mill/review/mint-bridge/quirks.md.
 mine link-lock
   mine term, term lock
     mine any

@@ -1,4 +1,4 @@
-// Sharing files between installed versions (deck/call/code/need-load.ts `extractShared`, note/term/plan/term-versions.md
+// Sharing files between installed versions (deck/call/code/need-load.ts `extractShared`, note/project/term/term-versions.md
 // "Disk", V10): a file the release's list gives the same path, sha256 and mode as an installed version's list is
 // hard-linked instead of extracted, nothing else is, and removing one version leaves the other whole. Real tarballs in a
 // scratch directory, each with the list `pnpm term:release` writes.

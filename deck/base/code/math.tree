@@ -2,7 +2,7 @@
 # greatest-common-divisor and factorial are pure Term, so they give the same whole number on every backend (a host
 # power or square root goes through a float, and the hosts disagreed past 2^53, on a negative exponent and on a
 # negative root). A result past the integer range stops, as every integer operation does
-# (note/term/stdlib/semantics.md). The logarithm and the trigonometric functions are in `float`: their results are not
+# (note/project/term/stdlib/semantics.md). The logarithm and the trigonometric functions are in `float`: their results are not
 # whole numbers.
 
 mark stable

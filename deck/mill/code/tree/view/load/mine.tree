@@ -6,7 +6,7 @@
 #     find paradigm-table, name paradigm
 #
 # The path is a package in the approved catalog and never a file. There is no relative form and no absolute form,
-# so the reachable set of a document is exactly what its manifest declares. See note/term/view/04-catalog.md.
+# so the reachable set of a document is exactly what its manifest declares. See note/project/term/view/04-catalog.md.
 
 mine view-load
   mine term, term load

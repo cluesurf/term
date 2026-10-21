@@ -3,13 +3,13 @@
 #
 # Five statement heads and not one of them declares anything the author wrote: `load` reaches the approved
 # catalogs, `host` names a constant or a parameter the route fills, `find` names a query the host resolves before
-# rendering, `tree` names a macro, and `view` defines the document. Spec: note/term/view/.
+# rendering, `tree` names a macro, and `view` defines the document. Spec: note/project/term/view/.
 #
 # The BODY half is not here. A `view` definition IS a `view-def` and its nodes are `view-node`, so the dialect
 # reuses the component AST rather than restating it, and everything downstream of `compile/view-lower.ts` works
 # unchanged. The view mill simply never produces the `save` case, never produces a `view-seed` (an attribute or an
 # event), and never produces a `walk` whose mode is `test`. What an author cannot write is what the mill will not
-# build, and note/term/view/05-sandbox.md holds a document per bound.
+# build, and note/project/term/view/05-sandbox.md holds a document per bound.
 #
 # Named `view-file` rather than `view` for the reason `zone-file` is not `zone`: Term form names are
 # package-global, and `view` is the name the component AST takes when `zone` is renamed.

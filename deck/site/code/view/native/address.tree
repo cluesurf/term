@@ -1,5 +1,5 @@
 
-# Where an app has been, kept across a relaunch (live reload, note/term/project/live-reload.md). The navigation
+# Where an app has been, kept across a relaunch (live reload, note/project/term/archive/live-reload.md). The navigation
 # contract (../navigation) hands its whole history here each time the app moves, and asks for it once at the start, so
 # a native app rebuilt and relaunched by `term work` opens on the screen the person was looking at, with the same
 # screens behind it for back.

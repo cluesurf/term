@@ -11,7 +11,7 @@
 # choices and the answer being
 # typed, the action fields, the bar. The standard's field rule names which key is
 # the location and which are actions.
-# note/term/output/mockup-differences.md records it.
+# note/project/term/output/mockup-differences.md records it.
 #
 # EVERY KEY IN THE ITEM IS PADDED TO THE WIDEST (section 7), the ones the library
 # adds included: `budget` when the

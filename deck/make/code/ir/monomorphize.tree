@@ -2,7 +2,7 @@
 # generic originals. The monomorphic targets (WGSL on the GPU, HVM) have no type parameters, so every call must resolve
 # to a concrete function. The instantiation is read off the (now fully resolved) argument types. The TypeScript, Rust,
 # Swift, and Kotlin backends keep generics natively, so this pass is optional and runs only ahead of the monomorphic
-# backends. See note/research/vibe/computation/plans/05-ir.md. Pure and browser-safe.
+# backends. See note/project/term/archive/computation/plans/05-ir.md. Pure and browser-safe.
 #
 # Ported from ir/monomorphize.ts (self-hosting, 2026-10-05). Its three rewrites are compile/node-rewrite's
 # `specialize-calls` (before a call's arguments, so specializations are made in the order the original made them),

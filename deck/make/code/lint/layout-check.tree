@@ -1,5 +1,5 @@
 # L044: in a lean file, every line is written the way `term form` writes it, by the five rules in
-# note/term/format-rules.md, "Where each part of a line goes". The fix writes the formatter's lines.
+# note/project/term/compiler/format-rules.md, "Where each part of a line goes". The fix writes the formatter's lines.
 #
 # It does not restate the rules: it asks the formatter (format/layout.tree `format-group-lines`) how each group is laid
 # out and reports the outermost group written otherwise, with a fix that writes the formatter's lines. A group whose

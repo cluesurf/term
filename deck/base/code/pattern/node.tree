@@ -1,6 +1,6 @@
 # The parsed pattern, which every tier reads: the reference interpreter walks it, the analysis decides a tier from
 # it, the compiler turns it into a program, and the native tier writes it back as an engine's syntax. One tree, so a
-# pattern means what ./syntax.tree read it as and nothing else (note/term/stdlib/regex-engine.md).
+# pattern means what ./syntax.tree read it as and nothing else (note/project/term/stdlib/regex-engine.md).
 #
 # A set of code points is a list of numbers, a start and an end (both included) per range, sorted, never overlapping
 # or touching: [48, 57, 97, 122] is 0-9 and a-z. The `i` flag is applied when the pattern is read, so a letter under

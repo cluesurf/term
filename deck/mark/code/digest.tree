@@ -1,4 +1,4 @@
-# Digests, in the 8x8 tone shape every benchmark digest takes (note/term/bench/database.md): a sha256 lettered through
+# Digests, in the 8x8 tone shape every benchmark digest takes (note/project/term/bench/database.md): a sha256 lettered through
 # the standard library's tone alphabet, in eight groups of eight. `tone-encode` groups in fours, so its dashes are
 # dropped and the letters grouped again.
 

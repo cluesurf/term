@@ -66,7 +66,7 @@ ok(
   woke,
 )
 
-// read with the parser, not matched: one parser for `.tree` (note/term/one-parser.md), and manifestNameOf is the
+// read with the parser, not matched: one parser for `.tree` (note/project/term/one-parser.md), and manifestNameOf is the
 // same function the resolver uses, so this cannot disagree with the build about what the manifest declares
 ok(
   '`wake` names the package in the manifest it wrote',

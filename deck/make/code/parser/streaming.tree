@@ -1,5 +1,5 @@
 # Read a `.tree` source a top-level group at a time, without holding the whole file. The unit is a completed top-level
-# group (note/term/feed/tree-stream-unit.md). There is one parser, and this is not a second one: a group's BOUNDARY is
+# group (note/project/term/feed/decision/tree-stream-unit.md). There is one parser, and this is not a second one: a group's BOUNDARY is
 # found by line (a top-level group ends where the next column-0 line begins), and a slice that does not parse yet is not
 # a complete group, so the reader keeps reading. That is slower than counting angle brackets and cannot disagree with the
 # grammar.

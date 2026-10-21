@@ -5,7 +5,7 @@
 // applied to a gate.
 //
 // Reports by default and writes nothing. `--find` prints the query manifest, which is the `host` dialect, so it
-// pipes into `term mold --json` for a route loader that wants it that way. See note/term/view/08-package-and-cli.md.
+// pipes into `term mold --json` for a route loader that wants it that way. See note/project/term/view/08-package-and-cli.md.
 //
 // The manifest and the JSON are DATA on stdout, byte for byte as before: word.surf's guide save gate reads `--find`
 // from stdout (mesh/deck/back/code/tool/guide.ts). What a document uses is a `read` item per document, its uses as

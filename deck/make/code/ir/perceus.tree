@@ -2,7 +2,7 @@
 # functional-but-in-place reuse (FBIP). Values do not alias; the compiler inserts exact dup/drop operations from a
 # static last-use analysis, and when a uniquely-owned allocation is freed right before an allocation of the same shape,
 # it is reused in place instead of freed-and-reallocated. This ties to the kernel's linearity (a `1` multiplicity is a
-# uniquely-owned value). See note/research/vibe/computation/plans/05-ir.md and design/readme.md. Browser-safe. This is
+# uniquely-owned value). See note/project/term/archive/computation/plans/05-ir.md and design/readme.md. Browser-safe. This is
 # the analysis on a straight-line MIR; lowering full control flow onto it is the next step.
 #
 # Ported from ir/perceus.ts (self-hosting, 2026-10-04). The value and the instruction are unions tagged on `kind` and

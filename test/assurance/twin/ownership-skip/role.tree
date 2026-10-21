@@ -1,0 +1,4 @@
+# Every file here is written lean: `back x` returns, `<x>` is text, a bare word is a variable, `f(a, b)` is a call.
+role code
+  mark lean
+  take @/code/*.tree

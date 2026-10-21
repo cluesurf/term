@@ -1,5 +1,5 @@
 
-# Spacer: the vocabulary's word for the room left in a stack (note/term/view/11-vocabulary.md). No props: an empty child
+# Spacer: the vocabulary's word for the room left in a stack (note/project/term/view/11-vocabulary.md). No props: an empty child
 # that grows. Drawn as a `div` with `flex-grow: 1` on the DOM and by every toolkit stack (test/compile/toolkit-words.ts
 # holds that it takes the rest of a row on AppKit, UIKit and Android views).
 
@@ -11,5 +11,5 @@ view spacer
   view div
     bind data-slot, text <spacer>
     bind style, text <flex-grow: 1>
-    # room, not content: out of the accessibility tree (note/term/view/11-vocabulary.md, "Accessibility")
+    # room, not content: out of the accessibility tree (note/project/term/view/11-vocabulary.md, "Accessibility")
     bind aria-hidden, text <true>

@@ -1,5 +1,5 @@
 // L044: in a lean file, every line is written the way `term form` writes it, by the five rules in
-// note/term/format-rules.md. The check is Term, lint/layout-check.tree (self-hosting, 2026-10-06), and its header says
+// note/project/term/compiler/format-rules.md. The check is Term, lint/layout-check.tree (self-hosting, 2026-10-06), and its header says
 // what it reports and when it offers a fix. This face is the rule object the lint driver holds, and it hands in the
 // file's milled program (format/meaning.ts) for the fix's meaning check.
 

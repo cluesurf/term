@@ -1,4 +1,4 @@
-# Which files of the CLI are read with the LEAN surface (note/term/lean.md, note/term/self-host/03-lean.md).
+# Which files of the CLI are read with the LEAN surface (note/project/term/mill/lean.md, note/term/self-host/03-lean.md).
 #
 # The verbs under `code/work/` are written lean: a bare head is a call, `<x>` is text, a bare word is a variable,
 # `back` returns. Proven before the switch, not after it: `pnpm term:lean-equal` compiled all 29 files both ways

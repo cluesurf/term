@@ -1,4 +1,4 @@
-// `like decimal` is refused, naming `like float` (note/term/plan/decisions-2026-10.md, D4). `decimal` named the platform
+// `like decimal` is refused, naming `like float` (note/project/term/decisions-2026-10/decisions-2026-10.md, D4). `decimal` named the platform
 // float, where every other language's library means exact base 10 by it, so the type word went and the name is free for
 // a form. Run: npx tsx test/check/decimal-word.ts
 //

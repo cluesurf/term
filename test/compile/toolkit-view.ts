@@ -6,7 +6,7 @@
 //
 // The check is the printed tree: `low` at five presses and `high` at eleven, the button titled with the count. Each
 // PNG goes to SNAPSHOT, SNAPSHOT_IOS or SNAPSHOT_ANDROID when set, which is how the screenshots in
-// note/term/project/native-dom/ are made. TOOLKIT_ONLY=macos (or ios, android) runs one platform.
+// note/project/term/archive/native-dom/ are made. TOOLKIT_ONLY=macos (or ios, android) runs one platform.
 // Run: npx tsx test/compile/toolkit-view.ts
 
 import { runDir } from './run-dir'

@@ -1,7 +1,7 @@
 # The control-flow graph: a function body lowered to basic blocks and the edges between them. Straight-line runs of
 # statements become one block; `if` / `while` / `for-each` / `match` / `return` / `break` / `continue` become the
 # terminators that wire blocks together. This is the structural backbone the later passes (Perceus control flow,
-# register/stack allocation, native lowering) walk. See note/research/vibe/computation/plans/05-ir.md. Pure and
+# register/stack allocation, native lowering) walk. See note/project/term/archive/computation/plans/05-ir.md. Pure and
 # browser-safe.
 #
 # Ported from ir/cfg.ts (self-hosting, 2026-10-05). A block was created and its terminator written afterwards (a loop's

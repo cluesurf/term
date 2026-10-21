@@ -1,4 +1,4 @@
-// The roll from the units (note/term/plan/incremental-best-in-class.md, steps 5 and 8). `term make` writes
+// The roll from the units (note/project/term/incremental-best-in-class.md, steps 5 and 8). `term make` writes
 // host/roll.json from every unit's own roll of the build, each typed once in the unit's build and kept with it, so a
 // roll pass reads what the build already made. It must be the same roll the pass makes on its own (`term roll`, which
 // builds from units writing nothing), and it must move when a file does.

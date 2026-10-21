@@ -1,8 +1,8 @@
-// Nothing in the CLI prints except through the terminal output library (note/term/output/readme.md). A command builds
+// Nothing in the CLI prints except through the terminal output library (note/project/term/output/readme.md). A command builds
 // events and hands them to code/output.ts; it never calls `console.*`, writes to `process.stdout` / `process.stderr`,
 // or imports the old `@term/make/code/tint` helpers.
 //
-// A RATCHET while the commands are converted (note/term/plan/terminal-output-standard.md, phase 2): every file's
+// A RATCHET while the commands are converted (note/project/term/terminal-output-standard.md, phase 2): every file's
 // count of direct-print sites is held to test/call/output-only.json. A count may fall and never rise, a file that is
 // not in the baseline must have none, and a file that reached zero stays there. `--commit` rewrites the baseline to
 // today's counts, and refuses to raise any. When the baseline is empty the ratchet is the rule.

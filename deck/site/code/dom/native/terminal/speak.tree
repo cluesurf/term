@@ -1,6 +1,6 @@
 
 # What has focus, said in words a screen reader speaks (native-accessibility-0005): the control's role, its name and its
-# value or state, in the accessibility contract's columns (note/term/view/11-vocabulary.md, "Accessibility"):
+# value or state, in the accessibility contract's columns (note/project/term/view/11-vocabulary.md, "Accessibility"):
 #
 #   button   `button <label>`              field    `field <placeholder>: <value>`
 #   toggle   `switch <label> on|off`       range    `slider <label> <value>`

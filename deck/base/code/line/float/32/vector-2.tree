@@ -45,7 +45,7 @@ form vector-2
               read self/y
               read other/y
 
-  # the names before `add` reached a vector (note/term/plan/decisions-2026-10.md, D5), kept for one release
+  # the names before `add` reached a vector (note/project/term/decisions-2026-10/decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like vector-2
@@ -101,7 +101,7 @@ form vector-2
           read self/y
           read other/x
 
-  # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
+  # the norm: `magnitude`, since a collection's `length` counts its items (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
   task magnitude
     take self
     like float

@@ -1,6 +1,6 @@
 # The math surface reads the same on every backend: the constants, the exponential and logarithm family, hyperbolic
 # trig, truncation, the float predicates and the least common multiple. Each float answer is compared as text, which
-# note/term/stdlib/semantics.md makes identical everywhere. Held by `pnpm term:base-gate`.
+# note/project/term/stdlib/semantics.md makes identical everywhere. Held by `pnpm term:base-gate`.
 
 load @term/base/float
   find pi

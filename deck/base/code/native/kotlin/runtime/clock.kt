@@ -17,7 +17,7 @@ object clock {
         return System.nanoTime() - from
     }
 
-    // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md)
+    // what `clock/now` reads: monotonic milliseconds on every backend (note/project/term/stdlib/semantics.md)
     fun currentTime(): Long = precise()
 
     fun sleep(ms: Long) { Thread.sleep(ms) }

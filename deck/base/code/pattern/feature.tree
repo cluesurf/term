@@ -1,4 +1,4 @@
-# The features a pattern uses, as engines tell them apart (note/term/stdlib/regex-engine.md, "Capability sets").
+# The features a pattern uses, as engines tell them apart (note/project/term/stdlib/regex-engine.md, "Capability sets").
 #
 # A native engine runs a pattern only when every feature the pattern uses is in the engine's capability set: the
 # features it runs with exactly Term's meaning, each proven on that engine by a probe row in test/compile/pattern.ts.

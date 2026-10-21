@@ -1,4 +1,4 @@
-# The installer's decisions that are not the registry, the files or the shell (note/term/plan/term-load-install.md):
+# The installer's decisions that are not the registry, the files or the shell (note/project/term/term-load-install.md):
 # whether a version was written as one, whether the front's folder is on PATH already, the line that puts it there in
 # a shell's own syntax, which profiles a shell reads, what one profile's text becomes, what the Windows user Path
 # becomes, how to remove another `term` on PATH, and what the run closes with.

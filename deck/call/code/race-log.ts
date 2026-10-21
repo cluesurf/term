@@ -1,4 +1,4 @@
-// The race log (note/term/optimize/learning.md, optimize-0013): every measurement `term race` and `term bake` take,
+// The race log (note/project/term/optimize/learning.md, optimize-0013): every measurement `term race` and `term bake` take,
 // including every loss and every disagreement, one record each, kept so the next bake reads an answer instead of
 // measuring it again (level one, optimize-0028) and so a ranker can learn from all of them (optimize-0029).
 //

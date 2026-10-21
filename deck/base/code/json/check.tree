@@ -1,6 +1,6 @@
 # JSON check: is a text one JSON value by RFC 8259, and if not, where and why. Pure Term over the text's code points,
 # so every backend accepts exactly the same texts and refuses the rest with the same position and the same reason
-# (note/term/stdlib/semantics.md). `json/parse` runs it before the host parser sees the text, because the host parsers
+# (note/project/term/stdlib/semantics.md). `json/parse` runs it before the host parser sees the text, because the host parsers
 # disagree at the edges: JavaScript throws, Rust and Swift returned null, and an unpaired surrogate escape is accepted
 # by one and refused by another.
 #

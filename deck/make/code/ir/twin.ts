@@ -1,4 +1,4 @@
-// The selection pass (note/term/optimize/pipeline.md, optimize-0008): put a CHOSEN implementation of a task behind
+// The selection pass (note/project/term/optimize/pipeline.md, optimize-0008): put a CHOSEN implementation of a task behind
 // every call to it, for one target. The pass is Term, ir/selection.tree (self-hosting, 2026-10-06), and its header says
 // what it writes and what it refuses. This face keeps the TypeScript shape of a choice, which a pin (`bake.json`) and
 // the caller of compile() write, reads it into the port's `twin-choice`, and writes back the program it was handed.

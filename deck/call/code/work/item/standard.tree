@@ -1,4 +1,4 @@
-# The Terminal Output Standard, as data (note/term/output/standard.md).
+# The Terminal Output Standard, as data (note/project/term/output/standard.md).
 #
 # EVERY DECISION THE SPEC MAKES IS A FIELD HERE: the columns, the glyphs and their
 # ranks, the role palette, the fact
@@ -20,7 +20,7 @@
 # number or a word in it, the number or the word lives here.
 #
 # After any change here, run `pnpm term:test --only item`
-# (note/term/output/readme.md).
+# (note/project/term/output/readme.md).
 # one glyph of section 4: its JSON name, its two drawings, the role it is colored
 # in, and its rank in the worst-glyph
 # order (higher is worse). A rank of 0 is outside the order: + − ~ describe a

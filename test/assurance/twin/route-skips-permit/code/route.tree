@@ -1,0 +1,15 @@
+# BROKEN TWIN of law 3, every mutating route asks: a route erases through the mutator under `delete-note`, with no
+# permit. term hold must refuse it: `bury-at` is `mark private` to permit.tree (check/private.ts, `private-name`).
+load ./model
+  find natural
+  find person
+  find shelf
+load ./permit
+  find bury-at
+
+task erase-route
+  take s, like shelf
+  take actor, like person
+  take at, like natural
+  like shelf
+  back bury-at(s, at, actor)

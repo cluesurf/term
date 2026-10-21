@@ -20,7 +20,7 @@ export async function callLoad(input: {
     })
     report({ glyph: 'done', verb: 'install', subject: 'Dependencies', duration: Date.now() - started, counts: [count(installed.decks, 'decks', 'deck')] })
 
-    // the toolchain the manifest's `need` asks for, pinned in lock.tree beside the decks (note/term/plan/term-versions.md)
+    // the toolchain the manifest's `need` asks for, pinned in lock.tree beside the decks (note/project/term/term-versions.md)
     const need = installed.need
 
     if (need?.pin) {

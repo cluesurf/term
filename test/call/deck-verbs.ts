@@ -73,7 +73,7 @@ ok('`wake` scaffolds a project to work on', existsSync(join(root, 'deck.tree')))
 const before = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
 
 // the scaffold writes no `code` line: `./code` is the default code root, and `bear ./code`, which it used to write,
-// was the old spelling of that same default (note/term/plan/manifest-mark-and-code-root.md)
+// was the old spelling of that same default (note/project/term/manifest/manifest-mark-and-code-root.md)
 // it starts at 0.0.1: which patches an author publishes is their own convention, and the toolchain holds none
 // (deck/call/code/wake.ts, 2026-10-03)
 ok('the scaffold declares an entry and a version, and no code root', Boolean(before.boot) && before.mark.patch === 1 && before.code === undefined)

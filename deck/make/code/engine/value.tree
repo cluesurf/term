@@ -1,5 +1,5 @@
 # The runtime values of the engine, over the balanced-ternary data types. Plus the scope (the environment) and the
-# closure. See note/research/vibe/computation/engine/01-values.md.
+# closure. See note/project/term/research/computation/engine/01-values.md.
 #
 # Ported from engine/value.ts (self-hosting, 2026-10-04). What changed shape, and why:
 #   - a NATIVE function is its NAME, run by the engine's one dispatcher (engine.tree `call-native`). The original held

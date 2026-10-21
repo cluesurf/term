@@ -6,8 +6,8 @@
 # the exception `regex.tree` raises for a text that is not a pattern. `canonical-pattern` still checks and rewrites a
 # pattern into the subset, with the same refusals as before, for a caller that wants a pattern every host engine
 # reads unaided; `regex.tree` no longer goes through it. Until 2026-10-04 it did, and every pattern outside the subset
-# was refused there (note/term/stdlib/semantics.md, "Regular expressions"). The pattern engine now defines every
-# feature once, on every backend (note/term/stdlib/regex-engine.md).
+# was refused there (note/project/term/stdlib/semantics.md, "Regular expressions"). The pattern engine now defines every
+# feature once, on every backend (note/project/term/stdlib/regex-engine.md).
 #
 # The subset `canonical-pattern` accepts:
 #

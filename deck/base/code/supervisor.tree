@@ -14,7 +14,7 @@
 #               shutdown is unbounded (supervisor.erl:249-253, a warning in OTP's documentation) holds by construction
 #
 # `term make` refuses a `transient` worker whose work cannot raise (check/supervise.ts): it can never restart, so it is
-# a `temporary` with a misleading name. Design 4 in note/term/research/beam-otp-lessons.md.
+# a `temporary` with a misleading name. Design 4 in note/project/term/research/beam-otp-lessons.md.
 
 mark unstable
 

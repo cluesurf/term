@@ -1,0 +1,21 @@
+# BROKEN TWIN of law 2, no forged permit: a route makes its own permit instead of asking `grant-delete`.
+# term hold must refuse it (`hidden-make`, affine-kinds-0009). Until check/hide.ts lands it builds.
+load ./model
+  find natural
+  find person
+  find shelf
+load ./permit
+  find permit
+  find delete-note
+
+task erase-route
+  take s, like shelf
+  take actor, like person
+  take at, like natural
+  like shelf
+  back
+    delete-note
+      read s
+      make permit
+        bind note, at
+        bind person, actor

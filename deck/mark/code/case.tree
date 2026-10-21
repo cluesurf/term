@@ -1,5 +1,5 @@
 # One case: one implementation of one program at one size on one target, its correctness, and its samples
-# (note/term/bench/database.md). The Term program is a case too, implementation `term`, language `term`, track `term`.
+# (note/project/term/bench/database.md). The Term program is a case too, implementation `term`, language `term`, track `term`.
 
 load ./time
   find sample

@@ -6,7 +6,7 @@
 // the query, and only when the value actually changed. Backdating in the query layer does the heavy lifting: an
 // unrelated edit leaves the watched value structurally equal, so re-evaluation is a cheap memo hit and the effect does
 // not fire. Drive it with `flush()` after a batch of edits (a file save in watch mode). See
-// note/library/face/tailwind-jit.md.
+// note/project/term/face/research/tailwind-jit.md.
 
 import { Database } from '@term/make/code/compile/query'
 import type { Cx, Equals } from '@term/make/code/compile/query'

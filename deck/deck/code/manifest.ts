@@ -496,7 +496,7 @@ export function bookRoot(manifest: { book?: string }): string {
   return manifest.book ?? DEFAULT_BOOK_ROOT
 }
 
-// ---- the old spellings (note/term/plan/manifest-mark-and-code-root.md) ----
+// ---- the old spellings (note/project/term/manifest/manifest-mark-and-code-root.md) ----
 //
 // The manifest's version was `code <1.4.2>` and is `mark <1.4.2>`, because `code` names the code root folder now.
 // A dependency's constraint follows it (`link @x/y, mark <0.0.x>`), and `bear ./code`, which named the same folder

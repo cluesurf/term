@@ -50,7 +50,7 @@ export function emitTarget(input: {
   )
 }
 
-// THE SAME PROGRAM AS FILES, ONE PER TERM MODULE (compile/unit-split.ts, note/term/plan/incremental-best-in-class.md,
+// THE SAME PROGRAM AS FILES, ONE PER TERM MODULE (compile/unit-split.ts, note/project/term/incremental-best-in-class.md,
 // step 15): every decision still made over the whole program, and each module's statements in a file of their own
 // beside one shared file, so an edit to a module changes that module's file alone and the toolchain's incremental
 // build redoes what it holds. `main` is the file a toolchain starts from:

@@ -175,7 +175,7 @@ mine code
         site cast
       mine form, like tune
         site tune
-      # another implementation of a named task (note/term/optimize/words.md)
+      # another implementation of a named task (note/project/term/optimize/words.md)
       mine form, like twin
         site twin
       mine form, like view-def

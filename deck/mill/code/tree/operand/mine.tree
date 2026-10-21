@@ -3,7 +3,7 @@
 # `deck/bind/code/linux/operand.tree` is 11,489 lines describing 1,270 x86 instructions, and it is not ordinary
 # Term: `force adc` / `start 1, share al` / `write 0x14` are its own vocabulary. The house rule is that a custom
 # `.tree` dialect is integrated by defining a MILL, never by teaching the core compiler its heads, so this is that
-# mill. See deck/term/CLAUDE.md and note/term/one-parser.md.
+# mill. See deck/term/CLAUDE.md and note/project/term/one-parser.md.
 #
 # THE WHOLE VOCABULARY, counted from the file on 2026-08-30: one top-level head (`force`, 1,270 times) and five
 # nested ones (`write` 4,266, `start` 2,384, `shift` 1,760, `state` 373, `slate` 161). Nothing else.

@@ -1,6 +1,6 @@
 // The nice TypeScript emitter. Compile AST to clean, idiomatic, native TypeScript: real names (kebab to camel),
 // native control flow, plain operators, native arithmetic, types from the checker, no runtime imports. Pure and
-// browser-safe: returns a string. See note/research/vibe/computation/plans/07-codegen.md.
+// browser-safe: returns a string. See note/project/term/archive/computation/plans/07-codegen.md.
 
 import type {
   Expression,
@@ -115,9 +115,9 @@ let tsDockNames = new Set<string>()
 let tsIntUsed = false
 // set when an `is-equal` compares by structure (__termEqual) or a map key is interned (__termKey)
 let tsEqualUsed = false
-// set when a text operation goes through `__termText`, which counts code points (note/term/stdlib/semantics.md)
+// set when a text operation goes through `__termText`, which counts code points (note/project/term/stdlib/semantics.md)
 let tsTextUsed = false
-// set when a list read, write, pop or slice goes through the checked list helpers (note/term/stdlib/semantics.md)
+// set when a list read, write, pop or slice goes through the checked list helpers (note/project/term/stdlib/semantics.md)
 let tsListUsed = false
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
@@ -159,7 +159,7 @@ export function identityCases(program: Program, perModule: boolean): Set<string>
 // and nothing there
 let tsFunctionParams = new Map<string, { type?: Type; optional?: boolean }[]>()
 
-// THE TEXT OPERATIONS COUNT CODE POINTS, as they do on Rust, Swift and Kotlin (note/term/stdlib/semantics.md). The
+// THE TEXT OPERATIONS COUNT CODE POINTS, as they do on Rust, Swift and Kotlin (note/project/term/stdlib/semantics.md). The
 // runtime is compile/ts-preludes.tree's `text-prelude-source`, one object as written, and a module carries only the
 // methods its code names, each a function of its own, so a bundle keeps only the functions its program reaches
 export const TEXT_PRELUDE = tsPreludes.textPreludeSource()

@@ -1,6 +1,6 @@
 
 # The signals a program that owns the terminal answers, on Swift: none. A terminal is not where Swift earns its place
-# (note/term/project/terminal-target.md, out of scope), so nothing is watched and nothing arrives. Node and Rust answer
+# (note/project/term/archive/terminal-target.md, out of scope), so nothing is watched and nothing arrives. Node and Rust answer
 # them in ../{node,rust}/signal.
 
 # start answering the signals. False: none are watched here

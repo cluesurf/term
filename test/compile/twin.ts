@@ -1,6 +1,6 @@
 // `twin <task>, name <label>` reaches the compiler whole, and reaches no backend (optimize-0005).
 //
-// A twin is another implementation of a named task (note/term/optimize/words.md). The mill returns it BESIDE the
+// A twin is another implementation of a named task (note/project/term/optimize/words.md). The mill returns it BESIDE the
 // program and never in it, so every pass and backend that does not choose between implementations emits the
 // reference, which is always correct. This holds the grammar's two halves (a site with a `mine` half and no `mint`
 // bind parses and then vanishes), the fields the `Twin` carries, the refusals, and that the program is unchanged by

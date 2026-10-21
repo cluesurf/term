@@ -12,7 +12,7 @@
 #
 # The document never runs this. The host reads it off the manifest, fills the holes from the `host` values,
 # resolves it with the READER's permissions rather than the author's, and passes the result in as a parameter.
-# See note/term/view/03-find.md.
+# See note/project/term/view/03-find.md.
 #
 # Both a `meet` and bare `hold` lines are allowed. Bare predicates are an implicit `and`, which is the common
 # single-predicate case, and giving them their own site means the mint builds each shape without a conditional.

@@ -1,6 +1,6 @@
 # The first IR transformation pass: a mid-level simplifier over the compile AST. Constant folding and algebraic
 # identities, so the emitted code is leaner. This is the start of the IR pipeline (see
-# note/research/vibe/computation/plans/05-ir.md); more passes (CFG, monomorphization, Perceus reuse) layer on.
+# note/project/term/archive/computation/plans/05-ir.md); more passes (CFG, monomorphization, Perceus reuse) layer on.
 #
 # Ported from ir/simplify.ts (self-hosting, 2026-10-06), which stays as the face. The original kept its per-run tables
 # (the specializable and small tasks, the inlining guard, the names the current function binds, every case's fields) in

@@ -4,7 +4,7 @@
 # reveal without a flash of the fallback face. One cell per family, shared across every text node, so a font load
 # wakes only the readers of THAT family (not the whole page).
 #
-# Faithful to the non-negotiable contract (note/platform/plan/text-component-optimization.md goals 1-3): never show
+# Faithful to the non-negotiable contract (note/project/mesh/text-component-optimization.md goals 1-3): never show
 # the fallback before the real font loads, except after a hard timeout (the 2s deadline lives in the native
 # `watch-font` runtime); render warm-cached fonts instantly with no hidden frame (the synchronous `check-font` fast
 # path); skip the fade when the font was already there (the `instant` flag). The full seven-phase late-arrival

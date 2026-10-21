@@ -2,7 +2,7 @@
 // browser-safe: returns the program (compile AST) and the emitted TypeScript. Running the result is a separate
 // step (write the module and import it, hot-module-reload style).
 // Pipeline: parse -> mill (mine/mint) -> resolve (fill name holes) -> check (types) -> emit.
-// See note/research/vibe/computation/plans/11-elaboration.md.
+// See note/project/term/archive/computation/plans/11-elaboration.md.
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
@@ -311,7 +311,7 @@ export type CompileResult =
       openClaims?: string[]
       // TIER 0: what this file's own tasks were proven free of with nothing written (every list read inside its
       // list, every division by something other than zero), counted rather than failed. `failed` is what the gate
-      // (`term hold`) holds to a baseline. note/term/proof-by-default/obligations.md
+      // (`term hold`) holds to a baseline. note/project/term/proof/obligations.md
       obligations?: Tally
       // what the KERNEL did with this file's own tasks: proved the whole body as one term, checked it statement by
       // statement, or declined it (with the reason). A task nothing checked and a task the kernel proved looked the
@@ -320,6 +320,9 @@ export type CompileResult =
         proven: number
         commands: number
         declined: { name: string; reason: string }[]
+        // each task checked statement by statement, with why the pure lowering did not make it one term
+        // (proof-by-default-0009). Absent from a result cached before it was counted
+        statementwise?: { name: string; reason: string }[]
       }
       // linear refutations the search found and the certificate checker refused during THIS compile. Carried on the
       // result so a cached compile still reports what its provers did (check/certificate.ts)
@@ -327,7 +330,7 @@ export type CompileResult =
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
       // the `twin` declarations of the closure, checked (check/twin.ts). Beside the program, never in it: nothing
-      // here emits one yet, so every build runs the reference (note/term/optimize/readme.md)
+      // here emits one yet, so every build runs the reference (note/project/term/optimize/archive/optimize-readme.md)
       twins?: Twin[]
       // present when `options.cover` was set: every key (`<path>:<line>`) a coverage probe was written for, in the
       // order written (ir/cover.tree). The program's probes are what report which of them ran
@@ -412,7 +415,7 @@ export function compile(
     // rule below. Undefined or null means no role names the file, so its content decides. See deck/deck/code/role.ts
     roleOf?: (file: string) => string | null | undefined
     // whether a file's role rule carries `mark lean`: its bare heads are calls and its property heads are named
-    // arguments. Off for every file no marked rule matches, which is almost all of them. See note/term/lean.md
+    // arguments. Off for every file no marked rule matches, which is almost all of them. See note/project/term/mill/lean.md
     // and deck/call/code/role-of.ts.
     leanOf?: (file: string) => boolean | undefined
     // which implementation of a task to build, for this target (ir/twin.ts): the reference, a twin by label, or a size
@@ -571,7 +574,7 @@ export function compile(
     for (const unit of sources) {
       // mill cache: reuse a module's parse + expand + mill when its text (and the template set) is unchanged
       // the role a project's `role.tree` gives this module. A `view` file is the sandboxed document dialect and is
-      // read by compile/view.ts, not by the code mill. See note/term/view/06-mill.md.
+      // read by compile/view.ts, not by the code mill. See note/project/term/view/06-mill.md.
       const milled = milledModule(unit, {
         parsed,
         templates,
@@ -1266,7 +1269,7 @@ export function compileProgram(
   // refinement layer 2: discharge `hold` verification conditions. The linear prover handles the linear fragment, and
   // holds the kernel already proved by definitional equality are dropped. BOTH remaining outcomes are errors since
   // 2026-09-18: a hold the prover refutes, and a hold it could not reach. Not proven is not proven, and a claim
-  // nobody checked must not compile as though somebody had. See note/term/project/law-proof-gate.md.
+  // nobody checked must not compile as though somebody had. See note/project/term/proof/archive/law-proof-gate.md.
   const undischarged = (d: Diagnostic): boolean =>
     !d.markers.some(m =>
       kernelDischarged.has(`${m.span.start.line}:${m.span.start.column}`),
@@ -1314,6 +1317,9 @@ export function compileProgram(
       n => ownNames.has(n) && !provenSet.has(n),
     ).length,
     declined: elaboration.declined.filter(d => ownNames.has(d.name)),
+    statementwise: elaboration.statementwise.filter(
+      d => ownNames.has(d.name) && !provenSet.has(d.name),
+    ),
   }
 
   holdDiagnostics.push(
@@ -1421,7 +1427,7 @@ export function compileProgram(
   // the roll is built from the checked, un-simplified program, so every task is still there to be listed. A separate
   // unit lists its OWN definitions alone, each with its identity and its paths' ends, typed here once and kept with
   // the unit: a project's roll is assembled from them (call/code/roll.ts `projectRoll`), where each entry used to type
-  // its whole closure again for its roll (note/term/plan/incremental-best-in-class.md, step 5)
+  // its whole closure again for its roll (note/project/term/incremental-best-in-class.md, step 5)
   const roll = wantRoll
     ? buildRoll(program, file, { deckOf, ids: true })
     : emitOnly

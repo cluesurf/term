@@ -1,4 +1,4 @@
-# The statement-level inliner (note/term/codegen/passes.md, F6). The simplifier inlines a task that is one expression
+# The statement-level inliner (note/project/term/compiler/codegen/passes.md, F6). The simplifier inlines a task that is one expression
 # (`smallBody`); this inlines a small task of STATEMENTS where its call is a statement of its own, the value of a `let`,
 # or an argument of such a call, so the caller holds the callee's work in one body. That is what lets a backend see an
 # unboxed node built again in the same task (Towers' `move-top`: `push-disk(piles, pop-disk(piles, from), to)`, the

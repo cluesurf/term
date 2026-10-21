@@ -1,7 +1,7 @@
 # Earlier sessions, for `--check`. The gate reads the session exports themselves and recomputes each ratio from
 # their samples, so there is no second store of summaries to go stale. Two cases are the same comparison when the
 # machine digest, the program and its digest, the implementation, the target, the size and its expected output's
-# digest all match (note/term/bench/database.md, "What makes a comparison the same comparison").
+# digest all match (note/project/term/bench/database.md, "What makes a comparison the same comparison").
 
 load @term/base/json
   find parse

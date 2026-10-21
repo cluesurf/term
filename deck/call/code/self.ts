@@ -1,5 +1,5 @@
-// `term self`: the versions of the `term` command on this machine (note/term/plan/term-load-install.md,
-// note/term/plan/term-versions.md).
+// `term self`: the versions of the `term` command on this machine (note/project/term/term-load-install.md,
+// note/project/term/term-versions.md).
 //
 //   check    is the copy running this the signed release it claims to be
 //   update   install the newest release and move the front to it

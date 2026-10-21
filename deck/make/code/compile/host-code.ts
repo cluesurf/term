@@ -1,4 +1,4 @@
-// `tree/code`: the encoded form of Term data, the reference encoder and decoder. The spec is note/term/host/10-code.md
+// `tree/code`: the encoded form of Term data, the reference encoder and decoder. The spec is note/project/term/host/10-code.md
 // and every rule here is a rule there. One model, two encodings: `tree/text` (host.ts) and this, so a value decoded
 // here is the `Data` host.ts reads, and decode then encode gives back the same bytes.
 //

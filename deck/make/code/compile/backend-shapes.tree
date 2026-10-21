@@ -825,7 +825,7 @@ task variable-name-of
     miss
       back <>
 
-# The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3): a parameter stays
+# The function-typed parameters a task may keep past its call (note/project/term/compiler/codegen/passes.md, P3): a parameter stays
 # non-escaping only when every mention of it is the callee of a call made directly in the task's body, outside any
 # closure. Anything else (an argument, a return, a store, a read inside a closure, a write) escapes
 task escaping-params

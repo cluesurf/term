@@ -42,7 +42,7 @@ form test-entry
   link name, like text
   link work, like task
 
-# the tests are a KIND on the hive (note/term/hive/07-kind.md): `register` tells one entry per test, and `run` reads
+# the tests are a KIND on the hive (note/project/term/hive/07-kind.md): `register` tells one entry per test, and `run` reads
 # the roster back. Anything that reads the hive sees them, the same way it sees exceptions and routes.
 roll test
   like test-entry

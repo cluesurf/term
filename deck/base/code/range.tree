@@ -93,7 +93,7 @@ form range
     send back, read out
 
 # the whole numbers from `start` up to and not including `end`, by ones: what the note grammar writes `0..<10` and
-# `[0, 10)` as (note/term/mill/03-note-grammar.md)
+# `[0, 10)` as (note/project/term/mill/03-note-grammar.md)
 task make-range
   take start, like number
   take end, like number

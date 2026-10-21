@@ -1,6 +1,6 @@
 
 # Quantities: a number in a REGISTERED unit, the value the `note` grammar writes `9.81m/s^2`, `20MB/s` and `$20` as
-# (note/term/mill/03-note-grammar.md).
+# (note/project/term/mill/03-note-grammar.md).
 #
 # A unit is registered, never guessed. `unit-table` is the registry: every unit the note grammar will read after a
 # number, with its scale to the coherent base of its dimension and that dimension as base units and powers. A symbol

@@ -1,7 +1,7 @@
 # The OpenType `cmap` table: a directory of encoding records, each pointing at a subtable elsewhere in the table
 # by an offset relative to the table's own start. Formats 4 (segment mapping, BMP) and 12 (segmented coverage,
 # full Unicode) only — every other cmap subtable format is out of scope until a dialect needs it. See
-# note/term/feed/04-otf-case-study.md, "cmap table: the offset-table case".
+# note/project/term/feed/04-otf-case-study.md, "cmap table: the offset-table case".
 
 form otf-cmap-table
   link version, like number

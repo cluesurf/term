@@ -1,6 +1,6 @@
 
 # Stack: the vocabulary's word for children in a row or a column, and where the layout model lives
-# (note/term/view/11-vocabulary.md, "The layout model"). Its props are that model and nothing else:
+# (note/project/term/view/11-vocabulary.md, "The layout model"). Its props are that model and nothing else:
 #
 #   direction  `row` or `column`. Left out, a column, as block children fall one under another
 #   gap        points between the children. Left out, 0

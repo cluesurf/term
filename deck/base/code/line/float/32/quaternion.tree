@@ -17,7 +17,7 @@ form quaternion
   link z, like float
   link w, like float
 
-  # the Hamilton product: `multiply(p, q)`, as on two numbers (note/term/plan/decisions-2026-10.md, D5)
+  # the Hamilton product: `multiply(p, q)`, as on two numbers (note/project/term/decisions-2026-10/decisions-2026-10.md, D5)
   wear multiplication
     task multiply
       take self
@@ -139,7 +139,7 @@ form quaternion
           read self/w
           read other/w
 
-  # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
+  # the norm: `magnitude`, since a collection's `length` counts its items (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
   task magnitude
     take self
     like float

@@ -1,5 +1,5 @@
 // A project's `need`, pinned: the exact toolchain release a `need @term/code, mark <2.6.x>` resolves to, and the
-// digest of that release's image index, which `lock.tree` records (note/term/plan/term-versions.md, "Files").
+// digest of that release's image index, which `lock.tree` records (note/project/term/term-versions.md, "Files").
 //
 // THE INDEX DIGEST, NOT A LAYER DIGEST. A release is one image index with a manifest per platform, so the index digest
 // covers every platform's build at once: a teammate on Linux and one on a Mac pin the same thing, and an install checks

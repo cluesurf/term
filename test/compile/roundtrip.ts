@@ -2746,7 +2746,7 @@ task compute
 `
 
 // clock: monotonic now() is positive
-// clock/now is MONOTONIC milliseconds on every backend since 2026-10-02 (note/term/stdlib/semantics.md), counted from
+// clock/now is MONOTONIC milliseconds on every backend since 2026-10-02 (note/project/term/stdlib/semantics.md), counted from
 // the program's first reading on Rust and Swift and from process start on node, so the first reading can be 0. What
 // it promises is never negative; a positive wall clock is time/now
 const CLOCK_PROG = `load @term/base/code/clock

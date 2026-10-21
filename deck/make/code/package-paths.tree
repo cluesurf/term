@@ -12,7 +12,7 @@
 #   - the regular expressions are written out by character: `.` is anything but a line terminator (`\n`, `\r`,
 #     U+2028, U+2029), and `\s` is JavaScript's (compile/main-entry `whitespace-code`)
 #
-# THE PACKAGE PATH RULE (note/term/plan/manifest-mark-and-code-root.md). A load of `@scope/name/<path>` names a file in
+# THE PACKAGE PATH RULE (note/project/term/manifest/manifest-mark-and-code-root.md). A load of `@scope/name/<path>` names a file in
 # ONE package, with package root P (the directory holding its deck.tree) and code root C (what the manifest's
 # `code ./dir` names, `./code` when absent): try C/<path> by the usual file resolution (`.tree`, `/base.tree`,
 # `/note.tree`), otherwise P/<path>. `base <dir>` under the load forces the package root, and its value must be the

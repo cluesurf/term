@@ -1,4 +1,4 @@
-# Refinement-type verification: layer 2 of the type system (see note/research/vibe/computation/plans/04-typecheck.md).
+# Refinement-type verification: layer 2 of the type system (see note/project/term/archive/computation/plans/04-typecheck.md).
 # Refinements are linear constraints over integers (n >= 0, i < len, ...). A `hold` clause becomes a verification
 # condition: do the assumptions imply the goal? It is discharged with a sound, self-contained linear-arithmetic
 # decision procedure (Fourier-Motzkin elimination), so no external SMT solver and it runs in the browser.

@@ -88,7 +88,7 @@ function main(): void {
   check('integer value', `add 1, 2`, `add\n  1\n  2`)
 
   // parentheses: the children of the group whose head they follow. A name directly after `(` or `,` opens a child
-  // group, and `)` closes back to the owner. This is the compact spelling of Term data (note/term/host/02-compact.md).
+  // group, and `)` closes back to the owner. This is the compact spelling of Term data (note/project/term/host/02-compact.md).
   check('paren name child', `h(x,1)`, `h\n  x\n  1`)
   check('paren nested', `h(x,h(y,123))`, `h\n  x\n  h\n    y\n    123`)
   check(

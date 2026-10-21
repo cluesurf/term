@@ -1,4 +1,4 @@
-# Regular expressions, the v1 interface over the pattern engine (@term/base/pattern, note/term/stdlib/regex-engine.md).
+# Regular expressions, the v1 interface over the pattern engine (@term/base/pattern, note/project/term/stdlib/regex-engine.md).
 # A pattern takes the engine's whole syntax and means one thing on every backend: lookaround of any length, back
 # references, named groups, atomic groups and possessive repetition, \b with Unicode word characters, \p{...}, and
 # the i, m, s and x flags. Each search runs on the fastest engine that computes exactly that meaning there. Positions

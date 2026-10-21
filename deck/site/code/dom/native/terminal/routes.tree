@@ -10,11 +10,14 @@
 #
 #   mount-routes   the root, the first draw, the redraw on every move, and the back key. Hand the root to
 #                  `run-terminal` (./app) to own a real terminal, or paint it (./paint) to read it
+#
+# The root, its `view` and the dom tasks come from the build's platform dom, the one ../../../view/render draws with,
+# as the toolkit host loads them. A terminal app's platform dom IS this folder's (./dom bears ../memory/dom), so there
+# the two are one. Reaching the memory dom directly gave this file two `view`s in any other build, the memory one and
+# the one `rebuild` hands back, and `term make` of @term/site refused it (term-site-framework-0001).
 
-load ./view
+load ../../native/{platform}/dom
   find view
-
-load ../memory/dom
   find create-element
   find clear
   find listen-key

@@ -10,7 +10,7 @@
 // It also finishes a raise. `halt <form>` mills to a `throw` of the record as written plus `raise: <form>`; here the
 // form is checked to descend from `exception`, the props are checked against the props record (a missing required
 // prop, an unknown one, or a pinned one is a diagnostic), fallbacks are filled, and the fields the runtime owns
-// (`host`, `form`, `code`, `time`) are added. See note/term/hive/03-exception.md. Pure over the program.
+// (`host`, `form`, `code`, `time`) are added. See note/project/term/hive/03-exception.md. Pure over the program.
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'

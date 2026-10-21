@@ -1,5 +1,5 @@
 // The dependent type core: a bidirectional type checker by normalization-by-evaluation, implementing the decided
-// kernel (see note/research/vibe/computation/plans/12-type-systems.md):
+// kernel (see note/project/term/archive/computation/plans/12-type-systems.md):
 //   1. a predicative, cumulative, universe-POLYMORPHIC hierarchy (levels are expressions over level variables;
 //      Type i : Type (i+1); no Type : Type) -- the sound logic
 //   2. quantities (multiplicities 0 / 1 / many) with linear usage checking

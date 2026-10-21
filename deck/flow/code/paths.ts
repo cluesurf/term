@@ -1,7 +1,7 @@
 // Where a document NAMES another file or a definition, read off the parse tree: the path of every `load` / `bear`
 // (at any depth, so a mill's `bind mine, load ./mine` counts), a manifest's `code ./src` and `link @scope/name`,
 // every `find x` under a load, and every top-level declaration with the position of its name. Cmd+click and
-// document links are queries over these. One parser (note/term/one-parser.md): nothing here matches lines.
+// document links are queries over these. One parser (note/project/term/one-parser.md): nothing here matches lines.
 //
 // This module finds paths and never RESOLVES one. Resolution is the server's `resolveModule`, which asks the
 // resolver the compiler is given, so a path the editor opens is the file the build reads.

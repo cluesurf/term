@@ -275,7 +275,7 @@ task branch-of
   # `seed load, read <task>`: the route's data, loaded where the program runs and passed to the props as `data`.
   # Where the data itself lives is the data layer's own env choice (SQLite on a device, the bridge in a cask, the
   # database behind a server), never the router's, so one table and one `load` serve every target
-  # (native-navigation-0002, note/term/project/native-navigation.md, "Where a route's load runs")
+  # (native-navigation-0002, note/project/term/native-navigation/readme.md, "Where a route's load runs")
   sift directive-named(route, <load>)
     case some
       link loader

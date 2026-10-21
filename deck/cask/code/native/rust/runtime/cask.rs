@@ -11,7 +11,7 @@
 // that message. The stdlib's asynchronous natives (tokio's fs) run against a tokio runtime this thread has entered;
 // their blocking work runs on tokio's pool and wakes the UI-thread task through the same wakers.
 //
-// CASK_TRACE=1 in the environment prints every message and reply. Design: note/term/cask/readme.md.
+// CASK_TRACE=1 in the environment prints every message and reply. Design: note/project/term/cask/readme.md.
 #[allow(dead_code)]
 mod cask {
     use std::future::Future;

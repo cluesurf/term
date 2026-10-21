@@ -296,7 +296,7 @@ task register-font
   send back, true
 
 # DOM semantics, the same as the memory host's (../memory/dom): a node has one parent, so appending a node that already
-# has one moves it. The render seam relies on it (note/term/view/12-render-seam.md): a keyed list reorders by appending
+# has one moves it. The render seam relies on it (note/project/term/view/12-render-seam.md): a keyed list reorders by appending
 # again, and until 2026-10-03 this host appended a second copy instead
 task append
   take parent, like view

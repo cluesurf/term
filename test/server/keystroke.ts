@@ -1,4 +1,4 @@
-// A keystroke in the editor builds one unit (note/term/plan/incremental-best-in-class.md, step 11). The language server
+// A keystroke in the editor builds one unit (note/project/term/incremental-best-in-class.md, step 11). The language server
 // analyzes a document through units, with each unit's answer, each module's walk and each parse kept for every
 // document, so an edit builds the edited module's unit and reads the standard library's from memory. Here a document
 // that loads the standard library is opened, then edited ten times, one of them into an error and back. Every analysis

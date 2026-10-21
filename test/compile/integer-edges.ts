@@ -1,4 +1,4 @@
-// A `number` is the integer or the program stops (note/term/proof-by-default/numbers.md), at the edges where a host
+// A `number` is the integer or the program stops (note/project/term/proof/numbers.md), at the edges where a host
 // integer type wraps in silence: the minimum divided by -1, a difference below the minimum, and a product past the
 // maximum. Each program takes its operand as a PARAMETER (2^62), so no compiler folds the edge away, runs on every
 // backend, and must end with a non-zero exit, never print an integer. Kotlin's `MIN / -1` wrapped to MIN, a different

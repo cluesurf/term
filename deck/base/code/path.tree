@@ -68,7 +68,7 @@ task is-absolute
       read target
 
 # The four below are pure Term over `/`, so a path means the same on every backend, including Windows, where the
-# host libraries would read `\` too (note/term/stdlib/semantics.md). A segment is a run between slashes.
+# host libraries would read `\` too (note/project/term/stdlib/semantics.md). A segment is a run between slashes.
 
 # the segments of a path once `.` and empty runs are dropped and each `..` has taken back the segment before it. A
 # relative path keeps the `..` it cannot take back; an absolute one drops them at the root

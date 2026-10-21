@@ -483,7 +483,7 @@ object nativeView {
         parent.children.add(child)
     }
 
-    // `child` goes in under `reference`'s parent just before it (note/term/view/12-render-seam.md)
+    // `child` goes in under `reference`'s parent just before it (note/project/term/view/12-render-seam.md)
     fun insertBefore(childHandle: Any, referenceHandle: Any) {
         val child = node(childHandle)
         val reference = node(referenceHandle)
@@ -1102,7 +1102,7 @@ private fun cxSized(node: TermNode, given: CxModifier): CxModifier {
     cxLength(node.style("height"))?.let {
         modifier = modifier.cxWrapContentHeight(CxAlignment.Top, unbounded = true).cxHeight(it.cxDp)
     }
-    // a frame's bounds (note/term/view/11-vocabulary.md): a floor and a ceiling on what the content asks for
+    // a frame's bounds (note/project/term/view/11-vocabulary.md): a floor and a ceiling on what the content asks for
     val minWidth = cxLength(node.style("min-width"))
     val maxWidth = cxLength(node.style("max-width"))
     if (minWidth != null || maxWidth != null) {

@@ -1,4 +1,4 @@
-# The e-graph optimizer: the maximal-rewriting backbone from note/research/vibe/computation/plans/13-optimization.md.
+# The e-graph optimizer: the maximal-rewriting backbone from note/project/term/archive/computation/plans/13-optimization.md.
 # An e-graph holds every equivalent form of an expression at once. Rewrite rules are applied to saturation, then the
 # cheapest form is extracted. This sidesteps phase ordering: no rule order is committed to. Browser-safe.
 #

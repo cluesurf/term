@@ -1,4 +1,4 @@
-// GRAMMAR SCOPES in the parser (parser/token.tree `scope-at`, note/term/mill/02-role-scopes.md): the stretch after
+// GRAMMAR SCOPES in the parser (parser/token.tree `scope-at`, note/project/term/mill/02-role-scopes.md): the stretch after
 // `role <name>`, or after a name the file's loads import as a grammar, is handed over WHOLE as one literal that
 // remembers how it was written. Held here: where each spelling's literal lands in the tree, its text verbatim, what
 // is NOT a scope (a file's role, a `find`, a use of the name as a variable, a literal already written), the one

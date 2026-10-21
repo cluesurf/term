@@ -1,6 +1,6 @@
 # Complex number: a real and an imaginary part, both floats. Pure float math, identical on every backend. A complex
 # number wears the arithmetic masks, so `add`, `subtract`, `multiply` and `divide` take two of them as they take two
-# numbers (note/term/plan/decisions-2026-10.md, D5). Read the parts directly as `value/real` and `value/imaginary`.
+# numbers (note/project/term/decisions-2026-10/decisions-2026-10.md, D5). Read the parts directly as `value/real` and `value/imaginary`.
 
 mark unstable
 

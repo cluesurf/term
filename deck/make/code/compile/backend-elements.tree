@@ -1,4 +1,4 @@
-# F1 for lists of lists (note/term/codegen/shared.md): the element types E for which every `list of list of E` in the
+# F1 for lists of lists (note/project/term/compiler/codegen/shared.md): the element types E for which every `list of list of E` in the
 # program OWNS its inner lists, so a backend may hold each inner list as the plain list (`Vec<E>` on Rust) where it was
 # a shared one. compile/backend.ts `ownedElements` stays as the face and says why each rule is there.
 #

@@ -35,7 +35,7 @@ export function renderDiagnostic(
   return renderKink(diagnostic, sourceLines(diagnostic, text), chalk.level > 0)
 }
 
-// print a diagnostic as a Problem item of the run in progress (section 12 of note/term/output/standard.md): its
+// print a diagnostic as a Problem item of the run in progress (section 12 of note/project/term/output/standard.md): its
 // message, an `at` field, the code frame, the hint as `next`. Through the terminal output library, so it lands on
 // stderr in the view the flags chose, never on stdout. Paths are shown relative to the working directory.
 export function printDiagnostic(

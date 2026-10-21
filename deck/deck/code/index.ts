@@ -132,7 +132,7 @@ export { generateKeypair, signId, verifyId } from './object/sign'
 export type { Keypair } from './object/sign'
 export { objectKey, toneOfId, tonePath } from './object/tone'
 
-// The OCI registry path: the default for `@term` (note/term/registry/18-oci-registry-default.md).
+// The OCI registry path: the default for `@term` (note/project/term/registry/18-oci-registry-default.md).
 export {
   OCI_SCHEME,
   isOciRegistry,

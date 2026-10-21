@@ -10,7 +10,7 @@
 // (`make equal/refl`) types as the bare one. Both were found by this project and both are load-bearing for it.
 //
 // Run: npx tsx test/check/claim.ts
-// See note/term/project/law-proof-gate.md.
+// See note/project/term/proof/archive/law-proof-gate.md.
 
 import { compile } from '@term/make/code/compile/compile'
 

@@ -1,4 +1,4 @@
-# Increments proven not to overflow (note/term/codegen/passes.md, P2, the first fact built).
+# Increments proven not to overflow (note/project/term/compiler/codegen/passes.md, P2, the first fact built).
 #
 # A counted loop `while (i < bound) { ...; i = i + 1 }` is what every `walk size` lowers to, and most index loops are
 # written that way. Its increment cannot overflow when nothing else writes `i`: at the increment `i` still holds the

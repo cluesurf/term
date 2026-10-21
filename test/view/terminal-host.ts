@@ -2,7 +2,7 @@
 // tree in a terminal's host, and that tree painted into the cell grid. The program is a view written in the DSL with
 // the CSS words face places (a flex row with a grower, a divider, a live `fork`), its dom pinned to the terminal host,
 // and the screen painted before and after three clicks on its button. Each EXPECTED screen is worked out by hand from
-// note/term/view/11-vocabulary.md (a cell 8 points wide, a column stretching its children, growers taking the free
+// note/project/term/view/11-vocabulary.md (a cell 8 points wide, a column stretching its children, growers taking the free
 // cells, a button drawn `[ label ]`), never read from the painter's output. Every program runs on TypeScript, Rust,
 // Swift and Kotlin (terminal-target-0004), and each must draw the same cells.
 // Run: npx tsx test/view/terminal-host.ts   (TERMINAL_ONLY=rust for one backend)

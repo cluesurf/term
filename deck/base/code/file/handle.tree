@@ -3,7 +3,7 @@
 #
 # The open modes are five INDEPENDENT booleans rather than a mode string: `read`, `write`, `create`, `append`,
 # `clear`. "w+" is a node spelling and means nothing to tokio's OpenOptions, NIOFileSystem's, or a set of
-# java.nio.file.StandardOpenOption. See note/term/stdlib/native-async-file-and-server.md.
+# java.nio.file.StandardOpenOption. See note/project/term/stdlib/native-async-file-and-server.md.
 
 mark unstable
 

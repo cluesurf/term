@@ -2,7 +2,7 @@
 # has no effect, and the expression is just its other operand. `x * 0` is left alone on purpose: it drops x, whose
 # evaluation may have effects. The same rule in TypeScript (deck/make/code/lint/rules/no-redundant-arithmetic.ts)
 # also offers the fix. This one is the proof that a rule is ordinary Term, loaded from this directory with no edit to
-# the engine: see note/library/term/lint-plugins.md and test/lint/seed-rule.ts.
+# the engine: see note/project/term/compiler/lint-plugins.md and test/lint/seed-rule.ts.
 
 load @term/base/rule
   find rule

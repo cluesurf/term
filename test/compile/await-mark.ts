@@ -1,4 +1,4 @@
-// Await by default, `tick` to fire, and `mark` for all metadata (note/term/plan/await-by-default-and-mark-metadata.md).
+// Await by default, `tick` to fire, and `mark` for all metadata (note/project/term/await-by-default-and-mark-metadata.md).
 // Each claim is held by what the compiler EMITS on TypeScript, Rust, Swift and Kotlin, never by what the parser builds
 // alone:
 //

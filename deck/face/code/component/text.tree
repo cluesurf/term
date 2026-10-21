@@ -1,5 +1,5 @@
 
-# Text: the vocabulary's word for a run of text (note/term/view/11-vocabulary.md). `level` 1 to 6 makes it a heading
+# Text: the vocabulary's word for a run of text (note/project/term/view/11-vocabulary.md). `level` 1 to 6 makes it a heading
 # (h1 to h6), `link` makes it a link (an `a` with that href), and neither leaves it a span. A prop left out is its empty
 # value (level 0, link empty), so `view text / bind content, text <Hi>` is the plain run.
 #

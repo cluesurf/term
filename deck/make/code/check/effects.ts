@@ -576,7 +576,7 @@ function tickOnSync(file: string, span: Span, called: string): Diagnostic {
 
 // ---- the switch: a call to an async task outside any task ----
 //
-// AWAIT BY DEFAULT (note/term/plan/await-by-default-and-mark-metadata.md, section 1). Inside a task, a call to an
+// AWAIT BY DEFAULT (note/project/term/await-by-default-and-mark-metadata.md, section 1). Inside a task, a call to an
 // async task is awaited and the task becomes async (check/async-resolve.ts). OUTSIDE every task, in a top-level
 // `host` or statement, in a component's body, or in a closure written in either that is not itself `mark async`,
 // nothing can wait, and the call used to hand back a pending value with no message: `host config, read-config()`
@@ -732,7 +732,7 @@ function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[
 // The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
 // callee raises (least fixed point over the call graph), minus what a `mark unsafe` / `halt take` catches, plus
 // what the handler itself raises. A thrown text is `failure`. A guard with no handler catches everything. This is
-// the raise set of note/term/hive/04-reach.md, and it is what the roll reports per task and per route.
+// the raise set of note/project/term/hive/04-reach.md, and it is what the roll reports per task and per route.
 //
 // `via` records, for each function and each exception, the callee that first brought it in (undefined for a direct
 // raise), so a reader can walk one call path from an entry point to the raise site.
@@ -918,7 +918,7 @@ function raiseSetsWith(
   // exceptions its spawned work can raise: before, a `halt conflict` inside a gathered task reached no raise set at
   // all, so `halt outage` on the gatherer's signature passed while `conflict` escaped. A handle handed to another
   // task and waited there is the case this over-approximates rather than tracks
-  // (note/term/research/beam-otp-lessons.md, design 3)
+  // (note/project/term/research/beam-otp-lessons.md, design 3)
   const expressionCalls = (node: Expression, called: Set<string>, direct?: Set<string>): void => {
     for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names, reach)) {
       called.add(name)
@@ -1007,7 +1007,7 @@ function raiseSetsWith(
 
       // only when the program holds the `failure` form, which a tree-shaken program drops unless something names it.
       // So whether a guard around a native call must cover `failure` depends on what the closure keeps: an open
-      // question for the language (note/term/compiler/runtime-shaking.md). The roll asks with `failure` always in its
+      // question for the language (note/project/term/compiler/runtime-shaking.md). The roll asks with `failure` always in its
       // set (compile/roll.ts), so a task's roll entry is the same whichever entry built it
       if (exceptions.has('failure')) {
         direct.add('failure')
@@ -1064,7 +1064,7 @@ function raiseSetsWith(
 // `via` CHOSEN BY RULE, NOT BY DISCOVERY. The fixed point recorded whichever callee brought an exception in first,
 // which depended on the order it visited the functions, so one task's path read differently in a program holding more
 // of them, and a unit's roll (its dependencies' stubs known from the start) could not equal the whole program's
-// (note/term/plan/incremental-best-in-class.md, step 5). The rule: a call that leaves the task's cycle and reaches the
+// (note/project/term/incremental-best-in-class.md, step 5). The rule: a call that leaves the task's cycle and reaches the
 // exception comes first, in the order the body makes its calls; inside a cycle, the first callee strictly nearer a
 // raise. The path then never loops, and it is the same in a unit, where calls between units never form a cycle and a
 // stub calls nothing

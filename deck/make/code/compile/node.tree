@@ -1,6 +1,6 @@
 # The compile-time AST: the records the mills mint, carried through resolution and type checking down to codegen.
 # Distinct from the engine AST (the runtime interpreter's): these nodes carry a source span, an optional inferred type,
-# and may contain holes (unresolved references). See note/research/vibe/computation/plans/11-elaboration.md.
+# and may contain holes (unresolved references). See note/project/term/archive/computation/plans/11-elaboration.md.
 #
 # Ported from compile/node.ts (self-hosting, 2026-10-05), the first of the compiler's SHARED TYPES
 # (note/term/self-host/04-the-port-switch.md, "Shared types first"). Before the port, node.ts was reshaped in
@@ -933,6 +933,14 @@ form statement
       need false
     # `mark deprecated`: a use of the form from another file warns (check/deprecated.tree)
     link deprecated
+      like boolean
+      need false
+    # `mark sole`: a value of the form has one owner and is used at most once (term/affine-kinds decision 001)
+    link sole
+      like boolean
+      need false
+    # `mark hide`: only the declaring file makes one. Its name and fields stay public
+    link hide
       like boolean
       need false
     link span, like span

@@ -18,7 +18,7 @@ load @term/mill/tree/code/tool/flow/mine
 
 # `twin <task>, name <label>`: another implementation of the named task, which must agree with it. The reference is
 # the task as written, and a twin is a candidate the compiler may choose in its place, per call site and per target.
-# See note/term/optimize/words.md.
+# See note/project/term/optimize/words.md.
 #
 #   twin count-each, name tally      the task it twins, and the twin's label among that task's twins
 #     take values                    its parameters, by NAME: types, generics and result come from the task

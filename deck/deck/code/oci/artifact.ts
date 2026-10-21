@@ -1,5 +1,5 @@
 // The OCI artifact a Term version is, built from a release and read back, with every rule it has to obey checked
-// in both directions (note/term/registry/18-oci-registry-default.md, "The artifact format").
+// in both directions (note/project/term/registry/18-oci-registry-default.md, "The artifact format").
 //
 //   manifest   an OCI 1.1 image manifest, `artifactType` application/vnd.cluesurf.term.deck.v1
 //   config     who published what: package, version, tag, commit, tree, links, the key and the signature

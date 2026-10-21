@@ -6,7 +6,7 @@
 //      backends, built on its real toolchain, and held to the reference. The tier differs by backend, by each
 //      engine's capability set; the matches may not. And each probe row FORCED onto every engine whose capability
 //      set admits it, the safety rule bypassed, which is what holds an engine's claimed features to Term's meaning
-// note/term/stdlib/regex-engine.md, "How it is held".
+// note/project/term/stdlib/regex-engine.md, "How it is held".
 //
 // Run: npx tsx test/compile/pattern.ts
 //      PATTERN_COUNT=2000 PATTERN_SEED=7 PATTERN_NATIVE=node,rust,swift,kotlin npx tsx test/compile/pattern.ts

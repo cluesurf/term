@@ -157,7 +157,7 @@ mine fork-miss
         site flow
 
 # The arms are `case <name>`, and one `hook miss` (lean: `miss`) for every case they do not list: the catch-all, in
-# the word `fork test` already uses for "otherwise", so a variant cannot take it (note/term/gaps/plan.md, the open
+# the word `fork test` already uses for "otherwise", so a variant cannot take it (note/project/term/guides/research/gaps/plan.md, the open
 # decisions). The `hook` and bare arms mint the form `fork test`'s do, which carries no case name, and the bridge
 # reads an arm with no name as the match's `otherwise` and refuses any kind but `miss` (compile/mint-bridge.ts).
 mine fork-case

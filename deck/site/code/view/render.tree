@@ -7,7 +7,7 @@
 # EVERY BRANCH IS BUILT IN AN OWNER OF ITS OWN (reactive-bridge-0005). A branch `show`, `each`, a dynamic view or a gate
 # replaces is disposed with it: its effects stop and its cleanups run, so a node that has left the tree is never
 # rewritten, and a portal opened inside it closes with it. The branches still mounted are disposed when the owner the
-# renderer was set up in is. The contract is note/term/view/12-render-seam.md.
+# renderer was set up in is. The contract is note/project/term/view/12-render-seam.md.
 
 load ../dom/native/{platform}/dom
   find view

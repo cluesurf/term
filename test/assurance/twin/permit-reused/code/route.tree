@@ -1,0 +1,20 @@
+# BROKEN TWIN of law 2's `mark sole`: a route spends one permit twice. term hold must refuse it (`sole-reused`, the
+# sole-usage item of affine-kinds). Until check/sole.ts lands it builds.
+load ./model
+  find natural
+  find person
+  find shelf
+load ./permit
+  find permit
+  find grant-delete
+  find delete-note
+
+task erase-twice
+  take s, like shelf
+  take actor, like person
+  take at, like natural
+  take whose, like natural
+  like shelf
+  save once, grant-delete(actor, at, whose)
+  save after, delete-note(s, once)
+  back delete-note(after, once)

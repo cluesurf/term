@@ -1,4 +1,4 @@
-# A number turned into text reads the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the
+# A number turned into text reads the same on every backend (note/project/term/stdlib/semantics.md, "Numbers as text"): the
 # shortest digits that read back as the same float, laid out the way ECMAScript's Number::toString lays them out.
 # Swift and Kotlin print `2.0` for two and Rust prints `1000000000000000000000` for 1e21, so each is held here.
 # Held by `pnpm term:base-gate`.

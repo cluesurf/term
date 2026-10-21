@@ -1,4 +1,4 @@
-# `term roll`'s decisions that are not the build or the roll's own shape (note/term/hive/08-cli.md): whether a kind
+# `term roll`'s decisions that are not the build or the roll's own shape (note/project/term/hive/08-cli.md): whether a kind
 # can be asked for, which tell covers each exception and which routes can answer with it, which exceptions `--private`
 # keeps, the noun a kind is counted in, and what the roll and its `--diff` say.
 #

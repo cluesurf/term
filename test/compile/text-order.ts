@@ -1,6 +1,6 @@
 // The three code-point text runtimes the emitters prepend (TermText on Kotlin and Swift, __termText on TypeScript),
 // run on the same inputs and held to one reference written here from the definition: a text is its sequence of code
-// points (note/term/stdlib/semantics.md). All three were rewritten on 2026-10-02 to read the string in place rather
+// points (note/project/term/stdlib/semantics.md). All three were rewritten on 2026-10-02 to read the string in place rather
 // than copy it into an array per call, and this is what holds the rewrite to the meaning. The inputs cross surrogate
 // pairs, a combining accent, the U+E000..U+FFFF range (where UTF-16 order and code point order disagree), Term's
 // White_Space set, and the empty text.

@@ -1,5 +1,5 @@
 # A session: one `term mark` run on one machine, written as ONE JSON export afterwards, exactly in the format of
-# note/term/bench/database.md ("The export"), under the Term repository's `.base/@cluesurf/term/mark/session/`.
+# note/project/term/bench/database.md ("The export"), under the Term repository's `.base/@cluesurf/term/mark/session/`.
 # Samples only, never summaries: every metric of every timed round is a whole number in its unit, and a median, a
 # ratio or an interval is computed from them when asked for, here or by `pnpm mark:save`'s readers.
 

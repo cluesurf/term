@@ -1,5 +1,5 @@
 // The `view` reader: a real document reads into the forms, and every bound the dialect claims is refused with a
-// message that names it. See note/term/view/ and deck/mill/code/tree/view/.
+// message that names it. See note/project/term/view/ and deck/mill/code/tree/view/.
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView, lowerView, viewManifest, checkView } from '@term/make/code/compile/view'
@@ -255,7 +255,7 @@ if (result.ok) {
 
 // ---- the query manifest ----
 // Written in the `host` dialect, because a manifest is data. It carries what a RESOLVER needs and nothing a
-// renderer could act on. See note/term/view/03-find.md.
+// renderer could act on. See note/project/term/view/03-find.md.
 
 if (result.ok) {
   const manifest = viewManifest(result.file, 'page/quenya')
@@ -323,7 +323,7 @@ if (REFERENCED.ok) {
 
 // ---- the role routes a file to this reader, end to end ----
 // A project's `role.tree` decides which mill reads a file. Content cannot decide, because a document and a
-// program share the words `load` and `host`. See note/term/view/06-mill.md.
+// program share the words `load` and `host`. See note/project/term/view/06-mill.md.
 
 import { parseRoleFile, matchRole } from '@cluesurf/deck.tree'
 import { compile } from '@term/make/code/compile/compile'
@@ -538,10 +538,10 @@ refuses('a counted walk with no bound', 'view page\n  walk size\n    hook next\n
 // ---- macros expand before the reader ever sees them ----
 // `tree` and `fuse` are surface syntax. `compile/template.ts` expands them on the parse tree, so by the time the
 // reader runs the macros are gone and their bodies stand where each `fuse` was. The dialect gets this for free
-// by going through the same expand phase the code role does. See note/term/view/02-macro.md.
+// by going through the same expand phase the code role does. See note/project/term/view/02-macro.md.
 
 // A parameter substitutes as `{name}`, never as `read name`. The wrong spelling does not fail: it expands to a
-// read of the bound group's head, which is a variable that does not exist. Measured, see note/term/view/02-macro.md.
+// read of the bound group's head, which is a variable that does not exist. Measured, see note/project/term/view/02-macro.md.
 const MACRO = `
 tree sound-row
   take symbol, like text

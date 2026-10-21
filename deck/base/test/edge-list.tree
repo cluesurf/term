@@ -1,4 +1,4 @@
-# Every total list operation at its edges, held to note/term/stdlib/semantics.md on every backend by
+# Every total list operation at its edges, held to note/project/term/stdlib/semantics.md on every backend by
 # `pnpm term:base-gate`. A slice clamps and never counts from the end, membership compares records by structure, and
 # flatten removes one level. The stops (a read past the end, a pop of an empty list) end the program and so are not
 # asserted here: a stop on one backend would take the whole report with it.

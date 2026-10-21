@@ -5,7 +5,7 @@
 // The SHAPE is Expo's (docs/pages/technical-specs/expo-updates-1.mdx in expo/expo, read 2026-10-02), so the
 // reasoning carries: a manifest names one launch asset and the other assets by content hash, the manifest's exact
 // bytes are signed RSA PKCS#1 v1.5 with SHA-256 under a key whose public half is inside the app, and an asset is
-// trusted because its hash is in the signed manifest. See note/term/app/13-expo-lessons.md, rank 1.
+// trusted because its hash is in the signed manifest. See note/project/term/app/research/13-expo-lessons.md, rank 1.
 //
 // THE TRANSPORT IS STATIC, which is where this departs from Expo. Expo's client asks a server, which picks the newest
 // update by header. Here the publisher writes files and anything that serves files serves updates, R2 included, with

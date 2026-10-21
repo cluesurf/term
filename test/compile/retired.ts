@@ -6,7 +6,7 @@
 // `mark <annotation>` IS NOT RETIRED, and finding that out is why this file exists. Refusing it was tried on
 // 2026-08-31 and reverted the same day. The decision went the other way on 2026-10-02: metadata IS `mark`
 // (`mark async`, `mark unsafe`, ...), and `note <word>` is the old spelling, still read and warned as
-// `note-metadata` (note/term/plan/await-by-default-and-mark-metadata.md, test/compile/await-mark.ts). Both
+// `note-metadata` (note/project/term/await-by-default-and-mark-metadata.md, test/compile/await-mark.ts). Both
 // spellings are asserted below so a change to either is a deliberate edit here rather than a drift.
 //
 // A RETIREMENT NAMES ITS REPLACEMENT. "the name `wave` is not defined" is what a retired literal says, which

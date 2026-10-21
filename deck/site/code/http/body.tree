@@ -1,0 +1,207 @@
+# Request bodies and the answers to a post. `read-body` turns an `application/x-www-form-urlencoded` or JSON body
+# into Term data (@term/host), and the app fills its own form from it with `call fill / ... / like <form>`, so a body
+# that does not fit the form raises `data-mismatch` and the funnel (./tell `expose`) answers 400. A JSON body that is
+# not JSON raises `json-mismatch`, a mismatch too. A body of any other type raises `body-exclusion`, answered 415.
+#
+# Names are kebab in Term and snake on the wire, as @term/host's JSON reader converts them: a form field written
+# `due_date` fills the field `due-date`. A urlencoded body holds only text, so it fills a form of text fields.
+#
+# `answer-json` is the one JSON writer: the value goes out through the host's `stringify`, which escapes every text,
+# never through concatenation. `redirect` is the answer after a post, 303 to a page the browser then GETs.
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/hash
+  find hash
+  find set
+
+load @term/base/text
+  find split
+  find replace-all
+  find index-of
+  find substring
+  find to-lower-case
+  find starts-with
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/url/percent
+  find percent-decode
+  find utf-8-decode
+
+load @term/base/exception
+  find exclusion
+
+load @term/host/base
+  find data
+  find data-entry
+  find from-json
+  find to-json
+
+load ./http
+  find request
+  find response
+
+# a body whose type is neither a form nor JSON. `value` is the type it came as
+form body-exclusion
+  like exclusion
+    bind note, <Body type not accepted>
+    bind thing, <body>
+
+# one name or value of a urlencoded body: `+` is a space, then each `%XX` is a byte of UTF-8. A `%` not followed by
+# two hexadecimal digits stays as written, as the WHATWG URL Standard reads it
+task decode-field
+  take value, like text
+  like text
+  send back
+    call from-runes
+      call utf-8-decode
+        call percent-decode
+          call to-runes
+            call replace-all
+              read value
+              text <+>
+              text < >
+
+# the name a urlencoded field fills: snake on the wire, kebab in the form
+task field-name
+  take name, like text
+  like text
+  send back
+    call replace-all
+      call decode-field(read name)
+      text <_>
+      text <->
+
+# an `application/x-www-form-urlencoded` body as a hash of texts, in the order written. An empty pair (`a=1&&b=2`) is
+# skipped, and a pair with no `=` is a name with the empty value
+task read-form
+  take body, like text
+  like data
+  save entries, make list
+  walk list
+    call split
+      read body
+      text <&>
+    hook next
+      take site, name pair
+      fork test
+        hook test
+          call is-equal
+            read pair
+            text <>
+        hook hold
+          turn next
+      save at
+        call index-of
+          read pair
+          text <=>
+      save name, read pair
+      save value, text <>
+      fork test
+        hook test
+          call is-minimum
+            read at
+            code 0
+        hook hold
+          save name
+            call substring
+              read pair
+              code 0
+              read at
+          save value
+            call substring
+              read pair
+              call add
+                read at
+                code 1
+      call push
+        read entries
+        make data-entry
+          bind name, call field-name(read name)
+          bind base
+            make data/text
+              bind value, call decode-field(read value)
+  send back
+    make data/hash
+      bind list, read entries
+
+# a JSON body as data. Text that is not JSON raises `json-mismatch`
+task read-json
+  take body, like text
+  like data
+  send back
+    call from-json
+      read body
+
+# the request's body as data, by its `content-type`
+task read-body
+  take request, like request
+  like data
+  save kind, text <>
+  fork test
+    hook test
+      call request/headers/has
+        text <content-type>
+    hook hold
+      save kind
+        call to-lower-case
+          call request/headers/get
+            text <content-type>
+  fork test
+    hook test
+      call starts-with
+        read kind
+        text <application/x-www-form-urlencoded>
+    hook hold
+      send back
+        call read-form
+          read request/body
+  fork test
+    hook test
+      call starts-with
+        read kind
+        text <application/json>
+    hook hold
+      send back
+        call read-json
+          read request/body
+  halt body-exclusion
+    bind value, read kind
+
+# the answer after a post: 303 See Other to `path`, which the browser then loads with a GET
+task redirect
+  take path, like text
+  like response
+  save headers, make hash
+  call set
+    read headers
+    text <location>
+    read path
+  send back
+    make response
+      bind status, code 303
+      bind body, text <>
+      bind headers, read headers
+
+# data as a JSON answer with `status`, written by the one escaping writer
+task answer-json
+  take value, like data
+  take status, like u16
+  like response
+  save headers, make hash
+  call set
+    read headers
+    text <content-type>
+    text <application/json; charset=utf-8>
+  send back
+    make response
+      bind status, read status
+      bind body
+        call to-json
+          read value
+      bind headers, read headers

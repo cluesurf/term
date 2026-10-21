@@ -10,7 +10,7 @@
 //     unsigned, which is what `(a & b) >>> 0` gives
 //   - a shift of a safe integer whose result is still safe is multiplication or floored division by a power of two
 // Every BigInt allocated three objects per operation, and hash and digest loops spent most of their time there
-// (note/term/codegen/browser.md, B4).
+// (note/project/term/compiler/codegen/browser.md, B4).
 const __bitSigned32 = (x: number): boolean => (x | 0) === x
 const __bitUnsigned32 = (x: number): boolean => x >>> 0 === x
 const __bitShiftable = (value: number, count: number): boolean =>

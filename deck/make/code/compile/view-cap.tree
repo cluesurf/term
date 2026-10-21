@@ -9,7 +9,7 @@
 # The counts are taken on the EXPANDED document, after `fuse`. A document with twenty fuses of a ten-node macro is
 # a two-hundred-node document, and the count before expansion describes nothing a browser will build.
 #
-# See note/term/view/05-sandbox.md.
+# See note/project/term/view/05-sandbox.md.
 #
 # Ported from compile/view-cap.ts (self-hosting, phase 2, 2026-10-02). The `VIEW_CAPS` constant is the task
 # `make-view-caps`, because a top-level `host` is private to its emitted module.

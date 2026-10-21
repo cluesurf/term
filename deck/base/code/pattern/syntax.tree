@@ -1,5 +1,5 @@
 # The pattern reader: pattern text into the tree of ./node.tree, or `pattern-mismatch` with the code point position
-# and the reason. One reader for every tier, so a pattern means one thing (note/term/stdlib/regex-engine.md).
+# and the reason. One reader for every tier, so a pattern means one thing (note/project/term/stdlib/regex-engine.md).
 #
 #   literals         any code point; a backslash before punctuation makes it literal; \t \n \r \f \v \0
 #                    \xHH \x{H...} \uHHHH \u{H...}

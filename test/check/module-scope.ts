@@ -1,5 +1,5 @@
 // A name belongs to the module that defines it, and reaches another module only through `load ... / find`
-// (note/term/project/module-scope.md). These are the cases the one flat program used to get wrong, each built as a small
+// (note/project/term/module-scope/readme.md). These are the cases the one flat program used to get wrong, each built as a small
 // package of modules: two definitions of one name in two files, and a file that imports one of them.
 //
 //   module-scope-0002  tasks of DIFFERENT signatures across files are bound by import, not chosen as global overloads

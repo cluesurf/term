@@ -11,7 +11,7 @@
 # `stop` shuts it down, with the same argument order. A program that wants BOTH an h1 and an h2 server imports one
 # of them under a name (`find serve, name serve-http2`), because the verbs are the same on purpose.
 #
-# See note/term/stdlib/native-async-file-and-server.md for what each backend runs underneath, and for the two
+# See note/project/term/stdlib/native-async-file-and-server.md for what each backend runs underneath, and for the two
 # named gaps (h2c, and server push).
 
 mark unstable

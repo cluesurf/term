@@ -4,7 +4,7 @@
 # bar and no History API navigates exactly as a page does. A host that has an address bar mirrors the stack into it
 # (`push-path`, `replace-path`, `go-back` in ../dom/page, the browser's History), and tells this module when the person
 # moved it themselves (back, forward), through `follow-address`. Everything a route reads is a signal or a task here,
-# never the host's own state: note/term/project/native-navigation.md.
+# never the host's own state: note/project/term/native-navigation/readme.md.
 #
 #   start-navigation   begin where the last run left off when the host kept it, else at the host's own path (`/` with
 #                      no address)

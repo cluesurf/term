@@ -4,7 +4,7 @@
 # UIButton showing a selection menu, a Spinner) through their `toolkit` rung, and every other target, the web among
 # them, falls to the generic ./native/select.tree, the browser's own `<select>`. Both take `host`, `class`,
 # `control` (the chosen option, a text signal) and `options` (the list to choose from). For a picker drawn by the
-# theme rather than the platform, use `listbox`. See note/term/app/11-uniform-interface.md.
+# theme rather than the platform, use `listbox`. See note/project/term/app/11-uniform-interface.md.
 #
 # This replaced a web-only wrapper whose options were `slot` children and whose change was a raw handler, a shape only
 # a browser could honor, which nothing used.

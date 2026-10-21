@@ -78,7 +78,7 @@ form duration
               read self/nanoseconds
               read other/nanoseconds
 
-  # the names before `add` reached a duration (note/term/plan/decisions-2026-10.md, D5), kept for one release
+  # the names before `add` reached a duration (note/project/term/decisions-2026-10/decisions-2026-10.md, D5), kept for one release
   task plus
     take self
     take other, like duration

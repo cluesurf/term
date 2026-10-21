@@ -207,7 +207,7 @@ const SNIPPETS: Record<string, string> = {
   down: 'down\n  $0',
 }
 
-// the lean spelling of the same constructs (note/term/lean.md): `back` returns, a fork's arms are `hold` / `miss`
+// the lean spelling of the same constructs (note/project/term/mill/lean.md): `back` returns, a fork's arms are `hold` / `miss`
 // with no `hook`, and `walk <list>` / `take` iterates
 const LEAN_SNIPPETS: Record<string, string> = {
   task: 'task ${1:name}\n  take ${2:arg}, like ${3:type}\n\n  like ${4:type}\n\n  back $0',
@@ -993,7 +993,7 @@ export class LanguageServer {
     try {
       const deckOf = this.options.deckOf ?? this.deckOf
 
-      // ONE UNIT AT A TIME, as `term make` builds (note/term/plan/incremental-best-in-class.md, step 11): a keystroke
+      // ONE UNIT AT A TIME, as `term make` builds (note/project/term/incremental-best-in-class.md, step 11): a keystroke
       // builds the edited module's unit and reads every other from the server's memory, where a merged compile
       // checked the document's whole closure again. A file that is not a program is compiled whole, as `term make`
       // compiles it

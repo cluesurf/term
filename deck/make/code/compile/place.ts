@@ -1,4 +1,4 @@
-// F4 (note/term/codegen/readme.md): a record in a list, updated IN PLACE. The value semantics (D1) say
+// F4 (note/project/term/compiler/codegen/readme.md): a record in a list, updated IN PLACE. The value semantics (D1) say
 //
 //   save b, call get(bodies, i)
 //   save bodies/{i}, make body / bind x, read b/x / bind vx, <new> / ...

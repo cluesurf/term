@@ -1,5 +1,5 @@
 # A seeded random source: the same seed gives the same sequence on every backend, which the host generators cannot
-# promise (note/term/stdlib/semantics.md). The generator is xoshiro128** (Blackman and Vigna), chosen because it needs
+# promise (note/project/term/stdlib/semantics.md). The generator is xoshiro128** (Blackman and Vigna), chosen because it needs
 # only 32-bit shifts, xors, rotations and multiplication by 5 and 9, all exact below 2^53, so a JavaScript number holds
 # every intermediate value. The seed is spread over the four state words by xorshift32.
 #

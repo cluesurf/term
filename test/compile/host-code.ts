@@ -1,4 +1,4 @@
-// `tree/code` (note/term/host/10-code.md): the worked example in the spec is the bytes the encoder writes; every
+// `tree/code` (note/project/term/host/10-code.md): the worked example in the spec is the bytes the encoder writes; every
 // fixture and thousands of generated values round trip, and decode then encode gives back the same bytes; every
 // non-canonical spelling and every hostile input is refused by name; the encoder refuses what the model does not hold;
 // a Zstandard frame is used only when smaller and reads back. Ends with sizes against JSON.

@@ -1,4 +1,4 @@
-# `term hold`'s decisions that are not its builds or its printing (note/term/proof-by-default/readme.md): an
+# `term hold`'s decisions that are not its builds or its printing (note/project/term/proof/readme.md): an
 # obligation's key, which failed obligations the baseline already lists and which it lists that are gone, what
 # `--commit` writes, the kernel's reasons for declining most common first, and the gate's verdict and counts.
 #

@@ -352,7 +352,7 @@ function isWithin(child: string, parent: string): boolean {
 
 // What a separate build learns that the next one may keep (`compileProjectSeparate`): the unit answers, each module's
 // walk, each load's answer, each module's parse, and each entry's outcome. A watch keeps one for its life
-// (note/term/plan/incremental-best-in-class.md, steps 2 and 3). A module's walk and parse are checked against its text
+// (note/project/term/incremental-best-in-class.md, steps 2 and 3). A module's walk and parse are checked against its text
 // and a load's answer against its file's stamp, so an edit is seen wherever it lands. What a stamp cannot see is a
 // file appearing where a load found nothing, or a manifest or role file changing how every module is read, so either
 // of those starts the session over
@@ -436,7 +436,7 @@ export function buildSession(root: string): BuildSession {
   }
 }
 
-// What `term make --explain` keeps (note/term/plan/incremental-best-in-class.md, step 6): the inputs each unit was last
+// What `term make --explain` keeps (note/project/term/incremental-best-in-class.md, step 6): the inputs each unit was last
 // built from, one file per unit under the project's cache, written only when the unit is built. It sits beside the
 // cache rather than in it, because the cache's directories are per compiler version, and "the compiler changed" is
 // one of the things it has to be able to say
@@ -845,7 +845,7 @@ export function projectResolver(
   // tries the SAME RELATIVE PATH in the project being built, then face's own. It sits under withNativeEnv, so it applies
   // per rung of the env chain: an app's `code/component/native/toolkit/switch.tree` wins over face's toolkit switch on
   // macOS, iOS and Android, and face's generic still serves the web. No flag, prop or platform check in the component.
-  // Building face itself, the project's file IS face's, so nothing changes. note/term/app/11-uniform-interface.md
+  // Building face itself, the project's file IS face's, so nothing changes. note/project/term/app/11-uniform-interface.md
   // Either spelling of the path reaches it: `@term/face/component/native/...` (the code root, the short form) and
   // the older `@term/face/code/component/native/...`, and the app's file is found by the package path rule.
   const FACE_NATIVE = ['@term/face/component/native/', '@term/face/code/component/native/']
@@ -891,7 +891,7 @@ export function compileProject(
   // language/variables, 2026-10-03). A warning never fails the build
   warnings: string[]
   // the claims this project states that nobody has proven: every `rule` carrying `mark open`. Reported on the
-  // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
+  // build line so an open claim is visible rather than silent. See note/project/term/proof/archive/law-proof-gate.md.
   open: string[]
   // tier 0 over the project's own tasks: obligations written and proven. `term hold` holds the rest to hold.json.
   obligations: Owed
@@ -1142,7 +1142,7 @@ export function isWholeFile(file: string, text: string, role: string | null | un
 // sibling-relative, so one artifact serves every importer), with each entry keeping a re-export shim at its classic
 // host/<path>.ts location. Units are cached by content + dependency interface hashes, so a body-only edit in a
 // shared module rebuilds one unit and replays the rest: cross-boundary early cutoff, live on the batch path.
-// See note/term/incremental-compilation.md ("What is live vs pending") and code/compile/separate.ts.
+// See note/project/term/compiler/incremental-compilation.md ("What is live vs pending") and code/compile/separate.ts.
 export function compileProjectSeparate(
   root: string,
   cache: CompileCache = projectCache(root),
@@ -1557,7 +1557,7 @@ export async function callMake(input: {
   // an edit rebuilds the edited module and what reads it. It agreed with this build on every file of every package
   // before the switch (`pnpm term:separate-diff`, test/compile/separate.ts)
   merged?: boolean
-  // say why each unit that was built was built (step 6 of note/term/plan/incremental-best-in-class.md). The build runs
+  // say why each unit that was built was built (step 6 of note/project/term/incremental-best-in-class.md). The build runs
   // on one thread, since the reasons are found where each unit is built
   explain?: boolean
   // compile the .tree files even when package.json carries a `make` script.
@@ -1757,7 +1757,7 @@ export async function callMake(input: {
 
       // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under
       // construction has to, but the count says so on every build rather than letting it pass in silence.
-      // `term hold` is the gate that refuses while this is non-zero. note/term/project/law-proof-gate.md.
+      // `term hold` is the gate that refuses while this is non-zero. note/project/term/proof/archive/law-proof-gate.md.
       if (openClaims && openClaims.length > 0) {
         report({
           glyph: 'warning',

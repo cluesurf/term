@@ -1,4 +1,4 @@
-// Which term runs here (deck/call/code/need.ts), one case per rule of note/term/plan/term-versions.md "Resolution",
+// Which term runs here (deck/call/code/need.ts), one case per rule of note/project/term/term-versions.md "Resolution",
 // plus nearest-wins, a stale pin, a pin not installed, and every refusal. Real files in a scratch directory: a home with
 // installed versions, projects with deck.tree and lock.tree. No network: resolution never reaches one.
 // Run: npx tsx test/call/need-resolve.ts

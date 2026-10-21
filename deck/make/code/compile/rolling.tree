@@ -1,6 +1,6 @@
 # The roll: everything a build knows about every deck, as data. Built from the checked program after the passes that know
 # the raise sets, so every task and route carries the exceptions it can raise. `term roll` prints it, `term make` writes
-# it beside the output as `host/roll.json`, and the hive wakes with it at boot. See note/term/hive/02-roll.md.
+# it beside the output as `host/roll.json`, and the hive wakes with it at boot. See note/project/term/hive/02-roll.md.
 #
 # Ported from compile/roll.ts (self-hosting, 2026-10-06), which stays as the face and says why each field is shaped as
 # it is. The decisions:

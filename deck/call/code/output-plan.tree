@@ -1,4 +1,4 @@
-# The terminal output's decisions that are not the library's own (note/term/output/standard.md): a diagnostic as a
+# The terminal output's decisions that are not the library's own (note/project/term/output/standard.md): a diagnostic as a
 # Problem item (section 12) with its code frame (section 7), which of a batch of diagnostics are the same problem, and
 # what a failed tool step says and quotes.
 #

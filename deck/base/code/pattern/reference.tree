@@ -1,6 +1,6 @@
 # The reference: what a pattern MEANS, written as directly as Term allows, and run only by tests. Every tier (the
 # native engines, the linear-time matcher, the backtracking one) is held to it on bounded inputs
-# (note/term/stdlib/regex-engine.md, "Tightened promises" 5). It is exponential on purpose: it lists every way a part
+# (note/project/term/stdlib/regex-engine.md, "Tightened promises" 5). It is exponential on purpose: it lists every way a part
 # can match, in the order the semantics prefers them, and the first way the whole pattern matches is the answer.
 #
 # A state is a list of numbers: the position, then two slots per group (group 0 is the whole match), -1 for a slot

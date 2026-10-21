@@ -1,0 +1,19 @@
+# BROKEN TWIN of law 6, no crash: the notes page shows the average note length, and divides by the count of notes,
+# which is zero for a person with none, and it reads the first note's length from a list that may be empty. term hold
+# must refuse both: tier-0 obligations (a division by something other than zero, a read inside its list) that nothing
+# proves.
+#
+# Each body is two statements on purpose: a one-statement task is an accessor, whose obligation is lifted to its
+# callers, and with no caller it owes nothing here (test/call/hold.ts).
+task average-length
+  take total, like number
+  take count, like number
+  like number
+  save average, divide(total, count)
+  back average
+
+task first-length
+  take lengths, like list, like number
+  like number
+  save first, read lengths/0
+  back first

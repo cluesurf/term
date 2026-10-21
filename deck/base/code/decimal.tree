@@ -199,7 +199,7 @@ form big-decimal
           read other
           read common
 
-# free-function arithmetic, from before `add` reached a decimal through `addition` (note/term/plan/decisions-2026-10.md,
+# free-function arithmetic, from before `add` reached a decimal through `addition` (note/project/term/decisions-2026-10/decisions-2026-10.md,
 # D5): `add(a, b)` on two decimals is the method now, and these stay for the code written against them
 task decimal-add
   take a, like big-decimal

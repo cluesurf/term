@@ -33,7 +33,7 @@ mod clock {
         from.elapsed().as_nanos() as i64
     }
 
-    // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). The wall
+    // what `clock/now` reads: monotonic milliseconds on every backend (note/project/term/stdlib/semantics.md). The wall
     // clock is `time/now`
     pub fn current_time() -> i64 {
         precise()

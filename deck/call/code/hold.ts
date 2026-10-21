@@ -19,7 +19,7 @@
  * `--cross` additionally runs the cross-backend differential this command used to run by default (`@term/test`'s
  * incremental hold), which compares the backends rather than proving anything.
  *
- * See note/term/proof-by-default/readme.md and note/term/law-and-proof.md.
+ * See note/project/term/proof/readme.md and note/project/term/proof/law-and-proof.md.
  *
  * What the gate decides without a build or the terminal is Term, in hold-plan.tree: an obligation's key, the baseline
  * split and what `--commit` writes, the kernel's reasons most common first, and the verdict with its counts.
@@ -82,7 +82,15 @@ export type HoldSummary = {
   ledger: Ledger
   // what the kernel did with the project's tasks: proved each as one term, checked it statement by statement, or
   // declined it, and the reasons it declined, most common first
-  kernel: { proven: number; commands: number; declined: number; reasons: [string, number][] }
+  kernel: {
+    proven: number
+    commands: number
+    declined: number
+    reasons: [string, number][]
+    // why each task checked statement by statement was not lowered to one term, most common first
+    // (proof-by-default-0009)
+    statementwise: [string, number][]
+  }
   // linear refutations found by the search and refused by the certificate checker, summed over every compile
   uncertified: number
 }
@@ -128,6 +136,8 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
   const kernel = { proven: 0, commands: 0, declined: 0 }
   // every declined task's reason, by its kind, in the order met
   const kinds: string[] = []
+  // and every task checked statement by statement, by why it was not lowered
+  const lowering: string[] = []
   let uncertified = 0
 
   for (const file of files) {
@@ -175,6 +185,10 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
 
       for (const { reason } of result.kernel.declined) {
         kinds.push(plan.reasonKind(reason))
+      }
+
+      for (const { reason } of result.kernel.statementwise ?? []) {
+        lowering.push(reason)
       }
     }
 
@@ -243,6 +257,7 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
     kernel: {
       ...kernel,
       reasons: plan.reasonsOf(kinds).map(one => [one.reason, one.count] as [string, number]),
+      statementwise: plan.reasonsOf(lowering).map(one => [one.reason, one.count] as [string, number]),
     },
     uncertified,
   }
@@ -333,6 +348,16 @@ export async function callHold(input: {
     // one line per reason, most common first: `An expression the kernel cannot represent: 1`
     message: plan.reasonLines(kernel.reasons.map(([reason, n]) => ({ reason, count: n }))),
   })
+
+  // and why each task checked statement by statement was not lowered to one term: what the lowering does not cover yet
+  if (kernel.statementwise.length > 0) {
+    report({
+      glyph: 'info',
+      verb: 'prove',
+      subject: 'Why a task was checked statement by statement',
+      message: plan.reasonLines(kernel.statementwise.map(([reason, n]) => ({ reason, count: n }))),
+    })
+  }
 
   // the TRUST LEDGER: what the proofs rest on that nothing here proves
   report({

@@ -20,7 +20,7 @@
 // @term/base/bytes on both sides), and a LIST of any of those. A record the module declares itself, and a task that
 // takes a function, do not cross; such a task is emitted as a raise naming the reason, or run in the page where the page
 // has the module too, so the module still builds and the gap is visible rather than silent. Design:
-// note/term/cask/readme.md.
+// note/project/term/cask/readme.md.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -137,7 +137,7 @@ const realOf = (file: string): string => (existsSync(file) ? realpathSync(file) 
 
 // the load path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/<rest>`, the
 // short form, since a package path resolves inside the package's code root first
-// (note/term/plan/manifest-mark-and-code-root.md)
+// (note/project/term/manifest/manifest-mark-and-code-root.md)
 function importPathOf(file: string): string | undefined {
   const match = /\/deck\/([^/]+)\/code\/(.+)\.tree$/.exec(realOf(file))
 

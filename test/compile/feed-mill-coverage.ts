@@ -126,7 +126,7 @@ const nameOf = (file: string): string => relative(CODE, file).replace(/^(text|bl
 //   default and every rule ending in one declared a number for a maybe. Three more.
 //
 // the counts on 2026-08-31, and one more grammar on 2026-10-06: `text/note/mine.tree`, the expression grammar, which
-// the text grammar engine runs (note/term/mill/03-note-grammar.md). It parses, reads to 295 rule objects, is text
+// the text grammar engine runs (note/project/term/mill/03-note-grammar.md). It parses, reads to 295 rule objects, is text
 // only, and its generated reader mills and typechecks, so every count below moved by exactly one grammar. And the same
 // day `text/latex/mine.tree` (note/term/mill/04-latex-grammar.md), already among the 100 and parsing, came to read:
 // 1,040 rule objects, text only, its reader milling and typechecking, one grammar more again
@@ -464,7 +464,7 @@ ok(
 //
 // The 86 split into four kinds, and only the first is a language question:
 //   UNDOCUMENTED CONSTRUCT WORDS: chunk, bound, crown, chord, chain, sieve, count, shard, block, leave, crest,
-//   shift, binary. None appears in note/term/feed/01-grammar.md, so what each MEANS is genuinely open.
+//   shift, binary. None appears in note/project/term/feed/01-grammar.md, so what each MEANS is genuinely open.
 //   RULES THE GRAMMAR NEVER WROTE: month, sp, weekday, atom, word, date1, time, attach-list, lig-caret-list.
 //   PASTED FOREIGN CODE: `p.parsePointer`, `leNames`, left where a port from another implementation stopped.
 //   TYPE NAMES USED AS RULES: ushort, short, uint32, 2digit, 4digit.

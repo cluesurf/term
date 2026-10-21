@@ -74,7 +74,7 @@ const BINARY_TYPES = new Set([
   'wasm',
 ])
 
-// tree/code (note/term/host/10-code.md): bytes on the wire, base64 inside the program, as a binary asset travels. The
+// tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program, as a binary asset travels. The
 // edge compresses a response for the client by itself. A request body packed with `Content-Encoding: zstd` is refused
 // (415): a Worker has no Zstandard decoder it can count on, and reading it as plain bytes would hand the handler noise
 const TREE_CODE = 'application/tree+code'

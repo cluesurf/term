@@ -1,7 +1,7 @@
 // The hold-checker: closes refinement layer 2 end to end. It translates each function's `hold` clauses (the
 // goals) and its parameters' refinements (the assumptions, e.g. natural-number means n >= 0) into linear
 // constraints, then discharges the goals with the Fourier-Motzkin prover in refine.ts. An unprovable hold is a
-// diagnostic. See note/research/vibe/computation/plans/04-typecheck.md. Browser-safe.
+// diagnostic. See note/project/term/archive/computation/plans/04-typecheck.md. Browser-safe.
 //
 // The checker is Term (self-hosting, 2026-10-06), in parts: check/nonlinear.tree (the polynomial core),
 // check/universal.tree (recurrences, universal hypotheses, induction), check/inequality.tree (the linear translation and
@@ -91,7 +91,7 @@ const PROFILE_GOALS = typeof process !== 'undefined' && Boolean(process.env?.TER
 
 // THE PROOF BUDGET: the exact search's work one goal may spend, in product.ts's units (rows times the pivot row's bits,
 // THE BUDGET). Set from the library: the costliest proof measured on 2026-10-05 is in
-// note/term/handoff-math-and-proof.md, and this is far above it, so it costs no proof there and stops a refusal where
+// note/project/term/math-foundations/handoff-math-and-proof.md, and this is far above it, so it costs no proof there and stops a refusal where
 // one used to search for half an hour. `TERM_PROOF_BUDGET=<units>` changes it for one run (`Infinity` removes it)
 const PROOF_BUDGET_UNITS = 1e10
 

@@ -2,7 +2,7 @@
 // `text` (a text node), so a program reaching both did not build (native-dom-0042).
 //
 // Positions and lengths count CODE POINTS, as the emitter's TermText and every other backend do
-// (note/term/stdlib/semantics.md). They counted UTF-16 units until 2026-10-02, so one program measured a text with an
+// (note/project/term/stdlib/semantics.md). They counted UTF-16 units until 2026-10-02, so one program measured a text with an
 // emoji differently depending on which of the two runtimes a module reached. Bounds clamp to the text and never count
 // from the end, and trim strips the same White_Space set as TermText. Each position is found by stepping through the
 // string where it lies, so nothing is converted to an array.

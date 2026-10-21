@@ -1,5 +1,5 @@
 // A package path resolves inside the package's CODE ROOT first, then its package root, and `base <dir>` under a
-// load forces the package root (note/term/plan/manifest-mark-and-code-root.md). This holds the plan's resolution
+// load forces the package root (note/project/term/manifest/manifest-mark-and-code-root.md). This holds the plan's resolution
 // table as fixtures, `base` with a match and a mismatch, the `ambiguous-load` warning, `{platform}` slots in both
 // roots, relative loads, a bare package path, and the manifest's `mark` and `code`, old spelling included.
 //

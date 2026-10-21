@@ -1,4 +1,4 @@
-// Every rebuild explained (note/term/plan/incremental-best-in-class.md, step 6, `term make --explain`). A unit that is
+// Every rebuild explained (note/project/term/incremental-best-in-class.md, step 6, `term make --explain`). A unit that is
 // built says why: its own text, a name it reaches and which, its settings, the compiler, or nothing recorded. The
 // reasons are compile/explain.tree comparing the inputs a unit was last built from with the ones it has now.
 // Run: npx tsx test/compile/explain.ts

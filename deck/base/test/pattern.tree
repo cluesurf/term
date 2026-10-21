@@ -1,6 +1,6 @@
 # The pattern engine (@term/base/pattern) on whatever backend runs the suite: each feature's meaning, which tier a
 # pattern lands on, the refusals, and the budget. The same file is the fixture set for every backend, so a backend
-# whose engine means something else fails here by name. note/term/stdlib/regex-engine.md.
+# whose engine means something else fails here by name. note/project/term/stdlib/regex-engine.md.
 #
 # Run with: term test
 

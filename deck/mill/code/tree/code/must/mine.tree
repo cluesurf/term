@@ -2,7 +2,7 @@ load @term/mill/tree/code/seed/mine
   find seed
 
 # A task's CONTRACT, and a walk's. Three words, all from hold/base/terms.json, each holding one expression the way
-# a `hold` does. See note/term/proof-by-default/vocabulary.md.
+# a `hold` does. See note/project/term/proof/vocabulary.md.
 #
 #   task find-index           on a task signature:
 #     have <claim>              a precondition. The body may assume it, and every caller must prove it

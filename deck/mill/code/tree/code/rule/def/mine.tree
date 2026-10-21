@@ -24,7 +24,7 @@ load @term/mill/tree/code/note/mine
   find mark-note
 
 # A `rule` is a named THEOREM or AXIOM, and it desugars to a function whose parameters are its universal
-# binders and whose body holds its goal. See note/term/law-and-proof.md.
+# binders and whose body holds its goal. See note/project/term/proof/law-and-proof.md.
 #
 #   rule reorder            the name, a word or a readable phrase in a text
 #     seat a, like integer  a universal binder, which becomes a parameter
@@ -36,7 +36,7 @@ load @term/mill/tree/code/note/mine
 #
 # A rule with NO `show` is the other shape: a CLAIM, a name declared at a type and owing a proof, which a
 # `task` of the same name fills. `head` / `take` / `like` are its generics, parameters and result there,
-# and `note open` leaves it deliberately open. See note/term/project/law-proof-gate.md.
+# and `note open` leaves it deliberately open. See note/project/term/proof/archive/law-proof-gate.md.
 mine rule-def
   mine term, term rule
     mine any

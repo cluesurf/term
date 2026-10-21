@@ -8,7 +8,7 @@
 //
 // An app is a directory with a `deck.tree` naming it, a page entry (`face/base.tree`, a module exporting a `boot`
 // task that mounts the page) and a cask entry (`cask.tree`, a module exporting `boot(bundle)` that opens the window
-// and hands the process to the platform). Output goes under `host/<target>/`. Design: note/term/cask/readme.md.
+// and hands the process to the platform). Output goes under `host/<target>/`. Design: note/project/term/cask/readme.md.
 //
 // What the build decides without its file system or a toolchain is Term, in cask-plan.tree: the tools each target
 // needs, the app's names, the cargo manifest, the driver line's labels, the device chosen and every manifest written.
@@ -254,7 +254,7 @@ export function buildProgram({
   // for emitted Term code because the emitter never creates an overlapping access: a read of `.data` copies the array
   // value, so its access ends at once, a write is one statement, and nothing is passed `inout`. The test harnesses keep
   // the default checked build, so an overlap a later change introduces traps in the suites rather than shipping
-  // (note/term/codegen/ios.md, Build)
+  // (note/project/term/compiler/codegen/ios.md, Build)
   const release = ['-O', '-wmo', '-enforce-exclusivity=unchecked']
 
   if (target === 'ios') {
@@ -588,7 +588,7 @@ export function buildAndroidProgram({
 
   // Term's types already rule out a null where a non-null is declared, so kotlinc's own null checks at every public
   // function's entry (`Intrinsics.checkNotNullParameter`) and around every call are dead weight: the three flags drop
-  // them (note/term/codegen/android.md, Build)
+  // them (note/project/term/compiler/codegen/android.md, Build)
   runTool(
     'kotlinc',
     ['-cp', tools.platform, '-d', classes, '-nowarn', '-Xno-param-assertions', '-Xno-call-assertions', '-Xno-receiver-assertions', file],

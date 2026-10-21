@@ -14,7 +14,7 @@
 #
 # ONE CONSTRAINT NOTHING CHECKS. Arguments reach the implementation IN `take` ORDER, so every hook must list its
 # takes in the same order as the task it binds. Reorder one without the other and the arguments arrive shifted,
-# with no error. See note/term/cli-hook-dsl-gaps.md.
+# with no error. See note/project/term/research/cli-hook-dsl-gaps.md.
 #
 # `pick` WAS DEAD WHEN THIS WAS WRITTEN. The hand-written reader read it into `DockTake.choices` and the grammar
 # that replaced it on 2026-09-01 did not, so the dispatcher's choice validation had nothing to validate. No gate

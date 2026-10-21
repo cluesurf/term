@@ -1,7 +1,7 @@
 # The real, compiling reader and writer for the OTF cmap table directory and its format 4 / format 12 subtables.
 # The hardest structural shape in the package: `mine at` (offset relative to the cmap table's own start, not the
 # file's — the one real `take` in this package) composed with a format-discriminated union composed with
-# count-directed repetition. See note/term/feed/04-otf-case-study.md.
+# count-directed repetition. See note/project/term/feed/04-otf-case-study.md.
 #
 # The writer is the reverse of the offset problem: a record's subtable offset has to be known before that
 # subtable is written, so every subtable is serialized first (to know its byte length), then the directory is

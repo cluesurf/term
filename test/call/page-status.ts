@@ -1,4 +1,4 @@
-// A page answers with its own status, and its own title (note/term/gaps/plan.md, phase 7, "The web"). Until
+// A page answers with its own status, and its own title (note/project/term/guides/research/gaps/plan.md, phase 7, "The web"). Until
 // 2026-10-04 every path answered 200, an unknown one with an empty page, and a page's title broke its client bundle.
 // Each case boots a real server with the built CLI and asks it over HTTP.
 //

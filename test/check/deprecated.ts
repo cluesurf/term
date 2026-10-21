@@ -1,5 +1,5 @@
 // `mark deprecated` WARNS WHERE ANOTHER FILE USES THE NAME (check/deprecated.tree). A task: a call. A form, since
-// 2026-10-05 (note/term/plan/decisions-2026-10.md, D13, `ordered-set` toward `set`): a `make` of it, and a task's input
+// 2026-10-05 (note/project/term/decisions-2026-10/decisions-2026-10.md, D13, `ordered-set` toward `set`): a `make` of it, and a task's input
 // or result typed by it. The file that defines the name may use it with no word. Two modules: `old.tree` defines a
 // deprecated task and form and uses both itself, and the entry uses each from outside.
 // Run: sh tmp/run-term-ts.sh test/check/deprecated.ts

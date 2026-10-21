@@ -1,4 +1,4 @@
-# Units built in parallel, each once everything it depends on is built (note/term/plan/incremental-best-in-class.md,
+# Units built in parallel, each once everything it depends on is built (note/project/term/incremental-best-in-class.md,
 # step 5).
 #
 # A schedule is made from a graph, each node to the nodes it depends on, and hands out a node the moment the last of

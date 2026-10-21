@@ -2,7 +2,7 @@
 # The cask: a native window, the platform's WebView inside it, and a bridge that carries text both ways. This is
 # the whole end-user surface, and it is the same eight tasks on every platform. An app names these and never a
 # platform: the build rewrites the `{platform}` slot below to `swift` on macOS and iOS, `kotlin` on Android, `rust`
-# on Windows and Linux, the way every stdlib module reaches its native half. Design: note/term/cask/readme.md.
+# on Windows and Linux, the way every stdlib module reaches its native half. Design: note/project/term/cask/readme.md.
 #
 #   open-window   title, width, height          -> window
 #   load-bundle   window, path to a built page    the page shipped inside the app

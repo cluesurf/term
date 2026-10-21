@@ -1,4 +1,4 @@
-// `term boot` on units (note/term/plan/incremental-best-in-class.md, step 9). A program is built one unit at a time,
+// `term boot` on units (note/project/term/incremental-best-in-class.md, step 9). A program is built one unit at a time,
 // and a rebuild in the same process (the dev loop) reads every unit an edit did not reach from memory. Here a
 // command-line program of two modules is booted into an `--out` folder and run, a module it loads is edited, and it is
 // booted again in the same process: the rebuild builds the edited unit and what reads it and no other, and runs the

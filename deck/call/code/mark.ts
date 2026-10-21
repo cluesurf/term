@@ -7,7 +7,7 @@
  *   term mark demo --runs 10      the programs whose `<family>/<program>` contains `demo`
  *   term mark list                every program and whether its bench.tree lets it run
  *
- * The runner is a Term program, `deck/mark/code/line.tree` in the Term repository (note/term/bench/rules.md, "The layout").
+ * The runner is a Term program, `deck/mark/code/line.tree` in the Term repository (note/project/term/bench/rules.md, "The layout").
  * This verb is a thin dispatcher: it finds that directory and boots the runner there, the way `term zone` boots the
  * zone console, passing everything after `mark` through untouched. `term boot` caches the build, so a second run
  * starts at once. The runner's logic stays in `.tree`.

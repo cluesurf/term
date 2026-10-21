@@ -1,7 +1,7 @@
 
 # The dom on the platform's own UI toolkit (native-dom-0005, 0006): AppKit on macOS, UIKit on iOS and Android Views,
 # so a Term program's views are real platform views with no WebView and no JavaScript engine. See
-# note/term/app/10-native-dom.md.
+# note/project/term/app/10-native-dom.md.
 #
 # ONE MODULE, ONE RUNTIME PER LANGUAGE. This file docks `<global:native-view>`, and the build takes its runtime from
 # runtime/ beside it by the target's extension: runtime/native-view.swift on macOS and iOS (which tells AppKit and
@@ -429,7 +429,7 @@ task composing-text
       read node/handle
 
 # what the platform's accessibility API reports for a node, `role|name`, the role in the contract's spelling
-# (note/term/view/11-vocabulary.md, "Accessibility"), `hidden|` for one out of the tree (native-accessibility-0007)
+# (note/project/term/view/11-vocabulary.md, "Accessibility"), `hidden|` for one out of the tree (native-accessibility-0007)
 task accessibility-of
   take node, like view
   like text

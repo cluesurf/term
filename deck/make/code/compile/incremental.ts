@@ -137,7 +137,7 @@ export class QueryCompiler {
   // milled program (which still has the zone AST + literal `class` props), backdated by the class set: editing a
   // component recomputes the stylesheet ONLY when its class set actually changes, never on an unrelated edit, and never
   // re-parses anything else. This is the styling "watcher" done as a query -- a CSS plugin is just a derived query, so
-  // it inherits the whole incremental + backdating machinery for free. See note/library/face/tailwind-jit.md.
+  // it inherits the whole incremental + backdating machinery for free. See note/project/term/face/research/tailwind-jit.md.
   usedClasses(cx: Cx, files: string[]): Promise<string[]> {
     return cx.query(
       'usedClasses',

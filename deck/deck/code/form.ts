@@ -53,7 +53,7 @@ export type DeckBase = {
 export type RoleRule = {
   name: string
   // `mark <name>` flags on the rule: how the files it matches are READ, rather than which mill reads them.
-  // `lean` is the only one today (note/term/lean.md). A list of words rather than one field per flag, so a
+  // `lean` is the only one today (note/project/term/mill/lean.md). A list of words rather than one field per flag, so a
   // second setting needs no change here and no change to the grammar.
   mark: string[]
   take: {
@@ -67,7 +67,7 @@ export type RoleConfig = {
 }
 
 // `link @scope/name, mark <0.0.x>`: a dependency and the versions it accepts. The constraint is `mark`, the word the
-// manifest's own version uses (note/term/plan/manifest-mark-and-code-root.md). `code` names a folder now.
+// manifest's own version uses (note/project/term/manifest/manifest-mark-and-code-root.md). `code` names a folder now.
 export type DeckLink = {
   name: string
   mark: CodeHold
@@ -75,7 +75,7 @@ export type DeckLink = {
 }
 
 // `need @term/code, mark <2.6.x>`: the toolchain this project builds with, a range in the constraint syntax a `link`
-// uses. `term` reads it at startup and runs a matching version (note/term/plan/term-versions.md). One per manifest
+// uses. `term` reads it at startup and runs a matching version (note/project/term/term-versions.md). One per manifest
 export type DeckNeed = {
   name: string
   mark: CodeHold

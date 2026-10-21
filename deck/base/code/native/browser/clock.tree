@@ -27,7 +27,7 @@ task current-nanoseconds
     call clock/nanoseconds
 
 # what the public `clock/now` reads: monotonic whole milliseconds, as on every backend
-# (note/term/stdlib/semantics.md)
+# (note/project/term/stdlib/semantics.md)
 task current-time
   like number
   send back

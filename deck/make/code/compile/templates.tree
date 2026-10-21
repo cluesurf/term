@@ -7,7 +7,7 @@
 #   - compile-time meta-loops: `walk <kind>, read <enum>` inside a template body unrolls over a `host` enumeration
 #     (`host interval / term year / term month / ...`), binding the loop item for each iteration. This is how one
 #     `fuse` generates a whole family of definitions (e.g. get-year / get-month / ... per interval).
-# See note/research/vibe/computation/plans/11-elaboration.md (expand phase) and language/12-templates.md.
+# See note/project/term/archive/computation/plans/11-elaboration.md (expand phase) and language/12-templates.md.
 #
 # Ported from compile/template.ts (self-hosting, 2026-10-06), which stays as the face: a template's sites are a `Set`
 # to its TypeScript callers and a list here, in the order they were found. A word the original tested for being there

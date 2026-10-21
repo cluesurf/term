@@ -1,4 +1,4 @@
-// Supervision trees checked before they run (deck/base/code/supervisor.tree, note/term/research/beam-otp-lessons.md
+// Supervision trees checked before they run (deck/base/code/supervisor.tree, note/project/term/research/beam-otp-lessons.md
 // design 4). OTP validates a supervisor's flags when it starts and documents the rest. Most of that is structural in
 // Term already: a strategy and a restart type are variant forms, so a wrong one cannot be written, a nested supervisor
 // has no shutdown to get wrong, and `make-supervisor` owes `intensity >= 0` and `period > 0` to the prover at every

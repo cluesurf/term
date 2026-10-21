@@ -42,7 +42,7 @@ export type LoadedGrammar = {
 }
 
 // the grammar text WITHOUT its import block, plus the paths it imports, both read from the parse tree. There is
-// ONE parser for `.tree` (note/term/one-parser.md): a regex here would strip a `load` written inside a
+// ONE parser for `.tree` (note/project/term/one-parser.md): a regex here would strip a `load` written inside a
 // `text <...>` literal and miss a path carrying an interpolation.
 function readPart(
   file: string,
@@ -60,7 +60,7 @@ function readPart(
 // resolve one `load` path against the mill: `@term/mill/<p>` by the package path rule every resolver calls
 // (`resolvePackagePath`: the mill's code root, then its package root, so `@term/mill/tree/deck/role/mine` reaches
 // deck/mill/code/tree/deck/role/mine.tree), or a `./<p>` relative to the importer. `millRoot` is where the dialects
-// are, deck/mill/code/tree since 2026-10-06 (note/term/plan/mill-merge-and-role-scopes.md), so the package is the
+// are, deck/mill/code/tree since 2026-10-06 (note/project/term/mill-merge-and-role-scopes.md), so the package is the
 // nearest folder above it holding a `deck.tree`, never a fixed number of levels up.
 export function resolveMillImport(
   millRoot: string,
@@ -104,7 +104,7 @@ function packageOf(millRoot: string): string {
 // One rule as a grammar FILE holds it: its name, the `like` it annotates, the form its `hook make` builds, and
 // the lines it occupies. Everything a tool needs to rewrite that block in place, read from the parse tree.
 //
-// There is one parser for `.tree` (note/term/one-parser.md). A tool that finds `mint <name>` with a regex is a
+// There is one parser for `.tree` (note/project/term/one-parser.md). A tool that finds `mint <name>` with a regex is a
 // second reader of the grammar, and it disagrees with the first one eventually.
 export type GrammarRule = {
   half: 'mine' | 'mint'

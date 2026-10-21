@@ -219,7 +219,7 @@ function main(): void {
   console.log(`\nformat: ${pass} pass, ${fail} fail`)
 }
 
-// ---- "Where each part of a line goes", note/term/format-rules.md: the five rules, from its before and after ----
+// ---- "Where each part of a line goes", note/project/term/compiler/format-rules.md: the five rules, from its before and after ----
 //
 // The two columns of the page's example, exactly. The formatter also applies "Blank lines" (a blank after a task's
 // signature, between signature heads, and before a block that follows a simple statement), which the page's right

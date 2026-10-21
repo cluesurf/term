@@ -1,4 +1,4 @@
-# A lean label that names no parameter is a nested call (note/term/lean.md, "position first, then the name").
+# A lean label that names no parameter is a nested call (note/project/term/mill/lean.md, "position first, then the name").
 #
 # Under lean a child of a call whose head is a plain name is read by the mill as a LABEL, its children built as an
 # array, because the mill cannot know the callee's parameters. The resolver and the checker can. A head that names

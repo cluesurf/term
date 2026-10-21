@@ -27,7 +27,7 @@ enum clock {
     return Int(DispatchTime.now().uptimeNanoseconds - from)
   }
 
-  // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). Every caller
+  // what `clock/now` reads: monotonic milliseconds on every backend (note/project/term/stdlib/semantics.md). Every caller
   // subtracts two readings; the wall clock is `time/now`
   static func currentTime() -> Int {
     precise()

@@ -1,8 +1,8 @@
 
 # Set: a collection of unique values, backed by the native map for O(1) membership. It KEEPS INSERTION ORDER, on every
-# backend, because the map does (note/term/optimize/meaning.md, question 1): `to-list` and a walk give the values in the
+# backend, because the map does (note/project/term/optimize/meaning.md, question 1): `to-list` and a walk give the values in the
 # order they were first inserted, and a value inserted again stays where it was. So `set` is the ordered set as well,
-# and `list/ordered-set` is the same structure under a second name (note/term/plan/decisions-2026-10.md, D13).
+# and `list/ordered-set` is the same structure under a second name (note/project/term/decisions-2026-10/decisions-2026-10.md, D13).
 # test/stdlib/ordered-collections.ts holds the order on all four backends.
 
 mark stable
@@ -45,7 +45,7 @@ form set
         read self/items
         read item
 
-  # how many values it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  # how many values it holds. `length` on every collection (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
   task length
     take self
     like number
@@ -246,7 +246,7 @@ form set
         read self
 
 # a set of the items, each once, in the order first given: what the note grammar writes `{x, y, z}` as
-# (note/term/mill/03-note-grammar.md)
+# (note/project/term/mill/03-note-grammar.md)
 task make-set
   head t
   take items

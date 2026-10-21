@@ -1,7 +1,7 @@
 # Trait checking: masks are records of method signatures, instances (wear/suit) are dictionaries implementing them. This
 # pass checks the two real correctness properties: an instance implements every method its mask declares, and every
 # `need` bound and instance refers to a mask that exists. This is the dictionary-passing trait model (structural, no
-# orphan-coherence machinery). See note/research/vibe/computation/plans/04-typecheck.md.
+# orphan-coherence machinery). See note/project/term/archive/computation/plans/04-typecheck.md.
 #
 # Ported from check/traits.ts (self-hosting, 2026-10-05). Its maps of masks are two lists, a mask's name and its
 # methods at one index, the LAST mask of a name kept, as a map keyed by name kept it.

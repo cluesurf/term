@@ -1,6 +1,6 @@
 // A string-with-ANSI render target for zone components. The same fine-grained reactive graph (reactive.ts) drives
 // it: a reactive cell re-renders only when its signals change. This shows zone is renderer-agnostic (the DOM is
-// one target, the terminal is another). See note/research/vibe/computation/plans/15-components.md. Browser-safe.
+// one target, the terminal is another). See note/project/term/archive/computation/plans/15-components.md. Browser-safe.
 
 import { effect } from '@term/make/code/view/reactive'
 

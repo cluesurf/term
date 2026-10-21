@@ -1,5 +1,5 @@
 # The dependent type core: a bidirectional type checker by normalization-by-evaluation, implementing the decided kernel
-# (note/research/vibe/computation/plans/12-type-systems.md): a predicative, cumulative, universe-polymorphic hierarchy
+# (note/project/term/archive/computation/plans/12-type-systems.md): a predicative, cumulative, universe-polymorphic hierarchy
 # (an impredicative bottom), quantities 0 / 1 / many with linear usage checking, an identity type with refl and J and
 # an observational function and pair extensionality that COMPUTES, dependent pairs, self types, metavariables solved by
 # Miller pattern unification, transparent definitions unfolded under a fuel, propositional truncations, and the circle.

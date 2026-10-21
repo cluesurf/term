@@ -1,4 +1,4 @@
-# F1, the lending family (note/term/codegen/shared.md): the list parameters a task may take lent, the list locals a task
+# F1, the lending family (note/project/term/compiler/codegen/shared.md): the list parameters a task may take lent, the list locals a task
 # owns outright, whether a local is only read, the forms whose values cross into native code, the variant and record
 # fields that own their lists, the tasks that answer a fresh list, the tasks that reach a list only through their
 # arguments, and the program-wide fixpoint that settles all of them together.

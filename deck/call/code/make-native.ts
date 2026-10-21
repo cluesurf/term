@@ -1,5 +1,5 @@
 // `term make --env <rust|swift|kotlin|node>`: every program of the project, each one file for that backend under
-// host/<env>/ (note/term/plan/backends-complete.md, step 2). Until 2026-10-05 a whole-project `term make` wrote
+// host/<env>/ (note/project/term/backends-complete.md, step 2). Until 2026-10-05 a whole-project `term make` wrote
 // TypeScript only, and a native build was one `--emit` per program, typed by hand.
 //
 // A PROGRAM is a file that defines an entry: a top-level `task run`, `boot` or `main` that takes nothing, the entries

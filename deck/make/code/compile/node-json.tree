@@ -2031,6 +2031,8 @@ task json-of-statement
       link f16
       link f17
       link f18
+      link f19
+      link f20
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"record-type">)
@@ -2109,9 +2111,15 @@ task json-of-statement
       fork test, and(enters(skip-keys, <deprecated>), f17)
         hold
           push(members, <"deprecated":{flag-json(f17)}>)
+      fork test, and(enters(skip-keys, <sole>), f18)
+        hold
+          push(members, <"sole":{flag-json(f18)}>)
+      fork test, and(enters(skip-keys, <hide>), f19)
+        hold
+          push(members, <"hide":{flag-json(f19)}>)
       fork test, enters(skip-keys, <span>)
         hold
-          push(members, <"span":{json-of-span(skip-keys, f18)}>)
+          push(members, <"span":{json-of-span(skip-keys, f20)}>)
     case mask
       link f1
       link f2

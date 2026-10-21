@@ -4,7 +4,7 @@
 # window, a page sheet, an android.app.Dialog) through their `toolkit` rung, and every other target, the web among
 # them, falls to the generic ./native/dialog.tree. Both take `host`, `class`, `control` (open or closed, a disclosure
 # from logic/disclosure), `title`, and `content`, the task that draws what the dialog holds. For a modal drawn by the
-# theme rather than the platform, use `modal`. See note/term/app/11-uniform-interface.md.
+# theme rather than the platform, use `modal`. See note/project/term/app/11-uniform-interface.md.
 #
 #   save asking, call make-disclosure / bind start, false
 #   call dialog / read root / text <> / read asking / text <Delete the file?> / read confirm-buttons

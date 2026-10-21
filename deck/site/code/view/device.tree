@@ -2,7 +2,7 @@
 # The device's traits as signals (native-dom-0012). A component that adapts to the device reads one, and only the nodes
 # whose effects read it re-render when the platform changes it: the window resizes into split view, the phone
 # rotates, the person turns on dark mode. These are run-time facts, so they are signals and never build-time envs; what
-# a build decides is which implementation of a component is linked (note/term/app/11-uniform-interface.md).
+# a build decides is which implementation of a component is linked (note/project/term/app/11-uniform-interface.md).
 #
 #   save scheme, call device-trait(text <color-scheme>)
 #   fork test / hook test / call is-equal(call read-signal(read scheme), text <dark>) ...

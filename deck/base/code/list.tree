@@ -24,7 +24,7 @@ form list
 
   head t
 
-  # how many items it holds. `length` on every collection (note/term/plan/decisions-2026-10.md, D2)
+  # how many items it holds. `length` on every collection (note/project/term/decisions-2026-10/decisions-2026-10.md, D2)
   task length
     take self
     like number

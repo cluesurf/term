@@ -1,7 +1,7 @@
 # THE TEXT GRAMMAR ENGINE: any mill text grammar, run over a text. A grammar is its `mine.tree`, read by the one reader
 # of the mine vocabulary (compile/feed-compile.tree `read-feed-mine-grammar`) to `feed-rule` values, and this engine
 # is what RUNS them, so a grammar written in the mill is the parser, with no reader written beside it by hand. The
-# `note` grammar is its first user (deck/mill/code/text/note, note/term/mill/03-note-grammar.md).
+# `note` grammar is its first user (deck/mill/code/text/note, note/project/term/mill/03-note-grammar.md).
 #
 # What it reads to is generic: a tree of `mine-match`, one node for each rule a `mine form` reaches (named by its
 # `send` when it has one) and for each span capture, with where in the text it began and ended. A grammar's meaning

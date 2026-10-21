@@ -2,7 +2,7 @@
 # only through the public network/server API.
 #
 # `serve` blocks for the life of the process; `start` binds and answers without blocking, and `stop` shuts the
-# engine down. See note/term/stdlib/native-async-file-and-server.md.
+# engine down. See note/project/term/stdlib/native-async-file-and-server.md.
 
 dock type
   load <runtime.Running>, name server-dock

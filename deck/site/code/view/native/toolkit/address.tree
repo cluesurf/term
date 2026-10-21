@@ -1,5 +1,5 @@
 
-# Where the app has been, kept across a relaunch on the toolkits (live reload, note/term/project/live-reload.md). Conforms
+# Where the app has been, kept across a relaunch on the toolkits (live reload, note/project/term/archive/live-reload.md). Conforms
 # to ../address. `term work` starts the app with a DEV ADDRESS, a file the history is written to one path a line; with
 # none (every app a person installs) nothing is read or written. How the address reaches the app is the platform's: an
 # environment variable on the desktop (the JVM, macOS), an Intent extra on Android, read by the `native-address` runtime

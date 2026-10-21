@@ -1,6 +1,6 @@
 // The cell grid (terminal-target-0001, deck/site/code/view/cells/grid.tree): the vocabulary's layout model measured and
 // placed in a terminal's cells. Each case's EXPECTED grid is worked out by hand from the rules in
-// note/term/view/11-vocabulary.md ("The layout model": CSS's defaults, a cell 8 points wide and 16 tall, growers
+// note/project/term/view/11-vocabulary.md ("The layout model": CSS's defaults, a cell 8 points wide and 16 tall, growers
 // sharing the free cells, clipping never shrinking) and written here, never read from the engine's own output, which
 // would only prove the engine agrees with itself. Rows end where the last drawn cell does.
 //

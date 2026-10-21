@@ -33,9 +33,9 @@ import * as words from '@term/call/code/host-words'
 // `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's
 // key set instead. Registry credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN
 // (ghcr.io, what `zone load cluesurf` casts), or the docker config that `oras login` writes. See
-// note/term/registry/18-oci-registry-default.md. A term.surf token (TERM_TOKEN, or the user-level `auth` file) is a
+// note/project/term/registry/18-oci-registry-default.md. A term.surf token (TERM_TOKEN, or the user-level `auth` file) is a
 // different thing: it never reaches a registry, and only credits the version to an account in the package index
-// (note/term/registry/19-package-index.md).
+// (note/project/term/registry/19-package-index.md).
 export async function callHost(input: {
   root: string
   dryRun?: boolean
@@ -160,7 +160,7 @@ export async function callHost(input: {
 
     // A package with a `line` console ships it BUILT, so an installed copy runs with `node` alone and needs no Term
     // CLI beside it. That is `term boot <line>/base.tree --out host/line`, the one generated directory a publish
-    // carries (note/term/plan/split-base-zone-and-rename-seed.md, step 4).
+    // carries (note/project/term/split-base-zone-and-rename-seed.md, step 4).
     const include: string[] = []
 
     if (manifest.line) {
@@ -320,7 +320,7 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
 
   if (flag !== undefined && !isOciRegistry(flag)) {
     throw refusal(
-      `--registry must be an OCI registry, <host>/<namespace>. The custom https registry is retired (note/term/registry/18-oci-registry-default.md)`,
+      `--registry must be an OCI registry, <host>/<namespace>. The custom https registry is retired (note/project/term/registry/18-oci-registry-default.md)`,
     )
   }
 

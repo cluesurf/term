@@ -5,7 +5,7 @@
 //
 // Found 2026-10-04 on Swift and Kotlin, where the stdlib's `exception-time` (`call now`, a member of the runtime's
 // `time`) was inlined into an exception arm that bound the caught `time`, and the file did not build
-// (note/term/stdlib/regex-engine.md, "Found on the way"). This holds it on TypeScript, at run time, on both arm kinds.
+// (note/project/term/stdlib/regex-engine.md, "Found on the way"). This holds it on TypeScript, at run time, on both arm kinds.
 // Run: npx tsx test/compile/inline-capture.ts
 
 import { mkdtempSync, writeFileSync } from 'node:fs'

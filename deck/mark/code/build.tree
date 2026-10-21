@@ -3,7 +3,7 @@
 # The Term program goes through `term make --emit <target>`, which writes the runtime prelude and the emitted code,
 # and a per-target `main` is appended that reads the size from the first argument, calls `run` and prints what it
 # answers. A hand version is a complete program with its own `main`, built with the SAME release command as Term's
-# output on that target (note/term/codegen/measurement.md, Build profiles). No debug build is ever timed. A missing
+# output on that target (note/project/term/compiler/codegen/measurement.md, Build profiles). No debug build is ever timed. A missing
 # toolchain is a skip with its reason, never a silent pass.
 
 load @term/base/process/run
@@ -661,7 +661,7 @@ task build-source
         read target
         text <rust>
     hook hold
-      # the release profile of note/term/codegen/rust.md: fat LTO, one codegen unit, abort on panic, stripped
+      # the release profile of note/project/term/compiler/codegen/rust.md: fat LTO, one codegen unit, abort on panic, stripped
       save product, text <{{dir}}/{{name}}>
       call push(read(words),text <--edition>)
       call push(read(words),text <2021>)

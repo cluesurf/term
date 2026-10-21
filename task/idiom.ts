@@ -1,4 +1,4 @@
-// pnpm term:idiom: is the emitted code idiomatic, as the target's own tools judge it (note/term/codegen/readme.md,
+// pnpm term:idiom: is the emitted code idiomatic, as the target's own tools judge it (note/project/term/compiler/codegen/readme.md,
 // rule 4). Every program under mark/ and every meaning-native fixture is emitted with its prelude on all four
 // targets: Rust linted with `clippy::all`, TypeScript typechecked with `tsc --strict`, Swift and Kotlin counted by
 // their compilers' own warnings and errors. The findings are counted by kind, and the total is the gate: it may only

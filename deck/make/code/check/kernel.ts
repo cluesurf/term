@@ -3,7 +3,7 @@
 // interaction-combinator semantics, which is what ties the kernel to the vibe substrate's pure plane. Ported from
 // the IIT-CoC reference (land/code/HigherOrderCO/gist/iit-coc.ts). Standard type-theory terms, browser-safe.
 //
-// This is layer 3 of the type system (see note/research/vibe/computation/plans/04-typecheck.md). Pure, total, and
+// This is layer 3 of the type system (see note/project/term/archive/computation/plans/04-typecheck.md). Pure, total, and
 // erased: it states and checks theorems, it is not the imperative surface. The surface checker is infer.ts.
 
 // Terms use higher-order abstract syntax: a binder is a real function, so substitution is application. Variables

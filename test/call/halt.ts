@@ -1,4 +1,4 @@
-// `term halt` stops a project's own `term boot`, through the boot (note/term/gaps/plan.md, phase 8, "Running a
+// `term halt` stops a project's own `term boot`, through the boot (note/project/term/guides/research/gaps/plan.md, phase 8, "Running a
 // program"). Until 2026-10-04 bare `halt` stopped every boot on the machine, and it stopped the PROGRAM, so the boot
 // that started it stayed, watching, with nothing to serve. Two real servers, one in each of two projects.
 //

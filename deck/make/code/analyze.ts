@@ -106,7 +106,7 @@ export function analyze(
 
   // the `view` role: the sandboxed document dialect. Same gate the compiler and `term view` call, so the editor
   // cannot be more permissive than a save. Its canonical layout is the ordinary tree formatter's, because a
-  // document IS tree syntax. See note/term/view/.
+  // document IS tree syntax. See note/project/term/view/.
   if (options?.role === 'view') {
     const read = checkView(source, { catalog: options.catalog })
     const program = read.ok ? lowerView(read.file) : null

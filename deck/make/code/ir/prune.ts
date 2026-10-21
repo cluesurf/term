@@ -16,7 +16,7 @@
 // It is ON by default for the optimized merged build (compile.ts `treeShake`)
 // and off in per-module and editor builds, held by test/compile/shake-differential.ts
 // (compile with and without it, the entry's emitted code identical). Every layer
-// of shaking what a program ships is in note/term/compiler/runtime-shaking.md.
+// of shaking what a program ships is in note/project/term/compiler/runtime-shaking.md.
 
 import type {
   Program,

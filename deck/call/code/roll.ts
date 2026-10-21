@@ -1,6 +1,6 @@
 // `term roll [kind]` -- the roll of this project: every deck in the build, every exception with who can raise it,
 // every public task with what it raises, every route, every tell. Recomputed from source, so never stale. Prints as
-// a tree; `--json` prints the same shape `term make` writes to host/roll.json. See note/term/hive/08-cli.md.
+// a tree; `--json` prints the same shape `term make` writes to host/roll.json. See note/project/term/hive/08-cli.md.
 
 import { readFileSync } from 'fs'
 import path from 'path'

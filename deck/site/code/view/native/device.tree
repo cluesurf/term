@@ -2,7 +2,7 @@
 # The device's traits (abstract native module, native-dom-0012): what kind of device a view is drawn on, read from the
 # platform and watched for change. The build rewrites `native/{platform}/device` to the env's impl: the browser reads
 # media queries, the toolkit reads UITraitCollection, NSAppearance and Android's Configuration, and the memory host
-# answers fixed values a test can set. See note/term/app/11-uniform-interface.md, "two axes of customization".
+# answers fixed values a test can set. See note/project/term/app/11-uniform-interface.md, "two axes of customization".
 #
 # A trait and its values, each decided by the platform's own notion of it:
 #

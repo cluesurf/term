@@ -2,7 +2,7 @@
 // the first run of `>` on its line, with no interpolation and no escape, so a pattern reads as its engine reads it.
 // Held here: the VALUE each spelling compiles to (run on TypeScript), the refusal of one left open, what a printer
 // writes back (the raw spelling, and never an accidental `<<` for an ordinary literal), and that `<<` inside an
-// ordinary literal is still content. Decided 2026-10-04 (note/term/stdlib/regex-engine.md, "Writing a pattern").
+// ordinary literal is still content. Decided 2026-10-04 (note/project/term/stdlib/regex-engine.md, "Writing a pattern").
 // Run: npx tsx test/parser/raw-text.ts
 
 import { mkdtempSync, writeFileSync } from 'node:fs'

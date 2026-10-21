@@ -1,6 +1,6 @@
 # An RFC 3339 timestamp read in Term: `2026-10-02T14:05:09.250Z`, or with an offset (`+02:00`, `-05:30`) in place of
 # the `Z`. The answer is milliseconds since 1970-01-01T00:00:00Z, the same on every backend, and a text that is not one
-# raises `time-mismatch` naming the code point position and the reason (note/term/stdlib/semantics.md). The host
+# raises `time-mismatch` naming the code point position and the reason (note/project/term/stdlib/semantics.md). The host
 # parsers each read a different language: node's Date.parse took nearly anything, Rust RFC 3339, Swift its formatter's
 # subset and Kotlin an Instant, and two of them answered a bad text with NaN or the epoch.
 #

@@ -9,7 +9,7 @@
 //
 // So `suspend` here means the caller's coroutine is not blocked, which is the promise the Term API makes. It does
 // not mean the kernel is doing the waiting, which is what tokio::fs and NIOFileSystem give the other two targets.
-// That difference is named in note/term/stdlib/native-async-file-and-server.md rather than papered over.
+// That difference is named in note/project/term/stdlib/native-async-file-and-server.md rather than papered over.
 //
 // TOTAL, LIKE THE REST OF THE NATIVE SURFACE: a failure reads as the empty / false / zero answer, except a handle
 // open, where a missing file cannot be papered over.

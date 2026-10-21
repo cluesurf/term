@@ -1,4 +1,4 @@
-# A map iterates in the order its keys were first set, on every backend (note/term/stdlib/semantics.md). Setting an
+# A map iterates in the order its keys were first set, on every backend (note/project/term/stdlib/semantics.md). Setting an
 # existing key keeps its place, removing a key and setting it again moves it to the end, and a record key is found
 # by an equal record. Held by `pnpm term:base-gate`.
 

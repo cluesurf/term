@@ -3,7 +3,7 @@
 #
 # check/patterns.ts calls this for every such literal: a text the reader refuses fails the build where it is written,
 # and a pattern that lands on the backtracking tier is a warning naming what put it there, so nobody pays for that
-# tier without knowing (note/term/stdlib/regex-engine.md, "Tier C"). Ported like check/arm.tree: TypeScript imports
+# tier without knowing (note/project/term/stdlib/regex-engine.md, "Tier C"). Ported like check/arm.tree: TypeScript imports
 # `readLiteralPattern` from the module this emits.
 
 load @term/base/pattern

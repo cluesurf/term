@@ -8,7 +8,7 @@
 // NAMED GAP: kqueue reports that a watched path changed, not what changed inside it, and it cannot watch a tree.
 // So `deep` is accepted and does nothing here, and a change under a watched directory arrives as one "change" on
 // the directory. FSEvents is the darwin API that does both and is not portable to swift on Linux; a watcher that
-// covers `deep` properly is its own piece of work, recorded in note/term/stdlib/native-async-file-and-server.md.
+// covers `deep` properly is its own piece of work, recorded in note/project/term/stdlib/native-async-file-and-server.md.
 //
 // Reached only through the public file/watch API.
 import Dispatch

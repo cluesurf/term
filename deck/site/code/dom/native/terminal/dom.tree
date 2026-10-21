@@ -3,7 +3,7 @@
 # memory host's, so every node operation the render runtime calls (create, set, append, remove, replace, listen) is
 # the one the differential test already holds on four backends (test/compile/render-native.ts), and ./paint reads that
 # tree into the cell grid. A terminal has no document, so the page tasks are the memory host's no-ops as well.
-# The contract is note/term/view/12-render-seam.md.
+# The contract is note/project/term/view/12-render-seam.md.
 
 bear ../memory/dom
 bear ./paint

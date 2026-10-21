@@ -1,5 +1,5 @@
 
-# Divider: the vocabulary's word for a line between things (note/term/view/11-vocabulary.md). No props: a hairline
+# Divider: the vocabulary's word for a line between things (note/project/term/view/11-vocabulary.md). No props: a hairline
 # across its stack, horizontal in a column and vertical in a row, which every host decides from the stack it lands in.
 # Drawn as an `hr` on the DOM and as a one point view in the platform's separator color by every toolkit
 # (test/compile/toolkit-words.ts). Its color is the look sheet's.

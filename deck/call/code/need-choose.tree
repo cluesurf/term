@@ -1,4 +1,4 @@
-# Which `term` runs here, and why (note/term/plan/term-versions.md, "Resolution"): the decisions, once the files are
+# Which `term` runs here, and why (note/project/term/term-versions.md, "Resolution"): the decisions, once the files are
 # read. The order, first match wins: `+<range>` as the first argument, TERM_VERSION, the nearest deck.tree holding a
 # `need` (its lock.tree's pin while the pin still satisfies it), the user's default, the front, else the newest version
 # installed, else the running term itself.

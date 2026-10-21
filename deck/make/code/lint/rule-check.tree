@@ -1967,7 +1967,7 @@ task check-expression
 # L053: metadata is written `mark`, and `note <word>` is the old spelling (`note async`, `note unsafe`, `note draft`,
 # ...). The two are read the same, so the fix only swaps the word. Which `note` is metadata is decided once, by form,
 # in check/note-metadata.ts, which the compiler's `note-metadata` warning and `pnpm term:mark-metadata` also read.
-# note/term/plan/await-by-default-and-mark-metadata.md, section 4.
+# note/project/term/await-by-default-and-mark-metadata.md, section 4.
 task note-metadata
   take tree, like root-node
   take source, like text
@@ -2054,7 +2054,7 @@ task reads-source
       back false
 
 # L054: `wait true` under a call to an async TASK says what the call already does. A call to an async task is awaited
-# with nothing written (note/term/plan/await-by-default-and-mark-metadata.md, section 1), so the marker is redundant
+# with nothing written (note/project/term/await-by-default-and-mark-metadata.md, section 1), so the marker is redundant
 # and the fix removes it: the whole line when it stands alone, `, wait true` when it closes a call's line.
 #
 # ONLY WHERE THE CALLEE IS KNOWN ASYNC. A call into a `dock load` module is not a task the build can see, and its
@@ -2560,7 +2560,7 @@ task join-texts
 
 # ---- L037 to L039, the tell advice ----
 #
-# The three `tell` conditions of note/term/hive/06-tell.md that are advice, not errors (the four errors are in
+# The three `tell` conditions of note/project/term/hive/06-tell.md that are advice, not errors (the four errors are in
 # check/tell.tree). Each is about the SEVENTEEN: the generic exception an app's exception descends from decides what a
 # caller should be told, so the rules read the root of every exception's chain. They fire only in a program that makes
 # decisions: one that declares a `tell` or a `dock` route. A library module raises exceptions it never tells, and that

@@ -1,5 +1,5 @@
 # Tier B's DFA: the Pike VM's search with no slots, its states kept and its transitions remembered, so a code point
-# costs one table read once its state has been met (note/term/stdlib/regex-engine.md, "Tier B").
+# costs one table read once its state has been met (note/project/term/stdlib/regex-engine.md, "Tier B").
 #
 # A state is the ordered list of instructions the Pike VM's threads stand at, in priority order, after following
 # every instruction that reads no code point. The order is the priority, so leftmost-first comes out as the Pike VM

@@ -2,7 +2,7 @@
 // not only the open one.
 //
 // WHAT COUNTS AS A REFERENCE ACROSS FILES is what the build binds by: a name reaches another file only through
-// `load ... / find` (note/term/project/module-scope.md). So a file refers to a definition in module M when it has a
+// `load ... / find` (note/project/term/module-scope/readme.md). So a file refers to a definition in module M when it has a
 // `load` whose path RESOLVES to M's file and `find`s the name, and does not define the name itself. Matching the
 // name alone would rename every same-named task in the package, which module scope exists to keep apart.
 //

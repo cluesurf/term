@@ -33,7 +33,7 @@ object watchFile {
       if (deep) {
         // WatchService registers ONE directory at a time, so a deep watch is every directory beneath the root
         // registered up front. A directory created later is not covered, which is the JDK's own limitation and
-        // is named in note/term/stdlib/native-async-file-and-server.md.
+        // is named in note/project/term/stdlib/native-async-file-and-server.md.
         Files.walk(root).use { tree ->
           for (child in tree) {
             if (Files.isDirectory(child) && child != root) {

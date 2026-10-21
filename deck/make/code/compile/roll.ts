@@ -1,7 +1,7 @@
 // The roll: everything a build knows about every deck, as data. Built from the checked program after the passes
 // that know the raise sets, so every task and route carries the exceptions it can raise. `term roll` prints it,
 // `term make` writes it beside the output as `host/roll.json`, and the hive wakes with it at boot.
-// See note/term/hive/02-roll.md. Pure over the program.
+// See note/project/term/hive/02-roll.md. Pure over the program.
 //
 // The roll is Term, compile/rolling.tree (self-hosting, 2026-10-06), its entries an ordered JSON value so that what a
 // build writes, what a merge reads back from disk and what `term roll` prints keep their keys in order. This face
@@ -17,7 +17,7 @@
 //     drops: `__def`, a definition's identity, `__ends`, the definition each raise path ends at, and a deck's `__files`
 //   - THE SUPERVISION TREES: every `make-supervisor` with its strategy, limits, children and WORST CASE, the workers
 //     under a supervisor restarting `intensity × Π (ancestor intensity + 1)` times before the root stops. OTP computes
-//     this nowhere (note/term/research/beam-otp-lessons.md, design 4)
+//     this nowhere (note/project/term/research/beam-otp-lessons.md, design 4)
 //   - a merge keys an entry by host, kind, name AND site, since a name is scoped to its module
 //     (task/term/roll-cover.ts, 2026-10-05), counts a deck's files as their union, continues a path a unit ended at
 //     another unit's task, and sorts each kind by host, name and site so a pool's merge reads like a single thread's

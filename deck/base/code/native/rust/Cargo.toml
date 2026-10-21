@@ -3,7 +3,7 @@
 #
 # The async surface is the ecosystem-standard stack and not a hand-rolled one: tokio for the runtime, `tokio::fs`
 # for asynchronous filesystem work, hyper (over hyper-util / http-body-util) for the HTTP server, and
-# tokio-rustls for its TLS. See note/term/stdlib/native-async-file-and-server.md.
+# tokio-rustls for its TLS. See note/project/term/stdlib/native-async-file-and-server.md.
 [package]
 name = "term-rust-runtime"
 version = "0.1.0"

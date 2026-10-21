@@ -12,7 +12,7 @@
 // WHAT CANCEL CAN AND CANNOT DO HERE. A JavaScript promise cannot be stopped from outside, so a cancelled job's
 // in-flight step runs to its next settle and its result is thrown away. What cancel guarantees is that nothing waits
 // on the job and nothing it raises afterwards surfaces: before this, an unawaited job that raised was an unhandled
-// rejection, which ends the Node process. Stopping the work itself needs a worker, which is note/term/research/
+// rejection, which ends the Node process. Stopping the work itself needs a worker, which is note/project/term/research/
 // beam-otp-lessons.md design 1's later half. Reached only through the public task API.
 type SeedJob = {
   promise: Promise<void>

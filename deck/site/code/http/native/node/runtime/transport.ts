@@ -7,7 +7,7 @@ import { Hono } from 'hono'
 import { serve as honoServe } from '@hono/node-server'
 import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 
-// tree/code (note/term/host/10-code.md): bytes on the wire, base64 inside the program, the way a binary asset
+// tree/code (note/project/term/host/10-code.md): bytes on the wire, base64 inside the program, the way a binary asset
 // already travels, since `request.body` and `response.body` are text. A request body is read as bytes, never as
 // UTF-8 (which would corrupt it), and unpacked when it came as `Content-Encoding: zstd`, up to TREE_CODE_LIMIT. A
 // response body is packed with Zstandard when the client accepts it and that makes it smaller

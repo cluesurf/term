@@ -1,5 +1,5 @@
 // `term make --emit llvm` and `--emit wasm`, the two targets built through the program's Rust (call/code/native-build.ts
-// `buildThroughRust`, note/term/plan/backends-complete.md step 4). The IR needs rustc alone and is always checked. A
+// `buildThroughRust`, note/project/term/backends-complete.md step 4). The IR needs rustc alone and is always checked. A
 // build of the IR needs `llc` from rustup's llvm-tools, and a module needs the wasm32-wasip1 target: where either is
 // missing, the refusal must name the rustup command that installs it, and where it is present the program must answer.
 // Run: npx tsx test/call/emit-llvm-wasm.ts

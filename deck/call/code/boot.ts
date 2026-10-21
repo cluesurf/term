@@ -783,7 +783,7 @@ export async function callBoot(input: {
 
       const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
 
-      // ONE UNIT AT A TIME, as `term make` builds (note/term/plan/incremental-best-in-class.md, step 9). The program's
+      // ONE UNIT AT A TIME, as `term make` builds (note/project/term/incremental-best-in-class.md, step 9). The program's
       // modules are each built against the stubs of what they load, and a rebuild in the same process (the dev loop,
       // `watchApp`) reads every unit an edit did not reach from memory: the merged compile checked the whole closure
       // again for every edit. The routes come from each unit's `dock` statements, the parameters they call with from

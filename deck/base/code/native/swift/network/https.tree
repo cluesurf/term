@@ -3,7 +3,7 @@
 #
 # NAMED GAP: Hummingbird's TLS lives in the hummingbird-tls product, which this stdlib does not depend on yet, so
 # the shim reports the request and serves plaintext rather than pretending. See
-# note/term/stdlib/native-async-file-and-server.md.
+# note/project/term/stdlib/native-async-file-and-server.md.
 
 dock load
   load <global:server>, name runtime

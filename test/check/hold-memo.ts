@@ -1,4 +1,4 @@
-// Per-definition holds (note/term/plan/incremental-best-in-class.md, step 12). A module edited in one task is checked
+// Per-definition holds (note/project/term/incremental-best-in-class.md, step 12). A module edited in one task is checked
 // again whole, and its other tasks' proof walks are answered from the memo (check/holds.ts `holdKey`): only a task
 // whose walk refused nothing is kept, and its answer is the counts it added. Here a module of tasks that owe tier-0
 // obligations (list reads, a division) is compiled, one task is edited, and the build is compiled again with the memo

@@ -16,7 +16,7 @@
 //   their own convention: the toolchain holds none.
 // - The version is `mark <0.0.1>`, and no `code` line is written: `code ./code` names the code root, which is the
 //   default, and the scaffold's sources are under ./code. The `bear ./code` it used to write was the old spelling
-//   of that same default (note/term/plan/manifest-mark-and-code-root.md). The entry loads `@term/base/console`,
+//   of that same default (note/project/term/manifest/manifest-mark-and-code-root.md). The entry loads `@term/base/console`,
 //   the short form a package path takes now that it resolves inside the package's code root first.
 // - The name is the user's, UNSCOPED (`deck hello`). The manifest grammar accepts it, `term make` reads it as the
 //   manifest (deck/call/code/manifest-name.ts), and `term host` asks for a scope only when it is about to publish.

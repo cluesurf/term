@@ -7,7 +7,7 @@
 // way to catch it. The one place that is wrong is a handle op, where a missing file cannot be papered over, and
 // `handle_open` says so by panicking on a path it cannot open.
 //
-// Reached only through the public file API. See note/term/stdlib/native-async-file-and-server.md.
+// Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
 mod aio {
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};

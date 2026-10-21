@@ -1,4 +1,4 @@
-// A program booted from units carries what its run reaches (note/term/compiler/runtime-shaking.md). The bundle's entry
+// A program booted from units carries what its run reaches (note/project/term/compiler/runtime-shaking.md). The bundle's entry
 // exports the entry file's own names, what it imports, and every task a command calls, which a hook table names only
 // in its routes: zone's commands are other files' tasks, and narrowing to the entry's own names alone left `zone call`
 // answering `task "call" is not exported by the program` (2026-10-05). And nothing else: a command that trims one text

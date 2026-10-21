@@ -1,4 +1,4 @@
-// Installing a version of `term`, verified, beside the others (note/term/plan/term-versions.md, "Installing a
+// Installing a version of `term`, verified, beside the others (note/project/term/term-versions.md, "Installing a
 // version"). The ONE path every install takes: `term self load`, `pick`, `need` and `update`, and dispatch when a
 // project needs a version that is not here. `self.ts` and `need-run.ts` both call it, so there is one set of checks.
 //
@@ -432,7 +432,7 @@ export function readFileList(file: string): Map<string, ListedFile> | undefined 
 
 /**
  * Unpack a payload into `into`, hard-linking every file a version already installed holds alike instead of writing it
- * again (note/term/plan/term-versions.md, "Disk", V10). Two releases mostly hold the same standard library files and
+ * again (note/project/term/term-versions.md, "Disk", V10). Two releases mostly hold the same standard library files and
  * the same esbuild binary, so a second version costs only what changed.
  *
  * THE LISTS DECIDE, not the disk. The new payload's `hash.tree` comes out first and alone; a file whose path, sha256

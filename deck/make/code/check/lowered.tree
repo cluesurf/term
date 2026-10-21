@@ -1,5 +1,5 @@
 # A MEMBER CALL ON A LIST OR A MAP THAT NO NATIVE BACKEND LOWERS IS REFUSED BEFORE EMIT, on Rust, Swift and Kotlin
-# (note/term/plan/backends-complete.md, step 5). The emitters lower the members in compile/lowered-members.tree, and a
+# (note/project/term/backends-complete.md, step 5). The emitters lower the members in compile/lowered-members.tree, and a
 # list or hash method the stdlib writes in Term is dispatched to before this runs (check/infer.ts
 # `bindMemberMethod`). What is left is a host method by name, `xs/for-each(f)` or `xs/sort()`, which JavaScript answers
 # and which every native emitter wrote as `xs.forEach(f)` for the toolchain to refuse, far from the line that asked

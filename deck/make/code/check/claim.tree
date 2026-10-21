@@ -7,7 +7,7 @@
 #      a program cannot be built on one.
 #
 # The count of open claims is returned rather than printed, so the CLI can put it in the build line and a gate
-# can refuse on it. See note/term/project/law-proof-gate.md.
+# can refuse on it. See note/project/term/proof/archive/law-proof-gate.md.
 #
 # Ported from check/claim.ts (self-hosting, 2026-10-05). A body's names are compile/node-walk's variables of it; the
 # evidence the checker gathered arrives as lists; `fill-claims` and `stamp-grounded` write the program's tasks where

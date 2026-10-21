@@ -1,6 +1,6 @@
 // `term work`: run the long-lived compiler daemon (the background worker). It hosts the warm incremental analyzer over
 // HTTP, so the LSP, `term feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
-// interrupted. See code/dev/daemon.ts. Prints as a service (section 11 of note/term/output/standard.md): a `start`
+// interrupted. See code/dev/daemon.ts. Prints as a service (section 11 of note/project/term/output/standard.md): a `start`
 // item with its address, then a `Stopped` closing item with its uptime on ctrl-c.
 
 import { startDaemon } from '@term/call/code/dev/daemon'

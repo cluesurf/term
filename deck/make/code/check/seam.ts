@@ -1,6 +1,6 @@
 // THE GRADUAL SEAM. Whether an `unknown` may flow into a place that wants a type of its own, as TypeScript's `any`
 // does (the switch off), or must be narrowed first by a `sift` over its type, as TypeScript's `unknown` must (on). Off
-// until the repository is moved and the decision is made (note/term/plan/decisions-2026-10.md, D1), and on for a census
+// until the repository is moved and the decision is made (note/project/term/decisions-2026-10/decisions-2026-10.md, D1), and on for a census
 // with TERM_UNKNOWN_SEAM=1. A `dynamic`, the FFI's `any`, flows both ways either way. test/compile/unknown-narrow.ts.
 //
 // As check/seam.tree answers it: the switch is check/strict.ts's (`unknownSeamOn`), handed to `unknownSeam`, and a

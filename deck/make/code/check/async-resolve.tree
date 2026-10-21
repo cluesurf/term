@@ -1,5 +1,5 @@
 # Async resolution: infer which functions are async from the call graph and await async calls by default. See
-# note/term/compiler/async-inference.md and note/term/plan/await-by-default-and-mark-metadata.md. A `tick f(x)` (the
+# note/project/term/compiler/async-inference.md and note/project/term/await-by-default-and-mark-metadata.md. A `tick f(x)` (the
 # call's `background` flag, also `wait false`) is neither awaited nor counted: it does not make its caller async. Runs
 # after type checking, before the effect check (so the inserted awaits satisfy the async/await discipline) and before
 # IR + emit. Shared by the build and editor paths via compileProgram, so the language server gets the same inference.

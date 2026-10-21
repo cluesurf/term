@@ -2,7 +2,7 @@
 # reached only through the public network/https API.
 #
 # Not a module of its own library: HTTPS is HTTP with a TLS acceptor in front, and giving it a second server
-# implementation is how the two drift. See note/term/stdlib/native-async-file-and-server.md.
+# implementation is how the two drift. See note/project/term/stdlib/native-async-file-and-server.md.
 
 dock load
   load <global:server>, name runtime

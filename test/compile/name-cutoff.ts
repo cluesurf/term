@@ -1,4 +1,4 @@
-// Name-level cutoff (note/term/plan/incremental-best-in-class.md, step 4). A unit's stored answer is keyed by the
+// Name-level cutoff (note/project/term/incremental-best-in-class.md, step 4). A unit's stored answer is keyed by the
 // fingerprints of the dependency definitions it can reach BY NAME (compile/names.tree), so an edit to a task it never
 // names leaves its answer standing, an edit to one it calls does not, and a definition that appears under a name it
 // uses moves its key even though nothing it used before changed.

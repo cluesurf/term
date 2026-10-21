@@ -1,7 +1,7 @@
 # The TypeScript backend: compile the vibe AST to idiomatic TypeScript. The reference codegen. Emitted programs use
 # native JS control flow and functions (so they read like hand-written code, and async / await are native), and call
 # the RT runtime (runtime.ts) for the ternary / aggregate ops, so results match the interpreter exactly. See
-# note/research/vibe/computation/backend/03-backends.md.
+# note/project/term/research/computation/backend/03-backends.md.
 #
 # Ported from engine/backend/typescript.ts (self-hosting, 2026-10-05). The emitter's label stack and counter are one
 # `mark shared` record every emitting task hands down, and labels are drawn in the original's order. A text is quoted

@@ -33,7 +33,7 @@
 // A `task` entry says what the query returns (`back`), its own result cap (`size`), and per field which predicates
 // it accepts and whether it sorts. That last part is not taste: a predicate the resolver cannot push down to an
 // index is a full table read wearing the costume of a filter, and this repository has a measured 125,076 ms answer
-// to what that costs. See note/term/view/03-find.md and 04-catalog.md.
+// to what that costs. See note/project/term/view/03-find.md and 04-catalog.md.
 //
 // Deriving the per-field table from a database's own indexes (`deriveSites`, `writeCatalog`, `readRows`) is Term
 // since 2026-10-04, compile/catalog-derive.tree, and reading a catalog since 2026-10-06, compile/catalog-read.tree.

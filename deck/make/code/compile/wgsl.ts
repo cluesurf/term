@@ -1,6 +1,6 @@
 // The GPU backend: emit the numeric functional + imperative fragment as WGSL (the WebGPU shading language). WGSL is
 // the data-parallel target: structured, C-like, monomorphic (run monomorphization first), and numeric (no strings,
-// no closures). Numbers map to i32, booleans to bool. See note/research/vibe/computation/plans/07-codegen.md.
+// no closures). Numbers map to i32, booleans to bool. See note/project/term/archive/computation/plans/07-codegen.md.
 // Pure, browser-safe.
 
 import type {

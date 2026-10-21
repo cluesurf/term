@@ -1,7 +1,7 @@
 # The real, compiling hex/binary codec. Matches the spec in ./mine.tree and ./mint.tree field for field: `read-hex`
 # is `mine hex-byte`'s `high`/`low` nibble pair walked across the input; `write-hex` is `mint hex-byte`'s split
 # mirrored. Input is `text`, not a byte cursor — hex digits are already characters, so the stdlib's own `char-at` /
-# `char-code-at` read them directly, no UTF-8 decode step needed. See note/term/feed/05-parser-and-mill.md.
+# `char-code-at` read them directly, no UTF-8 decode step needed. See note/project/term/feed/05-parser-and-mill.md.
 
 load @term/base/boolean
   find and

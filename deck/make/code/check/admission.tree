@@ -1,4 +1,4 @@
-# What can be refused about a `twin` without running anything (note/term/optimize/admission.md, optimize-0006).
+# What can be refused about a `twin` without running anything (note/project/term/optimize/admission.md, optimize-0006).
 #
 # A twin is another implementation of a named task that the compiler may choose in its place. Before any test or proof
 # asks whether it AGREES with the task, these ask whether it COULD: does the task exist and is it pure, does the twin
@@ -61,7 +61,7 @@ load ./purity
 load ./termination
   find terminating-functions
 
-# the relaxations Term defines, each with its decision procedure in note/term/optimize/words.md
+# the relaxations Term defines, each with its decision procedure in note/project/term/optimize/words.md
 task ease-words
   like list, like text
 

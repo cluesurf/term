@@ -1,4 +1,4 @@
-# Name-level cutoff (note/term/plan/incremental-best-in-class.md, step 4).
+# Name-level cutoff (note/project/term/incremental-best-in-class.md, step 4).
 #
 # A unit is checked against the stubs of every unit it reaches (compile/separate.ts), and its cached answer was keyed
 # by the whole surface of each: a signature edit to one task of the standard library rebuilt every unit reaching that

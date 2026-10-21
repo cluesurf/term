@@ -242,7 +242,7 @@ export async function runTestFile(input: {
   roleOf?: RoleOf
   leanOf?: (file: string) => boolean
   // build through units, one at a time against the stubs of what each loads, with what one test file's build learns
-  // kept for the next (note/term/plan/incremental-best-in-class.md, step 10). A project's test files all reach the
+  // kept for the next (note/project/term/incremental-best-in-class.md, step 10). A project's test files all reach the
   // standard library, and each merged compile checked it again
   units?: TestUnits
   // run only the tests this answers yes for (`term test --case`); every test when absent

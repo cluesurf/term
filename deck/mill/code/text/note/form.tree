@@ -1,4 +1,4 @@
-# What the `note` grammar reads a scope's text to (note/term/mill/03-note-grammar.md): one expression, as a tree of
+# What the `note` grammar reads a scope's text to (note/project/term/mill/03-note-grammar.md): one expression, as a tree of
 # these nodes. Every node carries `at`, the code point in the scope's text where it begins, so a mistake found later
 # (a unit, an operator nothing lowers) is reported where it was written.
 

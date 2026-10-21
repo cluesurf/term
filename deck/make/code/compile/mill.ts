@@ -5,7 +5,7 @@
 // `deck/mill/code/tree/code/` holds the `mine` and `mint` files that define the code role. `compile/mill-run.ts` runs
 // them and `compile/mint-bridge.ts` turns what they build into the compiler's nodes. Nothing here reads `.tree`
 // syntax by hand any more, which is the rule every other dialect in the tree already obeyed. See
-// note/term/one-parser.md.
+// note/project/term/one-parser.md.
 //
 // WHAT USED TO BE HERE. `compile/mill-legacy.ts` is the hand-written reader, 5,366 lines that lowered a parse
 // tree by hand. It came off the compile path on 2026-09-01 (mint-bridge-0004), and nothing the compiler ships
@@ -19,7 +19,7 @@
 // STRINGS the suites and tools write inline, and those use constructs no file in the tree contains. A corpus is
 // not a language. So the measurement moved here, where every caller passes through, behind a flag that ran the
 // switch without making it (`TERM_MILL_GRAMMAR=1 pnpm term:test`), and the 107 failures were worked down one at
-// a time to zero before the line moved. The account is in note/term/mint-bridge/readme.md.
+// a time to zero before the line moved. The account is in note/project/term/mill/review/mint-bridge/readme.md.
 
 import type { RootNode } from '@term/make/code/parser/narrow'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
@@ -35,10 +35,10 @@ export function mill(
   role?: string,
   // `mark lean` on the file's role rule: a bare head is a call and a property head is a named argument. The
   // lean pass runs over the MATCH, between mine and mint, so nothing downstream of it can tell the two
-  // spellings apart. See note/term/lean.md.
+  // spellings apart. See note/project/term/mill/lean.md.
   lean?: boolean,
 ): MillResult {
-  // GRAMMAR SCOPES FIRST (compile/scope.tree, note/term/mill/02-role-scopes.md): every `role note, x + y`, and every
+  // GRAMMAR SCOPES FIRST (compile/scope.tree, note/project/term/mill/02-role-scopes.md): every `role note, x + y`, and every
   // name the file imports as a grammar, is read by its grammar and lowered to the code it means, so the code grammar
   // below only ever sees code. A file with no scope comes back as it went in
   const expanded = expandScopes(tree as never, file)

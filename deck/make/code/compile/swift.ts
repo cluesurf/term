@@ -3,7 +3,7 @@
 // `match` to native `if case let` pattern binding (a matched variant's fields bind to locals, and field access on the
 // subject rewrites to those locals), and struct forms to `struct`s. Construction uses leading-dot syntax so Swift
 // infers the type parameter from context (return type, annotated binding, argument position) — no monomorphization
-// needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
+// needed. Generic functions emit `<T>`. Pure, browser-safe. See note/project/term/archive/computation/plans/07-codegen.md.
 
 
 import { raiseSetsOf } from '@term/make/code/check/effects'
@@ -57,11 +57,11 @@ function camel(name: string): string {
   return swiftNames.camel(name)
 }
 
-// The text operations by code point (note/term/stdlib/semantics.md), over unicodeScalars. Swift's String counts
+// The text operations by code point (note/project/term/stdlib/semantics.md), over unicodeScalars. Swift's String counts
 // grapheme clusters and its `range(of:)` and `==` match canonically equivalent text, so nothing here uses either:
 // every search compares scalar arrays, which is the literal match every other backend makes.
 export const SWIFT_TEXT = `enum TermText {
-    // Positions count Unicode scalars (code points), as on every backend (note/term/stdlib/semantics.md), and each is
+    // Positions count Unicode scalars (code points), as on every backend (note/project/term/stdlib/semantics.md), and each is
     // found by stepping the String's own views where the text lies: a search runs over its UTF-8 bytes, which match only
     // at scalar boundaries because UTF-8 is self-synchronizing, and an order compares UTF-8 bytes, which IS code point
     // order. Nothing is copied into an array, so a loop reading a text by position is no longer quadratic in allocation.
@@ -291,7 +291,7 @@ export const SWIFT_TEXT = `enum TermText {
     }
 }`
 
-// A float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
+// A float as text, the same on every backend (note/project/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
 // that read back as the same float (Swift's `description` gives them), laid out as ECMAScript's Number::toString
 // lays them out. Swift's own rendering prints two as `2.0` and NaN as `nan`.
 const SWIFT_NUMBER = `func termNumber(_ x: Double) -> String {
@@ -350,7 +350,7 @@ const SWIFT_HELPERS = {
     '}',
     'func __termDrain() -> Bool { __termOutstanding.wait(); return true }',
   ].join('\n'),
-  // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
+  // the one exception value of a Term program on this backend (note/project/term/hive/11-native-exceptions.md)
   exception: [
     'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
     'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
@@ -358,7 +358,7 @@ const SWIFT_HELPERS = {
   // the reference wrapper for maps (a class so mutation persists across a struct copy). `data` is insertion-ordered
   // (SeedOrdered), so a walk over a map's keys visits them in the order they were first set, as TypeScript's Map and
   // Kotlin's LinkedHashMap do. A Swift Dictionary is seeded per process, and the same binary walked one map in a
-  // different order on every run (note/term/optimize/meaning.md, question 1). Keys and values live in two dense
+  // different order on every run (note/project/term/optimize/meaning.md, question 1). Keys and values live in two dense
   // arrays beside an index, so a walk, `keys` and `values` allocate nothing while no entry has been removed. A
   // removal marks its slot dead, and the arrays are compacted once half the slots are dead.
   map: [
@@ -474,11 +474,11 @@ const SWIFT_HELPERS = {
     '    func storing(_ index: Int, _ item: T) { data[index] = item }',
     '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
     '    @discardableResult func shifting() -> T { return data.removeFirst() }',
-    // a splice and a slice clamp their bounds and never count from the end (note/term/stdlib/semantics.md)
+    // a splice and a slice clamp their bounds and never count from the end (note/project/term/stdlib/semantics.md)
     '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { let s = min(max(start, 0), data.count); let c = min(max(count, 0), data.count - s); data.replaceSubrange(s..<(s + c), with: items); return data.count }',
     '    func slicing(_ start: Int, _ end: Int? = nil) -> SeedList<T> { let x = min(max(start, 0), data.count); let y = min(max(end ?? data.count, 0), data.count); return SeedList(x < y ? Array(data[x..<y]) : []) }',
     '}',
-    '// a list compares and hashes by its items, as on every other backend (note/term/optimize/meaning.md, question 4)',
+    '// a list compares and hashes by its items, as on every other backend (note/project/term/optimize/meaning.md, question 4)',
     'extension SeedList: Equatable where T: Equatable {',
     '    static func == (a: SeedList<T>, b: SeedList<T>) -> Bool { a.data == b.data }',
     '}',
@@ -1017,7 +1017,7 @@ export function emitSwift(
     }
   }
 
-  // the raise sets (note/term/hive/04-reach.md): a function that can raise, through its callees too, is `throws`, a
+  // the raise sets (note/project/term/hive/04-reach.md): a function that can raise, through its callees too, is `throws`, a
   // call to one is `try` where the caller is itself `throws` or the call sits in a guarded body, and `try!` elsewhere
   // (a raise nothing handles ends the program, as on every backend)
   const sets = raiseSetsOf(program, [...exceptionForms])
@@ -1045,7 +1045,7 @@ export function emitSwift(
     }
   }
 
-  // F1 (note/term/codegen/shared.md), the same facts Rust reads: a list parameter a task takes lent is a plain `[T]`
+  // F1 (note/project/term/compiler/codegen/shared.md), the same facts Rust reads: a list parameter a task takes lent is a plain `[T]`
   // (read) or `inout [T]` (written) where every list is otherwise a `SeedList` class, a list local the task owns is a
   // plain `var [T]`, and a task answering a fresh list answers `[T]`. Swift's arrays are values with copy-on-write, so
   // a read-only `[T]` copies nothing, and an `inout` argument's write access begins only after every other argument is
@@ -1375,7 +1375,7 @@ export function emitSwift(
     }
   }
 
-  // `is-equal` on two records compares their fields, on every backend (note/term/optimize/meaning.md, question 4). A
+  // `is-equal` on two records compares their fields, on every backend (note/project/term/optimize/meaning.md, question 4). A
   // struct or enum whose every field can be compared gets a synthesized `Equatable`, and `Hashable` too when every
   // field can be hashed (which is what lets a record be a map key). A closure or an `Any` keeps the form out, and a
   // `note shared` form is a class, so it stays a reference compared by identity. A generic form conforms where its
@@ -1561,7 +1561,7 @@ export function emitSwift(
 
   // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
   // the compile driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry
-  // with a `ref` (a declared kind's constant) binds the live module constant. See note/term/hive/05-hive.md.
+  // with a `ref` (a declared kind's constant) binds the live module constant. See note/project/term/hive/05-hive.md.
   const wake: string[] = []
 
   if (

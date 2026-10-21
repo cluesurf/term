@@ -190,7 +190,7 @@ task read-number
 # ---------------------------------------------------------------- parse-integer, parse-float, to-radix, to-fixed
 #
 # The strict readers raise `number-mismatch` naming the code point position and the reason, and read every text the
-# same way on every backend (note/term/stdlib/semantics.md). `read-number` above is the lenient one that answers a
+# same way on every backend (note/project/term/stdlib/semantics.md). `read-number` above is the lenient one that answers a
 # maybe.
 
 load @term/base/exception

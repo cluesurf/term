@@ -1,7 +1,7 @@
 // What `number` means on every backend: an integer, whose quotient truncates toward zero. Measured on 2026-10-02,
 // TypeScript emitted JavaScript's float `/`, so `7 / 2` was 3.5 in a browser and 3 on Rust, Swift and Kotlin. This
 // suite RUNS the emitted TypeScript, and reads the native emitters' operator, which is the integer one by type.
-// Run: npx tsx test/compile/number.ts. See note/term/proof-by-default/numbers.md.
+// Run: npx tsx test/compile/number.ts. See note/project/term/proof/numbers.md.
 
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'

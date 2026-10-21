@@ -1,4 +1,4 @@
-# Which files of the package manager are read with the LEAN surface (note/term/lean.md,
+# Which files of the package manager are read with the LEAN surface (note/project/term/mill/lean.md,
 # note/term/self-host/03-lean.md): every module ported to Term, and the tests written in Term, as in @term/test.
 
 role code

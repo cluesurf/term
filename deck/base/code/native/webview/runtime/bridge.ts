@@ -8,7 +8,7 @@
 //
 // This is what tauri's `invoke` does with a callback id and an error id registered on `window`
 // (land/code/github.com/tauri-apps/tauri/crates/tauri/scripts/ipc.js), with one id and one reply function instead.
-// Design: note/term/cask/readme.md.
+// Design: note/project/term/cask/readme.md.
 
 type Reply = { id: string; value?: unknown; exception?: unknown }
 

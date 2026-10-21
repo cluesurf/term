@@ -2,7 +2,7 @@
 # Select, the GENERIC implementation: the browser's own `<select>`, with one `<option>` per choice. A platform
 # with a picker of its own (macOS, iOS, Android) gets ./toolkit/select.tree instead, through
 # `component/select.tree` and the build's env chain. Both take the same props, which is the contract
-# (note/term/app/11-uniform-interface.md, native-dom-0026).
+# (note/project/term/app/11-uniform-interface.md, native-dom-0026).
 #
 #   save size, call make-signal / bind value, text <medium>
 #   call select / read root / text <> / read size / read sizes
@@ -43,7 +43,7 @@ task mount-select
     read picker
     text <data-slot>
     text <select>
-  # its name, what a screen reader speaks before the chosen option (note/term/view/11-vocabulary.md, "Accessibility")
+  # its name, what a screen reader speaks before the chosen option (note/project/term/view/11-vocabulary.md, "Accessibility")
   call write-attribute
     read picker
     text <aria-label>

@@ -332,7 +332,7 @@ async function runSeedTests(input: {
   const deckOf = projectDeckOf()
   const readRuntime = (p: string): string | undefined =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined
-  // one build session for every test file (note/term/plan/incremental-best-in-class.md, step 10): the units every file
+  // one build session for every test file (note/project/term/incremental-best-in-class.md, step 10): the units every file
   // reaches, the standard library's above all, are checked once for the run and read from the cache after that. Its
   // resolver checks each file it hands out against the disk once a round, so a watch reads every edit
   const session = buildSession(input.root)

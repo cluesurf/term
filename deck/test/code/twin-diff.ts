@@ -1,4 +1,4 @@
-// Differential admission (note/term/optimize/admission.md, optimize-0010): does each twin AGREE with its task?
+// Differential admission (note/project/term/optimize/admission.md, optimize-0010): does each twin AGREE with its task?
 //
 // A twin is another implementation of a task the compiler may choose in its place. Before the kernel can prove that
 // (optimize-0019), this is the evidence: the twin and its task run on the same inputs and must give the same answer

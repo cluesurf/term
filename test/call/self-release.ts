@@ -1,10 +1,10 @@
 // `term self check | update | back` end to end, against a loopback registry and a fresh HOME, with the real release
-// payload (note/term/plan/term-load-install.md, P3).
+// payload (note/project/term/term-load-install.md, P3).
 //
 //   1. publish this machine's payload twice, as 2.6.0 and 2.6.2, signed by a throwaway key that founds the key set
 //   2. install 2.6.0 by running THE LOADER term.surf serves (mesh/site/term.surf/home/public/load)
 //   3. run the INSTALLED term: check passes, update moves the link to 2.6.2, check passes there, back returns to 2.6.0
-//   4. dispatch (note/term/plan/term-versions.md): the front outside a project, `+range`, a project's `need` and its
+//   4. dispatch (note/project/term/term-versions.md): the front outside a project, `+range`, a project's `need` and its
 //      lock.tree pin, TERM_VERSION, the handshake and the loop guard, TERM_NEED=local, an install on first use, and
 //      `self list | find | pick | show | toss | wash`
 //   5. tamper with install.tree's digest: check refuses
@@ -184,7 +184,7 @@ try {
   ok('   and TERM_LOAD_PATH=0 edits no profile', off.code === 0 && !existsSync(join(kept, '.zshrc')) && /no profile was edited/.test(off.out), off.out)
   ok(
     'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
-    // v3 (note/term/output/standard.md): `glyph verb subject` at column 0, every child line two cells in, and the
+    // v3 (note/project/term/output/standard.md): `glyph verb subject` at column 0, every child line two cells in, and the
     // opening's clock only in a service (section 2), which an install is not
     /(^|\n)● load ~\/\.base\/@term\/code\n {2}(\d\d:\d\d:\d\d\.\d{3} · )?term\.surf\/load\n/.test(loaded.out) &&
       // ▲ when this machine has another `term` on PATH (an npm global), which the loader names: the worst glyph closes

@@ -23,7 +23,7 @@
 #
 #   code    ordinary Term. The default when no rule matches
 #   book    documentation
-#   view    the sandboxed document dialect (note/term/view/)
+#   view    the sandboxed document dialect (note/project/term/view/)
 #   host    a data file, compiled to its value rather than to a program
 #   call    a file of CLI definitions: every `hook` in it is a COMMAND
 #   site    a file of routes: every `hook` in it is a URL ROUTE

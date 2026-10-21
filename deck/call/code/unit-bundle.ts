@@ -1,4 +1,4 @@
-// A program built one unit at a time, written out for a bundler (note/term/plan/incremental-best-in-class.md, steps 9
+// A program built one unit at a time, written out for a bundler (note/project/term/incremental-best-in-class.md, steps 9
 // and 10). `term boot` and `term test` both hand esbuild a program made of units: every module of the closure beside
 // one another under `host/.unit/`, an entry that re-exports every public task of the closure (call/code/make.ts
 // `entryShim`), and the native prelude as a module of its own.
