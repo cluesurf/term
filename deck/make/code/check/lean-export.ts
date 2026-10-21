@@ -10,11 +10,14 @@
 // The translation, in short (the spec has the whole of it):
 //   - Term's `Type n` is Lean's `Type n`. Term's Type 0 is impredicative and Lean's `Type` is not, so a proof that
 //     needed the impredicativity is refused by Lean (a false refusal, never a false acceptance)
-//   - a form is a Lean `inductive`: its type heads are parameters, its value heads indices, its cases constructors
+//   - every form is a Lean `inductive`: its type heads are parameters, its value heads indices, its cases constructors.
+//     A record (fields, no cases) has one constructor `make`, and the kernel's `Unit` one constructor `unitValue`
 //   - `match__T` and `matchType__T` (the eliminators the self-type encoding gives each form) are defined by Lean's
-//     `T.casesOn`, so Lean checks that the eliminator Term postulates is the one the inductive has
-//   - a task that calls itself inside a match on one of its parameters is rewritten to `T.rec`, its recursive calls on
-//     the matched value's fields becoming the induction hypotheses, so Lean needs no termination proof of its own
+//     `T.casesOn`, so Lean checks that the eliminator Term postulates is the one the inductive has. The motive's sort is
+//     a universe variable, Lean's reading of Term's cumulative universes
+//   - a task that calls itself inside a match on one of its parameters is rewritten to `T.rec`, as Lean's equation
+//     compiler would: its calls on the matched value's fields become the induction hypotheses, and a parameter the
+//     calls change is generalized in the motive, so Lean's kernel checks a term with no recursion in it
 //   - multiplicities are dropped: Lean re-checks the types, never the usage
 //   - a constant with no definition (a primitive, a task the kernel did not keep) is an `axiom`, and every one is
 //     reported, since a claim resting on one is not fully re-checked
@@ -193,6 +196,58 @@ function substitute(term: Named, map: Map<string, Named>): Named {
   }
 }
 
+// whether a term names a variable
+function mentions(term: Named, name: string): boolean {
+  switch (term.k) {
+    case 'var':
+      return term.name === name
+    case 'const':
+    case 'type':
+      return false
+    case 'pi':
+      return mentions(term.domain, name) || mentions(term.codomain, name)
+    case 'lam':
+      return mentions(term.body, name)
+    case 'app':
+      return mentions(term.fun, name) || mentions(term.arg, name)
+    case 'ann':
+      return mentions(term.term, name) || mentions(term.type, name)
+  }
+}
+
+// AN ELIMINATOR'S MOTIVE TARGETS ANY UNIVERSE. Term's universes are cumulative (judge.ts: `Type 0` is a `Type 1`), so a
+// motive `T -> Type 1` (the large eliminator `matchType__T`) also takes a motive into `Type 0`, which every dependent
+// match on a form with no indices is. Lean has no cumulativity, so the motive's sort is a universe variable: the
+// eliminator is defined once for every universe, and Lean checks the definition at all of them
+const MOTIVE_LEVEL: Level = { constant: 0, vars: new Map([['motive', 0]]) }
+
+function anySort(domain: Named): Named {
+  switch (domain.k) {
+    case 'pi':
+      return { ...domain, codomain: anySort(domain.codomain) }
+    case 'type':
+      return { k: 'type', level: MOTIVE_LEVEL }
+    default:
+      return domain
+  }
+}
+
+// a function applied to variables, its leading lambdas reduced: `(fun a b => M) x y` is `M[a := x, b := y]`. The
+// arguments are variables, so substituting never copies a binder
+function beta(fun: Named, args: Named[]): Named {
+  let at = fun
+  let used = 0
+  const map = new Map<string, Named>()
+
+  while (at.k === 'lam' && used < args.length) {
+    map.set(at.name, args[used]!)
+    at = at.body
+    used++
+  }
+
+  return applyAll(substitute(at, map), args.slice(used))
+}
+
 function constants(term: Named, into: Set<string>): Set<string> {
   switch (term.k) {
     case 'const':
@@ -354,7 +409,12 @@ type Data = {
   enumDefs: { name: string; term: Term }[]
   variantNames: Map<string, string[]>
   typeFormerArity: Map<string, number>
+  // a form with no cases, a record: its fields in order. Its constructor is `make__R`, its projections `R__field`
+  recordFields: Map<string, string[]>
 }
+
+// one case of a form: its name in Lean, and the constant Term gives its constructor
+type Case = { variant: string; key: string }
 
 // ---- the export ----
 
@@ -379,11 +439,35 @@ export function exportLean(source: LeanSource): LeanExport {
     signature.set(entry.name, entry.type)
   }
 
-  const constructors = new Map<string, { form: string; variant: string }>()
+  // EVERY FORM IS AN INDUCTIVE, whatever its number of cases: a form with cases has one constructor per case, a record
+  // (a form with fields and no cases, `form person / link id ...`) one constructor `make` taking its fields, and the
+  // kernel's own unit type (`Unit`, postulated with its one value `unitValue`) one constructor with no fields. So no
+  // form reaches Lean as an axiom
+  const cases = new Map<string, Case[]>()
 
   for (const [form, variants] of data.variantNames) {
-    for (const variant of variants) {
-      constructors.set(`${form}__${variant}`, { form, variant })
+    cases.set(form, variants.map(variant => ({ variant, key: `${form}__${variant}` })))
+  }
+
+  // a record's projections, `R__field`, each defined by the record's `casesOn`
+  const projections = new Map<string, { form: string; index: number; count: number }>()
+
+  for (const [form, fields] of data.recordFields ?? new Map<string, string[]>()) {
+    if (!cases.has(form) && signature.has(`make__${form}`)) {
+      cases.set(form, [{ variant: 'make', key: `make__${form}` }])
+      fields.forEach((field, index) => projections.set(`${form}__${field}`, { form, index, count: fields.length }))
+    }
+  }
+
+  if (!cases.has('Unit') && signature.has('Unit') && signature.has('unitValue')) {
+    cases.set('Unit', [{ variant: 'unitValue', key: 'unitValue' }])
+  }
+
+  const constructors = new Map<string, { form: string; variant: string }>()
+
+  for (const [form, list] of cases) {
+    for (const one of list) {
+      constructors.set(one.key, { form, variant: one.variant })
     }
   }
 
@@ -411,7 +495,7 @@ export function exportLean(source: LeanSource): LeanExport {
     // every argument explicit
     const recursor = /^(.*)\.(rec|casesOn)$/.exec(name)
 
-    if (recursor && data.variantNames.has(recursor[1]!)) {
+    if (recursor && cases.has(recursor[1]!)) {
       return `@${SPACE}.${quoteName(recursor[1]!)}.${recursor[2]}`
     }
 
@@ -543,8 +627,10 @@ export function exportLean(source: LeanSource): LeanExport {
         return emit(constructor.form)
       }
 
-      if (data.variantNames.has(name)) {
+      if (cases.has(name)) {
         emitForm(name)
+      } else if (projections.has(name)) {
+        emitProjection(name)
       } else if (eliminators.has(name) && enumDefs.has(name)) {
         emitEliminator(name)
       } else if (proven.has(name) && definitions.has(name) && data.functionType.has(name)) {
@@ -613,9 +699,8 @@ export function exportLean(source: LeanSource): LeanExport {
     noteUniverses(former.rest)
     const lines: string[] = []
 
-    for (const variant of data.variantNames.get(form) ?? []) {
-      const ctorName = `${form}__${variant}`
-      const ctorType = signature.get(ctorName)
+    for (const { variant, key } of cases.get(form) ?? []) {
+      const ctorType = signature.get(key)
 
       if (!ctorType) {
         throw new Refuse(`the case ${variant} of ${form} has no constructor in the signature`)
@@ -668,6 +753,9 @@ export function exportLean(source: LeanSource): LeanExport {
   // definition against the type Term gave the eliminator, so a wrong eliminator type is refused there
   const emitEliminator = (name: string): void => {
     const read = readEliminator(name)
+    const binders = read.binders.map(binder =>
+      read.motive.k === 'var' && binder.name === read.motive.name ? { ...binder, domain: anySort(binder.domain) } : binder,
+    )
     const body = applyAll({ k: 'const', name: `${read.form}.casesOn` }, [
       ...read.params,
       read.motive,
@@ -676,12 +764,42 @@ export function exportLean(source: LeanSource): LeanExport {
       ...read.minors,
     ])
     const used = constants(body, new Set())
-    read.binders.forEach(binder => constants(binder.domain, used))
+    binders.forEach(binder => constants(binder.domain, used))
     constants(read.result, used)
     used.delete(`${read.form}.casesOn`)
     used.add(read.form)
     needAll(name, used)
-    blocks.set(name, `def ${constName(name)}${binderText(read.binders)} : ${printer.print(read.result)} :=\n  ${printer.print(body)}`)
+    binders.forEach(binder => noteUniverses(binder.domain))
+    blocks.set(name, `def ${constName(name)}${binderText(binders)} : ${printer.print(read.result)} :=\n  ${printer.print(body)}`)
+  }
+
+  // a record's projection `R__field` by `R.casesOn`, its one case returning the field. Lean checks it against the type
+  // Term gives the projection
+  const emitProjection = (name: string): void => {
+    const { form, index, count } = projections.get(name)!
+    const type = signature.get(name)
+
+    if (!type) {
+      throw new Refuse(`the projection ${name} is in no signature`)
+    }
+
+    const { binders, rest } = peelPis(type, 1, ['r'], names)
+
+    if (binders.length !== 1) {
+      throw new Refuse(`the projection ${name} does not take its record`)
+    }
+
+    const fields = Array.from({ length: count }, () => names.fresh('field'))
+    const body = applyAll({ k: 'const', name: `${form}.casesOn` }, [
+      { k: 'lam', name: names.fresh('m'), body: rest },
+      { k: 'var', name: binders[0]!.name },
+      fields.reduceRight<Named>((inner, field) => ({ k: 'lam', name: field, body: inner }), { k: 'var', name: fields[index]! }),
+    ])
+    const used = constants(rest, new Set())
+    constants(binders[0]!.domain, used)
+    used.add(form)
+    needAll(name, used)
+    blocks.set(name, `def ${constName(name)}${binderText(binders)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`)
   }
 
   // a task the kernel proved: its type, its value, and when it calls itself, the call turned into `T.rec`
@@ -700,7 +818,7 @@ export function exportLean(source: LeanSource): LeanExport {
     let term = named(body, bound, names)
 
     if (constants(term, new Set()).has(name)) {
-      term = recursion(name, term, outer.map(binder => binder.name))
+      term = recursion(name, term, outer)
     }
 
     const used = constants(term, new Set())
@@ -721,12 +839,21 @@ export function exportLean(source: LeanSource): LeanExport {
     blocks.set(name, `def ${constName(name)}${binderText(outer)} : ${printer.print(result)} :=\n  ${printer.print(term)}`)
   }
 
-  // A TASK THAT CALLS ITSELF, inside a match on one of its own parameters, on a field of the matched value, its other
-  // arguments its own parameters unchanged: the structural recursion a `fold` is. Written with `T.rec`, whose minor for
-  // a case takes the case's fields and then one induction hypothesis per field of the form's own type, and each
-  // recursive call on such a field becomes that hypothesis. Anything else is refused: Lean would need a termination
-  // argument the kernel's term does not carry (Term's checks it beside the kernel, check/totality.ts)
-  const recursion = (name: string, body: Named, params: string[]): Named => {
+  // A TASK THAT CALLS ITSELF, inside a match on one of its own parameters, each call on a field of the matched value:
+  // structural recursion, the shape a `fold` is. Written with `T.rec` the way Lean's own equation compiler writes it,
+  // so the Lean kernel checks a term with no recursion left in it and needs no termination argument:
+  //   - the minor for a case takes the case's fields, then one induction hypothesis per field of the form's own type,
+  //     and a call on such a field becomes that hypothesis
+  //   - a parameter that is an INDEX of the matched value's family (`seen : shows s viewer v` makes s, viewer and v
+  //     indices) may change in a call only to the field's own index: `T.rec` gives the hypothesis at exactly that index
+  //   - any other parameter a call changes (`same(p, q)`, where b becomes q) is GENERALIZED: the motive quantifies over
+  //     it, `fun idx x => (b : B) → M`, each minor takes it as a lambda, each hypothesis is applied to the call's own
+  //     argument, and the recursor's result is applied to the parameter itself
+  // Anything else is refused: a call on something not a field (well-founded recursion) needs a termination argument
+  // the kernel's term does not carry (Term checks it beside the kernel, check/totality.ts), and never reaches Lean
+  // with `partial` or a `sorry`
+  const recursion = (name: string, body: Named, params: { name: string; domain: Named }[]): Named => {
+    const paramNames = params.map(param => param.name)
     const shape = spine(body)
 
     if (shape.head.k !== 'const' || !eliminators.has(shape.head.name)) {
@@ -735,117 +862,223 @@ export function exportLean(source: LeanSource): LeanExport {
 
     const read = readEliminator(shape.head.name)
 
-    if (shape.args.length !== read.binders.length) {
+    if (shape.args.length < read.binders.length) {
       throw new Refuse('it calls itself in a match not applied to all of its arguments')
     }
 
     const map = new Map(read.binders.map((binder, i) => [binder.name, shape.args[i]!] as [string, Named]))
+    // a match whose result is a function, applied on (a convoy): the arguments after the eliminator's own
+    const extra = shape.args.slice(read.binders.length)
     const major = map.get(read.major)!
 
-    if (major.k !== 'var' || !params.includes(major.name)) {
+    if (major.k !== 'var' || !paramNames.includes(major.name)) {
       throw new Refuse('it calls itself in a match on something other than one of its parameters')
     }
 
-    const position = params.indexOf(major.name)
-    const variants = data.variantNames.get(read.form) ?? []
+    const position = paramNames.indexOf(major.name)
+    const formParams = read.params.map(t => substitute(t, map))
+    const indices = read.indices.map(t => substitute(t, map))
+    const motive = substitute(read.motive, map)
+    const variants = cases.get(read.form) ?? []
+    const arity = data.typeFormerArity.get(read.form) ?? 0
 
     if (read.minors.length !== variants.length) {
       throw new Refuse(`its match has ${read.minors.length} cases where ${read.form} has ${variants.length}`)
     }
 
-    const minors = read.minors.map((piece, i) => {
-      const ctorType = signature.get(`${read.form}__${variants[i]}`)!
-      const arity = data.typeFormerArity.get(read.form) ?? 0
-      // the case's fields, past the parameters, and which of them are the form's own type
-      const fields: { recursive: boolean }[] = []
+    // the task's parameters the matched value's indices are: parameter position to index position
+    const indexAt = new Map<number, number>()
+
+    indices.forEach((index, j) => {
+      const at = index.k === 'var' ? paramNames.indexOf(index.name) : -1
+
+      if (at >= 0 && at !== position && !indexAt.has(at)) {
+        indexAt.set(at, j)
+      }
+    })
+
+    // each case's fields, named by its minor's own binders, with the indices of each field of the form's own type
+    type Field = { name: string; recursive: boolean; indices: Named[] }
+    const pieces = read.minors.map((piece, i) => {
+      const ctorType = signature.get(variants[i]!.key)!
+      const env: string[] = []
+      const fromParams = new Map<string, Named>()
+      const fields: Field[] = []
+      let minor = substitute(piece, map)
       let at = ctorType
-      let skipped = 0
+      let count = 0
 
       while (at.tag === 'pi') {
-        if (skipped < arity) {
-          skipped++
+        if (count < arity) {
+          const param = names.fresh('p')
+          env.push(param)
+          fromParams.set(param, formParams[count]!)
         } else {
-          let head = at.domain
+          let field: string
 
-          while (head.tag === 'app') {
-            head = head.fun
+          if (minor.k === 'lam') {
+            field = minor.name
+            minor = minor.body
+          } else {
+            field = names.fresh('field')
+            minor = { k: 'app', fun: minor, arg: { k: 'var', name: field } }
           }
 
-          fields.push({ recursive: head.tag === 'const' && head.name === read.form })
+          const type = spine(substitute(named(at.domain, env, names), fromParams))
+          const recursive = type.head.k === 'const' && type.head.name === read.form
+          fields.push({ name: field, recursive, indices: recursive ? type.args.slice(arity) : [] })
+          env.push(field)
         }
+
+        count++
         at = at.codomain
       }
 
-      let minor = substitute(piece, map)
-      const fieldNames: string[] = []
+      return { fields, minor }
+    })
 
-      for (let f = 0; f < fields.length; f++) {
-        if (minor.k === 'lam') {
-          fieldNames.push(minor.name)
-          minor = minor.body
-        } else {
-          const fresh = names.fresh('field')
-          fieldNames.push(fresh)
-          minor = { k: 'app', fun: minor, arg: { k: 'var', name: fresh } }
+    // the parameters a call changes, other than the matched one and its indices: these are generalized
+    const varying = new Set<number>()
+
+    const scan = (term: Named): void => {
+      const call = spine(term)
+
+      if (call.head.k === 'const' && call.head.name === name) {
+        if (call.args.length !== params.length) {
+          throw new Refuse(`it calls itself with ${call.args.length} arguments where it takes ${params.length}`)
+        }
+
+        call.args.forEach((arg, i) => {
+          if (i !== position && !indexAt.has(i) && !(arg.k === 'var' && arg.name === paramNames[i])) {
+            varying.add(i)
+          }
+
+          scan(arg)
+        })
+        return
+      }
+
+      switch (term.k) {
+        case 'const':
+          if (term.name === name) {
+            throw new Refuse('it uses itself other than by a call')
+          }
+          return
+        case 'pi':
+          scan(term.domain)
+          scan(term.codomain)
+          return
+        case 'lam':
+          scan(term.body)
+          return
+        case 'app':
+          scan(term.fun)
+          scan(term.arg)
+          return
+        case 'ann':
+          scan(term.term)
+          scan(term.type)
+          return
+        default:
+          return
+      }
+    }
+
+    pieces.forEach(piece => scan(piece.minor))
+
+    const general = [...varying].sort((a, b) => a - b)
+    const generalNames = new Set(general.map(i => paramNames[i]!))
+
+    for (const term of [...formParams, ...indices]) {
+      if ([...generalNames].some(one => mentions(term, one))) {
+        throw new Refuse(`a parameter its calls change is in the type of the matched value, so the motive cannot be generalized over it`)
+      }
+    }
+
+    // the generalized parameters, renamed inside the motive and the minors
+    const fresh = general.map(i => names.fresh(paramNames[i]))
+    const rename = new Map<string, Named>(general.map((i, k) => [paramNames[i]!, { k: 'var', name: fresh[k]! }]))
+
+    // the motive, over the indices and the matched value, quantified over the generalized parameters
+    const motiveBinders = [...indices.map(() => names.fresh('i')), names.fresh('x')]
+    const generalized = fresh.reduceRight<Named>(
+      (inner, binder, k) => ({ k: 'pi', name: binder, domain: substitute(params[general[k]!]!.domain, rename), codomain: inner }),
+      substitute(beta(motive, motiveBinders.map(binder => ({ k: 'var', name: binder }))), rename),
+    )
+    const newMotive = motiveBinders.reduceRight<Named>((inner, binder) => ({ k: 'lam', name: binder, body: inner }), generalized)
+
+    const minors = pieces.map(({ fields, minor }) => {
+      const hypotheses = new Map<string, { hypothesis: string; field: Field }>()
+
+      for (const field of fields) {
+        if (field.recursive) {
+          hypotheses.set(field.name, { hypothesis: names.fresh('ih'), field })
         }
       }
 
-      const hypotheses = new Map<string, string>()
+      const replace = (term: Named): Named => {
+        const call = spine(term)
 
-      fields.forEach((field, f) => {
-        if (field.recursive) {
-          hypotheses.set(fieldNames[f]!, names.fresh('ih'))
+        if (call.head.k === 'const' && call.head.name === name) {
+          const on = call.args[position]!
+          const found = on.k === 'var' ? hypotheses.get(on.name) : undefined
+
+          if (!found) {
+            throw new Refuse('it calls itself on something other than a field of the matched value (well-founded, not structural, recursion)')
+          }
+
+          for (const [i, j] of indexAt) {
+            if (!sameNamed(call.args[i]!, found.field.indices[j]!)) {
+              throw new Refuse(`it calls itself with an index of the matched value other than the field's own (argument ${i + 1})`)
+            }
+          }
+
+          return applyAll(
+            { k: 'var', name: found.hypothesis },
+            general.map(i => replace(call.args[i]!)),
+          )
         }
-      })
 
-      const rewritten = replaceCalls(name, minor, params, position, hypotheses)
-      const binders = [...fieldNames, ...fieldNames.filter(f => hypotheses.has(f)).map(f => hypotheses.get(f)!)]
+        switch (term.k) {
+          case 'var':
+          case 'type':
+          case 'const':
+            return term
+          case 'pi':
+            return { ...term, domain: replace(term.domain), codomain: replace(term.codomain) }
+          case 'lam':
+            return { ...term, body: replace(term.body) }
+          case 'app':
+            return { k: 'app', fun: replace(term.fun), arg: replace(term.arg) }
+          case 'ann':
+            return { k: 'ann', term: replace(term.term), type: replace(term.type) }
+        }
+      }
+
+      const rewritten = fresh.reduceRight<Named>(
+        (inner, binder) => ({ k: 'lam', name: binder, body: inner }),
+        substitute(replace(minor), rename),
+      )
+      const binders = [...fields.map(field => field.name), ...fields.flatMap(field => (hypotheses.has(field.name) ? [hypotheses.get(field.name)!.hypothesis] : []))]
 
       return binders.reduceRight<Named>((inner, binder) => ({ k: 'lam', name: binder, body: inner }), rewritten)
     })
 
-    return applyAll({ k: 'const', name: `${read.form}.rec` }, [
-      ...read.params.map(t => substitute(t, map)),
-      substitute(read.motive, map),
+    const term = applyAll({ k: 'const', name: `${read.form}.rec` }, [
+      ...formParams,
+      newMotive,
       ...minors,
-      ...read.indices.map(t => substitute(t, map)),
+      ...indices,
       major,
+      ...general.map(i => ({ k: 'var', name: paramNames[i]! }) as Named),
+      ...extra,
     ])
-  }
 
-  const replaceCalls = (name: string, term: Named, params: string[], position: number, hypotheses: Map<string, string>): Named => {
-    const shape = spine(term)
-
-    if (shape.head.k === 'const' && shape.head.name === name) {
-      const fits =
-        shape.args.length === params.length &&
-        shape.args.every((arg, i) => (i === position ? arg.k === 'var' && hypotheses.has(arg.name) : arg.k === 'var' && arg.name === params[i]))
-
-      if (!fits) {
-        throw new Refuse('it calls itself on something other than a field of the matched value, its other arguments unchanged')
-      }
-
-      return { k: 'var', name: hypotheses.get((shape.args[position] as { name: string }).name)! }
+    if (constants(term, new Set()).has(name)) {
+      throw new Refuse('it calls itself outside the cases of its match')
     }
 
-    switch (term.k) {
-      case 'var':
-      case 'type':
-        return term
-      case 'const':
-        if (term.name === name) {
-          throw new Refuse('it uses itself other than by a call on a field of the matched value')
-        }
-        return term
-      case 'pi':
-        return { ...term, domain: replaceCalls(name, term.domain, params, position, hypotheses), codomain: replaceCalls(name, term.codomain, params, position, hypotheses) }
-      case 'lam':
-        return { ...term, body: replaceCalls(name, term.body, params, position, hypotheses) }
-      case 'app':
-        return { k: 'app', fun: replaceCalls(name, term.fun, params, position, hypotheses), arg: replaceCalls(name, term.arg, params, position, hypotheses) }
-      case 'ann':
-        return { k: 'ann', term: replaceCalls(name, term.term, params, position, hypotheses), type: replaceCalls(name, term.type, params, position, hypotheses) }
-    }
+    return term
   }
 
   // a constant with no definition here: postulated, and reported

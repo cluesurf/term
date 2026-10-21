@@ -861,9 +861,15 @@ task check-hold
       link left
       link right
       save is-fold, is-equal(head, <fold>)
+      # an induction over a theorem with UNIVERSAL hypotheses is the surface prover's (check/universal.tree, its
+      # instances of each hypothesis at the step), whatever the goal's shape: an order goal or a conjunction of them
+      # too, which the kernel's guard-only order check refused as not established (term-proof-0008)
+      fork test, and(is-fold, in-universal-theorem(program, statement))
+        hold
+          back
       fork test, and(is-fold, is-equal(is-order-goal(goal), false))
         hold
-          fork test, or(in-universal-theorem(program, statement), number-fold-over-functions(ts, program, statement, host/calls-itself))
+          fork test, number-fold-over-functions(ts, program, statement, host/calls-itself)
             hold
               back
       sift op

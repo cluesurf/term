@@ -1,0 +1,7 @@
+
+# Cloudflare Workers view handle: the node one, since ./dom bears the node in-memory dom, whose tasks take and return
+# node's `view`. Spelled out here because cloudflare otherwise borrows browser, so ../../view bore browser's `view`
+# while ./dom typed every node by node's, and a Worker build split the two (`expected view__in0_0, found view__in0_1`
+# at view/native/cloudflare/host.tree).
+
+bear @term/site/dom/native/node/view
