@@ -13,6 +13,10 @@ deck/*/host/
 # root's own host/ directory: a `bind/host/` inside an app is its environment config, not an output
 deck/*/test/*/host/
 
+# per-unit build output of the separate build (compile/separate.ts), at any depth
+.unit/
+**/.unit/
+
 # scratch dev runners / probes, at any depth
 tmp/
 **/tmp/
