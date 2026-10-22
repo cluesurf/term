@@ -20,9 +20,11 @@ overrides:
   # the mocker's redirect mock. vitest pulls its own matching mocker so
   # both are pinned. The 4.x fix is 4.1.11, and it stays on vite 7:
   # vitest 4.1.11's real peer range is `^6.0.0 || ^7.0.0 || ^8.0.0`, so
-  # this costs no major.
-  vitest: ^4.1.11
-  '@vitest/mocker': ^4.1.11
+  # this costs no major. GHSA-qxg6-89mg-rqv8 (code injection through a
+  # manual mock's url) and GHSA-xp26-3454-mjgp (the Windows backslash
+  # bypass of that fix) raise it to 4.1.12.
+  vitest: ^4.1.12
+  '@vitest/mocker': ^4.1.12
   esbuild: ^0.28.1
   # GHSA-fxqj-rqcc-2cmp, the incomplete fix for sourceMappingURL file
   # reads. ^8.5.18 admitted 8.5.19 through 8.5.22, which still carry it.

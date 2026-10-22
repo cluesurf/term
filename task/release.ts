@@ -40,7 +40,8 @@
 import { createHash } from 'node:crypto'
 import { execFileSync, spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
@@ -269,18 +270,63 @@ async function bundle(into: string): Promise<void> {
   await build({ ...common, entryPoints: ['deck/call/code/need-hand.ts'], outfile: path.join(into, 'host', 'need-hand.mjs') })
 }
 
-// the stdlib as the npm package ships it: no native build output, no build info
+// What a payload never carries from the source tree: any dotfile or dot-folder (a build's `.base/` cache, `.env*`,
+// `.git`, `.DS_Store`, Swift's `.build`), `node_modules`, Rust's `target`, build info, and a key file by its extension
+function shipped(from: string): (source: string) => boolean {
+  return source => {
+    const relative = path.relative(from, source)
+    if (relative === '') {
+      return true
+    }
+
+    const parts = relative.split(path.sep)
+    return (
+      !parts.some(part => part.startsWith('.') || part === 'node_modules') &&
+      !/(^|\/)native\/[^/]+\/target(\/|$)/.test(relative) &&
+      !/\.tsbuildinfo$/.test(relative) &&
+      !SECRET_FILE.test(parts[parts.length - 1])
+    )
+  }
+}
+
+// a file name that holds a secret or a key, refused in a payload whatever folder it is in
+const SECRET_FILE = /^(\.env.*|\.npmrc|\.netrc|id_(rsa|ed25519|ecdsa).*|zone\.code\.tree|auth)$|\.(pem|key|p12|pfx|gpg|asc)$/
+
+// The last check before a payload is packed: nothing under the staged `term/` (its `node_modules` fetched from npm
+// included) is a `.base` cache, a `.env`, or a key file, and no file names the machine it was built on: the home
+// folder's absolute path, which shows the builder's user name and folder layout. A hit stops the release, naming
+// the file
+function refuseSecrets(root: string): void {
+  const home = Buffer.from(os.homedir())
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const at = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === '.base' || entry.name === '.git') {
+          found.push(at)
+        } else {
+          walk(at)
+        }
+      } else if (SECRET_FILE.test(entry.name)) {
+        found.push(at)
+      } else if (entry.isFile() && readFileSync(at).includes(home)) {
+        found.push(`${at} (holds ${home.toString()})`)
+      }
+    }
+  }
+
+  walk(root)
+  if (found.length > 0) {
+    throw new Error(`the payload holds what is never published:\n${found.map(at => `  ${path.relative(root, at)}`).join('\n')}`)
+  }
+}
+
+// the stdlib as the npm package ships it: no native build output, no build info, no cache
 function copyStdlib(into: string): void {
   const from = path.join(TERM, 'deck', 'base', 'code')
 
-  cpSync(from, path.join(into, 'deck', 'base', 'code'), {
-    recursive: true,
-    filter: source => {
-      const relative = path.relative(from, source)
-
-      return !/(^|\/)native\/[^/]+\/(\.build|target)(\/|$)/.test(relative) && !/\.tsbuildinfo/.test(relative)
-    },
-  })
+  cpSync(from, path.join(into, 'deck', 'base', 'code'), { recursive: true, filter: shipped(from) })
 }
 
 // the packages that ship beside the stdlib, each with its manifest so the sibling resolver (resolve.ts
@@ -294,7 +340,7 @@ function copyShippedPackages(into: string): void {
     const from = path.join(TERM, 'deck', name)
 
     cpSync(path.join(from, 'deck.tree'), path.join(into, 'deck', name, 'deck.tree'))
-    cpSync(path.join(from, 'code'), path.join(into, 'deck', name, 'code'), { recursive: true })
+    cpSync(path.join(from, 'code'), path.join(into, 'deck', name, 'code'), { recursive: true, filter: shipped(path.join(from, 'code')) })
   }
 }
 
@@ -406,6 +452,7 @@ async function main(): Promise<void> {
     // every file with its sha256 and mode, inside the signed layer, so an install shares what an installed version
     // holds alike (need-load.ts `extractShared`)
     writeFileList(root)
+    refuseSecrets(root)
 
     const file = path.join(out, `term-${platform.name}.tar.gz`)
 

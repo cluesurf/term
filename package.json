@@ -55,7 +55,7 @@
     "tsc-alias": "^1.8.17",
     "typescript": "^5.9.3",
     "vite": "^7.3.5",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "z3-solver": "^4.16.0"
   },
   "types": "./host/line.d.ts",

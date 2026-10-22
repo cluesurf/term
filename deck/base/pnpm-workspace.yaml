@@ -15,9 +15,10 @@ overrides:
   source-map-js: ^1.2.2
   # GHSA-82fw-gwwq-j7x9, path traversal and arbitrary file read through
   # the mocker's redirect mock. vitest pulls its own matching mocker so
-  # both are pinned. The 4.x fix is 4.1.11.
-  vitest: ^4.1.11
-  '@vitest/mocker': ^4.1.11
+  # both are pinned. The 4.x fix is 4.1.11. GHSA-qxg6-89mg-rqv8 and
+  # GHSA-xp26-3454-mjgp, the incomplete parts of that fix, raise it to 4.1.12.
+  vitest: ^4.1.12
+  '@vitest/mocker': ^4.1.12
   esbuild: ^0.28.1
   # GHSA-fxqj-rqcc-2cmp, the incomplete fix for sourceMappingURL file
   # reads. ^8.5.18 admitted 8.5.19 through 8.5.22, which still carry it.

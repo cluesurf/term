@@ -88,7 +88,7 @@ export async function claudeSpeaker(input: { model: string; effort: string; maxT
   if (!key) {
     throw new KnitSetup(
       'ANTHROPIC_API_KEY is not set, so the loop cannot reach the model',
-      'run it under the zone that holds the key: /Users/lancepollard/base/crew/cluesurf/deck/zone/bin/zone load deck/make -- term knit ...',
+      'set ANTHROPIC_API_KEY, or run it under a zone that holds the key: zone load <zone> -- term knit ...',
     )
   }
 
