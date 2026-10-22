@@ -59,8 +59,8 @@ const DOUBLE = `task double
   like number
   send back
     call add
-      loan n
-      loan n
+      read n
+      read n
 `
 
 const TWICE = `task twice
@@ -68,8 +68,8 @@ const TWICE = `task twice
   like number
   send back
     call add
-      loan n
-      loan n
+      read n
+      read n
 `
 
 function main(): void {
@@ -83,10 +83,10 @@ task use-it
   hold
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
     melt both
   send back n
 `,
@@ -102,18 +102,18 @@ task use-it
   hold double-fact
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
     melt both
   hold
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
     cite double-fact
   send back n
 `,
@@ -127,7 +127,7 @@ task use-it
   like number
   hold
     call is-equal
-      loan n
+      read n
       code 5
     melt both
   send back n
@@ -142,8 +142,8 @@ task use-it
   like number
   hold
     call is-equal
-      loan n
-      loan n
+      read n
+      read n
     cite no-such-lemma
   send back n
 `,
@@ -159,18 +159,18 @@ task use-turn
   hold rev
     call is-equal
       call add
-        loan n
-        loan n
+        read n
+        read n
       call double
-        loan n
+        read n
     melt both
   hold
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
     turn rev
   send back n
 `,
@@ -186,25 +186,25 @@ task use-link
   hold step-one
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
     melt both
   hold step-two
     call is-equal
       call add
-        loan n
-        loan n
+        read n
+        read n
       call twice
-        loan n
+        read n
     melt both
   hold
     call is-equal
       call double
-        loan n
+        read n
       call twice
-        loan n
+        read n
     link
       cite step-one
       cite step-two

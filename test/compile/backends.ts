@@ -45,7 +45,7 @@ const FIB = `task fibonacci
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 2
     hook hold
       send back n
@@ -54,11 +54,11 @@ const FIB = `task fibonacci
         call add
           call fibonacci
             call subtract
-              loan n
+              read n
               code 1
           call fibonacci
             call subtract
-              loan n
+              read n
               code 2
 `
 
@@ -130,7 +130,7 @@ task danger
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 0
     hook hold
       halt <oops>
@@ -238,8 +238,8 @@ task danger
   like number
   send back
     call add
-      loan a
-      loan b
+      read a
+      read b
 `)
   ok(
     'hvm: a two-argument function curries auto-dup lambdas',

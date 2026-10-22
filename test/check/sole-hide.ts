@@ -131,6 +131,93 @@ task run
 `
 buildsEverywhere('two plain field reads, then one move', {}, readsThenMoves)
 
+// a method called on a sole value hands it on, as an argument does (term-affine-kinds-0003, gap 170)
+const STAMPED = `form permit
+  mark sole
+  link note, like text
+  task stamp
+    take self
+    like text
+    send back, read self/note
+
+task grant
+  take note, like text
+  like permit
+  send back
+    make permit
+      bind note, read note
+
+task spend
+  take permit, like permit
+  like text
+  send back, read permit/note
+`
+const methodThenSpend = `${STAMPED}
+task run
+  like text
+  save p, grant(<n1>)
+  save a, call p/stamp
+  send back, spend(p)
+`
+refusedEverywhere('a permit stamped by a method, then spent', 'sole-reused', {}, methodThenSpend, ['"p"', 'handed on at line'])
+
+const methodOnce = `${STAMPED}
+task run
+  like text
+  save p, grant(<n1>)
+  save a, read p/note
+  send back, call p/stamp
+`
+buildsEverywhere('a field read, then one method call', {}, methodOnce)
+
+// a match whose arm takes the subject's fields hands the subject on to it
+const TICKET = `form ticket
+  mark sole
+  case open
+    link note, like text
+  case shut
+
+task issue
+  take note, like text
+  like ticket
+  send back
+    make open
+      bind note, read note
+
+task spend-ticket
+  take t, like ticket
+  like text
+  send back, <spent>
+`
+const matchThenSpend = `${TICKET}
+task run
+  like text
+  save t, issue(<n1>)
+  save seen, <none>
+  sift t
+    case open
+      link note
+      save seen, read note
+    case shut
+      save seen, <shut>
+  send back, spend-ticket(t)
+`
+refusedEverywhere('a ticket matched into its fields, then spent', 'sole-reused', {}, matchThenSpend, ['"t"', 'handed on at line'])
+
+const matchBindsNothing = `${TICKET}
+task run
+  like text
+  save t, issue(<n1>)
+  save seen, <none>
+  sift t
+    case open
+      save seen, <open>
+    case shut
+      save seen, <shut>
+  send back, spend-ticket(t)
+`
+buildsEverywhere('a match that takes no field, then one spend', {}, matchBindsNothing)
+
 const moveThenMove = `${PERMIT}
 task keep
   take permit, like permit

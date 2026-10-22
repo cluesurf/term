@@ -55,7 +55,7 @@ const RECURSIVE_FIB = `task fibonacci
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 2
     hook hold
       send back n
@@ -64,11 +64,11 @@ const RECURSIVE_FIB = `task fibonacci
         call add
           call fibonacci
             call subtract
-              loan n
+              read n
               code 1
           call fibonacci
             call subtract
-              loan n
+              read n
               code 2
 `
 
@@ -78,8 +78,8 @@ const TWO_FUNCTIONS = `task double
   like number
   send back
     call add
-      loan x
-      loan x
+      read x
+      read x
 
 task quadruple
   take x, like number
@@ -87,7 +87,7 @@ task quadruple
   send back
     call double
       call double
-        loan x
+        read x
 `
 
 // uses == : the surface == elaborates to the erased polymorphic equality (a multiplicity-0 type argument). If the
@@ -98,8 +98,8 @@ const USES_EQUALITY = `task same
   like boolean
   send back
     call is-equal
-      loan a
-      loan b
+      read a
+      read b
 `
 
 // declared result type (boolean) disagrees with the body (returns a number). The kernel must reject it.
@@ -115,7 +115,7 @@ const WRONG_ARGUMENT = `task oops
   like number
   send back
     call subtract
-      loan flag
+      read flag
       code 1
 `
 
@@ -132,7 +132,7 @@ task use-identity
   like number
   send back
     call identity
-      loan n
+      read n
 `
 
 // a generic function whose two parameters share the type, called with mismatched types. The kernel must reject:
@@ -144,8 +144,8 @@ const GENERIC_MISMATCH = `task pair-equal
   like boolean
   send back
     call is-equal
-      loan a
-      loan b
+      read a
+      read b
 
 task bad-call
   take n, like number
@@ -153,8 +153,8 @@ task bad-call
   like boolean
   send back
     call pair-equal
-      loan n
-      loan flag
+      read n
+      read flag
 `
 
 // mutation + a while loop: the effect layer must type the assignments and the loop condition through the kernel
@@ -166,16 +166,16 @@ const WHILE_LOOP = `task sum-below
   walk test
     hook test
       call is-below
-        loan i
-        loan n
+        read i
+        read n
     hook step
       save total
         call add
-          loan total
-          loan i
+          read total
+          read i
       save i
         call add
-          loan i
+          read i
           code 1
   send back total
 `
@@ -188,15 +188,15 @@ const FOR_EACH = `task sum-pair
   save total, code 0
   save items
     make list
-      loan a
-      loan b
-  walk list, loan items
+      read a
+      read b
+  walk list, read items
     hook next
       take site, name x
       save total
         call add
-          loan total
-          loan x
+          read total
+          read x
   send back total
 `
 
@@ -222,8 +222,8 @@ const ASYNC = `task double-async
   wait true
   send back
     call add
-      loan n
-      loan n
+      read n
+      read n
 
 task use-async
   take n, like number
@@ -231,7 +231,7 @@ task use-async
   wait true
   send back
     call double-async
-      loan n
+      read n
       wait true
 `
 

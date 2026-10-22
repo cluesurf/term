@@ -233,7 +233,7 @@ task other
     hold
       back <none {extra}>
     miss
-      back <some {value} {extra}>
+      back <some {m/value} {extra}>
 
 task run
   like text

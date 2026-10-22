@@ -69,7 +69,7 @@ const FIB = `task fib
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 2
     hook hold
       send back n
@@ -78,11 +78,11 @@ const FIB = `task fib
         call add
           call fib
             call subtract
-              loan n
+              read n
               code 1
           call fib
             call subtract
-              loan n
+              read n
               code 2
 `
 
@@ -92,7 +92,7 @@ const LOOP = `task loop
   like number
   send back
     call loop
-      loan n
+      read n
 `
 
 // not recursive at all
@@ -101,7 +101,7 @@ const PLAIN = `task plus-one
   like number
   send back
     call add
-      loan n
+      read n
       code 1
 `
 
@@ -112,14 +112,14 @@ const MUTUAL = `task ping
   like number
   send back
     call pong
-      loan n
+      read n
 
 task pong
   take n, like number
   like number
   send back
     call ping
-      loan n
+      read n
 `
 
 // a sum on a natural number: the miss arm of n == 0 is n >= 1 there, so n - 1 descends (check/totality.ts `sharpened`)
@@ -130,7 +130,7 @@ function countDown(take: string, base: number): string {
   fork test
     hook test
       call is-equal
-        loan n
+        read n
         code ${base}
     hook hold
       send back
@@ -140,9 +140,9 @@ function countDown(take: string, base: number): string {
         call add
           call sum
             call subtract
-              loan n
+              read n
               code 1
-          loan n
+          read n
 `
 }
 

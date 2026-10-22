@@ -11,7 +11,7 @@ const SOURCE = `view counter
   hook click
     save count
       call add
-        loan count
+        read count
         code 1
 `
 

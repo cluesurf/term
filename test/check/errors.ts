@@ -25,7 +25,7 @@ const BAD = `task wrong
   take n
   send back
     call add
-      loan n
+      read n
       text <oops>
 `
 
@@ -52,7 +52,7 @@ function main(): void {
   // a did-you-mean for an unknown name
   const typo = compile({
     file: 'bad.tree',
-    text: `task t\n  take items\n  back\n    loan itemz\n`,
+    text: `task t\n  take items\n  back\n    read itemz\n`,
   })
 
   ok(
@@ -105,13 +105,13 @@ function main(): void {
   // a multi-span blame renders as multiple site/call frames
   const blame = compile({
     file: 'b.tree',
-    text: `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n\n`,
+    text: `task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  back n\n`,
   })
 
   if (!blame.ok) {
     const k = renderKink(
       blame.diagnostics[0],
-      `task bad\n  take n\n  walk test\n    hook test\n      loan n\n    hook step\n      save n, code 0\n  back n`.split(
+      `task bad\n  take n\n  walk test\n    hook test\n      read n\n    hook step\n      save n, code 0\n  back n`.split(
         '\n',
       ),
       false,

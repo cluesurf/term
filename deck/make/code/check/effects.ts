@@ -1005,10 +1005,10 @@ function raiseSetsWith(
     if (sawNative) {
       nativeShims.add(name)
 
-      // only when the program holds the `failure` form, which a tree-shaken program drops unless something names it.
-      // So whether a guard around a native call must cover `failure` depends on what the closure keeps: an open
-      // question for the language (note/project/term/compiler/runtime-shaking.md). The roll asks with `failure` always in its
-      // set (compile/roll.ts), so a task's roll entry is the same whichever entry built it
+      // only when the program holds the `failure` form. The shake keeps it as a root in any program that docks a
+      // module (compile/compile.ts, term/compiler decision 001), so a guard around a native call must cover `failure`
+      // shaken or not. The roll asks with `failure` always in its set (compile/roll.ts), so a task's roll entry is
+      // the same whichever entry built it
       if (exceptions.has('failure')) {
         direct.add('failure')
       }

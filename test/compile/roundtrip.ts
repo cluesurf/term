@@ -1280,7 +1280,7 @@ const ASYNC_CLOSURE = `task delay
   take n, like number
   wait true
   like number
-  send back, loan n
+  send back, read n
 
 task run
   take seed, like number
@@ -1293,8 +1293,8 @@ task run
       send back
         call delay
           call add
-            loan x
-            loan seed
+            read x
+            read seed
           wait true
   send back
     call f
@@ -1561,21 +1561,21 @@ const FIB = `task find-fibonacci-via-loop
   walk test
     hook test
       call is-above
-        loan n
+        read n
         code 0
     hook step
       save next
         call add
-          loan a
-          loan b
-      save a, loan b
-      save b, loan next
+          read a
+          read b
+      save a, read b
+      save b, read next
       save n
         call subtract
-          loan n
+          read n
           code 1
   send back
-    loan a
+    read a
 `
 
 // the stdlib maybe used concretely: a native enum, pattern match, map, and unwrap-or

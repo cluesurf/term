@@ -1,8 +1,9 @@
-// An input's `fall` as Swift's own default, whatever it is (compile/swift.ts `swiftDefault`): a literal as written, and
-// any other expression Swift can evaluate as a default, so Swift calling a Term task may leave the input out as a Term
-// call may. Swift refuses `try` and `await` in a default and evaluates it without the other arguments, so a default
-// that calls a raising task, or reads another input, is given none, and a Swift caller passes it. Until 2026-10-05
-// only a literal was (guides: language/tasks).
+// An input's `fall` as Swift's own default, whatever it is (compile/swift-emit.tree `swift-default`): a literal as
+// written, and any other expression Swift can evaluate as a default, so Swift calling a Term task may leave the input
+// out as a Term call may. Swift refuses `try` and `await` in a default and evaluates it without the other arguments, so
+// a default that calls a raising or waiting task, or reads another input, makes the input optional (`= nil`) and the
+// body fills it (`body-default-text`). Until 2026-10-05 only a literal was a default, and until 2026-10-22 the rest
+// were none, so a Swift caller passed them (guides: language/tasks).
 // Run: npx tsx test/compile/swift-default.ts
 
 import { spawnSync, execFileSync } from 'node:child_process'
@@ -50,6 +51,17 @@ task twice
   take m, like number, fall n
   like number
   back add(n, m)
+
+task later
+  mark async
+  like number
+  back 7
+
+task slow
+  mark async
+  take n, like number, fall later()
+  like number
+  back add(n, 1)
 `
 
 const result = compile({ file: '/tmp/swift-default.tree', text: PROGRAM }, { resolve: stdlibResolver(), env: 'swift' })
@@ -61,22 +73,24 @@ if (!result.ok) {
 
 const swift = emitSwift(result.program)
 // the inputs of a task's declaration, up to the arrow, since a default may hold parentheses of its own
-const signature = (name: string): string => new RegExp(`func ${name}\\((.*)\\)( throws)? ->`).exec(swift)?.[1] ?? ''
+const signature = (name: string): string => new RegExp(`func ${name}\\((.*)\\)( async)?( throws)? ->`).exec(swift)?.[1] ?? ''
 
 ok('a call as a default is Swift\'s default', /n: Int = base\(\)/.test(signature('scale')), signature('scale'))
 ok('a literal still is', /by: Int = 2/.test(signature('scale')), signature('scale'))
-ok('a default that calls a raising task is given none', !/=/.test(signature('careful')), signature('careful'))
-ok('nor one that reads another input', !/m: Int =/.test(signature('twice')), signature('twice'))
+// the rest are optional inputs the body fills: Swift allows no `try` or `await` in a default, and no other input
+ok('a default that calls a raising task is filled in the body', /n: \(Int\)\? = nil/.test(signature('careful')), signature('careful'))
+ok('so is one that reads another input', /m: \(Int\)\? = nil/.test(signature('twice')), signature('twice'))
+ok('and one that waits, in an asynchronous task', /n: \(Int\)\? = nil/.test(signature('slow')), signature('slow'))
 
 // Swift itself leaves the input out
 if (spawnSync('which', ['swiftc']).status === 0) {
   const dir = mkdtempSync(join(tmpdir(), 'swift-default-'))
-  writeFileSync(join(dir, 'main.swift'), `import Foundation\n${swift}\nprint(scale(), terminator: "")\n`)
+  writeFileSync(join(dir, 'main.swift'), `import Foundation\n${swift}\nprint("\\(scale()) \\(twice(n: 5)) \\(await slow())", terminator: "")\n`)
 
   try {
     execFileSync('swiftc', ['-o', join(dir, 'run'), join(dir, 'main.swift')], { stdio: 'pipe' })
     const out = spawnSync(join(dir, 'run'), [], { encoding: 'utf8' }).stdout
-    ok('Swift calls the task with both inputs left out, and gets 42', out === '42', out)
+    ok('Swift calls each task with the defaulted inputs left out: 42, 5 + 5 and 7 + 1', out === '42 10 8', out)
   } catch (error) {
     ok('Swift builds a call that leaves the inputs out', false, String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 600))
   }

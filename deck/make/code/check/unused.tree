@@ -1,5 +1,6 @@
 # Unused-binding warnings: a `let`/`save` binding that is never read is reported as a warning (not an error, so
-# it does not fail compilation). A usability nicety. See note/project/term/archive/computation/plans/04-typecheck.md.
+# it does not fail compilation), except a never-read save one edit from a name the task reads, which is a misspelled
+# save and an error (`stray-save`, term/compiler decision 003). See note/project/term/archive/computation/plans/04-typecheck.md.
 #
 # Ported from check/unused.ts (self-hosting, 2026-10-05). The names read are a hash on a `mark shared` record, since
 # every step of the walk adds to them, and the bindings a list of names beside their spans, the first of each kept.
@@ -13,6 +14,9 @@ load @term/base/hash
 
 load @term/base/maybe
   find maybe
+
+load @term/base/text
+  find char-at
 
 load ../parser/diagnostic
   find diagnostic
@@ -234,6 +238,88 @@ task warning
   save kind, make unused-binding
   back diagnose(kind, input)
 
+# two names one edit apart: a letter left out, put in, changed, or two neighbors swapped (`totl` and `total`). Names
+# under three letters are never matched, since `a` and `b` are one edit apart and nobody misspells one for the other
+task is-one-edit
+  take a, like text
+  take b, like text
+  like boolean
+  mark private
+
+  fork test, or(or(is-equal(a, b), is-below(a/length, 3)), is-below(b/length, 3))
+    hold
+      back false
+  fork test, is-equal(a/length, b/length)
+    hold
+      save first, -1
+      save second, -1
+      save at, 0
+      walk test
+        hook test, is-below(at, a/length)
+        hook hold
+          fork test, is-unequal(char-at(a, at), char-at(b, at))
+            hold
+              fork test, is-below(first, 0)
+                hold
+                  save first, at
+                miss
+                  fork test, is-below(second, 0)
+                    hold
+                      save second, at
+                    miss
+                      back false
+          save at, add(at, 1)
+      fork test, is-below(second, 0)
+        hold
+          back is-minimum(first, 0)
+      # two differences: a swap of neighbors
+      back and(is-equal(second, add(first, 1)), and(is-equal(char-at(a, first), char-at(b, second)), is-equal(char-at(a, second), char-at(b, first))))
+  save short, a
+  save long, b
+  fork test, is-above(a/length, b/length)
+    hold
+      save short, b
+      save long, a
+  fork test, is-unequal(add(short/length, 1), long/length)
+    hold
+      back false
+  save i, 0
+  save j, 0
+  save skipped, false
+  walk test
+    hook test, and(is-below(i, short/length), is-below(j, long/length))
+    hook hold
+      fork test, is-equal(char-at(short, i), char-at(long, j))
+        hold
+          save i, add(i, 1)
+        miss
+          fork test, skipped
+            hold
+              back false
+          save skipped, true
+      save j, add(j, 1)
+  back true
+
+# A misspelled `save` is a new variable, and the variable it was meant for keeps its old value: `save totl, add(total,
+# count)` built and the task answered 0 (guides: language/variables, gaps 193, 194). A `save` never read whose name is
+# one edit from a parameter or local the task does read is refused, naming the one it was likely meant for
+# (term/compiler decision 003). Every other never-read binding stays a warning
+task stray-save
+  take file, like text
+  take at, like span
+  take bound, like text
+  take meant, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{bound}" is saved and never read, and is one letter from "{meant}", which is: a misspelled save makes a new variable>)
+  save kind, make stray-save
+  back diagnose(kind, input)
+
 task find-unused
   take program, like list, like statement
   take file, like text
@@ -271,12 +357,34 @@ task find-unused
         save found, fresh-declared()
         save read, fresh-reads()
         walk-body(body, found, read)
+        # what the task reads by name, its parameters and its locals, for a never-read save to be matched against
+        save live, make list
+        walk params
+          take param
+          fork test, read/seen/has(param/name)
+            hold
+              push(live, param/name)
+        walk found/names
+          take one
+          fork test, read/seen/has(one)
+            hold
+              push(live, one)
         walk found/names
           take bound
           take at
           fork test, not(read/seen/has(bound))
             hold
-              push(warnings, warning(file, get(found/spans, at), <"{bound}" is never used>))
+              save meant, <>
+              walk live
+                take one
+                fork test, and(is-equal(meant, <>), is-one-edit(bound, one))
+                  hold
+                    save meant, one
+              fork test, is-unequal(meant, <>)
+                hold
+                  push(warnings, stray-save(file, get(found/spans, at), bound, meant))
+                miss
+                  push(warnings, warning(file, get(found/spans, at), <"{bound}" is never used>))
 
         # a private function nothing references is dead code. Only `private`: a public definition may be called from
         # outside this compilation (the package's surface), so its absence of internal callers is not a defect.

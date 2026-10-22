@@ -61,7 +61,7 @@ const DOUBLER = `tree doubler
       take n, like u64
       send back
         call multiply
-          loan n
+          read n
           code 2
 
 fuse doubler
@@ -123,7 +123,7 @@ function main(): void {
       take n, like u64
       send back
         call add
-          loan n
+          read n
           code 1
 
 fuse make-adder
@@ -205,8 +205,8 @@ fuse each, read suit
       save s, text <hi>
       send back
         call add
-          loan n
-          loan s
+          read n
+          read s
 
 fuse bad-tmpl
   bind x, one

@@ -2843,6 +2843,74 @@ task owned-path
     miss
       back false
 
+# the caught value whose `link` this is: `problem` in `problem/link`, when `problem` is an `exception`
+task caught-carrier-of
+  take node, like expression
+  like maybe, like expression
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      fork test, and(is-equal(member-name, <link>), is-equal(named-of(expression-type(member-target)), <exception>))
+        hold
+          back make(some, member-target)
+    miss
+      save nothing, 0
+  back make none
+
+# one prop of a caught value's link, read out of each exception form that has it: the carrier's `base` is the raised
+# record, matched against each form in turn. A raise with no such prop reads the type's empty value, as a missing prop
+# reads undefined on TypeScript; `data-mismatch` keeps its link as a map of texts
+task caught-prop
+  take carrier, like text
+  take prop, like text
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  save arms, make list
+  save spelled, <>
+  walk facts/exception-forms/keys()
+    take form
+    fork test, facts/record-fields/has(form)
+      hold
+        walk facts/record-fields/get(form)
+          take field
+          fork test, is-equal(field/name, <link>)
+            hold
+              save link-form, named-of(make(some, field/type))
+              fork test, facts/record-fields/has(link-form)
+                hold
+                  walk facts/record-fields/get(link-form)
+                    take inner
+                    fork test, is-equal(inner/name, prop)
+                      hold
+                        save this, kotlin-type-of(inner/type, st, facts)
+                        fork test, or(is-equal(spelled, <>), is-equal(spelled, this))
+                          hold
+                            save spelled, this
+                            push(arms, <is {kotlin-pascal(form)} -\> __raised.link.{kotlin-camel(prop)}>)
+  fork test, is-equal(arms/length, 0)
+    hold
+      halt <no exception the program raises has a prop "{prop}" on its link>
+  save empty, <error("defect: the caught exception has no prop {prop}")>
+  fork test, is-equal(spelled, <String>)
+    hold
+      save empty, <((__carrier.link as? Map\<*, *\>)?.get("{prop}") as? String) ?: "">
+  fork test, is-equal(spelled, <Long>)
+    hold
+      save empty, <0L>
+  fork test, is-equal(spelled, <Double>)
+    hold
+      save empty, <0.0>
+  fork test, is-equal(spelled, <Boolean>)
+    hold
+      save empty, <false>
+  back <run \{ val __carrier = {carrier}; when (val __raised = __carrier.base) \{ {join-texts(arms, <; >)}; else -\> {empty} \} \}>
+
 task kt-member
   take node, like expression
   take st, like kotlin-state
@@ -2858,6 +2926,13 @@ task kt-member
       fork test, is-unequal(read(tag), <>)
         hold
           back <{kt-expr(member-target, st, facts)}.termTag>
+      # A PROP READ OFF A CAUGHT VALUE (`problem/link/actual`): read out of each exception form whose link has it
+      sift caught-carrier-of(member-target)
+        case some
+          link carrier
+          back caught-prop(kt-expr(carrier, st, facts), member-name, st, facts)
+        case none
+          save nothing, 0
       save member-index, read(index)
       save indexed, false
       sift member-index
@@ -3725,6 +3800,24 @@ task uninferable-call
     miss
       back false
 
+# what a host value bound with this type must be, as the check's message says it, or nothing when it is no primitive
+task host-wanted
+  take type, like maybe, like type
+  like text
+  mark private
+
+  save kind, kind-of(type)
+  fork test, is-equal(kind, <string>)
+    hold
+      back <a text>
+  fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+    hold
+      back <a number>
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back <a boolean>
+  back <>
+
 task kt-let
   take node, like statement
   take st, like kotlin-state
@@ -3802,6 +3895,20 @@ task kt-let
               back <lateinit var {spelled-name}: {kotlin-type(let-type, st, facts)}>
         miss
           save nothing, 0
+      # A HOST VALUE GIVEN A TYPE IS CHECKED HERE, as `__termHost` does on TypeScript: a dynamic the host answered,
+      # bound with a text, number or boolean `like`, raises `data-mismatch` when it is not one
+      save host-kind, host-wanted(let-type)
+      fork test, and(is-unequal(host-kind, <>), is-equal(expression-kind(let-init), <dynamic>))
+        hold
+          needs-add(<exception>, st)
+          save keyword, <val>
+          fork test, let-mutable
+            hold
+              save keyword, <var>
+          save spelled, kotlin-type(let-type, st, facts)
+          save found, <val __found = when (__host) \{ is String -\> "a text"; is Long, is Int, is Double -\> "a number"; is Boolean -\> "a boolean"; else -\> "an object" \}>
+          save raised, <throw TermException("@term/host", "data-mismatch", "Data does not fit the shape", "", 0L, mapOf("thing" to "host value", "path" to "{let-name}", "reason" to "is $__found where {host-kind} belongs"), null)>
+          back <{keyword} {spelled-name}: {spelled} = run \{ val __host: Any? = {kt-expr(let-init, st, facts)}; if (__host is {spelled}) __host else \{ {found}; {raised} \} \}>
       # the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
       save declared-form, named-of(let-type)
       fork test, and(is-unequal(declared-form, <>), facts/record-fields/has(declared-form))

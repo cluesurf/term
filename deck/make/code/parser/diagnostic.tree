@@ -764,6 +764,7 @@ form diagnostic-name
   case sole-unearned, text <sole-unearned>
   case hidden-make, text <hidden-make>
   case empty-site, text <empty-site>
+  case stray-save, text <stray-save>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -964,6 +965,10 @@ task entry-of
     # guides: language/templates, 2026-10-22)
     case empty-site
       back warning-entry(0x3f, <this fuse leaves one of its template's sites empty>, <add a `beam` of that name under the fuse, or remove the `site` from the template>)
+    # a `save` never read, one edit from a name the task reads: a misspelled save, which made a new variable and left
+    # the meant one as it was (check/unused.tree, term/compiler decision 003, guides: language/variables)
+    case stray-save
+      back error-entry(0x40, <this save is never read, and its name is one letter from a variable that is>, <correct the name to the variable it was meant for, or remove the save>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1034,3 +1039,4 @@ task diagnostic-names
       make sole-unearned
       make hidden-make
       make empty-site
+      make stray-save

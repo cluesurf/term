@@ -73,7 +73,7 @@ task use-text
   take b, like boolean
   send back
     call add
-      loan b
+      read b
       code 1
 `,
     'type-mismatch',
@@ -242,7 +242,7 @@ task outer
   {
     const result = compile({
       file: 'i.tree',
-      text: `task clean\n  take n\n  save m, loan n\n  back m\n`,
+      text: `task clean\n  take n\n  save m, read n\n  back m\n`,
     })
 
     if (result.ok && result.warnings.length === 0) {

@@ -783,7 +783,17 @@ function expressionOf(
   }
 
   switch (value.form) {
-    case 'seed-loan':
+    // `loan x` read as `read x` and borrowed nothing, so it promised an intent the compiler never held anyone to.
+    // Refused since 2026-10-22 (term/affine-kinds decision 002): a word that means nothing is refused
+    case 'seed-loan': {
+      const path = wordAt(value, 'path') ?? wordAt(value, 'name') ?? 'x'
+
+      return refuse(
+        bridge,
+        value,
+        `\`loan ${path}\` borrows nothing: it was read as \`read ${path}\`. Write \`read ${path}\``,
+      )
+    }
     case 'seed-read':
     case 'read': {
       const path = wordAt(value, 'path') ?? wordAt(value, 'name')

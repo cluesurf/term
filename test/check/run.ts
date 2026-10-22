@@ -84,8 +84,8 @@ function main(): void {
   take n
   send back
     call add
-      loan n
-      loan missing
+      read n
+      read missing
 `,
     'unknown-name',
   )
@@ -98,8 +98,8 @@ function main(): void {
   save s, text <hi>
   send back
     call add
-      loan n
-      loan s
+      read n
+      read s
 `,
     'type-mismatch',
   )
@@ -111,7 +111,7 @@ function main(): void {
   take n
   walk test
     hook test
-      loan n
+      read n
     hook step
       save n, code 0
   send back n
@@ -130,8 +130,8 @@ task bad
   take n
   send back
     call one
-      loan n
-      loan n
+      read n
+      read n
 `,
     'type-mismatch',
   )
@@ -143,13 +143,13 @@ task bad
   take n
   send back
     call helper
-      loan n
+      read n
 
 task helper
   take x
   send back
     call add
-      loan x
+      read x
       code 1
 `,
   )
@@ -161,7 +161,7 @@ task helper
   take n
   walk test
     hook test
-      loan n
+      read n
     hook step
       save n, code 0
   send back n

@@ -2995,6 +2995,67 @@ task emit-record
     miss
       back <>
 
+# the caught value whose `link` this is: `problem` in `problem/link`, when `problem` is an `exception`
+task caught-carrier-of
+  take node, like expression
+  like maybe, like expression
+  mark private
+
+  sift node
+    case member
+      link member-target
+      link member-name
+      fork test, and(is-equal(member-name, <link>), is-equal(named-of(expression-type(member-target)), <exception>))
+        hold
+          back make(some, member-target)
+    miss
+      save nothing, 0
+  back make none
+
+# one prop of a caught value's link, read out of each exception form that has it: the carrier's `base` is the raised
+# record (rust-emit `emit-throw`), downcast to each form in turn. A raise with no such prop reads the type's empty value,
+# as a missing prop reads undefined on TypeScript; `data-mismatch` keeps its link as a map of texts
+task caught-prop
+  take carrier, like text
+  take prop, like text
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save arms, make list
+  save spelled, <>
+  walk facts/exception-forms/keys()
+    take form
+    fork test, facts/record-fields/has(form)
+      hold
+        walk facts/record-fields/get(form)
+          take field
+          fork test, is-equal(field/name, <link>)
+            hold
+              save link-form, named-of(make(some, field/type))
+              fork test, facts/record-fields/has(link-form)
+                hold
+                  walk facts/record-fields/get(link-form)
+                    take inner
+                    fork test, is-equal(inner/name, prop)
+                      hold
+                        save this, spell(make(some, inner/type), facts)
+                        fork test, or(is-equal(spelled, <>), is-equal(spelled, this))
+                          hold
+                            save spelled, this
+                            push(arms, <if let Some(__raised) = __carrier.base.downcast_ref::\<{pascal(form)}\>() \{ __raised.link.{snake(prop)}.clone() \}>)
+  fork test, is-equal(spelled, <String>)
+    hold
+      push(arms, <if let Some(__map) = __carrier.link.downcast_ref::\<std::collections::HashMap\<String, String\>\>() \{ __map.get("{prop}").cloned().unwrap_or_default() \}>)
+  fork test, is-equal(arms/length, 0)
+    hold
+      halt <no exception the program raises has a prop "{prop}" on its link>
+  save empty, <Default::default()>
+  fork test, not(or(or(is-equal(spelled, <String>), is-equal(spelled, <i64>)), or(is-equal(spelled, <f64>), is-equal(spelled, <bool>))))
+    hold
+      save empty, <panic!("defect: the caught exception has no prop {prop}")>
+  back <(\{ let __carrier = &{carrier}; {join-texts(arms, < else >)} else \{ {empty} \} \})>
+
 task emit-member
   take node, like expression
   take st, like rust-state
@@ -3014,6 +3075,14 @@ task emit-member
       fork test, is-unequal(member-tag, <>)
         hold
           back <{emit-expr(member-target, st, facts)}.term_tag()>
+      # A PROP READ OFF A CAUGHT VALUE (`problem/link/actual`): the carrier's `link` is the boxed record of whichever
+      # exception was raised, so the prop is read out of each exception form whose link has it
+      sift caught-carrier-of(member-target)
+        case some
+          link carrier
+          back caught-prop(emit-expr(carrier, st, facts), member-name, facts)
+        case none
+          save nothing, 0
       sift member-index
         case some
           link index
@@ -4624,6 +4693,45 @@ task emit-block
 
 # ---- let ----
 
+# what a host value bound with this type must be, as the check's message says it: `a text`, `a number`, `a boolean`,
+# or nothing when the type is no primitive
+task host-wanted
+  take type, like maybe, like type
+  like text
+  mark private
+
+  save kind, kind-of(type)
+  fork test, is-equal(kind, <string>)
+    hold
+      back <a text>
+  fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+    hold
+      back <a number>
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back <a boolean>
+  back <>
+
+# the boxed host value out of its box at the declared type, or `data-mismatch` raised where the binding is, with the
+# words `__termHost` uses on TypeScript
+task host-check
+  take value, like text
+  take spelled, like text
+  take wanted, like text
+  take name, like text
+  take st, like rust-state
+  like text
+  mark private
+
+  save raise, <__term_unhandled(__raised)>
+  fork test, or(st/current-raising, is-above(st/guard-depth, 0))
+    hold
+      save raise, <return std::result::Result::Err(__raised)>
+  save found, <let __found = if __host.is::\<String\>() \{ "a text" \} else if __host.is::\<i64\>() || __host.is::\<f64\>() \{ "a number" \} else if __host.is::\<bool\>() \{ "a boolean" \} else \{ "an object" \};>
+  save link, <let __link: std::collections::HashMap\<String, String\> = [("thing".to_string(), "host value".to_string()), ("path".to_string(), "{name}".to_string()), ("reason".to_string(), format!("is \{\} where {wanted} belongs", __found))].into_iter().collect();>
+  save raised, <let __raised = TermException(Box::new(TermRaised \{ host: "@term/host".to_string(), form: "data-mismatch".to_string(), note: "Data does not fit the shape".to_string(), code: String::new(), time: 0, link: std::rc::Rc::new(__link), base: std::rc::Rc::new(()) \}));>
+  back <\{ let __host: std::rc::Rc\<dyn std::any::Any\> = {value}; match __host.downcast_ref::\<{spelled}\>() \{ Some(__v) =\> __v.clone(), None =\> \{ {found} {link} {raised} {raise} \} \} \}>
+
 task emit-let
   take node, like statement
   take st, like rust-state
@@ -4716,8 +4824,15 @@ task emit-let
               save st/raw-fresh, false
               back <let {mutable}{vname(let-name)} = {made};>
           back <let {mutable}{vname(let-name)}: Vec\<{spell-element(let-type, facts)}\> = Vec::new();>
-      # the gradual boundary on a binding: the boxed dynamic re-typed at a declared form is a downcast out of the box
+      # A HOST VALUE GIVEN A TYPE IS CHECKED HERE, as `__termHost` does on TypeScript: a dynamic the host answered, bound
+      # with a text, number or boolean `like`, raises `data-mismatch` when it is not one
       save init-kind, kind-of-node(let-init)
+      save host-kind, host-wanted(let-type)
+      fork test, and(is-unequal(host-kind, <>), is-equal(init-kind, <dynamic>))
+        hold
+          save st/carries, true
+          back <let {mut-of(let-name, st)}{vname(let-name)}: {spell(let-type, facts)} = {host-check(emit-expr(let-init, st, facts), spell(let-type, facts), host-kind, let-name, st)};>
+      # the gradual boundary on a binding: the boxed dynamic re-typed at a declared form is a downcast out of the box
       fork test, and(and(is-equal(kind-of(let-type), <named>), is-form(let-init, <member>)), and(facts/record-fields/has(named-of(let-type)), or(is-equal(init-kind, <unknown>), is-equal(init-kind, <dynamic>))))
         hold
           note-clone(let-type, st, facts)

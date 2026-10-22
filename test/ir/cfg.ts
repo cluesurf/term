@@ -52,7 +52,7 @@ function main(): void {
   // an if produces a branch with two distinct successors
   const branch = buildCfg(
     bodyOf(
-      `task f\n  take n\n  fork test\n    hook test\n      call is-above\n        loan n\n        code 0\n    hook hold\n      back n\n    hook miss\n      back, code 0\n`,
+      `task f\n  take n\n  fork test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook hold\n      back n\n    hook miss\n      back, code 0\n`,
     ),
   )
 
@@ -70,7 +70,7 @@ function main(): void {
   // a while loop has a back edge: the body returns to the header
   const loop = buildCfg(
     bodyOf(
-      `task f\n  take n\n  walk test\n    hook test\n      call is-above\n        loan n\n        code 0\n    hook step\n      save n\n        call subtract\n          loan n\n          code 1\n  back n\n`,
+      `task f\n  take n\n  walk test\n    hook test\n      call is-above\n        read n\n        code 0\n    hook step\n      save n\n        call subtract\n          read n\n          code 1\n  back n\n`,
     ),
   )
 

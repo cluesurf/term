@@ -528,7 +528,7 @@ task use-greet
     ok('a text argument left out is refused', !argument.ok && /punct/.test(argument.messages), argument.messages)
   }
 
-  // ---- language/variables: a misspelled save is warned about ----
+  // ---- language/variables: a misspelled save is refused (a warning until 2026-10-22, term/compiler decision 003) ----
   {
     const built = build(`task typo
   take count, like number
@@ -540,7 +540,7 @@ task use-greet
       read count
   send back, read total
 `)
-    ok('the misspelled binding is named as never used', built.warnings.some(w => /totl/.test(w)), built.warnings.join(' | '))
+    ok('the misspelled binding is refused, naming it', !built.ok && built.names.includes('stray-save') && /totl/.test(built.messages), built.messages || 'it built')
   }
 
   // ---- types: a type name that names nothing ----
@@ -1817,27 +1817,50 @@ fuse each, read suit
   }
 
   // ---- architecture/language/errors: a native call raises `failure` whatever the shake keeps (gap 67,
-  // term-compiler-0007, term/compiler decision 001). A guard around file `read` that answers `absence` alone left out
+  // term-compiler-0007, term/compiler decision 001). A guard around a native read that answers `absence` alone left out
   // `failure`, and was refused or accepted by whether tree shaking kept the form ----
   {
-    const text = `load @term/base/file
-  find read
-
-load @term/base/exception
+    // nothing here names `failure`, so the shake dropped it, and the shaken build accepted this guard until 2026-10-22
+    const text = `load @term/base/exception
   find absence
+
+dock load
+  load <node:fs>, name fs
+
+task must-exist
+  take path, like text
+  like text
+  fork test, is-equal(path, <>)
+    hold
+      halt absence
+        bind thing, read path
+  send back, read path
+
+task read-text
+  take path, like text
+  like text
+  send back
+    call fs/read-file-sync
+      read path
+      text <utf8>
 
 task read-or-why
   take path, like text
   like text
   fork
     mark unsafe
-    save got, read(path)
-    back got
+    save checked
+      call must-exist
+        read path
+    save got
+      call read-text
+        read checked
+    send back, read got
   halt take
     take problem
-    sift problem
+    fork case, read problem
       case absence
-        back <absent>
+        send back, text <absent>
 `
     const options = { resolve: projectResolver(TERM, 'node'), env: 'node' }
     const entry = { file: join(TERM, 'test/compile/guide-gaps.tree'), text }
@@ -1850,6 +1873,29 @@ task read-or-why
       !plain.ok && !shaken.ok && /failure/.test(verdict(plain)) && /failure/.test(verdict(shaken)),
       `plain: ${verdict(plain)} || shaken: ${verdict(shaken)}`,
     )
+  }
+
+  // ---- language/variables: `loan` borrowed nothing, and is refused (gap 195, term/affine-kinds decision 002) ----
+  {
+    const loaned = build('task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      loan n\n      code 2\n')
+    ok(
+      '`loan n` is refused, naming `read n`',
+      !loaned.ok && /`loan n` borrows nothing: it was read as `read n`\. Write `read n`/.test(loaned.messages),
+      loaned.ok ? 'it built' : loaned.messages,
+    )
+  }
+
+  // ---- language/variables: a misspelled save is refused (gaps 193, 194, term/compiler decision 003) ----
+  {
+    const typo = build('task typo\n  take count, like number\n  like number\n  save total, 0\n  save totl, add(total, count)\n  back total\n')
+    ok(
+      'a never-read save one letter from a read variable is refused as stray-save, naming both',
+      !typo.ok && typo.names.includes('stray-save') && /"totl" is saved and never read, and is one letter from "total"/.test(typo.messages),
+      typo.ok ? 'it built' : typo.messages,
+    )
+
+    const spare = build('task spare\n  take count, like number\n  like number\n  save unrelated, add(count, 1)\n  back count\n')
+    ok('a never-read save named like nothing the task reads builds, with a warning', spare.ok, spare.messages)
   }
 
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)

@@ -230,6 +230,28 @@ task use
     'type-mismatch',
   )
 
+  // the TypeScript interface is typed by the mask's signatures, not `(...args: Array<unknown>): unknown` (gap 112,
+  // term-compiler-0003)
+  expectOk(
+    'the mask interface types each method by its declared signature',
+    `mask sizer
+  task scale
+    take self
+    take by, like number
+    like number
+
+form box
+  link side, like number
+  wear sizer
+    task scale
+      take self
+      take by, like number
+      like number
+      back multiply(self/side, by)
+`,
+    'scale(self: unknown, input1: number): number',
+  )
+
   // a generic function type-checks and emits a type parameter
   expectOk(
     'generic identity',

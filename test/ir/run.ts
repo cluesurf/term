@@ -82,7 +82,7 @@ function main(): void {
   take n
   send back
     call add
-      loan n
+      read n
       code 0
 `,
     'return n',
@@ -95,7 +95,7 @@ function main(): void {
   take n
   send back
     call multiply
-      loan n
+      read n
       code 1
 `,
     'return n',
@@ -311,7 +311,7 @@ task compute
   send back
     call add
       call add
-        loan n
+        read n
         code 2
       code 3
 `,
@@ -326,7 +326,7 @@ task compute
   send back
     call multiply
       call multiply
-        loan n
+        read n
         code 2
       code 4
 `,
@@ -342,7 +342,7 @@ task compute
     call add
       call add
         code 2
-        loan n
+        read n
       code 3
 `,
     'return n + 5',
@@ -355,8 +355,8 @@ task compute
   take n, like number
   send back
     call subtract
-      loan n
-      loan n
+      read n
+      read n
 `,
     'return 0',
   )
@@ -424,8 +424,8 @@ task f
   like float
   send back
     call subtract
-      loan x
-      loan x
+      read x
+      read x
 `,
     'return x - x',
   )
@@ -438,8 +438,8 @@ task f
   take b, like number
   send back
     call add
-      loan a
-      loan b
+      read a
+      read b
 `,
     'const __n0 = a + b; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )
@@ -452,8 +452,8 @@ task f
   take b, like number
   send back
     call subtract
-      loan a
-      loan b
+      read a
+      read b
 `,
     'const __n0 = a - b; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )

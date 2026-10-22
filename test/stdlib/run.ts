@@ -114,7 +114,7 @@ task increment
   like number
   send back
     call add
-      loan n
+      read n
       code 1
 `
 

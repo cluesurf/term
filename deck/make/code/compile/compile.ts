@@ -1399,13 +1399,22 @@ export function compileProgram(
     return { ok: false, diagnostics: totality.errors }
   }
 
+  // a never-read save one edit from a variable the task reads is a misspelled save, refused (`stray-save`, check/unused.tree,
+  // term/compiler decision 003). Every other never-read binding is a warning below
+  const unused = findUnused(program, file)
+  const straySaves = unused.filter(d => d.severity === 'error')
+
+  if (straySaves.length) {
+    return { ok: false, diagnostics: straySaves }
+  }
+
   // warnings do not fail the build (unused bindings, termination, unchecked holds, etc.). Each names the file its span
   // is in: a check handed the entry's name and a merged-in module's span printed the module's line under the entry's
   // name, `code/boot.tree:1054` in a 22-line file, and a build that prints only its own file's warnings could not
   // tell them apart (guides: language/data, 2026-10-04)
   const warnings = [
     ...checkWarnings,
-    ...findUnused(program, file),
+    ...unused,
     ...warnPrivateNotes(program, file),
     ...totality.warnings,
     ...holdWarnings,

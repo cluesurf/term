@@ -117,7 +117,7 @@ function main(): void {
   take n, like natural-number
   hold
     call is-minimum
-      loan n
+      read n
       code 0
 `,
   )
@@ -129,7 +129,7 @@ function main(): void {
   take n, like natural-number
   hold
     call is-above
-      loan n
+      read n
       code 0
 `,
   )
@@ -142,7 +142,7 @@ function main(): void {
   hold
     call is-above
       call add
-        loan n
+        read n
         code 1
       code 0
 `,
@@ -168,12 +168,12 @@ function main(): void {
   fork test
     hook test
       call is-minimum
-        loan n
+        read n
         code 5
     hook hold
       hold
         call is-minimum
-          loan n
+          read n
           code 0
 `,
   )
@@ -186,17 +186,17 @@ function main(): void {
   fork test
     hook test
       call is-minimum
-        loan n
+        read n
         code 5
     hook hold
       hold
         call is-minimum
-          loan n
+          read n
           code 0
     hook miss
       hold
         call is-below
-          loan n
+          read n
           code 5
 `,
   )
@@ -208,11 +208,11 @@ function main(): void {
   take n, like natural-number
   host m
     call add
-      loan n
+      read n
       code 1
   hold
     call is-minimum
-      loan m
+      read m
       code 1
 `,
   )
@@ -226,11 +226,11 @@ function main(): void {
   take n, like natural-number
   save m
     call add
-      loan n
+      read n
       code 1
   hold
     call is-minimum
-      loan m
+      read m
       code 1
 `,
   )
@@ -242,12 +242,12 @@ function main(): void {
   take n, like natural-number
   save m
     call add
-      loan n
+      read n
       code 1
   save m, code 0
   hold
     call is-minimum
-      loan m
+      read m
       code 1
 `,
   )
@@ -260,7 +260,7 @@ function main(): void {
   hold
     call is-below
       call modulo
-        loan n
+        read n
         code 3
       code 3
 `,
@@ -276,7 +276,7 @@ function main(): void {
   hold
     call is-minimum
       call modulo
-        loan n
+        read n
         code 3
       code 0
 `,
@@ -290,11 +290,11 @@ function main(): void {
   hold
     call is-equal
       call multiply
-        loan n
-        loan n
+        read n
+        read n
       call multiply
-        loan n
-        loan n
+        read n
+        read n
   send back n
 `,
   )
@@ -307,8 +307,8 @@ function main(): void {
   like number
   send back
     call add
-      loan n
-      loan n
+      read n
+      read n
 
 task check-it
   take n, like number
@@ -316,10 +316,10 @@ task check-it
   hold
     call is-equal
       call double
-        loan n
+        read n
       call add
-        loan n
-        loan n
+        read n
+        read n
   send back n
 `,
   )
@@ -336,8 +336,8 @@ task check-it
   hold
     call is-minimum
       call multiply
-        loan n
-        loan n
+        read n
+        read n
       code 1
 `,
     'unchecked-hold',

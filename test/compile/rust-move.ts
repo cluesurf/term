@@ -108,7 +108,7 @@ task in-loop
   walk test
     hook test
       call is-below
-        loan i
+        read i
         code 3
     hook hold
       save out
@@ -116,7 +116,7 @@ task in-loop
           read x
       save i
         call add
-          loan i
+          read i
           code 1
   send back
     read out

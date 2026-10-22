@@ -63,10 +63,13 @@ const line = (span: Span): number => span.start.line + 1
 
 export function checkSoleUses(program: Program, file: string): Diagnostic[] {
   const sole = new Set<string>()
+  // each sole form's field names, its cases' included, so `p/note` (a field) and `p/stamp()` (a method) are told apart
+  const fieldsOf = new Map<string, Set<string>>()
 
   for (const s of program) {
     if (s.form === 'record-type' && s.sole) {
       sole.add(s.name)
+      fieldsOf.set(s.name, new Set([...s.fields, ...(s.variants ?? []).flatMap(v => v.fields)].map(f => f.name)))
     }
   }
 
@@ -200,7 +203,20 @@ export function checkSoleUses(program: Program, file: string): Diagnostic[] {
           return expr(s, e.target, consuming && isSole(e.type))
 
         case 'call': {
-          expr(s, e.callee, false)
+          // a METHOD called on a sole value (`p/stamp()`) hands the receiver on, as an argument does: the method takes
+          // it as its first parameter. A field of the form that holds a task (`p/handler()`) is a read. Until
+          // 2026-10-22 both were reads, so a permit could be stamped and then spent (term-affine-kinds-0003)
+          const receiver = e.callee.form === 'member' && !e.callee.index && isSole(e.callee.target.type) ? e.callee : undefined
+          const method =
+            receiver !== undefined &&
+            receiver.target.type?.kind === 'named' &&
+            !fieldsOf.get(receiver.target.type.name)?.has(receiver.name)
+
+          if (method) {
+            expr(s, receiver.target, true)
+          } else {
+            expr(s, e.callee, false)
+          }
           const callee = e.callee.form === 'variable' && e.callee.binding?.kind === 'function' ? tasks.get(e.callee.name) : undefined
 
           e.args.forEach((arg, i) => {
@@ -354,7 +370,10 @@ export function checkSoleUses(program: Program, file: string): Diagnostic[] {
         }
 
         case 'match': {
-          expr(s, st.subject, false)
+          // a match whose arms take the subject's fields (`case granted` / `link note`) hands the subject on to them,
+          // as a match by value does on Rust: what an arm took is no longer the subject's. A match that binds nothing
+          // only reads it. Until 2026-10-22 every match was a read (term-affine-kinds-0003)
+          expr(s, st.subject, st.cases.some(arm => (arm.binds?.length ?? 0) > 0))
           const arms: State[] = []
 
           for (const arm of st.cases) {

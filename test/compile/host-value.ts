@@ -2,14 +2,15 @@
 // own value, which the checker cannot see into, so until 2026-10-05 `save count / like number / path/join(...)`
 // compiled on TypeScript and `count` held a text all the way to whatever used it. Now the binding checks the value
 // it is given (`__termHost` in compile/typescript.ts) and raises `data-mismatch` there, where the type was written.
-// The native backends type a host call statically, so the compiler of each refuses the same program instead.
+// The native backends type a host call statically, so the compiler of each refuses the same program instead, and a
+// host value they cannot type (the boxed dynamic) is checked at the binding as on TypeScript (the last cases).
 // A field read off an opaque `dock type` handle is refused at the checker (check/infer.ts).
 // Run: npx tsx test/compile/host-value.ts
 
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runOn } from './shared/run-on'
+import { BACKENDS, runOn } from './shared/run-on'
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 
@@ -96,6 +97,53 @@ task run
 const read = compile({ file: join(ROOT, 'tmp/host-handle.tree'), text: handle }, { resolve: projectResolver(ROOT, 'node', ROOT) })
 const refused = read.ok ? 'BUILT' : read.diagnostics.map(d => d.message).join(' | ')
 ok('a field read off an opaque handle is refused', /"host" is read off a `url-handle`/.test(refused), refused)
+
+// THE SAME CHECK ON EVERY BACKEND. A host value Rust, Swift or Kotlin cannot type statically is the boxed dynamic, and
+// bound with a primitive `like` it is checked where it is bound, as on TypeScript: `a/b` held as a number raised
+// nothing on Swift and Kotlin until 2026-10-22, and printed as one
+const dynamicHost = `bind read-host
+  like dynamic
+  case node
+    <"a/b">
+  case browser
+    <"a/b">
+  case rust
+    <std::rc::Rc::new("a/b".to_string()) as std::rc::Rc<dyn std::any::Any>>
+  case swift
+    <("a/b" as Any)>
+  case kotlin
+    <("a/b" as Any)>
+
+task run
+  like text
+  save path
+    like text
+    read-host()
+  save answer, <none>
+  fork
+    mark unsafe
+    save count
+      like number
+      read-host()
+    save answer, <{count}>
+  halt take
+    take problem
+    save answer, <{problem/form}: {problem/note}>
+  back <{path} {answer}>
+`
+const nativeDir = mkdtempSync(join(tmpdir(), 'host-value-native-'))
+
+for (const backend of BACKENDS) {
+  const done = runOn({ backend, program: dynamicHost, resolve: env => projectResolver(ROOT, env, ROOT), dir: nativeDir, name: 'dynamic' })
+
+  if (done.form === 'skipped') {
+    console.log(`skip  ${backend}: ${done.reason}`)
+    continue
+  }
+
+  const said = done.form === 'ran' ? done.output : `${done.form}: ${done.reason.slice(0, 400)}`
+  ok(`${backend}: a host value of the declared type passes, and one of another type raises data-mismatch`, said === 'a/b data-mismatch: Data does not fit the shape', said)
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

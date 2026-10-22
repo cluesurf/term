@@ -49,14 +49,14 @@ const SOURCE = `task find-fibonacci
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 2
     hook hold
       send back n
     hook miss
       send back
         call add
-          loan n
+          read n
           code 1
 `
 
@@ -80,12 +80,12 @@ function main(): void {
     once,
   )
   // a call with arguments inlines them when they fit. A part that a COMMA FOLLOWS is parenthesized, because a
-  // comma pops exactly one level: `call add, loan n, code 1` would read `code 1` as a child of `loan`, leaving
-  // `add` one argument. `loan(n)` closes its own group, so the comma lands where it belongs. The last part needs
+  // comma pops exactly one level: `call add, read n, code 1` would read `code 1` as a child of `read`, leaving
+  // `add` one argument. `read(n)` closes its own group, so the comma lands where it belongs. The last part needs
   // nothing after it, so `code 1` stays bare.
   ok(
     'call arguments inline when they fit',
-    once.includes('call add, loan(n), code 1'),
+    once.includes('call add, read(n), code 1'),
     once,
   )
 

@@ -156,7 +156,7 @@ task kick
   like number${callerAsync ? '\n  wait true' : ''}
   send back
     call f
-      loan n${await_ ? '\n      wait true' : ''}
+      read n${await_ ? '\n      wait true' : ''}
 `
 
   expectOk(
@@ -181,7 +181,7 @@ task kick
   wait true
   send back
     call f
-      loan n
+      read n
       wait true
 `,
   )
@@ -195,13 +195,13 @@ task relay
   take n
   send back
     call boom
-      loan n
+      read n
 
 task quiet
   take n
   send back
     call add
-      loan n
+      read n
       code 1
 `
 
@@ -252,7 +252,7 @@ task quiet
   like number
   send back
     call f
-      loan n
+      read n
 `
 
     const parsed2 = parse({ file: 'e.tree', text: src })

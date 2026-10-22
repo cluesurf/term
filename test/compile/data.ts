@@ -15,12 +15,12 @@ const SOURCE = `form point
 task sum-x-coords
   take items
   save total, code 0
-  walk list, loan items
+  walk list, read items
     hook next
       take site, name item
       save total
         call add
-          loan total
+          read total
           read item/x
   send back total
 
@@ -35,7 +35,7 @@ task run
         bind y, code 0
   send back
     call sum-x-coords
-      loan points
+      read points
 `
 
 let pass = 0

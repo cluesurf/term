@@ -15,18 +15,18 @@ const FIB_LOOP = `task find-fibonacci-via-loop
   walk test
     hook test
       call is-above
-        loan n
+        read n
         code 0
     hook step
       save next
         call add
-          loan a
-          loan b
-      save a, loan b
-      save b, loan next
+          read a
+          read b
+      save a, read b
+      save b, read next
       save n
         call subtract
-          loan n
+          read n
           code 1
   send back a
 `
@@ -39,7 +39,7 @@ const CONDITIONAL_EXPRESSION = `task classify
     fork test
       hook test
         call is-above
-          loan n
+          read n
           code 0
       hook hold
         text <positive>
@@ -53,7 +53,7 @@ const FIB_RECURSION = `task find-fibonacci-via-recursion
   fork test
     hook test
       call is-below
-        loan n
+        read n
         code 2
     hook hold
       send back n
@@ -62,11 +62,11 @@ const FIB_RECURSION = `task find-fibonacci-via-recursion
         call add
           call find-fibonacci-via-recursion
             call subtract
-              loan n
+              read n
               code 1
           call find-fibonacci-via-recursion
             call subtract
-              loan n
+              read n
               code 2
 `
 

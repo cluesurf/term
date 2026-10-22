@@ -72,7 +72,7 @@ task run
   take a, like thing
   send back
     call pick
-      loan a
+      read a
 `,
   )
 
@@ -87,7 +87,7 @@ task run
   take b, like other
   send back
     call pick
-      loan b
+      read b
 `,
     'no-instance',
   )
@@ -103,7 +103,7 @@ task choose
   like u
   send back
     call pick
-      loan a
+      read a
 `,
   )
 
@@ -117,7 +117,7 @@ task choose
   like u
   send back
     call pick
-      loan a
+      read a
 `,
     'no-instance',
   )
