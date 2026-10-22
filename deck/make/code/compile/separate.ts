@@ -692,7 +692,7 @@ export function compileSeparate(
   }
 
   // the entry's own spelling, warned about once, for the file the build was asked for
-  allWarnings.push(...entryWarnings(source, sources, parsed))
+  allWarnings.push(...entryWarnings(source, sources, parsed, templates))
 
   return {
     ok: true,

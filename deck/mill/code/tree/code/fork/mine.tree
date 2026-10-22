@@ -4,6 +4,9 @@ load @term/mill/tree/code/form/link/mine
 load @term/mill/tree/code/seed/mine
   find seed
 
+load @term/mill/tree/code/like/mine
+  find like
+
 load @term/mill/tree/code/tool/flow/mine
   find flow
 
@@ -188,6 +191,9 @@ mine sift
         mine form, like fork-arm-bare
           site arm
 
+# A `like` line under the arm gives the arguments of the type it names, as it does under a `like`: `case list` over
+# `like text` is a list of text, `case hash` over `like text` and `like number` a hash, tested for in an `unknown`
+# (check/infer.ts, the type arms). Matched before `flow`, which would take the line as a statement.
 mine fork-arm
   mine term, term case
     mine path
@@ -198,6 +204,8 @@ mine fork-arm
           site base
     mine list
       mine any
+        mine form, like like
+          site like
         mine form, like link
           site link
         mine form, like flow

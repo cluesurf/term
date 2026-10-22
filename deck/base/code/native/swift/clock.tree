@@ -14,12 +14,12 @@ task current-nanoseconds
     call clock/nanoseconds
 
 # a wait that blocks nothing: the task is suspended and its thread runs other work meanwhile, so two jobs that each wait
-# wait at the same time. It was `Thread.sleep`, which held the thread
+# wait at the same time. It was `Thread.sleep`, which held the thread. A cancelled job stops here (runtime/clock.swift)
 bind wait-for
   take ms, like number
   like void
   case swift
-    text <(try? await Task.sleep(nanoseconds: UInt64(max($ms, 0)) * 1_000_000)) ?? ()>
+    text <await clock.pause($ms)>
 
 task delay
   mark async

@@ -282,6 +282,27 @@ deck @cluesurf/base
       { name: 'Lance Pollard', base: 'lp@elk.fm', site: 'lancejpollard.com' },
     ])
   })
+
+  // gap 163 (guides: language/dsls/mills): a line the grammar does not read was dropped without a word
+  it('refuses a misspelled field, naming it and its line', () => {
+    const text = `deck @cluesurf/my-app
+  mark <1.0.0>
+  lnik @cluesurf/base, mark <1.x.x>
+`
+    expect(() => parseManifest({ text })).toThrow(/`lnik` at line 3 in deck.tree does not fit the manifest grammar/)
+  })
+
+  it('refuses a field of the wrong shape, and a line outside `deck`', () => {
+    expect(() => parseManifest({ text: `deck @cluesurf/my-app\n  mark <1.0.0>\n  face <Lance Pollard>, site <lp@elk.fm>\n` })).toThrow(
+      /`face` at line 3/,
+    )
+    expect(() => parseManifest({ text: `deck @cluesurf/my-app\n  mark <1.0.0>\n\nboot ./site/boot\n` })).toThrow(
+      /`boot` at line 4 in deck.tree is not a `deck`, `role` or `load`/,
+    )
+    expect(() => parseManifest({ text: `deck @cluesurf/my-app\n  case work\n    lnik @cluesurf/base, mark <1.x.x>\n` })).toThrow(
+      /`case` at line 2/,
+    )
+  })
 })
 
 describe('writeManifest', () => {

@@ -657,7 +657,7 @@ export function compile(
       coverTarget,
     )
 
-    const spelled = compiled.ok ? entryWarnings(source, sources, parsed) : []
+    const spelled = compiled.ok ? entryWarnings(source, sources, parsed, templates) : []
     const warned: CompileResult =
       compiled.ok && spelled.length > 0 ? { ...compiled, warnings: [...compiled.warnings, ...spelled] } : compiled
 
@@ -759,6 +759,7 @@ export function entryWarnings(
   source: { file: string; text: string },
   sources: { file: string; text: string }[],
   parsed: ParseMemo,
+  templates?: Map<string, Template>,
 ): Diagnostic[] {
   const entryTree = parsed(source)
 
@@ -766,7 +767,18 @@ export function entryWarnings(
     return []
   }
 
-  return noteMetadataSites(entryTree.tree, source.text)
+  // a `site` the entry's fuse beams nothing into: the mill went on without it (`millUnit`), and it is said here once
+  const fuseProblems: TemplateProblem[] = []
+
+  if (/\bfuse\b/.test(source.text)) {
+    expandTemplates(entryTree.tree, templates, undefined, fuseProblems)
+  }
+
+  const emptySites = fuseProblems
+    .filter(p => p.code === 'empty-site')
+    .map(p => diagnose(p.code, { file: source.file, span: { ...p.span, file: source.file }, message: p.message }))
+
+  return emptySites.concat(noteMetadataSites(entryTree.tree, source.text)
     .filter(site => site.word !== 'private')
     .map(site =>
       diagnose('note-metadata', {
@@ -788,7 +800,7 @@ export function entryWarnings(
             message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
           }),
         ),
-    )
+    ))
 }
 
 // One module milled, through the mill cache when there is one. The merged build (`compile`) and the separate one
@@ -865,8 +877,11 @@ function millUnit(
   const fuseProblems: TemplateProblem[] = []
   const expanded = expandTemplates(parsed.tree, templates, undefined, fuseProblems)
 
-  if (fuseProblems.length) {
-    return { ok: false, diagnostics: fuseProblems.map(p => diagnose(p.code, { file: unit.file, span: p.span, message: p.message })) }
+  // an empty site is a warning, which the entry's build reports (`entryWarnings`) and never stops the mill
+  const fuseErrors = fuseProblems.filter(p => p.code !== 'empty-site')
+
+  if (fuseErrors.length) {
+    return { ok: false, diagnostics: fuseErrors.map(p => diagnose(p.code, { file: unit.file, span: p.span, message: p.message })) }
   }
 
   return mill(expanded, unit.file, role, lean)
@@ -1131,6 +1146,14 @@ export function compileProgram(
         pruneRoots.add(helper)
         pruneRoots.add(runtimeBound.get(helper) ?? helper)
       }
+    }
+
+    // A CALL INTO NATIVE CODE RAISES `failure` IN EVERY PROGRAM, shaken or not (term/compiler decision 001). The raise
+    // sets count it only when the program holds the form (check/effects.ts), and the shake dropped it unless some code
+    // named it, so whether a guard around a native call had to cover `failure` turned on unrelated code. A program
+    // that docks a module keeps the form whenever its closure has it, which is what the unshaken build sees
+    if (program.some(s => s.form === 'native' && s.kind !== 'type') && program.some(s => s.form === 'record-type' && s.name === 'failure')) {
+      pruneRoots = new Set([...pruneRoots, 'failure'])
     }
 
     // a rule only CITED by a kept rule is referenced by no call, and must survive the shake (check/cite-roots.ts)

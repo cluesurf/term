@@ -22,8 +22,13 @@ export type Template = {
 }
 
 // a `fuse` that does not fit its template: a hole left out, a value too many, a name the template does not take, a
-// value of the wrong kind. Reported at the fuse, before anything of the expansion is read
-export type TemplateProblem = { code: 'unknown-name' | 'unexpected-node' | 'type-mismatch'; message: string; span: Span }
+// value of the wrong kind, a template that fuses itself. Reported at the fuse, before anything of the expansion is
+// read. `empty-site` (a site its fuse beams nothing into) is the one warning: the build goes on and says so
+export type TemplateProblem = {
+  code: 'unknown-name' | 'unexpected-node' | 'type-mismatch' | 'empty-site'
+  message: string
+  span: Span
+}
 
 type PortTemplate = ReturnType<typeof port.collectTemplates> extends Map<string, infer T> ? T : never
 

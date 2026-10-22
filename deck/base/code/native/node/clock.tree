@@ -27,10 +27,19 @@ task current-nanoseconds
   send back
     call hrtime-since-origin
 
+# what a wait does as it ends inside a job that was cancelled meanwhile: it never ends, so nothing after it runs. The job
+# runtime (runtime/job.ts) puts the check on globalThis, and a program with no job has nothing to check
+bind stop-if-cancelled
+  like void
+  case node
+    text <globalThis.__term_job_stop?.()>
+
 task delay
   mark async
   take ms, like number
-  send back
-    call timers/set-timeout
-      read ms
-      wait true
+  like void
+  call timers/set-timeout
+    read ms
+    wait true
+  call stop-if-cancelled
+    wait true

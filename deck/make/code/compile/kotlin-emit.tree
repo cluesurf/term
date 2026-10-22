@@ -4315,6 +4315,37 @@ task type-arm-type
       back <Boolean>
   back <undefined>
 
+# the test that a value held as `Any?` is of a type an arm over an `unknown` names: a form by its class, a list by its
+# class and every item (the JVM keeps no item type), a hash by every key and value. `held` is a name, so Kotlin's smart
+# cast carries each `is` into the reads after it
+task kt-holds
+  take held, like text
+  take given, like type
+  take depth, like number
+  take st, like kotlin-state
+  take facts, like kotlin-facts
+  like text
+  mark private
+
+  sift given
+    case unknown
+      back <true>
+    case array
+      link element
+      # a list of numbers built as `TermLongs` is a `MutableList<Long>` too
+      save one, <__e{depth}>
+      back <({held} is MutableList\<*\> && {held}.all \{ {one} -\> {kt-holds(one, element, add(depth, 1), st, facts)} \})>
+    case map
+      link key-type
+      link value-type
+      save key-name, <__k{depth}>
+      save value-name, <__v{depth}>
+      save key-test, kt-holds(key-name, key-type, add(depth, 1), st, facts)
+      save value-test, kt-holds(value-name, value-type, add(depth, 1), st, facts)
+      back <({held} is MutableMap\<*, *\> && {held}.all \{ ({key-name}, {value-name}) -\> {key-test} && {value-test} \})>
+    miss
+      back <{held} is {kotlin-type(make(some, given), st, facts)}>
+
 # the `else` arm, with the otherwise's block or empty
 task else-arm
   take otherwise, like maybe, like list, like statement
@@ -4398,6 +4429,17 @@ task kt-match
           save held, <__at{depth}>
           save shadow, variable-name-of(match-subject)
           save arms, make list
+          # an arm that names a form, a list or a hash carries its type, and an `is` cannot test a list's items (the
+          # JVM erases them), so such a `when` takes a condition per arm: the items tested one by one, the value cast
+          save conditions, false
+          walk match-cases
+            take arm
+            save arm-type, arm/type
+            sift arm-type
+              case some
+                save conditions, true
+              case none
+                save nothing, 0
           walk match-cases
             take arm
             save bind-name, shadow
@@ -4405,14 +4447,31 @@ task kt-match
             fork test, is-above(binds/length, 0)
               hold
                 save bind-name, get(binds, 0)
+            save test, <is {type-arm-type(arm/label)}>
+            save value, held
+            fork test, conditions
+              hold
+                save test, <{held} is {type-arm-type(arm/label)}>
+            save arm-type, arm/type
+            sift arm-type
+              case some
+                link known
+                save test, kt-holds(held, known, depth, st, facts)
+                save value, <({held} as {kotlin-type(make(some, known), st, facts)})>
+              case none
+                save nothing, 0
             save bind, <>
             fork test, is-unequal(bind-name, <>)
               hold
-                save bind, <{pad(add(depth, 3))}val {kotlin-camel(bind-name)} = {held}\n>
-            push(arms, <{pad(add(depth, 2))}is {type-arm-type(arm/label)} -\> \{\n{bind}{kt-block(arm/body, add(depth, 3), st, facts)}\n{pad(add(depth, 2))}\}>)
+                save bind, <{pad(add(depth, 3))}val {kotlin-camel(bind-name)} = {value}\n>
+            push(arms, <{pad(add(depth, 2))}{test} -\> \{\n{bind}{kt-block(arm/body, add(depth, 3), st, facts)}\n{pad(add(depth, 2))}\}>)
           push(arms, else-arm(match-otherwise, add(depth, 2), <>, st, facts))
           save subject-text, kt-expr(match-subject, st, facts)
-          back <run \{\n{pad(add(depth, 1))}val {held}: Any? = {subject-text}\n{pad(add(depth, 1))}when ({held}) \{\n{join-texts(arms, <\n>)}\n{pad(add(depth, 1))}\}\n{pad(depth)}\}>
+          save opener, <when ({held})>
+          fork test, conditions
+            hold
+              save opener, <when>
+          back <run \{\n{pad(add(depth, 1))}val {held}: Any? = {subject-text}\n{pad(add(depth, 1))}{opener} \{\n{join-texts(arms, <\n>)}\n{pad(add(depth, 1))}\}\n{pad(depth)}\}>
       # a fork case over a caught TermException: `when` on `form`, the record recovered from `base` by its form
       save caught-list, read(exception-arms)
       fork test, is-above(caught-list/length, 0)

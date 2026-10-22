@@ -1708,6 +1708,150 @@ task runs
     }
   }
 
+  // ---- language/templates: a site with no beam, a template that fuses itself, a dynamic fuse of no template ----
+  // each expanded to nothing, or recursed until the stack overflowed, without a word (term-compiler-0001,
+  // gaps 81, 82, 84, 191)
+  {
+    const empty = build(`tree wrapper
+  take name
+  hook fuse
+    form {name}
+      link id, like number
+      site fields
+
+fuse wrapper
+  bind name, point
+`)
+    ok(
+      'a site its fuse gives no beam builds and warns, naming the site',
+      empty.ok && empty.warnings.some(w => /^empty-site: .*`site fields` no `beam fields`/.test(w)),
+      empty.messages || empty.warnings.join(' | '),
+    )
+
+    const beamed = build(`tree wrapper
+  take name
+  hook fuse
+    form {name}
+      site fields
+
+fuse wrapper
+  bind name, point
+  beam fields
+    link x, like number
+`)
+    ok('a site its fuse fills does not warn', beamed.ok && !beamed.warnings.some(w => /empty-site/.test(w)), beamed.messages || beamed.warnings.join(' | '))
+
+    const cycle = build(`tree ping
+  take name
+  hook fuse
+    fuse pong
+      bind name, {name}
+
+tree pong
+  take name
+  hook fuse
+    fuse ping
+      bind name, {name}
+
+fuse ping
+  bind name, loop
+`)
+    ok(
+      'a template that fuses itself through another is refused, naming the cycle',
+      !cycle.ok && /ping -> pong -> ping/.test(cycle.messages),
+      cycle.ok ? 'it built' : cycle.messages,
+    )
+
+    // a template fused twice side by side, or by another template, is not a cycle
+    const nested = build(`tree box
+  take name
+  hook fuse
+    form {name}
+      link id, like number
+
+tree two-boxes
+  take first
+  take second
+  hook fuse
+    fuse box
+      bind name, {first}
+    fuse box
+      bind name, {second}
+
+fuse box
+  bind name, outer
+fuse two-boxes
+  bind first, left
+  bind second, right
+`)
+    ok('one template fused twice in a program is not a cycle', nested.ok, nested.messages)
+
+    const dynamic = build(`host suit
+  term hearts
+  term spades
+
+tree make-flag
+  take name
+  hook bind
+    task is-{name}
+      like boolean
+
+tree each
+  take items
+  take maker
+  hook fuse
+    walk list, read items
+      hook step
+        take item
+        fuse read maker
+          read item
+
+fuse each, read suit
+  read make-flagg
+`)
+    ok(
+      'a dynamic fuse of a name no template has is refused at expansion, naming it',
+      !dynamic.ok && dynamic.names.includes('unknown-name') && /`make-flagg`/.test(dynamic.messages),
+      dynamic.ok ? 'it built' : dynamic.messages,
+    )
+  }
+
+  // ---- architecture/language/errors: a native call raises `failure` whatever the shake keeps (gap 67,
+  // term-compiler-0007, term/compiler decision 001). A guard around file `read` that answers `absence` alone left out
+  // `failure`, and was refused or accepted by whether tree shaking kept the form ----
+  {
+    const text = `load @term/base/file
+  find read
+
+load @term/base/exception
+  find absence
+
+task read-or-why
+  take path, like text
+  like text
+  fork
+    mark unsafe
+    save got, read(path)
+    back got
+  halt take
+    take problem
+    sift problem
+      case absence
+        back <absent>
+`
+    const options = { resolve: projectResolver(TERM, 'node'), env: 'node' }
+    const entry = { file: join(TERM, 'test/compile/guide-gaps.tree'), text }
+    const plain = compile(entry, options)
+    const shaken = compile(entry, { ...options, treeShake: true })
+    const verdict = (out: typeof plain): string =>
+      out.ok ? 'built' : out.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+    ok(
+      'a guard over a native call that leaves out failure is refused, shaken or not',
+      !plain.ok && !shaken.ok && /failure/.test(verdict(plain)) && /failure/.test(verdict(shaken)),
+      `plain: ${verdict(plain)} || shaken: ${verdict(shaken)}`,
+    )
+  }
+
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

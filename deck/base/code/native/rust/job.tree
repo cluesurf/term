@@ -1,6 +1,7 @@
 # rust structured-concurrency implementation. Forwards to the linked job runtime shim (runtime/job.rs), which runs a
 # job on the program's one-thread executor (compile/rust.ts, `__term_spawn`): it starts at once, runs to its first
-# wait, and the rest of it runs while the caller waits on something else. A job reports its state and keeps its
+# wait, and the rest of it runs while the caller waits on something else. A raise inside the work fails the job, and a
+# cancelled job stops at its next wait. A job reports its state and keeps its
 # outcome, and what each state means is decided in code/task.tree, the same as on node. A result crosses as `unknown`,
 # so one shim serves every result type. Internal: reached only through the public task API.
 
@@ -79,14 +80,21 @@ task job-result
     call job/result
       read dock
 
-# never reached here: a raise inside `work` ends the program on this backend, since the work's own signature cannot
-# carry it, so no job is ever `failed`
+# the kept raise returned as the calling task's own: Term has no spelling for raising a value held in a local, so the
+# bind writes the `return Err(..)` a raise is on this backend
+bind raise-kept
+  take dock, like job-handle
+  like void
+  case rust
+    text <if let Some(raised) = job::raised($dock) \{ return std::result::Result::Err(raised); \}>
+
+# raise what a `failed` job raised, unchanged, so a typed exception reaches the waiter as itself. The runtime caught it
+# where the work raised (runtime/job.rs) and kept the carrier whole. code/task.tree asks this only of a failed job
 task job-rethrow
   take dock, like job-handle
   like unknown
-  send back
-    call job/rethrow
-      read dock
+  call raise-kept(dock)
+  halt <a job that did not fail was asked for its raise>
 
 task job-cancel
   take dock, like job-handle

@@ -721,9 +721,11 @@ task swift-type
           save marker, <>
           walk effects
             take effect
+            # an asynchronous task type throws, so a raise inside the work it holds reaches whoever waits on it (a
+            # job's `wait`) as itself rather than ending the program
             fork test, is-equal(effect, <async>)
               hold
-                save marker, < async>
+                save marker, < async throws>
           save spelled, make list
           walk fn-params
             take one
@@ -1398,6 +1400,34 @@ task name-at
 
 # ---- expressions ----
 
+# a call through a VALUE of an asynchronous task type (a parameter, a local, a field), not to a named task: the type
+# throws, so the call takes `try` like a call to a raising task
+task async-value-call
+  take callee, like expression
+  take callee-name, like text
+  take st, like swift-state
+  like boolean
+  mark private
+
+  fork test, and(is-unequal(callee-name, <>), not(is-bound(callee-name, st)))
+    hold
+      back false
+  sift expression-type(callee)
+    case some
+      link known
+      sift known
+        case function
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                back true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back false
+
 task try-word
   take st, like swift-state
   like text
@@ -2054,6 +2084,9 @@ task emit-call
       fork test, and(is-unequal(callee-name, <>), facts/throwing/has(callee-name))
         hold
           save call-text, <({try-word(st)} {callee-text}({joined}))>
+      fork test, async-value-call(callee, callee-name, st)
+        hold
+          save call-text, <({try-word(st)} {callee-text}({joined}))>
       fork test, fresh
         hold
           back <SeedList({call-text})>
@@ -2660,7 +2693,8 @@ task emit-closure
       save outer-bound, st/bound-names
       save outer-spares, st/spares
       save st/spares, make list
-      save st/current-throws, false
+      # an asynchronous closure throws (its task type does), so a raise in it is carried to its waiter
+      save st/current-throws, closure-async
       save st/guard-depth, 0
       save inner-bound, copy-texts(outer-bound)
       walk closure-params
@@ -2718,7 +2752,7 @@ task emit-closure
           walk closure-params
             take param
             push(typed, <{camel(param/name)}: {swift-type(param/type, st, facts)}>)
-          save signature, <({join-texts(typed, <, >)}) async -\> {swift-type(closure-result, st, facts)} in >
+          save signature, <({join-texts(typed, <, >)}) async throws -\> {swift-type(closure-result, st, facts)} in >
         miss
           sift closure-result
             case some
@@ -3737,6 +3771,14 @@ task emit-match
               hold
                 save arm-name, get(binds, 0)
             save tested, type-arm-type(arm/label)
+            # a form, a list or a hash: the checker wrote the type, cast to its own Swift spelling
+            save arm-type, arm/type
+            sift arm-type
+              case some
+                link known
+                save tested, swift-type(make(some, known), st, facts)
+              case none
+                save nothing, 0
             save pattern, <is {tested}>
             fork test, is-unequal(arm-name, <>)
               hold

@@ -1996,6 +1996,71 @@ function checkProgram(
     return true
   }
 
+  // an `if` whose first test asks which case a form value is (`is-some(m)`, `is-<case>(local)` over a local whose form
+  // has that case), rewritten in place into the `sift` it means: the branch is the case's arm, so inside it the local is
+  // narrowed to the case and `m/value` reads, and the rest is the `miss` (or the one case left, when only one is). The
+  // arm binds the case's fields as locals only where no name in scope, and no `save` in the branch, already has the
+  // name, so the rewrite hides nothing the branch reads. A form with a case whose fields would all hide one is left as
+  // a plain test. Answers whether it was rewritten (gap 105, term-decisions-2026-10-seam-0012)
+  function narrowsCase(node: Extract<Statement, { form: 'if' }>, env: Env): boolean {
+    const first = node.branches[0]
+    const cond = first?.cond
+
+    if (!first || cond?.form !== 'call' || cond.callee.form !== 'variable' || cond.args.length !== 1 || cond.args[0]!.form !== 'variable') {
+      return false
+    }
+
+    const label = /^is-(.+)$/.exec(cond.callee.name.replace(/__\d+(__\d+)?$/, ''))?.[1]
+    const subject = cond.args[0]!
+    const bound = env.get(subject.name)
+    const held = bound ? resolve(instantiateScheme(bound)) : undefined
+
+    if (!label || held?.kind !== 'named' || !enums.get(held.name)?.has(label)) {
+      return false
+    }
+
+    const variants = enums.get(held.name)!
+    const declared = (body: Statement[]): Set<string> =>
+      new Set(body.flatMap(statement => (statement.form === 'let' ? [statement.name] : [])))
+    // the fields of a case that may be bound in its arm, or undefined when it has fields and none may
+    const selected = (variant: string, body: Statement[]): string[] | undefined => {
+      const fields = [...(caseFields.get(`${held.name}/${variant}`)?.keys() ?? [])]
+      const taken = declared(body)
+      const free = fields.filter(field => !env.has(field) && !taken.has(field))
+
+      return fields.length > 0 && free.length === 0 ? undefined : free
+    }
+
+    const rest = node.branches.slice(1)
+    const otherwise: Statement[] =
+      rest.length > 0
+        ? [{ form: 'if', branches: rest, otherwise: node.otherwise, span: rest[0]!.cond.span } as Statement]
+        : (node.otherwise ?? [])
+    const others = [...variants].filter(variant => variant !== label)
+    const own = selected(label, first.body)
+    const last = others.length === 1 ? selected(others[0]!, otherwise) : []
+
+    // a form of one case has nowhere to put an `else`, and a test of it is always true anyway
+    if (!own || !last || (others.length === 0 && otherwise.length > 0)) {
+      return false
+    }
+
+    const arm = (variant: string, body: Statement[], binds: string[]) => ({ label: variant, body, ...(binds.length > 0 ? { binds } : {}) })
+    const cases = [arm(label, first.body, own)]
+
+    if (others.length === 1) {
+      cases.push(arm(others[0]!, otherwise, last))
+    }
+
+    const match = node as unknown as Record<string, unknown>
+
+    delete match.branches
+    delete match.otherwise
+    Object.assign(match, { form: 'match', subject, cases, ...(others.length > 1 ? { otherwise } : {}) })
+
+    return true
+  }
+
   function checkStatement(
     node: Statement,
     env: Env,
@@ -2098,7 +2163,7 @@ function checkProgram(
         // `hold` the value is text, and every backend lowers it by the same type test the `sift` uses. The branches
         // after the first become the `miss`. Only over an `unknown`: a `dynamic` is the host's own value, which
         // json's `is-text` asks about, and a test over a typed value has nothing to narrow (decisions-2026-10.md, D10)
-        if (narrowsUnknown(node, env)) {
+        if (narrowsUnknown(node, env) || narrowsCase(node, env)) {
           checkStatement(node, env, result)
           break
         }
@@ -2174,20 +2239,87 @@ function checkProgram(
         const subjectType = resolve(inferExpression(node.subject, env))
 
         // NARROWING AN `unknown`: each arm names a type the value is tested for at run time, and inside it the subject
-        // (when it is a name), or the arm's one `link`, has that type. Only the four types every backend can tell apart
-        // inside its dynamic value (`typeof` on TypeScript, `downcast_ref` on Rust, `as?` on Swift, `is` on Kotlin): a
-        // form is a plain object on TypeScript and carries no name to test. And a `miss`, since an `unknown` can hold
-        // anything. test/compile/unknown-narrow.ts
+        // (when it is a name), or the arm's one `link`, has that type. The four primitives (`typeof` on TypeScript,
+        // `downcast_ref` on Rust, `as?` on Swift, `is` on Kotlin), and a record form, a list or a hash, whose arm
+        // carries the type it tests for (`case point`, `case list` / `like text`, `case hash` / `like text` /
+        // `like number`): natively the value is downcast to that type, and on TypeScript, where a record is a plain
+        // object with no name, it is tested by its shape, every field the form's (the walk a `fill` makes, read off the
+        // live value). A form with cases or type parameters is not one: TypeScript cannot tell it apart. And a `miss`,
+        // since an `unknown` can hold anything. test/compile/unknown-narrow.ts
         if (subjectType.kind === 'unknown' && node.cases.length > 0) {
           const narrowed: Record<string, () => Type> = { number: numberType, float: floatType, text: stringType, boolean: booleanType }
-          const outside = node.cases.filter(branch => !narrowed[branch.label])
+          const outside: string[] = []
+
+          // why a value of this type cannot be told apart inside an `unknown` on every backend, or nothing when it can
+          const untestable = (type: Type): string | undefined => {
+            const held = resolve(type)
+
+            switch (held.kind) {
+              case 'number':
+              case 'float':
+              case 'boolean':
+              case 'string':
+              case 'unknown':
+                return undefined
+              case 'array':
+                return untestable(held.element)
+              case 'map': {
+                const key = resolve(held.key)
+
+                return key.kind === 'string' || key.kind === 'number' ? untestable(held.value) : 'a hash keyed by anything but text or a number'
+              }
+              case 'named':
+                if (!records.has(held.name)) {
+                  return `"${held.name}", which is no form`
+                }
+
+                if (enums.has(held.name)) {
+                  return `"${held.name}", a form with cases`
+                }
+
+                if ((formGenerics.get(held.name) ?? []).length > 0 || (held.args ?? []).length > 0) {
+                  return `"${held.name}", a form with type parameters`
+                }
+
+                if ((declaredTwice.get(held.name) ?? 0) > 1) {
+                  return `"${held.name}", a form declared twice`
+                }
+
+                return undefined
+              default:
+                return `"${showType(held)}"`
+            }
+          }
+
+          for (const branch of node.cases) {
+            if (narrowed[branch.label] && !branch.type) {
+              continue
+            }
+
+            const list = branch.label === 'list' || branch.label === 'hash'
+
+            if (list && !branch.type) {
+              outside.push(`"${branch.label}" says what it holds, with a \`like\` line under the arm (\`case ${branch.label}\` / \`like text\`${branch.label === 'hash' ? ' / `like number`' : ''})`)
+              continue
+            }
+
+            const written = branch.type ?? { kind: 'named', name: branch.label }
+            const type = resolve(seedType(written, new Map()))
+            const why = untestable(type)
+
+            if (why) {
+              outside.push(why)
+            } else {
+              branch.type = type
+            }
+          }
 
           if (outside.length > 0) {
             diagnostics.push(
               diagnose('type-mismatch', {
                 file: currentFile,
                 span: node.span,
-                message: `a sift over an unknown tests what type its value is, and ${outside.map(b => `"${b.label}"`).join(', ')} is not one every backend can tell apart: number, float, text or boolean`,
+                message: `a sift over an unknown tests what type its value is, and ${outside.join(', ')} is not one every backend can tell apart: number, float, text, boolean, a form of fields, or a list or hash of those`,
                 hint: 'give the value a form with a case per kind it can be, and sift that',
               }),
             )
@@ -2208,7 +2340,7 @@ function checkProgram(
 
           for (const branch of node.cases) {
             const inner = new Map(env)
-            const type = narrowed[branch.label]?.() ?? unknownType()
+            const type = branch.type ?? narrowed[branch.label]?.() ?? unknownType()
             const bound = branch.binds?.[0]
 
             if (bound) {
@@ -2225,6 +2357,21 @@ function checkProgram(
           }
 
           break
+        }
+
+        // a `like` under an arm names the type an `unknown` is tested for, and this subject is no unknown
+        for (const branch of node.cases) {
+          if (branch.type) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `a \`like\` under \`case ${branch.label}\` names the type an unknown is tested for, and this sift is over ${showType(subjectType)}`,
+                hint: 'take the `like` lines out of the arm',
+              }),
+            )
+            delete branch.type
+          }
         }
 
         // a `fork case` over a caught exception: the labels are exception forms, each arm binds the shared fields and

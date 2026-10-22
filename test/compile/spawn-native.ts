@@ -216,6 +216,98 @@ task run
   back answer
 `,
   },
+  {
+    name: 'raise',
+    says: 'a raise inside a job reaches its waiter as itself, its form and its fields, and the job is failed',
+    want: output => output === 'failed timeout',
+    program: `${HEAD}
+task run
+  mark async
+  like text
+  save job
+    call spawn
+      task work
+        mark async
+        like text
+        call delay(10)
+        halt timeout
+          bind thing, text <job>
+          bind waited, code 7
+  call delay(40)
+  save answer, <none>
+  fork
+    mark unsafe
+    save answer
+      call wait
+        read job
+        wait true
+  halt take
+    take problem
+    save answer, problem/form
+  save state
+    fork test, call(alive, job)
+      hold, <running>
+      miss, <failed>
+  back <{state} {answer}>
+`,
+  },
+  {
+    name: 'gather-raise',
+    says: 'a gather whose second job raises raises that exception, and cancels the first',
+    want: output => output === 'timeout',
+    program: `${HEAD}
+task run
+  mark async
+  like text
+  save works, make list
+  call works/push
+    task a
+      mark async
+      like text
+      call delay(300)
+      back <A>
+  call works/push
+    task b
+      mark async
+      like text
+      call delay(10)
+      halt timeout
+        bind thing, text <b>
+        bind waited, code 1
+  save answer, <none>
+  fork
+    mark unsafe
+    save results, gather(works)
+    save answer, <none>
+  halt take
+    take problem
+    save answer, problem/form
+  back answer
+`,
+  },
+  {
+    name: 'stop',
+    says: 'a cancelled job stops at its next wait: nothing after it runs',
+    want: output => output === 'quiet 0',
+    program: `${HEAD}
+task run
+  mark async
+  like text
+  save done, make list
+  save job
+    call spawn
+      task work
+        mark async
+        like text
+        call delay(30)
+        call done/push(<late>)
+        back <late>
+  call cancel
+    read job
+  call delay(120)
+  back <quiet {done/size()}>
+`,
+  },
 ]
 
 const dir = mkdtempSync(join(tmpdir(), 'term-spawn-native-'))

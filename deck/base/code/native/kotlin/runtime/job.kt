@@ -2,7 +2,7 @@
 // first wait, and the rest of it runs on the program's event loop (`termLoop`) while its caller waits on something else,
 // so two jobs that each wait wait at the same time, as on node. Every coroutine runs on that one loop, so a job's state
 // is read and written by one thread. A raise inside `work` is caught and kept whole, so the job is `failed` and
-// code/task.tree's `wait` raises the same exception. A cancelled job's answer is dropped when it arrives. Every settle
+// code/task.tree's `wait` raises the same exception. A cancelled job stops at its next wait (`SeedJobGate`). Every settle
 // is a wait on the job's own state, woken when it changes, never a poll. Reached only through the public task API.
 class SeedJob {
     var state: String = "running"
@@ -30,12 +30,26 @@ class SeedJob {
     }
 }
 
+// the gate every wait of a job's work resumes through: once the job is cancelled a resume is dropped, so the work stops
+// at its next wait and nothing after that wait runs
+class SeedJobGate(private val job: SeedJob) :
+    kotlin.coroutines.AbstractCoroutineContextElement(kotlin.coroutines.ContinuationInterceptor),
+    kotlin.coroutines.ContinuationInterceptor {
+    override fun <T> interceptContinuation(continuation: kotlin.coroutines.Continuation<T>): kotlin.coroutines.Continuation<T> =
+        object : kotlin.coroutines.Continuation<T> {
+            override val context: kotlin.coroutines.CoroutineContext = continuation.context
+            override fun resumeWith(result: Result<T>) {
+                if (job.state != "cancelled") continuation.resumeWith(result)
+            }
+        }
+}
+
 object job {
     // `Any?`: the work's result is a generic `R`, which Kotlin lets be null
     fun spawn(work: suspend () -> Any?): SeedJob {
         val started = SeedJob()
         work.startCoroutine(object : kotlin.coroutines.Continuation<Any?> {
-            override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
+            override val context: kotlin.coroutines.CoroutineContext = SeedJobGate(started)
             override fun resumeWith(result: Result<Any?>) {
                 result.fold({ started.settle("done", it, null) }, { started.settle("failed", null, it) })
             }

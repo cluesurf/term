@@ -9,11 +9,25 @@
 //               itself rather than as a wrapped error
 //   cancelled   cancelled before it settled. Its result, or its raise, is discarded when it arrives
 //
-// WHAT CANCEL CAN AND CANNOT DO HERE. A JavaScript promise cannot be stopped from outside, so a cancelled job's
-// in-flight step runs to its next settle and its result is thrown away. What cancel guarantees is that nothing waits
-// on the job and nothing it raises afterwards surfaces: before this, an unawaited job that raised was an unhandled
-// rejection, which ends the Node process. Stopping the work itself needs a worker, which is note/project/term/research/
-// beam-otp-lessons.md design 1's later half. Reached only through the public task API.
+// WHAT CANCEL DOES HERE. A JavaScript promise cannot be stopped from outside, so a job's work runs inside an
+// AsyncLocalStorage that names its job, and the runtime's waits (the clock's `delay`, and a wait on another job) look at
+// it when they end: a cancelled job's wait never ends, so nothing after it runs, and the work is collected with its
+// promise. Nothing waits on a cancelled job and nothing it raises afterwards surfaces: before this, an unawaited job that
+// raised was an unhandled rejection, which ends the Node process. Reached only through the public task API.
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+// the job whose work is running, read by a wait as it ends
+const current = new AsyncLocalStorage<SeedJob>()
+
+// a wait that never ends: what a cancelled job's next wait becomes
+const never = (): Promise<void> => new Promise<void>(() => {})
+
+// what every runtime wait does as it ends: stop here when the job running it was cancelled. Kept on globalThis, so the
+// clock's `delay` reaches it without loading this runtime (native/node/clock.tree)
+const stop = (): Promise<void> | undefined => (current.getStore()?.state === 'cancelled' ? never() : undefined)
+
+;(globalThis as { __term_job_stop?: () => Promise<void> | undefined }).__term_job_stop = stop
+
 type SeedJob = {
   promise: Promise<void>
   state: 'running' | 'done' | 'failed' | 'cancelled'
@@ -48,7 +62,7 @@ const job = {
     }
 
     self.promise = Promise.resolve()
-      .then(() => work())
+      .then(() => current.run(self, work))
       .then(
         result => {
           if (self.state === 'running') {
@@ -72,10 +86,13 @@ const job = {
   },
 
   // resolve once the job is no longer running: settled, or cancelled
-  settle: (self: SeedJob): Promise<void> =>
-    self.state === 'running'
-      ? new Promise<void>(resolve => self.waiting.push(resolve))
-      : Promise.resolve(),
+  settle: async (self: SeedJob): Promise<void> => {
+    if (self.state === 'running') {
+      await new Promise<void>(resolve => self.waiting.push(resolve))
+    }
+
+    await stop()
+  },
 
   // the same, giving up after `ms` milliseconds: true when it stopped running in time
   settleWithin: (self: SeedJob, ms: number): Promise<boolean> => {

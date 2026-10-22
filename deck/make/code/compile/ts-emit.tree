@@ -63,6 +63,7 @@ load ./ts-names
   find fill-spec-of
   find fill-spec
   find fill-kind
+  find fill-kind-of
   find ts-field
 
 load ./backend-shapes
@@ -936,6 +937,93 @@ task guard-for
   save guard, <__termIs{to-pascal(variant)}>
   save st/guards/{variant}, guard
   back guard
+
+# THE TEST THAT A LIVE VALUE IS OF A TYPE, for an arm over an `unknown` that names a form, a list or a hash (check/infer.ts,
+# the type arms). A record on TypeScript is a plain object with no name, so it is told by its SHAPE: an object, not a
+# list or a map, holding exactly the form's fields, each of its kind (the kinds a `fill` walks, an optional field
+# absent or of its kind). A list is every item, a hash a `Map` whose every key and value is. `held` is an expression
+# safe to repeat: a name, or a read off one
+task holds-type
+  take held, like text
+  take given, like type
+  take depth, like number
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift given
+    case array
+      link element
+      save one, <__e{depth}>
+      back <(Array.isArray({held}) && {held}.every(({one}: any) =\> {holds-type(one, element, add(depth, 1), facts)}))>
+    case map
+      link key-type
+      link value-type
+      save key-name, <__k{depth}>
+      save value-name, <__v{depth}>
+      save key-test, holds-type(key-name, key-type, add(depth, 1), facts)
+      save value-test, holds-type(value-name, value-type, add(depth, 1), facts)
+      back <({held} instanceof Map && [...{held}].every(([{key-name}, {value-name}]: any) =\> {key-test} && {value-test}))>
+    case unknown
+      back <true>
+    miss
+      save fields-of
+        task
+          take name, like text
+          like list, like ts-field
+          fork test, facts/record-fields/has(name)
+            hold
+              back facts/record-fields/get(name)
+          back make list
+      save is-record
+        task
+          take name, like text
+          like boolean
+          back facts/record-fields/has(name)
+      save seen, make list
+      back holds-kind(held, fill-kind-of(make(some, given), seen, fields-of, is-record), depth)
+
+task holds-kind
+  take held, like text
+  take kind, like fill-kind
+  take depth, like number
+  like text
+  mark private
+
+  sift kind
+    case text
+      back <typeof {held} === "string">
+    case number
+      back <(typeof {held} === "number" && Number.isInteger({held}))>
+    case decimal
+      back <typeof {held} === "number">
+    case flag
+      back <typeof {held} === "boolean">
+    case any
+      back <true>
+    case list
+      link item
+      save one, <__e{depth}>
+      back <(Array.isArray({held}) && {held}.every(({one}: any) =\> {holds-kind(one, item, add(depth, 1))}))>
+    case form
+      link spec
+      save parts, make list
+      save members, make list
+      push(parts, <typeof {held} === "object">)
+      push(parts, <{held} !== null>)
+      push(parts, <!Array.isArray({held})>)
+      push(parts, <!({held} instanceof Map)>)
+      walk spec/fields
+        take field
+        push(members, json-quote(field/member))
+        save at, <{held}[{json-quote(field/member)}]>
+        fork test, field/optional
+          hold
+            push(parts, <({at} === undefined || {holds-kind(at, field/kind, depth)})>)
+          miss
+            push(parts, holds-kind(at, field/kind, depth))
+      push(parts, <Object.keys({held}).every((__f: string) =\> [{join-texts(members, <, >)}].includes(__f))>)
+      back <({join-texts(parts, < && >)})>
 
 # the JSON of a fill spec, as `JSON.stringify` wrote the original's object
 task fill-spec-json
@@ -3154,6 +3242,14 @@ task emit-match
             fork test, is-equal(arm/label, <boolean>)
               hold
                 save test, <typeof {held} === "boolean">
+            # a form, a list or a hash: the checker wrote the type the arm tests for
+            save arm-type, arm/type
+            sift arm-type
+              case some
+                link tested
+                save test, holds-type(held, tested, depth, facts)
+              case none
+                save nothing, 0
             save opener, <>
             fork test, is-above(at, 0)
               hold

@@ -6,6 +6,8 @@
 
 import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
+import type { RootNode } from '@term/make/code/parser/narrow'
+import type { Node } from '@term/make/code/parser/tree'
 import {
   headWord,
   readMineGrammar,
@@ -90,6 +92,54 @@ function matches(
 
 // ---- the manifest ----
 
+// A LINE THE GRAMMAR DOES NOT READ IS REFUSED, as a role file's has been since 2026-10-05. The deck grammar's last
+// alternative, at the top and under `deck`, takes any node, so a misspelled field (`lnik @term/base`) or a field
+// whose shape is wrong (`case work` holding a line that is no `link` or `host`) was dropped without a word and did
+// nothing (guides: language/dsls/mills, gap 163). Each top-level group must be a `deck`, `role` or `load`, and each
+// line under `deck` must fit one of the grammar's `deck-*` field rules, mined alone, or the file is refused at it
+function refuseUnreadLines(grammar: MineGrammar, nodes: Node[]): void {
+  const fieldRules = [...grammar.keys()].filter(name => name.startsWith('deck-') && name !== 'deck-def')
+  const lineOf = (node: Node): string => {
+    const at = spanOfNode(node)
+
+    return at ? ` at line ${at.start.line + 1}` : ''
+  }
+  const READ = 'a manifest reads `head`, `mark`, `code`, `lock`, `link`, `host`, `base`, `case`, `mind`, `hook`, `boot`, `tool`, `test`, `line`, `book`, `call`, `task`, `role`, `deck`, `hide`, `site`, `view`, `make`, `term`, `text`, `cite`, `sort` and `need` under `deck`'
+
+  for (const node of nodes) {
+    if (node.kind !== 'group') {
+      throw new Error(`deck.tree has a line${lineOf(node)} that is not a \`deck\`, \`role\` or \`load\`, so it would not be read`)
+    }
+
+    const head = headWord(node)
+
+    if (head === 'role' || head === 'load') {
+      continue
+    }
+
+    if (head !== 'deck') {
+      throw new Error(
+        `\`${head ?? ''}\`${lineOf(node)} in deck.tree is not a \`deck\`, \`role\` or \`load\`, so it would not be read`,
+      )
+    }
+
+    // the head and the package's name, then the fields
+    for (const field of node.nodes.slice(2)) {
+      const fits =
+        field.kind === 'group' &&
+        fieldRules.some(rule => runMine(grammar, rule, { kind: 'root', nodes: [field] } as RootNode).ok)
+
+      if (!fits) {
+        const said = field.kind === 'group' ? headWord(field) : wordOf(field)
+
+        throw new Error(
+          `\`${said ?? ''}\`${lineOf(field)} in deck.tree does not fit the manifest grammar, so it would not be read: ${READ}, each in the shape its guide gives`,
+        )
+      }
+    }
+  }
+}
+
 export function parseManifestMill(input: {
   text: string
 }): DeckManifest {
@@ -113,6 +163,8 @@ export function parseManifestMill(input: {
       `deck.tree does not fit the manifest grammar${at ? ` (line ${at.start.line})` : ''}`,
     )
   }
+
+  refuseUnreadLines(deckGrammar, parsed.tree.nodes)
 
   const deckCapture = first(mined.match.get('deck'))
 

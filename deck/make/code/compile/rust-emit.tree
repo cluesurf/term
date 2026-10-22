@@ -2196,7 +2196,8 @@ task is-native-call
     miss
       back false
 
-# the suffix a call to a raising task takes: `?` inside a raising task or a guard, else the raise ends the program
+# the suffix a call to a raising task takes: `?` inside a raising task or a guard, else `__term_unhandled`, which
+# unwinds to the job whose work this is, or ends the program outside every job
 task raise-suffix
   take st, like rust-state
   like text
@@ -2205,7 +2206,7 @@ task raise-suffix
   fork test, or(st/current-raising, is-above(st/guard-depth, 0))
     hold
       back <?>
-  back <.unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \})>
+  back <.unwrap_or_else(|e| __term_unhandled(e))>
 
 # PREEMPTION BY BUDGET: a loop in an ASYNCHRONOUS task checks a per-thread budget at the top of each turn, left out of
 # a loop whose condition bounds its counter by a small literal
@@ -5298,7 +5299,7 @@ task emit-throw
       fork test, or(st/current-raising, is-above(st/guard-depth, 0))
         hold
           back <return std::result::Result::Err({carrier});>
-      back <\{ let raised = {carrier}; eprintln!("\{\}", raised); std::process::exit(1) \}>
+      back <__term_unhandled({carrier});>
     miss
       back <>
 
@@ -5667,7 +5668,21 @@ task emit-type-arms
         save name, get(binds, 0)
     # a label that names no type has no downcast: the original read a field of the missing entry and threw, the bind's
     # `out` first where there is a name to bind, else the `type`
-    fork test, not(is-type-arm-label(branch/label))
+    # a form, a list or a hash carries the type the checker wrote for it, downcast to its own Rust spelling (the one
+    # the box was made from) and cloned out, as text is
+    save tested, downcast-type(branch/label)
+    save out, downcast-out(branch/label)
+    save typed, false
+    save arm-type, branch/type
+    sift arm-type
+      case some
+        link known
+        save tested, spell-type(known, facts)
+        save out, <__v.clone()>
+        save typed, true
+      case none
+        save nothing, 0
+    fork test, and(not(typed), not(is-type-arm-label(branch/label)))
       hold
         save missing, <type>
         fork test, is-unequal(name, <>)
@@ -5677,9 +5692,9 @@ task emit-type-arms
     save binding, <>
     fork test, is-unequal(name, <>)
       hold
-        save binding, <{pad(add(depth, 2))}let {mut-of(name, st)}{vname(name)} = {downcast-out(branch/label)};\n>
+        save binding, <{pad(add(depth, 2))}let {mut-of(name, st)}{vname(name)} = {out};\n>
     save inner, emit-block(branch/body, add(depth, 2), st, facts)
-    push(arms, <if let Some(__v) = {held}.downcast_ref::\<{downcast-type(branch/label)}\>() \{\n{binding}{inner}\n{pad(add(depth, 1))}\}>)
+    push(arms, <if let Some(__v) = {held}.downcast_ref::\<{tested}\>() \{\n{binding}{inner}\n{pad(add(depth, 1))}\}>)
   save rest, <>
   sift otherwise
     case some

@@ -36,4 +36,13 @@ enum clock {
   static func sleep(_ ms: Int) {
     Thread.sleep(forTimeInterval: Double(max(0, ms)) / 1000.0)
   }
+
+  // a wait that blocks nothing: the task is suspended and its thread runs other work meanwhile. A cancelled job's task
+  // (runtime/job.swift) stops here: it is never resumed, so nothing after its wait runs
+  static func pause(_ ms: Int) async {
+    try? await Task.sleep(nanoseconds: UInt64(max(ms, 0)) * 1_000_000)
+    if Task.isCancelled {
+      await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in }
+    }
+  }
 }

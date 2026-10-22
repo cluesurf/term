@@ -763,6 +763,7 @@ form diagnostic-name
   case sole-unknown, text <sole-unknown>
   case sole-unearned, text <sole-unearned>
   case hidden-make, text <hidden-make>
+  case empty-site, text <empty-site>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -959,6 +960,10 @@ task entry-of
     # `mark hide` on a form: only the file that declares it makes one (check/hide.ts)
     case hidden-make
       back error-entry(0x3e, <a `mark hide` form is made outside the file that declares it>, <get one from a task in the declaring file, or remove `mark hide`>)
+    # a template's `site` its fuse gives no `beam`: it expands to nothing, which was silent (compile/templates.tree,
+    # guides: language/templates, 2026-10-22)
+    case empty-site
+      back warning-entry(0x3f, <this fuse leaves one of its template's sites empty>, <add a `beam` of that name under the fuse, or remove the `site` from the template>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1028,3 +1033,4 @@ task diagnostic-names
       make sole-unknown
       make sole-unearned
       make hidden-make
+      make empty-site

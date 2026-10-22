@@ -91,6 +91,12 @@ form template-context
   link subs, like hash, like text, like text
   link beams, like hash, like text, like list, like node
   link problems, like list, like template-problem
+  # the templates being expanded around this point, outermost first, so a template that fuses itself (directly or
+  # through another) is refused with the cycle named instead of expanding without end
+  link expanding, like list, like text
+  # the `expanding` of the place the current fuse was written, which is where its beamed content belongs: what a fuse
+  # beams in is the caller's code, so a fuse inside it is not a cycle of the template that places it
+  link outer, like list, like text
 
 # ---- nodes this pass makes ----
 
@@ -1095,10 +1101,31 @@ task expand-fuse
       save nothing, 0
   fork test, or(not(is-given(name-of)), not(ctx/templates/has(name)))
     hold
-      # a fuse of a template nothing defines wrote nothing, and said nothing, until 2026-10-05
+      # a fuse of a template nothing defines wrote nothing, and said nothing, until 2026-10-05. A dynamic fuse
+      # (`fuse read <param>`) is refused the same way, at the name its parameter gave, until 2026-10-22 it was silent
       fork test, and(is-given(name-of), not(dynamic))
         hold
           push(ctx/problems, problem-of(<unknown-name>, <`fuse {name}` names no template: no `tree {name}` is defined here or in a module this file loads>, at))
+        miss
+          fork test, dynamic
+            hold
+              push(ctx/problems, problem-of(<unknown-name>, <`fuse read` gives the template name `{name}`, and no `tree {name}` is defined here or in a module this file loads>, at))
+      back make list
+  # a template being expanded around this fuse already: it fuses itself, directly or through another, and would
+  # expand without end (it recursed until the stack overflowed until 2026-10-22). Refused, naming the cycle
+  fork test, has-text(ctx/expanding, name)
+    hold
+      save chain, <>
+      save inside, false
+      walk ctx/expanding
+        take one
+        fork test, is-equal(one, name)
+          hold
+            save inside, true
+        fork test, inside
+          hold
+            save chain, <{chain}{one} -\> >
+      push(ctx/problems, problem-of(<unexpected-node>, <`fuse {name}` is inside the expansion of `{name}` itself ({chain}{name}), so it would expand without end. A template may not fuse itself>, at))
       back make list
   save template, ctx/templates/get(name)
   save params, template/params
@@ -1213,6 +1240,11 @@ task expand-fuse
   walk template/body
     take one
     push(stamped, restamp(one, at, true))
+  save expanding, make list
+  walk ctx/expanding
+    take one
+    push(expanding, one)
+  push(expanding, name)
   save inner-ctx
     make template-context
       bind templates, ctx/templates
@@ -1220,6 +1252,8 @@ task expand-fuse
       bind subs, subs
       bind beams, beams
       bind problems, ctx/problems
+      bind expanding, expanding
+      bind outer, ctx/expanding
   # what the substitution built (a filled hole, a `read`) carries no line of its own until it is given the fuse's
   save out, make list
   walk expand-body(stamped, inner-ctx)
@@ -1373,6 +1407,8 @@ task unroll-walk
         bind subs, subs
         bind beams, ctx/beams
         bind problems, ctx/problems
+        bind expanding, ctx/expanding
+        bind outer, ctx/outer
     walk expand-body(body-nodes, inner-ctx)
       take one
       push(out, one)
@@ -1452,12 +1488,28 @@ task expand-body
             sift group-word(first-of(after))
               case some
                 link slot-name
-                fork test, and(is-unequal(slot-name, <>), ctx/beams/has(slot-name))
+                fork test, is-unequal(slot-name, <>)
                   hold
-                    save beamed, ctx/beams/get(slot-name)
+                    fork test, ctx/beams/has(slot-name)
+                      hold
+                        save beamed, ctx/beams/get(slot-name)
+                      miss
+                        # a site its fuse beams nothing into expands to nothing, which was silent until 2026-10-22.
+                        # A warning, at the fuse (the body's lines carry its span)
+                        push(ctx/problems, problem-of(<empty-site>, <the fuse gives `site {slot-name}` no `beam {slot-name}`, so it expands to nothing>, span-of-whole(one)))
               case none
                 save nothing, 0
-            walk expand-body(beamed, ctx)
+            # the beamed content is the caller's code: a fuse in it is expanded as the caller's, not the template's
+            save beam-ctx
+              make template-context
+                bind templates, ctx/templates
+                bind enums, ctx/enums
+                bind subs, ctx/subs
+                bind beams, ctx/beams
+                bind problems, ctx/problems
+                bind expanding, ctx/outer
+                bind outer, ctx/outer
+            walk expand-body(beamed, beam-ctx)
               take made
               push(out, made)
             turn next
@@ -1576,6 +1628,8 @@ task expand-templates
       bind subs, make hash
       bind beams, make hash
       bind problems, problems
+      bind expanding, make list
+      bind outer, make list
   save nodes, make list
   sift tree
     case root

@@ -1,8 +1,9 @@
 // Structured-concurrency runtime for swift. A job is a Swift task started at once on the caller's thread
 // (`Task.immediate`, SE-0472, where the OS has it): it runs to its first wait, and the rest of it runs while its caller
 // waits on something else, so two jobs that each wait wait at the same time, as on node. A raise inside `work` is
-// caught and kept, so the job is `failed` and code/task.tree's `wait` raises the same exception. A cancelled job's task
-// is cancelled and its answer dropped. Every settle is a wait on the job's own state, woken when it changes, never a
+// caught and kept, so the job is `failed` and code/task.tree's `wait` raises the same exception (an asynchronous task
+// type throws on Swift, compile/swift-emit.tree). A cancelled job's task is cancelled, and it stops at its next wait on
+// the clock or on another job: it is never resumed there. Every settle is a wait on the job's own state, woken when it changes, never a
 // poll. What the states mean is code/task.tree's. Reached only through the public task API.
 final class SeedJob: @unchecked Sendable {
     private let lock = NSLock()
@@ -68,10 +69,18 @@ enum job {
         return started
     }
 
+    // a cancelled job's task stops at its wait: it is never resumed, so nothing after the wait runs
+    private static func stopIfCancelled() async {
+        if Task.isCancelled {
+            await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in }
+        }
+    }
+
     static func settle(_ job: SeedJob) async {
         await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
             job.onSettled { waiting.resume() }
         }
+        await stopIfCancelled()
     }
 
     // true when the job stopped running before `milliseconds` passed
@@ -84,6 +93,7 @@ enum job {
                 once.fire()
             }
         }
+        await stopIfCancelled()
         return job.state != "running"
     }
 
@@ -103,6 +113,7 @@ enum job {
             if jobs.data.isEmpty { once.fire() }
             jobs.data.forEach { $0.onSettled { once.fire() } }
         }
+        await stopIfCancelled()
     }
 
     static func state(_ job: SeedJob) -> String { job.state }

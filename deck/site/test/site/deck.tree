@@ -3,14 +3,11 @@
 
 deck @term/blog
   mark <0.0.1>
+  # the entry `term boot` runs (its `boot` task): the Postgres-backed HTTP API. It and `book` sat at the top level,
+  # outside `deck`, until 2026-10-22, where the manifest never read them, beside `back ./back`, `hook ./hook` and
+  # `face ./face`, which are no manifest field
+  boot ./hook/blog
+  book ./book
 
 load @term/site
   mark <0.0.x>
-
-# the entry `seed boot` runs (its `boot` task): the Postgres-backed HTTP API
-boot ./hook/blog
-
-back ./back
-hook ./hook
-face ./face
-book ./book

@@ -7,6 +7,9 @@ load @term/mill/tree/code/seed/mint
 load @term/mill/tree/code/tool/flow/mint
   find flow
 
+load @term/mill/tree/code/like/mint
+  find like
+
 load @term/base/lang
   find fork-test
   find fork-test-pair
@@ -90,6 +93,9 @@ mint fork-arm, like fork-arm
     site name
   case base
     site base
+  # the arguments of the type the arm names (`case list` over `like text`)
+  case like
+    site like
   case link
     site link
   case flow
@@ -98,6 +104,7 @@ mint fork-arm, like fork-arm
     make fork-arm
       bind name, read name
       bind base, read base
+      bind like, read like
       bind link, read link
       bind flow, read flow
 

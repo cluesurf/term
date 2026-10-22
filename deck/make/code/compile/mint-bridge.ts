@@ -3082,7 +3082,7 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
     return unhandled(bridge, value, 'a fork case with no subject')
   }
 
-  const cases: { label: string; body: Statement[]; binds?: string[] }[] = []
+  const cases: { label: string; body: Statement[]; binds?: string[]; type?: Type }[] = []
   let otherwise: Statement[] | undefined
 
   for (const arm of formsAt(value, 'arm')) {
@@ -3092,6 +3092,18 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
       .map(link => wordAt(link, 'name') ?? textOf(link) ?? '')
       .filter(Boolean)
     const body = scopedFlow(bridge, at(arm, 'flow'), binds)
+    // `like` lines under the arm are the arguments of the type it names, which an arm over an `unknown` tests for
+    // (`case list` / `like text`), read as the same lines under a `like` are. Any other match refuses them
+    // (check/infer.ts)
+    const args = at(arm, 'like').map(like => typeOf(bridge, like) ?? freeUnknownType())
+    const type: Type | undefined =
+      label === undefined || args.length === 0
+        ? undefined
+        : label === 'list'
+          ? { kind: 'array', element: args[0]! }
+          : label === 'hash'
+            ? { kind: 'map', key: args[0]!, value: args[1] ?? freeUnknownType() }
+            : { kind: 'named', name: label, args }
 
     // `hook miss` (lean: `miss`) is the arm for every case the others do not list, the catch-all. It arrives as the
     // `hook` arm form a `fork test` uses, with a kind and no case name, so any other kind is a word a match does not
@@ -3117,6 +3129,7 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
       label,
       body,
       ...(binds.length > 0 ? { binds } : {}),
+      ...(type ? { type } : {}),
     })
   }
 

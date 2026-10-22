@@ -457,6 +457,12 @@ form match-case
   link binds
     like list, like text
     need false
+  # on an arm over an `unknown` (a match with `type-arms`), the type it tests for: written by the bridge from the arm's
+  # `like` lines (`case list` / `like text`), and set by the checker to the resolved type of every arm that names a
+  # form, a list or a hash. Absent on the four primitive arms, which a backend tests by their label
+  link type
+    like maybe, like type
+    need false
 
 # the shared fields and the props an arm over a caught exception binds
 form exception-arm
