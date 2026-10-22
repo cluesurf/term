@@ -249,7 +249,7 @@ form box
       like number
       back multiply(self/side, by)
 `,
-    'scale(self: unknown, input1: number): number',
+    'scale(self: Self, input1: number): number',
   )
 
   // a generic function type-checks and emits a type parameter

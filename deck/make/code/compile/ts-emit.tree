@@ -2509,8 +2509,9 @@ task emit-statement
       link mask-methods
       link mask-tasks
       # each method typed by the signature the mask declares: the receiver first (a dictionary's method takes it as an
-      # argument, and the interface names no form, so it is `unknown`), then each `take`'s type, then the `like`. It
-      # was `(...args: Array<unknown>): unknown` for every method until 2026-10-22, which tsc checked by name alone
+      # argument), then each `take`'s type, then the `like`. `like self` is the wearing form, so the interface takes it
+      # as `Self`, `unknown` where a dictionary is typed without one. It was `(...args: Array<unknown>): unknown` for
+      # every method until 2026-10-22, which tsc checked by name alone
       save methods, make list
       walk mask-methods
         take method
@@ -2525,12 +2526,12 @@ task emit-statement
                 take at
                 fork test, is-equal(at, 0)
                   hold
-                    push(params, <self: unknown>)
+                    push(params, <self: Self>)
                   miss
                     push(params, <input{at}: {ts-type-of(param/type, facts)}>)
               save line, <  {to-camel(method)}({join-texts(params, <, >)}): {ts-type-of(one/signature/result, facts)}>
         push(methods, line)
-      back <interface {to-pascal(mask-name)} \{\n{join-texts(methods, <\n>)}\n\}>
+      back <interface {to-pascal(mask-name)}\<Self = unknown\> \{\n{join-texts(methods, <\n>)}\n\}>
     case instance
       link instance-mask
       link instance-target
