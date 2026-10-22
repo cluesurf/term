@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const asked = process.env['TERM_LOAD_VERSION']?.trim()
 
   if (asked && !words.isVersion(asked)) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'load', subject: `TERM_LOAD_VERSION=${asked} is not a version: write 2.6.8` })
+    report({ glyph: 'failed', kind: 'problem', verb: 'load', subject: `TERM_LOAD_VERSION=${asked} is not a version: write it as 1.2.3` })
     closeRun({ verdict: 'Nothing was installed', failure: 'usage' })
 
     return

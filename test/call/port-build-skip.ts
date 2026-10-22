@@ -13,7 +13,8 @@
 //
 // Run: npx tsx test/call/port-build-skip.ts      (about 15 minutes: four full compiles of the 321 modules)
 import { execFileSync } from 'node:child_process'
-import { constants, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 
@@ -23,7 +24,8 @@ const TSX = createRequire(import.meta.url).resolve('tsx/cli')
 
 // the probes. A stdlib module the ports load, a toolchain module to change, a compiler file. A probe that is gone
 // fails the test by name, so a move is caught rather than tested against nothing
-const STDLIB_PROBE = 'deck/base/code/list.tree'
+// the stdlib probe is chosen from the trace (stdlibProbe below): a file some port's compile really read
+const STDLIB_ROOT = 'deck/base/code'
 const PORT_PROBE = 'deck/test/code/bench-report.tree'
 const COMPILER_PROBE = 'deck/make/code/compile/native.ts'
 
@@ -43,7 +45,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 // the build trees the clone leaves out: outputs other than the ports, and caches
 const LEAVE = new Set(['node_modules', 'target', '.build', '.base', 'tmp', '.git'])
 
-const copy = mkdtempSync(join(tmpdir(), 'term-port-build-skip-'))
+// the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`
+const copy = realpathSync(mkdtempSync(join(tmpdir(), 'term-port-build-skip-')))
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {
@@ -152,16 +155,33 @@ function differences(a: Map<string, string>, b: Map<string, string>): string[] {
   return out
 }
 
+type Manifest = { table: [string, string][]; modules: Record<string, { reads: [number, number][] }> }
+
+function manifest(): Manifest {
+  return JSON.parse(readFileSync(join(copy, '.base', '@term', 'code', 'port-build.json'), 'utf8')) as Manifest
+}
+
+// the stdlib file the trace saw READ last, so the fewest modules rest on it and the rest are skipped: the edit shows
+// both halves, the readers compiled and the others not
+function stdlibProbe(): string | undefined {
+  const prefix = `read\0${join(copy, STDLIB_ROOT)}/`
+  const rows = manifest().table.filter(([key]) => key.startsWith(prefix) && key.endsWith('.tree'))
+
+  return rows.length > 0 ? relative(copy, rows[rows.length - 1]![0].slice('read\0'.length)) : undefined
+}
+
 // the modules whose recorded trace read a file, from the clone's manifest
 function readers(file: string): Set<string> {
-  const manifest = JSON.parse(readFileSync(join(copy, '.base', '@term', 'code', 'port-build.json'), 'utf8')) as {
-    table: [string, string][]
-    modules: Record<string, { reads: [number, number][] }>
+  const { table, modules } = manifest()
+  const row = table.findIndex(([key]) => key === `read\0${join(copy, file)}`)
+
+  if (row < 0) {
+    return new Set()
   }
-  const row = manifest.table.findIndex(([key]) => key === `read\0${join(copy, file)}`)
+
   const out = new Set<string>()
 
-  for (const [name, entry] of Object.entries(manifest.modules)) {
+  for (const [name, entry] of Object.entries(modules)) {
     if (entry.reads.some(([from, to]) => row >= from && row < to)) {
       out.add(name)
     }
@@ -192,7 +212,7 @@ function compare(label: string, edit: () => void): Run {
 try {
   clone()
 
-  for (const probe of [STDLIB_PROBE, PORT_PROBE, COMPILER_PROBE]) {
+  for (const probe of [STDLIB_ROOT, PORT_PROBE, COMPILER_PROBE]) {
     ok(`probe ${probe} exists`, existsSync(join(copy, probe)))
   }
 
@@ -228,16 +248,20 @@ try {
 
   // ---- a stdlib file the ports read ----
 
-  const reading = readers(STDLIB_PROBE)
-  ok(`stdlib: the manifest names the modules that read ${STDLIB_PROBE}`, reading.size > 0)
+  const probe = stdlibProbe()
+  const reading = probe ? readers(probe) : new Set<string>()
+  ok(`stdlib: the trace saw ${probe} read, by ${reading.size} modules`, probe !== undefined && reading.size > 0)
 
-  const stdlib = compare('stdlib edit', () => {
-    const file = join(copy, STDLIB_PROBE)
+  if (probe) {
+    const stdlib = compare(`stdlib edit (${probe})`, () => {
+      const file = join(copy, probe)
 
-    writeFileSync(file, `${readFileSync(file, 'utf8')}\n# port-build-skip probe\n`)
-  })
-  const wrong = [...reading].filter(name => stdlib.skipped.has(name))
-  ok('stdlib edit: no module that read it is skipped', wrong.length === 0, wrong.slice(0, 5).join(' '))
+      writeFileSync(file, `${readFileSync(file, 'utf8')}\n# port-build-skip probe\n`)
+    })
+    const wrong = [...reading].filter(name => stdlib.skipped.has(name))
+    ok('stdlib edit: no module that read it is skipped', wrong.length === 0, wrong.slice(0, 5).join(' '))
+    ok(`stdlib edit: the ${stdlib.skipped.size} modules that never read it are skipped`, stdlib.skipped.size + reading.size === total, `${stdlib.skipped.size} + ${reading.size} of ${total}`)
+  }
 
   // ---- a toolchain .tree body ----
 
