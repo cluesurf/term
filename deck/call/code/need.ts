@@ -277,7 +277,7 @@ function holdOf(input: { source: NeedSource; text: string; argv: string[] }): { 
   } catch {
     const where = input.source === 'flag' ? `+${input.text}` : `TERM_VERSION=${input.text}`
 
-    return { refuse: `${where} is not a version or a range: write 2.6.4, 2.6.x or 2.x.x`, argv: input.argv }
+    return { refuse: `${where} is not a version or a range: write 2.8.0, 2.8.x or 2.x.x`, argv: input.argv }
   }
 }
 

@@ -705,7 +705,7 @@ function holdOrRefuse(text: string): CodeHold | undefined {
   try {
     return parseCodeHold(text)
   } catch {
-    report({ glyph: 'failed', kind: 'problem', verb: 'self', subject: `${text} is not a version or a range: write 2.6.4, 2.6.x or 2.x.x` })
+    report({ glyph: 'failed', kind: 'problem', verb: 'self', subject: `${text} is not a version or a range: write 2.8.0, 2.8.x or 2.x.x` })
     closeRun({ verdict: 'Nothing was changed', failure: 'usage' })
 
     return undefined
