@@ -212,13 +212,13 @@ async function main(): Promise<void> {
   output.report({ glyph: 'changed', kind: 'change', verb: 'write', subject: `ClueSurf.Term ${version}`, fields: [output.location(output.showPath(wingetTo, TERM))] })
 
   const branch = `cluesurf-term-${version}`
-  const assets = made(packages, /./).map(one => one.file)
 
   output.closeRun({
     verdict: 'Written. Publishing is three steps, in this order',
     message: [
-      '1. the GitHub release, which holds every package the indexes and the winget manifests name:',
-      `   gh release create v${version} --repo ${REPOSITORY} --title "term ${version}" --notes "term ${version}" ${assets.join(' ')}`,
+      `1. the GitHub release on ${REPOSITORY}, which holds every package the indexes and the winget manifests name`,
+      '   (the Term repository pushed first, so the tag names the commit they were built from):',
+      `   pnpm --dir ${ROOT} term:github-release ${version} --commit`,
       '2. term.surf, which then serves the new indexes (a deploy builds from what is pushed):',
       `   git -C ${path.join(ROOT, 'mesh')} add site/term.surf/home/public/apt site/term.surf/home/public/rpm site/term.surf/home/public/term.asc`,
       `   git -C ${path.join(ROOT, 'mesh')} commit -m "term ${version} for apt and dnf"`,
