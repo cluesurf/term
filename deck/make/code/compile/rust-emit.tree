@@ -4053,7 +4053,9 @@ task emit-call
               miss
                 save nothing, 0
           # an argument read through a shared form's borrow keeps its `Ref` to the end of the statement, so the
-          # callee could not borrow the form to write it: every argument is a `let` in the block before the call
+          # callee could not borrow the form to write it: every argument is a `let` in the block before the call. A
+          # closure stays at the call: it reads nothing through a borrow when it is made, so it holds no `Ref`, and as a
+          # `let` rustc could no longer infer its parameter's type from the callee (E0282)
           save collides, reads-shared
           walk call-args
             take a
@@ -4071,7 +4073,7 @@ task emit-call
                 take a
                 take i
                 save form, form-of(a)
-                fork test, not(or(or(is-equal(form, <variable>), is-equal(form, <integer>)), or(is-equal(form, <float>), is-equal(form, <boolean>))))
+                fork test, not(or(or(or(is-equal(form, <variable>), is-equal(form, <integer>)), or(is-equal(form, <float>), is-equal(form, <boolean>))), is-equal(form, <closure>)))
                   hold
                     push(hoisted, <let __lend_{i} = {get(arg-list, i)};>)
                     save arg-list/{i}, <__lend_{i}>

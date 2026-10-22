@@ -1,0 +1,63 @@
+# THE NOTES SITE'S PAGES, as the kernel reads them (law 7, safe text). A page the site answers with is one of two:
+# a `view` (the list of notes, one note), which the node or cloudflare host serializes, or a refusal a handler writes
+# as markup itself (site.tree `refuse`: the 400, 401, 403 and 404 pages), whose message may carry a path the asker
+# wrote. law.tree's `safe-text` is that neither holds markup the asker wrote.
+#
+# `refusal` is site.tree `refuse` as the kernel reads it, and `serialize` (@term/site/http/html) is the node host's
+# html.ts. Both are held to what they model by reading, not by a proof: change one and change the other.
+load @term/site/http/glyph
+  find glyphs
+  find pieces
+  find escape-glyphs
+
+load @term/site/http/html
+  find node
+  find html
+  find serialize
+
+form page
+  case viewed
+    link n, like node
+  case refused
+    link message, like glyphs
+
+# THE BREAK: the text goes in as it was written, every glyph kept, the way a handler writes `<p>{title}</p>` with no
+# `escape-html`. A title or a path holding `<script>` is markup on the page. Law 7 must refuse it
+task keep-glyphs
+  take xs, like glyphs
+  like pieces
+  sift xs
+    case no-glyph
+      back make no-piece
+    case glyph-then
+      back
+        make kept-then
+          bind kept, first
+          bind rest, keep-glyphs(rest)
+
+# site.tree `refuse`, broken: `<!doctype html><p>`, the message RAW, `</p>`
+task refusal
+  take message, like glyphs
+  like html
+  back
+    make doctype-then
+      bind rest
+        make tag-open-then
+          bind rest
+            make tag-shut-then
+              bind rest
+                make text-then
+                  bind value, keep-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+
+# the HTML of a page
+task html-of
+  take pg, like page
+  like html
+  sift pg
+    case viewed
+      back serialize(n, make html-end)
+    case refused
+      back refusal(message)

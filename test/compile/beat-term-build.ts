@@ -35,11 +35,13 @@ const ROWS: Row[] = [
   { key: 'NSAllowsArbitraryLoads', expected: 'absent' },
 ]
 
-// the key as plutil reads it from the built plist: its JSON value, or undefined when the key is not there
+// the key as plutil reads it from the built plist: its text, or undefined when the key is not there. Read `raw`, not
+// `json`: the plutil of macOS 26 refuses a scalar as JSON ("Invalid object in plist for JSON format"), so every key read
+// back undefined. Every key checked here is a text, or absent
 function read(plist: string, key: string): unknown {
-  const ran = spawnSync('plutil', ['-extract', key, 'json', '-o', '-', plist], { encoding: 'utf8' })
+  const ran = spawnSync('plutil', ['-extract', key, 'raw', '-o', '-', plist], { encoding: 'utf8' })
 
-  return ran.status === 0 ? JSON.parse(ran.stdout) : undefined
+  return ran.status === 0 ? ran.stdout.replace(/\n$/, '') : undefined
 }
 
 function check(label: string, app: string): void {

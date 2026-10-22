@@ -741,9 +741,13 @@ enum nativeView {
         // 3. the rest spacer: last, held on the stack's axis, stronger while a child grows
         if let rest = node.rest {
             if node.styles["justify-content"]?.trimmingCharacters(in: .whitespaces) == "space-between" {
-                // `.equalSpacing` would space it like a child
-                box.removeArrangedSubview(rest)
-                rest.removeFromSuperview()
+                // `.equalSpacing` would space it like a child. Removed only while it is there: the AppKit of macOS 26
+                // raises NSInternalInconsistencyException ("is not (and has to be) in stack view") for a view the stack
+                // does not hold, and every later settle of a space-between row asked it again
+                if rest.superview === box {
+                    box.removeArrangedSubview(rest)
+                    rest.removeFromSuperview()
+                }
             } else {
                 if rest.superview !== box {
                     box.addArrangedSubview(rest)
@@ -1221,6 +1225,15 @@ enum nativeView {
             if let inset = sides(value) {
                 #if canImport(AppKit)
                 stack.edgeInsets = NSEdgeInsets(top: inset[0], left: inset[3], bottom: inset[2], right: inset[1])
+                // an inset on the axis the stack does not fill is held only at the stack's own hugging priority, which
+                // macOS 26 reads as 249.99998: the content hold of 250 (`holdContent`) beat it, and a padded row was
+                // its child's height with the child at its top edge. Held just above the hold, unless the stack grows
+                // (flex-grow lowers it to 248 and takes the holds off)
+                let grows = (Double(node.styles["flex-grow", default: ""].trimmingCharacters(in: .whitespaces)) ?? 0) > 0
+                if !grows {
+                    stack.setHuggingPriority(.defaultLow + 1, for: .horizontal)
+                    stack.setHuggingPriority(.defaultLow + 1, for: .vertical)
+                }
                 #endif
                 #if canImport(UIKit)
                 stack.isLayoutMarginsRelativeArrangement = true
@@ -2114,7 +2127,8 @@ enum nativeView {
     // ---- justify center and end (swiftui-target-0002): flexible spacers around the children ----
 
     private static func clearSpacers(_ node: TermNode, _ stack: TermStack) {
-        for spacer in node.spacers {
+        // only a spacer the stack still holds: removing one it does not raises on macOS 26 (see `settle`)
+        for spacer in node.spacers where spacer.superview === stack {
             stack.removeArrangedSubview(spacer)
             spacer.removeFromSuperview()
         }

@@ -11,7 +11,7 @@ load @term/base/list
   find list
   find push
 
-# every font record belt's FONT holds, 209 of them, the house face first
+# every font record belt's FONT holds, 210 of them, the house face first
 task list-fonts
   like list
     like font
@@ -26,6 +26,17 @@ task list-fonts
         bind scale, code 1.25
         bind heading-height, code 1.4
         bind body-height, code 1.6
+        bind base-height, code 1.0
+        bind source, text <local>
+  call push
+    bind list, read fonts
+    bind item
+      make font
+        bind family, text <MiSans Tibetan>
+        bind sample, text <སེང>
+        bind scale, code 1.0
+        bind heading-height, code 2.1
+        bind body-height, code 1.9
         bind base-height, code 1.0
         bind source, text <local>
   call push
@@ -3586,7 +3597,7 @@ task list-script-fonts
       make script-font
         bind script, text <tibetan>
         bind style, text <modern>
-        bind family, text <Noto Serif Tibetan>
+        bind family, text <MiSans Tibetan>
         bind weight, code 0
   call push
     bind list, read scripts
@@ -3686,7 +3697,7 @@ task list-script-fonts
         bind weight, code 0
   send back, read scripts
 
-# every other name a script is known by, 24 of them, from belt's SCRIPT_ALIAS
+# every other name a script is known by, 27 of them, from belt's SCRIPT_ALIAS
 task list-script-aliases
   like list
     like script-alias
@@ -3768,6 +3779,12 @@ task list-script-aliases
     bind list, read aliases
     bind item
       make script-alias
+        bind name, text <hieroglyphic>
+        bind script, text <egyptian>
+  call push
+    bind list, read aliases
+    bind item
+      make script-alias
         bind name, text <jamo>
         bind script, text <korean>
   call push
@@ -3776,6 +3793,12 @@ task list-script-aliases
       make script-alias
         bind name, text <katakana-or-hiragana>
         bind script, text <japanese>
+  call push
+    bind list, read aliases
+    bind item
+      make script-alias
+        bind name, text <khitan-small>
+        bind script, text <khitan>
   call push
     bind list, read aliases
     bind item
@@ -3818,6 +3841,12 @@ task list-script-aliases
       make script-alias
         bind name, text <nko>
         bind script, text <n-ko>
+  call push
+    bind list, read aliases
+    bind item
+      make script-alias
+        bind name, text <odia>
+        bind script, text <oriya>
   call push
     bind list, read aliases
     bind item

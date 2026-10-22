@@ -846,6 +846,12 @@ hook hold
   # Machine-readable output
   take json
     like boolean
+  # Also re-check every claim in Lean 4 (TERM_LEAN, else the PATH)
+  take lean
+    like boolean
+  # Print the report: every law laws.tree names, in English, and what it rests on
+  take report
+    like boolean
   task hold
 
 # Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,

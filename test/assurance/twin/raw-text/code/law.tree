@@ -1,0 +1,2716 @@
+# THE NOTES DEMO'S LAWS, each a CLAIM (a `rule` with no `show`) proven by the task of its name, so the kernel checks
+# the proof as one term and keeps it for the Lean export. A law's lemmas are claims too, named after the law, so a
+# broken model is refused under the law's name.
+#
+# THE LAWS ARE STATED OVER RELATIONS (`steps s e t`: event e takes state s to t), and model.tree's tasks are tied to
+# them by BRIDGE claims at the end of this file: `view-shows` says what `view` computes is a view `shows` allows, so
+# laws 4 and 5 hold of the task itself (`deleted-stays-gone-of-view`, `isolation-of-view`). A claim's type may call a
+# pure, terminating task of the program since term-proof-0004, which the kernel unfolds. `ownership-of-replay-run` says
+# what `replay` computes is a run `replays` allows, so law 1 holds of `replay` itself (`ownership-of-replay`). The relations are nondeterministic where safety allows: an erase
+# may always leave a note as it was, a view may always leave a note out, so each law holds of every way to resolve
+# them. The forms are model.tree's, so a law and the task it is about name one `shelf`.
+#
+# LAW 7, SAFE TEXT, is at the end: claims about @term/site's escape (http/glyph.tree, which http/escape.tree's
+# `escape-html` runs) and its model of the node serializer (http/html.tree), and `safe-text` over every page of the
+# notes site (page.tree). They are here and not beside the escape because a file holding claims cannot be loaded yet
+# (term-proof-0005).
+load ./model
+  find natural
+  find rank
+  find person
+  find note
+  find shelf
+  find event
+  find events
+  find flag
+  find same
+  find view
+  find pick
+  find show
+  find step
+  find cross
+  find settle
+  find aim
+  find guard
+  find may
+  find replay
+
+load @term/site/http/glyph
+  find glyph
+  find glyphs
+  find entity
+  find pieces
+  find escape-glyph
+  find escape-glyphs
+  find escape-text-glyph
+  find escape-text-glyphs
+  find escape-attr-glyph
+  find escape-attr-glyphs
+  find glyph-of-entity
+  find unescape-glyphs
+
+load @term/site/http/html
+  find attributes
+  find node
+  find html
+  find serialize-attributes
+  find serialize
+
+load ./page
+  find page
+  find refusal
+  find html-of
+
+# THE POLICY: a person may erase a note when the person is an admin, or owns it
+form allowed
+  head by, like person
+  head whose, like natural
+  case as-admin
+    link i, like natural
+    link w, like natural
+    head
+      make person
+        bind id, i
+        bind rank, make admin
+    head
+      read w
+  case as-owner
+    link w, like natural
+    link r, like rank
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      read w
+
+# ONE NOTE UNDER AN ERASE by `actor` of note `id`: n becomes m
+form settles
+  head n, like note
+  head actor, like person
+  head id, like natural
+  head m, like note
+  # the note named, and the policy allows it: it is buried, by the actor
+  case hit
+    link at, like natural
+    link whose, like natural
+    link doer, like person
+    link allowed-by
+      like allowed
+        head
+          read doer
+        head
+          read whose
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      read doer
+    head
+      read at
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, doer
+  # any live note may stay as it was: another note, or a refusal
+  case keep
+    link at, like natural
+    link whose, like natural
+    link doer, like person
+    link aim, like natural
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      read doer
+    head
+      read aim
+    head
+      make live
+        bind at, at
+        bind whose, whose
+  # a gone note stays gone
+  case still
+    link at, like natural
+    link whose, like natural
+    link by, like person
+    link doer, like person
+    link aim, like natural
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+    head
+      read doer
+    head
+      read aim
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+
+# THE WHOLE SHELF UNDER AN ERASE: each note settles
+form crosses
+  head s, like shelf
+  head actor, like person
+  head id, like natural
+  head t, like shelf
+  case cross-end
+    link doer, like person
+    link aim, like natural
+    head
+      make bare
+    head
+      read doer
+    head
+      read aim
+    head
+      make bare
+  case cross-on
+    link top, like note
+    link rest, like shelf
+    link doer, like person
+    link aim, like natural
+    link top-after, like note
+    link rest-after, like shelf
+    link one
+      like settles
+        head
+          read top
+        head
+          read doer
+        head
+          read aim
+        head
+          read top-after
+    link others
+      like crosses
+        head
+          read rest
+        head
+          read doer
+        head
+          read aim
+        head
+          read rest-after
+    head
+      make more
+        bind top, top
+        bind rest, rest
+    head
+      read doer
+    head
+      read aim
+    head
+      make more
+        bind top, top-after
+        bind rest, rest-after
+
+# STEP: event e takes state s to t
+form steps
+  head s, like shelf
+  head e, like event
+  head t, like shelf
+  # a write puts a live note, owned by the writer, on the shelf
+  case wrote
+    link before, like shelf
+    link i, like natural
+    link r, like rank
+    link aim, like natural
+    head
+      read before
+    head
+      make write
+        bind who, i
+        bind rank, r
+        bind id, aim
+    head
+      make more
+        bind top
+          make live
+            bind at, aim
+            bind whose, i
+        bind rest, before
+  # an erase by the person the event names crosses the whole shelf
+  case erased
+    link before, like shelf
+    link i, like natural
+    link r, like rank
+    link aim, like natural
+    link after-erase, like shelf
+    link crossing
+      like crosses
+        head
+          read before
+        head
+          make person
+            bind id, i
+            bind rank, r
+        head
+          read aim
+        head
+          read after-erase
+    head
+      read before
+    head
+      make erase
+        bind who, i
+        bind rank, r
+        bind id, aim
+    head
+      read after-erase
+
+# REPLAY: the events es, from the empty shelf, reach s
+form replays
+  head es, like events
+  head s, like shelf
+  case from-start
+    head
+      make begin
+    head
+      make bare
+  case then
+    link last, like event
+    link sooner, like events
+    link was, like shelf
+    link now, like shelf
+    link reached
+      like replays
+        head
+          read sooner
+        head
+          read was
+    link stepped
+      like steps
+        head
+          read was
+        head
+          read last
+        head
+          read now
+    head
+      make after
+        bind event, last
+        bind earlier, sooner
+    head
+      read now
+
+# VIEW: what `viewer` is shown of shelf s is v. A person sees their own live notes, and any note may be left out
+form shows
+  head s, like shelf
+  head viewer, like person
+  head v, like shelf
+  case show-end
+    link doer, like person
+    head
+      make bare
+    head
+      read doer
+    head
+      make bare
+  case show-own
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link rest, like shelf
+    link shown, like shelf
+    link others
+      like shows
+        head
+          read rest
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read shown
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, shown
+  case show-skip
+    link n, like note
+    link rest, like shelf
+    link doer, like person
+    link shown, like shelf
+    link others
+      like shows
+        head
+          read rest
+        head
+          read doer
+        head
+          read shown
+    head
+      make more
+        bind top, n
+        bind rest, rest
+    head
+      read doer
+    head
+      read shown
+
+# every note on the shelf is live
+form all-live
+  head v, like shelf
+  case live-end
+    head
+      make bare
+  case live-on
+    link at, like natural
+    link whose, like natural
+    link rest, like shelf
+    link rest-live
+      like all-live
+        head
+          read rest
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, whose
+        bind rest, rest
+
+# every note on the shelf is owned by `who`, live or gone
+form owned
+  head who, like person
+  head v, like shelf
+  case owned-end
+    link doer, like person
+    head
+      read doer
+    head
+      make bare
+  case owned-live
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link rest, like shelf
+    link rest-owned
+      like owned
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, w
+        bind rest, rest
+  case owned-gone
+    link at, like natural
+    link w, like natural
+    link r, like rank
+    link by, like person
+    link rest, like shelf
+    link rest-owned
+      like owned
+        head
+          make person
+            bind id, w
+            bind rank, r
+        head
+          read rest
+    head
+      make person
+        bind id, w
+        bind rank, r
+    head
+      make more
+        bind top
+          make gone
+            bind at, at
+            bind whose, w
+            bind by, by
+        bind rest, rest
+
+# LAW 4, DELETED STAYS GONE: no view of any state shows an erased note.
+rule deleted-stays-gone
+  take s, like shelf
+  take viewer, like person
+  take v, like shelf
+  take seen
+    like shows
+      head
+        read s
+      head
+        read viewer
+      head
+        read v
+  like all-live
+    head
+      read v
+
+task deleted-stays-gone
+  take s
+  take viewer
+  take v
+  take seen
+  sift seen
+    case show-end
+      back make live-end
+    case show-own
+      back
+        make live-on
+          bind at, at
+          bind whose, w
+          bind rest, shown
+          bind rest-live
+            deleted-stays-gone
+              read rest
+              make person
+                bind id, w
+                bind rank, r
+              read shown
+              read others
+    case show-skip
+      back deleted-stays-gone(rest, doer, shown, others)
+
+# LAW 5, ISOLATION: a person's view never shows another person's note.
+rule isolation
+  take s, like shelf
+  take viewer, like person
+  take v, like shelf
+  take seen
+    like shows
+      head
+        read s
+      head
+        read viewer
+      head
+        read v
+  like owned
+    head
+      read viewer
+    head
+      read v
+
+task isolation
+  take s
+  take viewer
+  take v
+  take seen
+  sift seen
+    case show-end
+      back
+        make owned-end
+          bind doer, doer
+    case show-own
+      back
+        make owned-live
+          bind at, at
+          bind w, w
+          bind r, r
+          bind rest, shown
+          bind rest-owned
+            isolation
+              read rest
+              make person
+                bind id, w
+                bind rank, r
+              read shown
+              read others
+    case show-skip
+      back isolation(rest, doer, shown, others)
+
+# A FAIR note: live, or gone by someone the policy allowed
+form fair
+  head n, like note
+  case fresh
+    link at, like natural
+    link whose, like natural
+    head
+      make live
+        bind at, at
+        bind whose, whose
+  case buried
+    link at, like natural
+    link whose, like natural
+    link by, like person
+    link allowed-by
+      like allowed
+        head
+          read by
+        head
+          read whose
+    head
+      make gone
+        bind at, at
+        bind whose, whose
+        bind by, by
+
+form fair-shelf
+  head s, like shelf
+  case clean
+    head
+      make bare
+  case also
+    link top, like note
+    link rest, like shelf
+    link top-fair
+      like fair
+        head
+          read top
+    link rest-fair
+      like fair-shelf
+        head
+          read rest
+    head
+      make more
+        bind top, top
+        bind rest, rest
+
+# LAW 1, OWNERSHIP: after any sequence of events, every erased note was erased by its owner or an admin.
+rule ownership
+  take es, like events
+  take s, like shelf
+  take run
+    like replays
+      head
+        read es
+      head
+        read s
+  like fair-shelf
+    head
+      read s
+
+task ownership
+  take es
+  take s
+  take run
+  sift run
+    case from-start
+      back make clean
+    case then
+      back ownership-carry(was, now, ownership-step(was, last, now, stepped), ownership(sooner, was, reached))
+
+# apply a step's preservation to the evidence before it
+rule ownership-carry
+  take a, like shelf
+  take b, like shelf
+  take keep
+    like task
+      take ok
+        like fair-shelf
+          head
+            read a
+      like fair-shelf
+        head
+          read b
+  take x
+    like fair-shelf
+      head
+        read a
+  like fair-shelf
+    head
+      read b
+
+task ownership-carry
+  take a
+  take b
+  take keep
+  take x
+  back keep(x)
+
+# one step keeps every note fair. THE CONVOY: the shelf's evidence is taken after the match, so the match rewrites it
+rule ownership-step
+  take s, like shelf
+  take e, like event
+  take t, like shelf
+  take st
+    like steps
+      head
+        read s
+      head
+        read e
+      head
+        read t
+  like task
+    take ok
+      like fair-shelf
+        head
+          read s
+    like fair-shelf
+      head
+        read t
+
+task ownership-step
+  take s
+  take e
+  take t
+  take st
+  sift st
+    case wrote
+      back
+        task
+          take ok
+            like fair-shelf
+              head
+                read before
+          like fair-shelf
+            head
+              make more
+                bind top
+                  make live
+                    bind at, aim
+                    bind whose, i
+                bind rest, before
+          back
+            make also
+              bind top
+                make live
+                  bind at, aim
+                  bind whose, i
+              bind rest, before
+              bind top-fair
+                make fresh
+                  bind at, aim
+                  bind whose, i
+              bind rest-fair, ok
+    case erased
+      back
+        ownership-cross
+          read before
+          make person
+            bind id, i
+            bind rank, r
+          read aim
+          read after-erase
+          read crossing
+
+rule ownership-cross
+  take s, like shelf
+  take actor, like person
+  take id, like natural
+  take t, like shelf
+  take c
+    like crosses
+      head
+        read s
+      head
+        read actor
+      head
+        read id
+      head
+        read t
+  like task
+    take ok
+      like fair-shelf
+        head
+          read s
+    like fair-shelf
+      head
+        read t
+
+task ownership-cross
+  take s
+  take actor
+  take id
+  take t
+  take c
+  sift c
+    case cross-end
+      back
+        task
+          take ok
+            like fair-shelf
+              head
+                make bare
+          like fair-shelf
+            head
+              make bare
+          back make clean
+    case cross-on
+      back
+        ownership-join
+          read top
+          read rest
+          read top-after
+          read rest-after
+          ownership-settle(top, doer, aim, top-after, one)
+          ownership-cross(rest, doer, aim, rest-after, others)
+
+# a fair shelf whose top and rest each stay fair stays fair
+rule ownership-join
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  like task
+    take ok
+      like fair-shelf
+        head
+          make more
+            bind top, a
+            bind rest, r
+    like fair-shelf
+      head
+        make more
+          bind top, a2
+          bind rest, r2
+
+task ownership-join
+  take a
+  take r
+  take a2
+  take r2
+  take keep-top
+  take keep-rest
+  back
+    task
+      take ok
+        like fair-shelf
+          head
+            make more
+              bind top, a
+              bind rest, r
+      like fair-shelf
+        head
+          make more
+            bind top, a2
+            bind rest, r2
+      back ownership-apply(a, r, a2, r2, ownership-split(a, r, a2, r2, ok), keep-top, keep-rest)
+
+# THE MATCH on a fair shelf that is not empty: its one case is `also`. A convoy, so the match rewrites the two keeps
+rule ownership-split
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take ok
+    like fair-shelf
+      head
+        make more
+          bind top, a
+          bind rest, r
+  like task
+    take keep-top
+      like task
+        take ok
+          like fair
+            head
+              read a
+        like fair
+          head
+            read a2
+    take keep-rest
+      like task
+        take ok
+          like fair-shelf
+            head
+              read r
+        like fair-shelf
+          head
+            read r2
+    like fair-shelf
+      head
+        make more
+          bind top, a2
+          bind rest, r2
+
+task ownership-split
+  take a
+  take r
+  take a2
+  take r2
+  take ok
+  sift ok
+    case also
+      back
+        task
+          take keep-top
+            like task
+              take ok
+                like fair
+                  head
+                    read top
+              like fair
+                head
+                  read a2
+          take keep-rest
+            like task
+              take ok
+                like fair-shelf
+                  head
+                    read rest
+              like fair-shelf
+                head
+                  read r2
+          like fair-shelf
+            head
+              make more
+                bind top, a2
+                bind rest, r2
+          back ownership-build(top, rest, a2, r2, keep-top, keep-rest, top-fair, rest-fair)
+
+# a proof may call a parameter of its task, not of a `task` written inside it, so the keeps are called here
+rule ownership-build
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  take top-was
+    like fair
+      head
+        read a
+  take rest-was
+    like fair-shelf
+      head
+        read r
+  like fair-shelf
+    head
+      make more
+        bind top, a2
+        bind rest, r2
+
+task ownership-build
+  take a
+  take r
+  take a2
+  take r2
+  take keep-top
+  take keep-rest
+  take top-was
+  take rest-was
+  back
+    make also
+      bind top, a2
+      bind rest, r2
+      bind top-fair, keep-top(top-was)
+      bind rest-fair, keep-rest(rest-was)
+
+rule ownership-apply
+  take a, like note
+  take r, like shelf
+  take a2, like note
+  take r2, like shelf
+  take join
+    like task
+      take keep-top
+        like task
+          take ok
+            like fair
+              head
+                read a
+          like fair
+            head
+              read a2
+      take keep-rest
+        like task
+          take ok
+            like fair-shelf
+              head
+                read r
+          like fair-shelf
+            head
+              read r2
+      like fair-shelf
+        head
+          make more
+            bind top, a2
+            bind rest, r2
+  take keep-top
+    like task
+      take ok
+        like fair
+          head
+            read a
+      like fair
+        head
+          read a2
+  take keep-rest
+    like task
+      take ok
+        like fair-shelf
+          head
+            read r
+      like fair-shelf
+        head
+          read r2
+  like fair-shelf
+    head
+      make more
+        bind top, a2
+        bind rest, r2
+
+task ownership-apply
+  take a
+  take r
+  take a2
+  take r2
+  take join
+  take keep-top
+  take keep-rest
+  back join(keep-top, keep-rest)
+
+rule ownership-settle
+  take n, like note
+  take actor, like person
+  take id, like natural
+  take m, like note
+  take st
+    like settles
+      head
+        read n
+      head
+        read actor
+      head
+        read id
+      head
+        read m
+  like task
+    take ok
+      like fair
+        head
+          read n
+    like fair
+      head
+        read m
+
+task ownership-settle
+  take n
+  take actor
+  take id
+  take m
+  take st
+  sift st
+    case hit
+      back
+        task
+          take ok
+            like fair
+              head
+                make live
+                  bind at, at
+                  bind whose, whose
+          like fair
+            head
+              make gone
+                bind at, at
+                bind whose, whose
+                bind by, doer
+          back
+            make buried
+              bind at, at
+              bind whose, whose
+              bind by, doer
+              bind allowed-by, allowed-by
+    case keep
+      back
+        task
+          take ok
+            like fair
+              head
+                make live
+                  bind at, at
+                  bind whose, whose
+          like fair
+            head
+              make live
+                bind at, at
+                bind whose, whose
+          back ok
+    case still
+      back
+        task
+          take ok
+            like fair
+              head
+                make gone
+                  bind at, at
+                  bind whose, whose
+                  bind by, by
+          like fair
+            head
+              make gone
+                bind at, at
+                bind whose, whose
+                bind by, by
+          back ok
+
+# ---- THE BRIDGE FOR VIEW: model.tree's `view` computes a view `shows` allows ----
+
+# what `same(w, i)` answers, as evidence: `yes` only where w is i
+form same-view
+  head w, like natural
+  head i, like natural
+  head f, like flag
+  case is-same
+    link k, like natural
+    head
+      read k
+    head
+      read k
+    head
+      make yes
+  case not-same
+    link a, like natural
+    link b, like natural
+    head
+      read a
+    head
+      read b
+    head
+      make no
+
+# a step down both naturals keeps the evidence
+rule view-same-lift
+  take p, like natural
+  take q, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read p
+      head
+        read q
+      head
+        read f
+  like same-view
+    head
+      make succ
+        bind prior, p
+    head
+      make succ
+        bind prior, q
+    head
+      read f
+
+task view-same-lift
+  take p
+  take q
+  take f
+  take ev
+  sift ev
+    case is-same
+      back
+        make is-same
+          bind k
+            make succ
+              bind prior, k
+    case not-same
+      back
+        make not-same
+          bind a
+            make succ
+              bind prior, a
+          bind b
+            make succ
+              bind prior, b
+
+# `same` answers as the evidence says
+rule view-same
+  take w, like natural
+  take i, like natural
+  like same-view
+    head
+      read w
+    head
+      read i
+    head
+      same(w, i)
+
+task view-same
+  take w
+  take i
+  sift w
+    case zero
+      back view-same-zero(i)
+    case succ
+      link p
+      back
+        view-same-succ
+          read p
+          read i
+          task
+            take q, like natural
+            like same-view
+              head
+                read p
+              head
+                read q
+              head
+                same(p, q)
+            back view-same(p, q)
+
+rule view-same-zero
+  take i, like natural
+  like same-view
+    head
+      make zero
+    head
+      read i
+    head
+      same
+        make zero
+        read i
+
+task view-same-zero
+  take i
+  sift i
+    case zero
+      back
+        make is-same
+          bind k, make zero
+    case succ
+      back
+        make not-same
+          bind a, make zero
+          bind b
+            make succ
+              bind prior, prior
+
+rule view-same-succ
+  take p, like natural
+  take i, like natural
+  take below
+    like task
+      take q, like natural
+      like same-view
+        head
+          read p
+        head
+          read q
+        head
+          same(p, q)
+  like same-view
+    head
+      make succ
+        bind prior, p
+    head
+      read i
+    head
+      same
+        make succ
+          bind prior, p
+        read i
+
+task view-same-succ
+  take p
+  take i
+  take below
+  sift i
+    case zero
+      back
+        make not-same
+          bind a
+            make succ
+              bind prior, p
+          bind b, make zero
+    case succ
+      link q
+      back view-same-lift(p, q, same(p, q), below(q))
+
+# ONE LIVE NOTE BEFORE A VIEW: shown when `same` said yes, skipped when it said no. A convoy: the rest's view is taken
+# after the match, so the match rewrites the viewer's id in its type
+rule view-pick-by
+  take at, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take w, like natural
+  take i, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read w
+      head
+        read i
+      head
+        read f
+  like task
+    take others
+      like shows
+        head
+          read rest
+        head
+          make person
+            bind id, i
+            bind rank, r
+        head
+          read shown
+    like shows
+      head
+        make more
+          bind top
+            make live
+              bind at, at
+              bind whose, w
+          bind rest, rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        show
+          read f
+          make live
+            bind at, at
+            bind whose, w
+          read shown
+
+task view-pick-by
+  take at
+  take r
+  take rest
+  take shown
+  take w
+  take i
+  take f
+  take ev
+  sift ev
+    case is-same
+      back
+        task
+          take others
+            like shows
+              head
+                read rest
+              head
+                make person
+                  bind id, k
+                  bind rank, r
+              head
+                read shown
+          like shows
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, k
+                bind rest, rest
+            head
+              make person
+                bind id, k
+                bind rank, r
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, k
+                bind rest, shown
+          back
+            make show-own
+              bind at, at
+              bind w, k
+              bind r, r
+              bind rest, rest
+              bind shown, shown
+              bind others, others
+    case not-same
+      back
+        task
+          take others
+            like shows
+              head
+                read rest
+              head
+                make person
+                  bind id, b
+                  bind rank, r
+              head
+                read shown
+          like shows
+            head
+              make more
+                bind top
+                  make live
+                    bind at, at
+                    bind whose, a
+                bind rest, rest
+            head
+              make person
+                bind id, b
+                bind rank, r
+            head
+              read shown
+          back
+            make show-skip
+              bind n
+                make live
+                  bind at, at
+                  bind whose, a
+              bind rest, rest
+              bind doer
+                make person
+                  bind id, b
+                  bind rank, r
+              bind shown, shown
+              bind others, others
+
+# ONE LIVE NOTE BEFORE A VIEW, by what `same` answers. Its type is written through `pick`, which computes to
+# `show(same(whose, i), ...)`, the type `view-pick-by` builds
+rule view-pick-live
+  take at, like natural
+  take whose, like natural
+  take i, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take others
+    like shows
+      head
+        read rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        read shown
+  like shows
+    head
+      make more
+        bind top
+          make live
+            bind at, at
+            bind whose, whose
+        bind rest, rest
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      pick
+        make live
+          bind at, at
+          bind whose, whose
+        make person
+          bind id, i
+          bind rank, r
+        read shown
+
+task view-pick-live
+  take at
+  take whose
+  take i
+  take r
+  take rest
+  take shown
+  take others
+  save fill, view-pick-by(at, r, rest, shown, whose, i, same(whose, i), view-same(whose, i))
+  back fill(others)
+
+# ONE NOTE BEFORE A VIEW, live or gone
+rule view-pick
+  take top, like note
+  take i, like natural
+  take r, like rank
+  take rest, like shelf
+  take shown, like shelf
+  take others
+    like shows
+      head
+        read rest
+      head
+        make person
+          bind id, i
+          bind rank, r
+      head
+        read shown
+  like shows
+    head
+      make more
+        bind top, top
+        bind rest, rest
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      pick
+        read top
+        make person
+          bind id, i
+          bind rank, r
+        read shown
+
+task view-pick
+  take top
+  take i
+  take r
+  take rest
+  take shown
+  take others
+  sift top
+    case live
+      back view-pick-live(at, whose, i, r, rest, shown, others)
+    case gone
+      back
+        make show-skip
+          bind n
+            make gone
+              bind at, at
+              bind whose, whose
+              bind by, by
+          bind rest, rest
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind shown, shown
+          bind others, others
+
+# THE BRIDGE: what `view` computes for the viewer `person(i, r)` is a view `shows` allows
+rule view-shows
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like shows
+    head
+      read s
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task view-shows
+  take s
+  take i
+  take r
+  sift s
+    case bare
+      back
+        make show-end
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+    case more
+      back
+        view-pick
+          read top
+          read i
+          read r
+          read rest
+          view
+            read rest
+            make person
+              bind id, i
+              bind rank, r
+          view-shows(rest, i, r)
+
+# LAW 4 OF THE TASK: no view `view` computes shows an erased note
+rule deleted-stays-gone-of-view
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like all-live
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task deleted-stays-gone-of-view
+  take s
+  take i
+  take r
+  back
+    deleted-stays-gone
+      read s
+      make person
+        bind id, i
+        bind rank, r
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+      view-shows(s, i, r)
+
+# LAW 5 OF THE TASK: every note `view` computes for a person is that person's
+rule isolation-of-view
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  like owned
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+
+task isolation-of-view
+  take s
+  take i
+  take r
+  back
+    isolation
+      read s
+      make person
+        bind id, i
+        bind rank, r
+      view
+        read s
+        make person
+          bind id, i
+          bind rank, r
+      view-shows(s, i, r)
+
+# ---- THE BRIDGE FOR REPLAY: model.tree's `step` and `replay` compute what `steps` and `replays` allow ----
+
+# THE CHECK, for a member: `guard` buries the note exactly when `same` said the member owns it
+rule ownership-of-replay-own
+  take at, like natural
+  take whose, like natural
+  take i, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read i
+      head
+        read whose
+      head
+        read f
+  like settles
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      make person
+        bind id, i
+        bind rank, make member
+    head
+      read at
+    head
+      guard
+        read f
+        read at
+        read whose
+        make person
+          bind id, i
+          bind rank, make member
+
+task ownership-of-replay-own
+  take at
+  take whose
+  take i
+  take f
+  take ev
+  sift ev
+    case is-same
+      back
+        make hit
+          bind at, at
+          bind whose, k
+          bind doer
+            make person
+              bind id, k
+              bind rank, make member
+          bind allowed-by
+            make as-owner
+              bind w, k
+              bind r, make member
+    case not-same
+      back
+        make keep
+          bind at, at
+          bind whose, b
+          bind doer
+            make person
+              bind id, a
+              bind rank, make member
+          bind aim, at
+
+# THE POLICY, as `may` answers it: an admin buries any note, a member only their own
+rule ownership-of-replay-may
+  take at, like natural
+  take whose, like natural
+  take i, like natural
+  take r, like rank
+  like settles
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      read at
+    head
+      guard
+        may
+          make person
+            bind id, i
+            bind rank, r
+          read whose
+        read at
+        read whose
+        make person
+          bind id, i
+          bind rank, r
+
+task ownership-of-replay-may
+  take at
+  take whose
+  take i
+  take r
+  sift r
+    case admin
+      back
+        make hit
+          bind at, at
+          bind whose, whose
+          bind doer
+            make person
+              bind id, i
+              bind rank, make admin
+          bind allowed-by
+            make as-admin
+              bind i, i
+              bind w, whose
+    case member
+      back ownership-of-replay-own(at, whose, i, same(i, whose), view-same(i, whose))
+
+# THE AIM: the note is the one named exactly when `same` said so
+rule ownership-of-replay-aim
+  take at, like natural
+  take whose, like natural
+  take i, like natural
+  take r, like rank
+  take id, like natural
+  take f, like flag
+  take ev
+    like same-view
+      head
+        read at
+      head
+        read id
+      head
+        read f
+  like settles
+    head
+      make live
+        bind at, at
+        bind whose, whose
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      read id
+    head
+      aim
+        read f
+        read at
+        read whose
+        make person
+          bind id, i
+          bind rank, r
+
+task ownership-of-replay-aim
+  take at
+  take whose
+  take i
+  take r
+  take id
+  take f
+  take ev
+  sift ev
+    case is-same
+      back ownership-of-replay-may(k, whose, i, r)
+    case not-same
+      back
+        make keep
+          bind at, a
+          bind whose, whose
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind aim, b
+
+# ONE NOTE: what `settle` computes is a settling `settles` allows
+rule ownership-of-replay-settle
+  take n, like note
+  take i, like natural
+  take r, like rank
+  take id, like natural
+  like settles
+    head
+      read n
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      read id
+    head
+      settle
+        read n
+        make person
+          bind id, i
+          bind rank, r
+        read id
+
+task ownership-of-replay-settle
+  take n
+  take i
+  take r
+  take id
+  sift n
+    case live
+      back ownership-of-replay-aim(at, whose, i, r, id, same(at, id), view-same(at, id))
+    case gone
+      back
+        make still
+          bind at, at
+          bind whose, whose
+          bind by, by
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind aim, id
+
+# THE WHOLE SHELF: what `cross` computes is a crossing `crosses` allows
+rule ownership-of-replay-cross
+  take s, like shelf
+  take i, like natural
+  take r, like rank
+  take id, like natural
+  like crosses
+    head
+      read s
+    head
+      make person
+        bind id, i
+        bind rank, r
+    head
+      read id
+    head
+      cross
+        read s
+        make person
+          bind id, i
+          bind rank, r
+        read id
+
+task ownership-of-replay-cross
+  take s
+  take i
+  take r
+  take id
+  sift s
+    case bare
+      back
+        make cross-end
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind aim, id
+    case more
+      back
+        make cross-on
+          bind top, top
+          bind rest, rest
+          bind doer
+            make person
+              bind id, i
+              bind rank, r
+          bind aim, id
+          bind top-after
+            settle
+              read top
+              make person
+                bind id, i
+                bind rank, r
+              read id
+          bind rest-after
+            cross
+              read rest
+              make person
+                bind id, i
+                bind rank, r
+              read id
+          bind one, ownership-of-replay-settle(top, i, r, id)
+          bind others, ownership-of-replay-cross(rest, i, r, id)
+
+# ONE STEP: what `step` computes is a step `steps` allows
+rule ownership-of-replay-step
+  take s, like shelf
+  take e, like event
+  like steps
+    head
+      read s
+    head
+      read e
+    head
+      step(s, e)
+
+task ownership-of-replay-step
+  take s
+  take e
+  sift e
+    case write
+      back
+        make wrote
+          bind before, s
+          bind i, who
+          bind r, rank
+          bind aim, id
+    case erase
+      back
+        make erased
+          bind before, s
+          bind i, who
+          bind r, rank
+          bind aim, id
+          bind after-erase
+            cross
+              read s
+              make person
+                bind id, who
+                bind rank, rank
+              read id
+          bind crossing, ownership-of-replay-cross(s, who, rank, id)
+
+# THE RUN: what `replay` computes is a run `replays` allows
+rule ownership-of-replay-run
+  take es, like events
+  like replays
+    head
+      read es
+    head
+      replay(es)
+
+task ownership-of-replay-run
+  take es
+  sift es
+    case begin
+      back make from-start
+    case after
+      back
+        make then
+          bind last, event
+          bind sooner, earlier
+          bind was, replay(earlier)
+          bind now, step(replay(earlier), event)
+          bind reached, ownership-of-replay-run(earlier)
+          bind stepped, ownership-of-replay-step(replay(earlier), event)
+
+# LAW 1 OF THE TASK: after any events, every note `replay` computes as erased was erased by its owner or an admin
+rule ownership-of-replay
+  take es, like events
+  like fair-shelf
+    head
+      replay(es)
+
+task ownership-of-replay
+  take es
+  back ownership(es, replay(es), ownership-of-replay-run(es))
+
+
+# ---- LAW 7, SAFE TEXT: every text a page was given reaches its HTML escaped, so the page holds no markup the asker
+# wrote. Its lemmas are claims named after it, so a broken escape or serializer is refused under the law's name ----
+
+# WHAT ESCAPE-HTML WRITES: no glyph kept but other characters, so no `<`, `>`, `"` or `'`, and every `&` the first
+# character of an entity it wrote
+form escaped
+  head xs, like pieces
+  case escaped-end
+    head
+      make no-piece
+  case escaped-point
+    link rest, like pieces
+    link ok
+      like escaped
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case escaped-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like escaped
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# SAFE AS ELEMENT TEXT: no `<` or `>` kept, every `&` the first character of an entity. A quote is only text here
+form text-safe
+  head xs, like pieces
+  case text-safe-end
+    head
+      make no-piece
+  case text-safe-point
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case text-safe-double
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make double-quote
+        bind rest, rest
+  case text-safe-single
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make single-quote
+        bind rest, rest
+  case text-safe-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# SAFE INSIDE AN ATTRIBUTE QUOTED WITH `"`: no `"` kept, every `&` the first character of an entity. `<`, `>` and `'`
+# are only text there
+form attribute-safe
+  head xs, like pieces
+  case attribute-safe-end
+    head
+      make no-piece
+  case attribute-safe-point
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case attribute-safe-open
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make angle-open
+        bind rest, rest
+  case attribute-safe-shut
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make angle-shut
+        bind rest, rest
+  case attribute-safe-single
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make single-quote
+        bind rest, rest
+  case attribute-safe-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# A PAGE WITH NO MARKUP THE ASKER WROTE: every text safe as element text, every attribute value safe in its quotes.
+# The serializer's own syntax may be anything
+form safe-html
+  head h, like html
+  case html-safe-end
+    head
+      make html-end
+  case html-safe-doctype
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make doctype-then
+        bind rest, rest
+  case html-safe-open
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-open-then
+        bind rest, rest
+  case html-safe-value
+    link value, like pieces
+    link rest, like html
+    link value-ok
+      like attribute-safe
+        head
+          read value
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make value-then
+        bind value, value
+        bind rest, rest
+  case html-safe-shut
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-shut-then
+        bind rest, rest
+  case html-safe-close
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-close-then
+        bind rest, rest
+  case html-safe-text
+    link value, like pieces
+    link rest, like html
+    link value-ok
+      like text-safe
+        head
+          read value
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make text-then
+        bind value, value
+        bind rest, rest
+
+# two texts read the same, glyph for glyph
+form same-glyphs
+  head xs, like glyphs
+  head ys, like glyphs
+  case same-glyphs-end
+    head
+      make no-glyph
+    head
+      make no-glyph
+  case same-glyphs-then
+    link first, like glyph
+    link a, like glyphs
+    link b, like glyphs
+    link ok
+      like same-glyphs
+        head
+          read a
+        head
+          read b
+    head
+      make glyph-then
+        bind first, first
+        bind rest, a
+    head
+      make glyph-then
+        bind first, first
+        bind rest, b
+
+# ---- 1. ESCAPE-HTML (glyph.tree `escape-glyphs`, which escape.tree's `escape-html` runs) ----
+
+rule safe-text-escape-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like escaped
+      head
+        read rest
+  like escaped
+    head
+      escape-glyph(g, rest)
+
+task safe-text-escape-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make escaped-entity
+          bind named, make entity-lt
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make escaped-entity
+          bind named, make entity-gt
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make escaped-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make escaped-entity
+          bind named, make entity-quot
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make escaped-entity
+          bind named, make entity-apos
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make escaped-point
+          bind rest, rest
+          bind ok, ok
+
+# CLAIM 1: escape-html's output keeps no `<`, `>`, `&`, `"` or `'`: each is an entity it wrote
+rule safe-text-escape
+  take xs, like glyphs
+  like escaped
+    head
+      escape-glyphs(xs)
+
+task safe-text-escape
+  take xs
+  sift xs
+    case no-glyph
+      back make escaped-end
+    case glyph-then
+      back safe-text-escape-glyph(first, escape-glyphs(rest), safe-text-escape(rest))
+
+rule safe-text-round-glyph
+  take g, like glyph
+  take xs, like glyphs
+  take ys, like pieces
+  take ok
+    like same-glyphs
+      head
+        read xs
+      head
+        unescape-glyphs(ys)
+  like same-glyphs
+    head
+      make glyph-then
+        bind first, g
+        bind rest, xs
+    head
+      unescape-glyphs
+        escape-glyph(g, ys)
+
+task safe-text-round-glyph
+  take g
+  take xs
+  take ys
+  take ok
+  sift g
+    case angle-open
+      back
+        make same-glyphs-then
+          bind first, make angle-open
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case angle-shut
+      back
+        make same-glyphs-then
+          bind first, make angle-shut
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case ampersand
+      back
+        make same-glyphs-then
+          bind first, make ampersand
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case double-quote
+      back
+        make same-glyphs-then
+          bind first, make double-quote
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case single-quote
+      back
+        make same-glyphs-then
+          bind first, make single-quote
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case other-point
+      back
+        make same-glyphs-then
+          bind first, make other-point
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+
+# CLAIM 1, THE ROUND TRIP: reading back what escape-html wrote gives the text it was given, so no two texts escape alike
+rule safe-text-round-trip
+  take xs, like glyphs
+  like same-glyphs
+    head
+      read xs
+    head
+      unescape-glyphs
+        escape-glyphs(xs)
+
+task safe-text-round-trip
+  take xs
+  sift xs
+    case no-glyph
+      back make same-glyphs-end
+    case glyph-then
+      back safe-text-round-glyph(first, rest, escape-glyphs(rest), safe-text-round-trip(rest))
+
+# escape-html's output is safe as element text
+rule safe-text-escaped-text
+  take xs, like pieces
+  take ok
+    like escaped
+      head
+        read xs
+  like text-safe
+    head
+      read xs
+
+task safe-text-escaped-text
+  take xs
+  take ok
+  sift ok
+    case escaped-end
+      back make text-safe-end
+    case escaped-point
+      back
+        make text-safe-point
+          bind rest, rest
+          bind ok, safe-text-escaped-text(rest, ok)
+    case escaped-entity
+      back
+        make text-safe-entity
+          bind named, named
+          bind rest, rest
+          bind ok, safe-text-escaped-text(rest, ok)
+
+# ---- 2. THE SERIALIZER (html.tree, the model of html.ts `compactNode`) ----
+
+rule safe-text-text-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like text-safe
+      head
+        read rest
+  like text-safe
+    head
+      escape-text-glyph(g, rest)
+
+task safe-text-text-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make text-safe-entity
+          bind named, make entity-lt
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make text-safe-entity
+          bind named, make entity-gt
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make text-safe-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make text-safe-double
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make text-safe-single
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make text-safe-point
+          bind rest, rest
+          bind ok, ok
+
+# the text escape's output is safe as element text
+rule safe-text-text
+  take xs, like glyphs
+  like text-safe
+    head
+      escape-text-glyphs(xs)
+
+task safe-text-text
+  take xs
+  sift xs
+    case no-glyph
+      back make text-safe-end
+    case glyph-then
+      back safe-text-text-glyph(first, escape-text-glyphs(rest), safe-text-text(rest))
+
+rule safe-text-attribute-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like attribute-safe
+      head
+        read rest
+  like attribute-safe
+    head
+      escape-attr-glyph(g, rest)
+
+task safe-text-attribute-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make attribute-safe-open
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make attribute-safe-shut
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make attribute-safe-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make attribute-safe-entity
+          bind named, make entity-quot
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make attribute-safe-single
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make attribute-safe-point
+          bind rest, rest
+          bind ok, ok
+
+# the attribute escape's output is safe inside `"`
+rule safe-text-attribute
+  take xs, like glyphs
+  like attribute-safe
+    head
+      escape-attr-glyphs(xs)
+
+task safe-text-attribute
+  take xs
+  sift xs
+    case no-glyph
+      back make attribute-safe-end
+    case glyph-then
+      back safe-text-attribute-glyph(first, escape-attr-glyphs(rest), safe-text-attribute(rest))
+
+# every attribute value an element writes is escaped for its quotes
+rule safe-text-attributes
+  take given, like attributes
+  take after, like html
+  take ok
+    like safe-html
+      head
+        read after
+  like safe-html
+    head
+      serialize-attributes(given, after)
+
+task safe-text-attributes
+  take given
+  take after
+  take ok
+  sift given
+    case attributes-end
+      back ok
+    case attribute-then
+      back
+        make html-safe-value
+          bind value, escape-attr-glyphs(value)
+          bind rest, serialize-attributes(rest, after)
+          bind value-ok, safe-text-attribute(value)
+          bind ok, safe-text-attributes(rest, after, ok)
+
+# CLAIM 2: whatever comes after it, the serializer writes every text node and every attribute value of a tree escaped
+rule safe-text-serialize
+  take n, like node
+  take after, like html
+  take ok
+    like safe-html
+      head
+        read after
+  like safe-html
+    head
+      serialize(n, after)
+
+task safe-text-serialize
+  take n
+  take after
+  take ok
+  sift n
+    case no-node
+      back ok
+    case text-node
+      back
+        make html-safe-text
+          bind value, escape-text-glyphs(value)
+          bind rest, after
+          bind value-ok, safe-text-text(value)
+          bind ok, ok
+    case element
+      back
+        make html-safe-open
+          bind rest
+            serialize-attributes
+              read given
+              make tag-shut-then
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+          bind ok
+            safe-text-attributes
+              read given
+              make tag-shut-then
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+              make html-safe-shut
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+                bind ok
+                  safe-text-serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+                    make html-safe-close
+                      bind rest, after
+                      bind ok, ok
+    case beside
+      back safe-text-serialize(first, serialize(second, after), safe-text-serialize(second, after, ok))
+
+# a rendered view's whole page
+rule safe-text-of-view
+  take n, like node
+  like safe-html
+    head
+      serialize(n, make html-end)
+
+task safe-text-of-view
+  take n
+  back
+    safe-text-serialize
+      read n
+      make html-end
+      make html-safe-end
+
+# ---- 3. THE NOTES PAGES ----
+
+# a refusal's message reaches its page through escape-html
+rule safe-text-of-refusal
+  take message, like glyphs
+  like safe-html
+    head
+      refusal(message)
+
+task safe-text-of-refusal
+  take message
+  back
+    make html-safe-doctype
+      bind rest
+        make tag-open-then
+          bind rest
+            make tag-shut-then
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+      bind ok
+        make html-safe-open
+          bind rest
+            make tag-shut-then
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+          bind ok
+            make html-safe-shut
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+              bind ok
+                make html-safe-text
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+                  bind value-ok, safe-text-escaped-text(escape-glyphs(message), safe-text-escape(message))
+                  bind ok
+                    make html-safe-close
+                      bind rest, make html-end
+                      bind ok, make html-safe-end
+
+# LAW 7, SAFE TEXT: no page of the notes site holds markup the asker wrote
+rule safe-text
+  take pg, like page
+  like safe-html
+    head
+      html-of(pg)
+
+task safe-text
+  take pg
+  sift pg
+    case viewed
+      back safe-text-of-view(n)
+    case refused
+      back safe-text-of-refusal(message)

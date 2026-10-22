@@ -45,6 +45,7 @@ import { callNote } from '@term/call/code/note'
 import { callForm } from '@term/call/code/form'
 import { callLint } from '@term/call/code/lint'
 import { callHold } from '@term/call/code/hold'
+import { callKnit } from '@term/call/code/knit'
 import {
   callHunt,
   HUNT_FUZZ_CHILD,
@@ -105,6 +106,7 @@ const COMMANDS = [
   'form',
   'lint',
   'hold',
+  'knit',
   'hunt',
   'look',
   'roll',
@@ -1539,6 +1541,14 @@ const cli = yargs(hideBin(process.argv))
         .option('json', {
           type: 'boolean',
           description: 'Machine-readable output',
+        })
+        .option('lean', {
+          type: 'boolean',
+          description: 'Also re-check every claim in Lean 4 (TERM_LEAN, else the PATH)',
+        })
+        .option('report', {
+          type: 'boolean',
+          description: 'Print the report: every law laws.tree names, in English, and what it rests on',
         }),
     async argv => {
       await callHold({
@@ -1549,6 +1559,53 @@ const cli = yargs(hideBin(process.argv))
         force: argv.force,
         json: argv.json,
         commit: argv.commit,
+        lean: argv.lean,
+        report: argv.report,
+      })
+    },
+  )
+  .command(
+    'knit [spec..]',
+    'The prove loop: from a spec in words, a model writes the Term code, the laws and the proofs until term hold holds. Every law reported in English from its Term form',
+    yargs =>
+      yargs
+        .positional('spec', {
+          type: 'string',
+          array: true,
+          description: 'The spec, in plain English',
+        })
+        .option('spec-file', { type: 'string', description: 'Read the spec from this file instead' })
+        .option('port', { type: 'string', description: 'A TypeScript module to port' })
+        .option('law', { type: 'string', array: true, description: 'A law of the law library (deck/site/code/law) the project must prove of its own forms and tasks, by name (repeat for more)' })
+        .option('name', { type: 'string', description: 'The run\'s name (default: knit- and the time)' })
+        .option('out', { type: 'string', description: 'Where the run is written (default: tmp/knit/<name>)' })
+        .option('model', { type: 'string', default: 'claude-opus-5-5', description: 'The model that writes the proofs' })
+        .option('effort', { type: 'string', default: 'high', choices: ['low', 'medium', 'high', 'xhigh', 'max'], description: 'How hard the model thinks' })
+        .option('cap', { type: 'number', default: 25, description: 'The most the run may spend, in dollars, from the usage the API reports' })
+        .option('rounds', { type: 'number', default: 20, description: 'The most rounds of term hold' })
+        .option('turns', { type: 'number', default: 40, description: 'The most requests to the model' })
+        .option('minutes', { type: 'number', default: 60, description: 'The most minutes the run may take' })
+        .option('max-tokens', { type: 'number', default: 64000, description: 'The most tokens one answer may take' })
+        .option('lean', { type: 'boolean', default: true, description: 'Also re-check every law in Lean 4 (--no-lean to skip)' })
+        .option('example', { type: 'boolean', default: true, description: 'Show the model the notes demo as an example (--no-example to leave it out)' }),
+    async argv => {
+      await callKnit({
+        root,
+        spec: ((argv.spec as string[] | undefined) ?? []).join(' '),
+        specFile: argv.specFile,
+        port: argv.port,
+        name: argv.name,
+        out: argv.out,
+        laws: argv.law,
+        model: argv.model,
+        effort: argv.effort,
+        cap: argv.cap,
+        rounds: argv.rounds,
+        turns: argv.turns,
+        minutes: argv.minutes,
+        lean: argv.lean,
+        example: argv.example,
+        maxTokens: argv.maxTokens,
       })
     },
   )

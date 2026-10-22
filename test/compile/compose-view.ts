@@ -905,20 +905,21 @@ function judge(leg: string, said: string, shot: string): void {
     String(line('raise counted ')),
   )
   // the dialog: what it holds while closed, out of the page; presented by Compose when the disclosure opens; ended by
-  // the person's dismissal, which closes the disclosure
+  // the person's dismissal, which closes the disclosure. The question is drawn in the sheet as an `h2`, as the toolkit
+  // dialog draws it since 2026-10-07 (face/code/component/native/toolkit/dialog.tree, the same rows toolkit-view.ts reads)
   ok(
     'the dialog holds its content, closed, and is not in the page it was given',
-    line('dialog closed ') === '<sheet open="false"><span>Sure?</span></sheet> page <div></div>',
+    line('dialog closed ') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
     String(line('dialog closed ')),
   )
   ok(
     'opening the disclosure has Compose compose the dialog',
-    line('dialog opened ') === '<sheet open="true"><span>Sure?</span></sheet>',
+    line('dialog opened ') === '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>',
     String(line('dialog opened ')),
   )
   ok(
     'the person\'s dismissal ends the dialog and closes the disclosure',
-    line('dialog dismissed ') === '<sheet open="false"><span>Sure?</span></sheet> false',
+    line('dialog dismissed ') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
     String(line('dialog dismissed ')),
   )
   // the style table: classes, a state, an inline fill, a class removed, then the dark scheme, the fill off the pixels

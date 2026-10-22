@@ -2130,8 +2130,12 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
     }
 
     // a `save` that read the name it declared took a fresh one (statementOf, `save`): every use after it is that
-    if (bridge.shadowed) {
-      renames.push({ at: body.length, ...bridge.shadowed })
+    // read through its declared type: TypeScript narrows the field to `undefined` from the reset above, not knowing
+    // statementOf sets it
+    const shadowed = bridge.shadowed as { from: string; to: string } | undefined
+
+    if (shadowed) {
+      renames.push({ at: body.length, ...shadowed })
       bridge.shadowed = undefined
     }
   }

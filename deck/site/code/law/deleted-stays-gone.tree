@@ -1,0 +1,65 @@
+# LAW DELETED STAYS GONE, from the law library (note/project/term/assurance/prove-loop/decision/002-law-library.md): no
+# view of any state shows a deleted note. Every note the app's `view` computes for any person is live.
+#
+# A project states the law by FUSING this template with its own forms and its view task, and proves the claim it
+# makes with a `task deleted-stays-gone` of its own. It may not write the claim itself: `term knit` refuses a claim
+# named `deleted-stays-gone` that is not this one (call/code/knit-law.ts). The template is used IN the file that fuses
+# it: `term knit` appends this text below a marker at that file's end, because `term hold --report` and the Lean exporter
+# read only a file's own templates.
+#
+#   fuse deleted-stays-gone-law
+#     bind state, shelf
+#     bind natural, natural
+#     bind rank, rank
+#     bind person, person
+#     bind view, view
+#
+# THE SHAPE IT READS, whatever the forms are called: `state` is a list with the cases `bare` and `more` (`top`, a
+# note, and `rest`), a live note is the case `live` (`at`, `whose`, both a `natural`), `person` is a record of `id`
+# and `rank`, and `view` takes the state and a person to a state.
+#
+# Its shape is law.tree's `deleted-stays-gone-of-view` in test/assurance/notes, the notes demo, with `all-live` from the
+# same file. The body is written so it reads the same in a lean file and a longhand one.
+
+tree deleted-stays-gone-law
+  take state, like name
+  take natural, like name
+  take rank, like name
+  take person, like name
+  take view, like name
+
+  hook fuse
+    # every note on the list is live
+    form all-live
+      head v, like {state}
+      case live-end
+        head
+          make bare
+      case live-on
+        link at, like {natural}
+        link whose, like {natural}
+        link rest, like {state}
+        link rest-live
+          like all-live
+            head
+              read rest
+        head
+          make more
+            bind top
+              make live
+                bind at, at
+                bind whose, whose
+            bind rest, rest
+
+    # DELETED STAYS GONE: every note `view` computes for any person is live
+    rule deleted-stays-gone
+      take s, like {state}
+      take i, like {natural}
+      take r, like {rank}
+      like all-live
+        head
+          call {view}
+            read s
+            make {person}
+              bind id, i
+              bind rank, r

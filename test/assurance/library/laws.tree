@@ -1,0 +1,10 @@
+list law
+  mesh
+    host name, <ownership>
+    host rule, <ownership>
+  mesh
+    host name, <isolation>
+    host rule, <isolation>
+  mesh
+    host name, <deleted-stays-gone>
+    host rule, <deleted-stays-gone>

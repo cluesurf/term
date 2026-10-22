@@ -1,38 +1,157 @@
 # One HTML escape for markup a Term task builds as text. Every value that did not come from the page's own literals
-# goes through `escape-html` before it is joined into a body: `&` first, so an entity already written is not read
-# twice, then `<`, `>`, `"` and `'`, which makes the result safe both as element text and inside a quoted attribute.
-# It is the same set the node serializer's `escapeText` and `escapeAttr` apply (dom/native/node/runtime/html.ts),
-# written in Term so it runs on every backend a site is cast to.
+# goes through `escape-html` before it is joined into a body: `<`, `>`, `&`, `"` and `'` each become an entity
+# (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&#39;`), which makes the result safe both as element text and inside an
+# attribute quoted with either quote. The node serializer escapes less, for where it writes (dom/native/node/runtime/
+# html.ts: `escapeText` `&`, `<` and `>`, `escapeAttr` `&` and `"`, every attribute quoted with `"`).
+#
+# PROVEN, NOT ONLY TESTED. The kernel cannot read a text, so the escape is written over glyph.tree's GLYPHS, one per
+# character, and `escape-html` runs that very task, `escape-glyphs`: `glyphs-of` reads each character's glyph, and
+# `write-pieces` writes the result back, a kept glyph as the character it was read from, an entity as its text. The
+# notes demo's law.tree proves of `escape-glyphs`, for every list of glyphs, that it keeps no `<`, `>`, `&`, `"` or
+# `'` (each is an entity it wrote, `safe-text-escape`), and that reading its output back gives the glyphs it was given
+# (`safe-text-round-trip`), and Lean 4 re-checks both with no axiom (test/assurance/lean.ts).
+#
+# What that rests on, and nothing proves: `glyph-of` names each of the five characters by its own glyph (five text
+# comparisons), `split` with an empty delimiter cuts the text into pieces whose concatenation is the text, and
+# `write-pieces` writes one piece per character, in order. A special character is one UTF-16 unit, so wherever the
+# backend cuts, it lands in a piece of its own.
 
 load @term/base/text
-  find replace-all
+  find split
+
+load ./glyph
+  find glyph
+  find glyphs
+  find entity
+  find pieces
+  find escape-glyphs
 
 task escape-html
   take value, like text
   like text
-  save out
-    call replace-all
+  save chars
+    call split
       read value
-      text <&>
-      text <&amp;>
-  save out
-    call replace-all
-      read out
-      text <\<>
-      text <&lt;>
-  save out
-    call replace-all
-      read out
-      text <\>>
-      text <&gt;>
-  save out
-    call replace-all
-      read out
-      text <">
-      text <&quot;>
-  save out
-    call replace-all
-      read out
-      text <'>
-      text <&#39;>
+      text <>
+  send back
+    call write-pieces
+      read chars
+      call escape-glyphs
+        call glyphs-of
+          read chars
+
+# one character's glyph: one of the five HTML gives a meaning, or any other
+task glyph-of
+  take char, like text
+  like glyph
+  mark private
+  fork test
+    hook test
+      call is-equal
+        read char
+        text <\<>
+    hook hold
+      send back, make angle-open
+    hook test
+      call is-equal
+        read char
+        text <\>>
+    hook hold
+      send back, make angle-shut
+    hook test
+      call is-equal
+        read char
+        text <&>
+    hook hold
+      send back, make ampersand
+    hook test
+      call is-equal
+        read char
+        text <">
+    hook hold
+      send back, make double-quote
+    hook test
+      call is-equal
+        read char
+        text <'>
+    hook hold
+      send back, make single-quote
+  send back, make other-point
+
+# the characters' glyphs, in order
+task glyphs-of
+  take chars, like list, like text
+  like glyphs
+  mark private
+  save backward, make no-glyph
+  walk list, read chars
+    hook next
+      take site, name char
+      save backward
+        make glyph-then
+          bind first
+            call glyph-of
+              read char
+          bind rest, read backward
+  send back
+    call turn-glyphs
+      read backward
+      make no-glyph
+
+# `xs` reversed, in front of `onto`
+task turn-glyphs
+  take xs, like glyphs
+  take onto, like glyphs
+  like glyphs
+  mark private
+  sift xs
+    case no-glyph
+      send back, read onto
+    case glyph-then
+      send back
+        call turn-glyphs
+          read rest
+          make glyph-then
+            bind first, read first
+            bind rest, read onto
+
+task entity-text
+  take e, like entity
+  like text
+  mark private
+  sift e
+    case entity-lt
+      send back, text <&lt;>
+    case entity-gt
+      send back, text <&gt;>
+    case entity-amp
+      send back, text <&amp;>
+    case entity-quot
+      send back, text <&quot;>
+    case entity-apos
+      send back, text <&#39;>
+
+# the escape's pieces as text, one per character: a kept glyph is the character it was read from, an entity its text
+task write-pieces
+  take chars, like list, like text
+  take written, like pieces
+  like text
+  mark private
+  save out, text <>
+  save left, read written
+  walk list, read chars
+    hook next
+      take site, name char
+      sift left
+        case kept-then
+          save out, text <{out}{char}>
+          save left, read rest
+        case entity-then
+          save shown
+            call entity-text
+              read named
+          save out, text <{out}{shown}>
+          save left, read rest
+        case no-piece
+          save out, text <{out}{char}>
   send back, read out

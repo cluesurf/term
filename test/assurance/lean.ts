@@ -1,20 +1,21 @@
 // MVP GATE 3: Lean re-checks every law of the notes demo with no axioms (note/project/term/assurance/mvp.md).
 // Run: TERM_LEAN=/opt/homebrew/bin/lean npx tsx test/assurance/lean.ts [--write <dir>]
 //
-// The demo's laws are the claims of test/assurance/notes/code/law.tree, over the forms and tasks of model.tree. The
+// The demo's laws are the claims of test/assurance/notes/code/law.tree, over the forms and tasks of model.tree, and
+// for law 7 page.tree and @term/site's http/glyph.tree and http/html.tree. The
 // exporter (deck/make/code/check/lean-export.ts, note/project/term/proof/lean-export/spec.md) writes every claim the
 // kernel proved as Lean 4 source, and Lean decides. What it holds:
-//   - without Lean: all 29 claims are proven by the kernel and exported, none refused, no constant written as an
+//   - without Lean: all 43 claims are proven by the kernel and exported, none refused, no constant written as an
 //     axiom, every form a Lean inductive, and the recursive laws written through a recursor, never by name
 //   - with Lean (TERM_LEAN names the binary): Lean accepts the file with no error and no warning, `#print axioms`
-//     says every one of the 29 claims depends on no axiom, and a planted wrong proof of law 1 is refused on its own
+//     says every one of the 43 claims depends on no axiom, and a planted wrong proof of law 1 is refused on its own
 //     line alone, law 1 of `replay` the one other claim resting on it
 // With no Lean at TERM_LEAN or on the PATH the Lean step is reported as skipped, never as passed.
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { exportLean, joinSources, plantLean } from '@term/make/code/check/lean-export'
+import { findLean, runLean } from '@term/make/code/check/lean-run'
 
 let pass = 0
 let fail = 0
@@ -30,8 +31,18 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const BASE = new URL('./notes/code/', import.meta.url).pathname
-const FILES = ['model.tree', 'law.tree']
-// the demo's 29 claims: laws 1, 4 and 5, their lemmas, the bridge from `view` to `shows`, and from `replay` to `replays`
+const SITE = new URL('../../deck/site/code/http/', import.meta.url).pathname
+// law 7 reads @term/site's glyphs and escapes (escape.tree's `escape-html` runs `escape-glyphs`) and its model of the
+// node serializer, and the notes pages (page.tree)
+const FILES = [
+  { file: 'site/http/glyph.tree', path: join(SITE, 'glyph.tree') },
+  { file: 'site/http/html.tree', path: join(SITE, 'html.tree') },
+  { file: 'notes/model.tree', path: join(BASE, 'model.tree') },
+  { file: 'notes/page.tree', path: join(BASE, 'page.tree') },
+  { file: 'notes/law.tree', path: join(BASE, 'law.tree') },
+]
+// the demo's 43 claims: laws 1, 4, 5 and 7, their lemmas, the bridge from `view` to `shows`, and from `replay` to
+// `replays`
 const CLAIMS = [
   'deleted-stays-gone',
   'isolation',
@@ -63,6 +74,22 @@ const CLAIMS = [
   'ownership-of-replay-step',
   'ownership-of-replay-run',
   'ownership-of-replay',
+  // law 7, safe text: escape-html keeps no `<`, `>`, `&`, `"` or `'` and reads back to its input, the serializer
+  // escapes every text node and attribute value, and no notes page holds markup the asker wrote
+  'safe-text-escape-glyph',
+  'safe-text-escape',
+  'safe-text-round-glyph',
+  'safe-text-round-trip',
+  'safe-text-escaped-text',
+  'safe-text-text-glyph',
+  'safe-text-text',
+  'safe-text-attribute-glyph',
+  'safe-text-attribute',
+  'safe-text-attributes',
+  'safe-text-serialize',
+  'safe-text-of-view',
+  'safe-text-of-refusal',
+  'safe-text',
 ]
 // the claims (and tasks) that call themselves, each of which must reach Lean through its form's recursor
 const RECURSIVE = [
@@ -78,9 +105,22 @@ const RECURSIVE = [
   'ownership-of-replay-run',
   'cross',
   'replay',
+  'safe-text-escape',
+  'safe-text-round-trip',
+  'safe-text-escaped-text',
+  'safe-text-text',
+  'safe-text-attribute',
+  'safe-text-attributes',
+  'safe-text-serialize',
+  'escape-glyphs',
+  'escape-text-glyphs',
+  'escape-attr-glyphs',
+  'unescape-glyphs',
+  'serialize-attributes',
+  'serialize',
 ]
 
-const source = joinSources(FILES.map(file => ({ file: `notes/${file}`, text: readFileSync(join(BASE, file), 'utf8') })))
+const source = joinSources(FILES.map(({ file, path }) => ({ file, text: readFileSync(path, 'utf8') })))
 const out = exportLean(source)
 
 ok('the kernel reports no error on the demo', out.kernel.diagnostics.length === 0, out.kernel.diagnostics.slice(0, 5).join('; '))
@@ -131,44 +171,38 @@ if (writeAt > 0) {
   console.log(`wrote ${join(dir, 'notes.lean')} and ${join(dir, 'notes-planted.lean')}`)
 }
 
-// LEAN ITSELF, at TERM_LEAN or else the `lean` on the PATH, as test/check/lean-export.ts finds it
-const lean = process.env.TERM_LEAN ?? spawnSync('which', ['lean'], { encoding: 'utf8' }).stdout.trim()
+// LEAN ITSELF, at TERM_LEAN or else the `lean` on the PATH, found and read by the driver `term hold --lean` uses
+const lean = findLean()
 
-if (lean && existsSync(lean)) {
+if (lean) {
   const dir = new URL('../../tmp/lean-export/run/', import.meta.url).pathname
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'notes.lean'), out.lean)
   writeFileSync(join(dir, 'notes-planted.lean'), planted)
 
-  const good = spawnSync(lean, [join(dir, 'notes.lean')], { encoding: 'utf8' })
-  const said = `${good.stdout}${good.stderr}`
-  ok('lean checks the export', good.status === 0 && !/error:/.test(said), said.slice(0, 3000))
-  ok('lean prints no warning on the export', !/warning:/.test(said), said.slice(0, 2000))
+  const good = runLean({ lean, file: join(dir, 'notes.lean'), source: out.lean, claims: CLAIMS })
+  ok('lean checks the export', good.status === 0 && good.errors.length === 0, good.output.slice(0, 3000))
+  ok('lean prints no warning on the export', good.warnings === 0, good.output.slice(0, 2000))
 
-  // `#print axioms` per claim: Lean quotes a name with a dash as «name» and a plain one bare
-  const leanName = (name: string): string => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `«${name}»`)
-
-  for (const claim of CLAIMS) {
-    ok(`lean: ${claim} depends on no axiom`, said.includes(`'TermExport.${leanName(claim)}' does not depend on any axioms`), said.split('\n').filter(line => line.includes(leanName(claim))).join(' | '))
+  for (const claim of good.claims) {
+    ok(`lean: ${claim.name} depends on no axiom`, claim.verdict === 'checked', JSON.stringify(claim))
   }
 
-  const reported = [...good.stdout.matchAll(/'TermExport\.(\S+)' (does not depend|depends)/g)].length
+  const reported = [...good.output.matchAll(/^'TermExport\.(\S+)' (does not depend|depends)/gm)].length
   ok('lean reports exactly one axiom line per claim', reported === CLAIMS.length, `${reported} lines`)
 
-  const bad = spawnSync(lean, [join(dir, 'notes-planted.lean')], { encoding: 'utf8' })
-  const badSaid = `${bad.stdout}${bad.stderr}`
-  ok('lean refuses the planted proof', bad.status !== 0, badSaid.slice(0, 2000))
+  const bad = runLean({ lean, file: join(dir, 'notes-planted.lean'), source: planted, claims: CLAIMS })
+  ok('lean refuses the planted proof', bad.status !== 0, bad.output.slice(0, 2000))
   const plantedLine = out.lean.split('\n').findIndex((line, i) => planted.split('\n')[i] !== line) + 1
-  const errorLines = [...badSaid.matchAll(/notes-planted\.lean:(\d+):\d+: error/g)].map(m => Number(m[1]))
-  const sorried = [...bad.stdout.matchAll(/'TermExport\.(\S+)' depends on axioms: \[sorryAx\]/g)].map(m => m[1])
+  const refused = bad.claims.filter(claim => claim.verdict === 'refused').map(claim => claim.name)
   ok(
     'lean refuses the planted body alone, and only law 1 and law 1 of replay rest on it',
-    errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'ownership,«ownership-of-replay»',
-    `errors at ${errorLines.join(', ')}, planted line ${plantedLine}, sorry in ${sorried.join(', ')}`,
+    bad.errors.length === 1 && bad.errors[0]!.line === plantedLine && bad.errors[0]!.definition === 'ownership' && refused.join() === 'ownership,ownership-of-replay',
+    `errors at ${bad.errors.map(e => `${e.line} in ${e.definition}`).join(', ')}, planted line ${plantedLine}, refused ${refused.join(', ')}`,
   )
 } else {
   console.log(
-    `skip  the Lean re-check did not run: TERM_LEAN is ${lean ? `${lean}, which does not exist` : 'unset'}. ` +
+    `skip  the Lean re-check did not run: no Lean at TERM_LEAN (${process.env.TERM_LEAN ?? 'unset'}) or on the PATH. ` +
       'Set it to a Lean 4 binary (TERM_LEAN=/opt/homebrew/bin/lean) to hold MVP gate 3',
   )
 }

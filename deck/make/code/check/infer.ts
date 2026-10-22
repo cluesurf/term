@@ -2603,7 +2603,7 @@ function checkProgram(
   // DECLARED TYPE and never by the count, so a one-element list and a scalar stay different things.
   function unwrapLeanFields(
     node: Extract<Expression, { form: 'record' }>,
-    env?: Env,
+    env: Env,
   ): void {
     if (!node.lean) {
       return

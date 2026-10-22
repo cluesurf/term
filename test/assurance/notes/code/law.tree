@@ -9,6 +9,11 @@
 # what `replay` computes is a run `replays` allows, so law 1 holds of `replay` itself (`ownership-of-replay`). The relations are nondeterministic where safety allows: an erase
 # may always leave a note as it was, a view may always leave a note out, so each law holds of every way to resolve
 # them. The forms are model.tree's, so a law and the task it is about name one `shelf`.
+#
+# LAW 7, SAFE TEXT, is at the end: claims about @term/site's escape (http/glyph.tree, which http/escape.tree's
+# `escape-html` runs) and its model of the node serializer (http/html.tree), and `safe-text` over every page of the
+# notes site (page.tree). They are here and not beside the escape because a file holding claims cannot be loaded yet
+# (term-proof-0005).
 load ./model
   find natural
   find rank
@@ -29,6 +34,32 @@ load ./model
   find guard
   find may
   find replay
+
+load @term/site/http/glyph
+  find glyph
+  find glyphs
+  find entity
+  find pieces
+  find escape-glyph
+  find escape-glyphs
+  find escape-text-glyph
+  find escape-text-glyphs
+  find escape-attr-glyph
+  find escape-attr-glyphs
+  find glyph-of-entity
+  find unescape-glyphs
+
+load @term/site/http/html
+  find attributes
+  find node
+  find html
+  find serialize-attributes
+  find serialize
+
+load ./page
+  find page
+  find refusal
+  find html-of
 
 # THE POLICY: a person may erase a note when the person is an admin, or owns it
 form allowed
@@ -1952,3 +1983,734 @@ rule ownership-of-replay
 task ownership-of-replay
   take es
   back ownership(es, replay(es), ownership-of-replay-run(es))
+
+
+# ---- LAW 7, SAFE TEXT: every text a page was given reaches its HTML escaped, so the page holds no markup the asker
+# wrote. Its lemmas are claims named after it, so a broken escape or serializer is refused under the law's name ----
+
+# WHAT ESCAPE-HTML WRITES: no glyph kept but other characters, so no `<`, `>`, `"` or `'`, and every `&` the first
+# character of an entity it wrote
+form escaped
+  head xs, like pieces
+  case escaped-end
+    head
+      make no-piece
+  case escaped-point
+    link rest, like pieces
+    link ok
+      like escaped
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case escaped-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like escaped
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# SAFE AS ELEMENT TEXT: no `<` or `>` kept, every `&` the first character of an entity. A quote is only text here
+form text-safe
+  head xs, like pieces
+  case text-safe-end
+    head
+      make no-piece
+  case text-safe-point
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case text-safe-double
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make double-quote
+        bind rest, rest
+  case text-safe-single
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make single-quote
+        bind rest, rest
+  case text-safe-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like text-safe
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# SAFE INSIDE AN ATTRIBUTE QUOTED WITH `"`: no `"` kept, every `&` the first character of an entity. `<`, `>` and `'`
+# are only text there
+form attribute-safe
+  head xs, like pieces
+  case attribute-safe-end
+    head
+      make no-piece
+  case attribute-safe-point
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make other-point
+        bind rest, rest
+  case attribute-safe-open
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make angle-open
+        bind rest, rest
+  case attribute-safe-shut
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make angle-shut
+        bind rest, rest
+  case attribute-safe-single
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make kept-then
+        bind kept, make single-quote
+        bind rest, rest
+  case attribute-safe-entity
+    link named, like entity
+    link rest, like pieces
+    link ok
+      like attribute-safe
+        head
+          read rest
+    head
+      make entity-then
+        bind named, named
+        bind rest, rest
+
+# A PAGE WITH NO MARKUP THE ASKER WROTE: every text safe as element text, every attribute value safe in its quotes.
+# The serializer's own syntax may be anything
+form safe-html
+  head h, like html
+  case html-safe-end
+    head
+      make html-end
+  case html-safe-doctype
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make doctype-then
+        bind rest, rest
+  case html-safe-open
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-open-then
+        bind rest, rest
+  case html-safe-value
+    link value, like pieces
+    link rest, like html
+    link value-ok
+      like attribute-safe
+        head
+          read value
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make value-then
+        bind value, value
+        bind rest, rest
+  case html-safe-shut
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-shut-then
+        bind rest, rest
+  case html-safe-close
+    link rest, like html
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make tag-close-then
+        bind rest, rest
+  case html-safe-text
+    link value, like pieces
+    link rest, like html
+    link value-ok
+      like text-safe
+        head
+          read value
+    link ok
+      like safe-html
+        head
+          read rest
+    head
+      make text-then
+        bind value, value
+        bind rest, rest
+
+# two texts read the same, glyph for glyph
+form same-glyphs
+  head xs, like glyphs
+  head ys, like glyphs
+  case same-glyphs-end
+    head
+      make no-glyph
+    head
+      make no-glyph
+  case same-glyphs-then
+    link first, like glyph
+    link a, like glyphs
+    link b, like glyphs
+    link ok
+      like same-glyphs
+        head
+          read a
+        head
+          read b
+    head
+      make glyph-then
+        bind first, first
+        bind rest, a
+    head
+      make glyph-then
+        bind first, first
+        bind rest, b
+
+# ---- 1. ESCAPE-HTML (glyph.tree `escape-glyphs`, which escape.tree's `escape-html` runs) ----
+
+rule safe-text-escape-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like escaped
+      head
+        read rest
+  like escaped
+    head
+      escape-glyph(g, rest)
+
+task safe-text-escape-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make escaped-entity
+          bind named, make entity-lt
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make escaped-entity
+          bind named, make entity-gt
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make escaped-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make escaped-entity
+          bind named, make entity-quot
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make escaped-entity
+          bind named, make entity-apos
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make escaped-point
+          bind rest, rest
+          bind ok, ok
+
+# CLAIM 1: escape-html's output keeps no `<`, `>`, `&`, `"` or `'`: each is an entity it wrote
+rule safe-text-escape
+  take xs, like glyphs
+  like escaped
+    head
+      escape-glyphs(xs)
+
+task safe-text-escape
+  take xs
+  sift xs
+    case no-glyph
+      back make escaped-end
+    case glyph-then
+      back safe-text-escape-glyph(first, escape-glyphs(rest), safe-text-escape(rest))
+
+rule safe-text-round-glyph
+  take g, like glyph
+  take xs, like glyphs
+  take ys, like pieces
+  take ok
+    like same-glyphs
+      head
+        read xs
+      head
+        unescape-glyphs(ys)
+  like same-glyphs
+    head
+      make glyph-then
+        bind first, g
+        bind rest, xs
+    head
+      unescape-glyphs
+        escape-glyph(g, ys)
+
+task safe-text-round-glyph
+  take g
+  take xs
+  take ys
+  take ok
+  sift g
+    case angle-open
+      back
+        make same-glyphs-then
+          bind first, make angle-open
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case angle-shut
+      back
+        make same-glyphs-then
+          bind first, make angle-shut
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case ampersand
+      back
+        make same-glyphs-then
+          bind first, make ampersand
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case double-quote
+      back
+        make same-glyphs-then
+          bind first, make double-quote
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case single-quote
+      back
+        make same-glyphs-then
+          bind first, make single-quote
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+    case other-point
+      back
+        make same-glyphs-then
+          bind first, make other-point
+          bind a, xs
+          bind b, unescape-glyphs(ys)
+          bind ok, ok
+
+# CLAIM 1, THE ROUND TRIP: reading back what escape-html wrote gives the text it was given, so no two texts escape alike
+rule safe-text-round-trip
+  take xs, like glyphs
+  like same-glyphs
+    head
+      read xs
+    head
+      unescape-glyphs
+        escape-glyphs(xs)
+
+task safe-text-round-trip
+  take xs
+  sift xs
+    case no-glyph
+      back make same-glyphs-end
+    case glyph-then
+      back safe-text-round-glyph(first, rest, escape-glyphs(rest), safe-text-round-trip(rest))
+
+# escape-html's output is safe as element text
+rule safe-text-escaped-text
+  take xs, like pieces
+  take ok
+    like escaped
+      head
+        read xs
+  like text-safe
+    head
+      read xs
+
+task safe-text-escaped-text
+  take xs
+  take ok
+  sift ok
+    case escaped-end
+      back make text-safe-end
+    case escaped-point
+      back
+        make text-safe-point
+          bind rest, rest
+          bind ok, safe-text-escaped-text(rest, ok)
+    case escaped-entity
+      back
+        make text-safe-entity
+          bind named, named
+          bind rest, rest
+          bind ok, safe-text-escaped-text(rest, ok)
+
+# ---- 2. THE SERIALIZER (html.tree, the model of html.ts `compactNode`) ----
+
+rule safe-text-text-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like text-safe
+      head
+        read rest
+  like text-safe
+    head
+      escape-text-glyph(g, rest)
+
+task safe-text-text-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make text-safe-entity
+          bind named, make entity-lt
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make text-safe-entity
+          bind named, make entity-gt
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make text-safe-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make text-safe-double
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make text-safe-single
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make text-safe-point
+          bind rest, rest
+          bind ok, ok
+
+# the text escape's output is safe as element text
+rule safe-text-text
+  take xs, like glyphs
+  like text-safe
+    head
+      escape-text-glyphs(xs)
+
+task safe-text-text
+  take xs
+  sift xs
+    case no-glyph
+      back make text-safe-end
+    case glyph-then
+      back safe-text-text-glyph(first, escape-text-glyphs(rest), safe-text-text(rest))
+
+rule safe-text-attribute-glyph
+  take g, like glyph
+  take rest, like pieces
+  take ok
+    like attribute-safe
+      head
+        read rest
+  like attribute-safe
+    head
+      escape-attr-glyph(g, rest)
+
+task safe-text-attribute-glyph
+  take g
+  take rest
+  take ok
+  sift g
+    case angle-open
+      back
+        make attribute-safe-open
+          bind rest, rest
+          bind ok, ok
+    case angle-shut
+      back
+        make attribute-safe-shut
+          bind rest, rest
+          bind ok, ok
+    case ampersand
+      back
+        make attribute-safe-entity
+          bind named, make entity-amp
+          bind rest, rest
+          bind ok, ok
+    case double-quote
+      back
+        make attribute-safe-entity
+          bind named, make entity-quot
+          bind rest, rest
+          bind ok, ok
+    case single-quote
+      back
+        make attribute-safe-single
+          bind rest, rest
+          bind ok, ok
+    case other-point
+      back
+        make attribute-safe-point
+          bind rest, rest
+          bind ok, ok
+
+# the attribute escape's output is safe inside `"`
+rule safe-text-attribute
+  take xs, like glyphs
+  like attribute-safe
+    head
+      escape-attr-glyphs(xs)
+
+task safe-text-attribute
+  take xs
+  sift xs
+    case no-glyph
+      back make attribute-safe-end
+    case glyph-then
+      back safe-text-attribute-glyph(first, escape-attr-glyphs(rest), safe-text-attribute(rest))
+
+# every attribute value an element writes is escaped for its quotes
+rule safe-text-attributes
+  take given, like attributes
+  take after, like html
+  take ok
+    like safe-html
+      head
+        read after
+  like safe-html
+    head
+      serialize-attributes(given, after)
+
+task safe-text-attributes
+  take given
+  take after
+  take ok
+  sift given
+    case attributes-end
+      back ok
+    case attribute-then
+      back
+        make html-safe-value
+          bind value, escape-attr-glyphs(value)
+          bind rest, serialize-attributes(rest, after)
+          bind value-ok, safe-text-attribute(value)
+          bind ok, safe-text-attributes(rest, after, ok)
+
+# CLAIM 2: whatever comes after it, the serializer writes every text node and every attribute value of a tree escaped
+rule safe-text-serialize
+  take n, like node
+  take after, like html
+  take ok
+    like safe-html
+      head
+        read after
+  like safe-html
+    head
+      serialize(n, after)
+
+task safe-text-serialize
+  take n
+  take after
+  take ok
+  sift n
+    case no-node
+      back ok
+    case text-node
+      back
+        make html-safe-text
+          bind value, escape-text-glyphs(value)
+          bind rest, after
+          bind value-ok, safe-text-text(value)
+          bind ok, ok
+    case element
+      back
+        make html-safe-open
+          bind rest
+            serialize-attributes
+              read given
+              make tag-shut-then
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+          bind ok
+            safe-text-attributes
+              read given
+              make tag-shut-then
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+              make html-safe-shut
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+                bind ok
+                  safe-text-serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+                    make html-safe-close
+                      bind rest, after
+                      bind ok, ok
+    case beside
+      back safe-text-serialize(first, serialize(second, after), safe-text-serialize(second, after, ok))
+
+# a rendered view's whole page
+rule safe-text-of-view
+  take n, like node
+  like safe-html
+    head
+      serialize(n, make html-end)
+
+task safe-text-of-view
+  take n
+  back
+    safe-text-serialize
+      read n
+      make html-end
+      make html-safe-end
+
+# ---- 3. THE NOTES PAGES ----
+
+# a refusal's message reaches its page through escape-html
+rule safe-text-of-refusal
+  take message, like glyphs
+  like safe-html
+    head
+      refusal(message)
+
+task safe-text-of-refusal
+  take message
+  back
+    make html-safe-doctype
+      bind rest
+        make tag-open-then
+          bind rest
+            make tag-shut-then
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+      bind ok
+        make html-safe-open
+          bind rest
+            make tag-shut-then
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+          bind ok
+            make html-safe-shut
+              bind rest
+                make text-then
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+              bind ok
+                make html-safe-text
+                  bind value, escape-glyphs(message)
+                  bind rest
+                    make tag-close-then
+                      bind rest, make html-end
+                  bind value-ok, safe-text-escaped-text(escape-glyphs(message), safe-text-escape(message))
+                  bind ok
+                    make html-safe-close
+                      bind rest, make html-end
+                      bind ok, make html-safe-end
+
+# LAW 7, SAFE TEXT: no page of the notes site holds markup the asker wrote
+rule safe-text
+  take pg, like page
+  like safe-html
+    head
+      html-of(pg)
+
+task safe-text
+  take pg
+  sift pg
+    case viewed
+      back safe-text-of-view(n)
+    case refused
+      back safe-text-of-refusal(message)

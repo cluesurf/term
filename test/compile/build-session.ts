@@ -9,6 +9,7 @@
 // Run: npx tsx test/compile/build-session.ts
 
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildSession, compileProjectSeparate, unitSlug } from '@term/call/code/make'
@@ -34,7 +35,11 @@ mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/session\n  mark <0.0.1>\n`)
 
 const helper = join(root, 'code', 'helper.tree')
-const helperText = (word: string): string => `load @term/base/text\n  find trim\n\ntask greet\n  like text\n  back trim(< ${word} >)\n`
+// A unit's answer is stored machine-wide, keyed by its text with the deck's root written as a token, so the temporary
+// directory is not in the key: without a text of this run's own, a second run finds both helpers already built and
+// builds nothing. The run's own comment makes every unit it builds new to the cache
+const RUN = randomUUID()
+const helperText = (word: string): string => `# run ${RUN}\nload @term/base/text\n  find trim\n\ntask greet\n  like text\n  back trim(< ${word} >)\n`
 
 writeFileSync(helper, helperText('first'))
 writeFileSync(join(root, 'code', 'base.tree'), `load ./helper\n  find greet\n\ntask main\n  like text\n  back greet()\n`)

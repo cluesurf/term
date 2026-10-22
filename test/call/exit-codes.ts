@@ -655,7 +655,7 @@ view page
   })
 
   ok('`term walk` loads a project file by a relative path and calls it', /added \.\/code\/count/.test(session.stdout) && /^12$/m.test(session.stdout), `${session.stdout}\n${session.stderr}`)
-  ok('and refuses a load nothing answers, rather than printing `added`', /nothing answers load \.\/code\/nope/i.test(session.stderr) && !/added \.\/code\/nope/.test(session.stdout), `${session.stdout}\n${session.stderr}`)
+  ok('and refuses a load nothing answers, rather than printing `added`', /nothing answers `?load \.\/code\/nope`?/i.test(session.stderr) && !/added \.\/code\/nope/.test(session.stdout), `${session.stdout}\n${session.stderr}`)
 }
 
 // ---- commands/scan: a file is read the way `term make` reads it ----

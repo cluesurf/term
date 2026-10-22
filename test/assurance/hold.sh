@@ -6,6 +6,8 @@
 # usage: sh /Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/hold.sh
 line=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/host/line.js
 here=/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance
+# every directory under twin/ is a twin, one law broken in each. Law 7, safe text: twin/raw-text (the refusal page writes
+# its text unescaped), refused at `safe-text-of-refusal` and `safe-text` (2026-10-21)
 # none pending: no-forged-permit (check/hide.ts) and permit-reused (check/sole.ts) are refused since 2026-10-21
 EXPECTED_HOLD=""
 bad=0

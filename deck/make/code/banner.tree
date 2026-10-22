@@ -94,6 +94,7 @@ task banner-sections
 
   save check, make list
   push(check, command-of(<term hold>, <Every file compiles and every obligation holds>))
+  push(check, command-of(<term knit \<spec\>>, <A model writes the code, laws and proofs until it holds>))
   push(check, command-of(<term scan \<file\>>, <Type-check one file>))
   push(check, command-of(<term lint>, <Find and fix style problems>))
   push(check, command-of(<term form>, <Format files in place>))

@@ -1,0 +1,3 @@
+role code
+  mark lean
+  take @/code/*.tree

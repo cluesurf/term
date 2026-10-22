@@ -13,6 +13,7 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { exportLean, joinSources, plantLean } from '@term/make/code/check/lean-export'
+import { findLean } from '@term/make/code/check/lean-run'
 import { check, contextWithSignature, evaluate } from '@term/make/code/check/judge'
 import type { Term } from '@term/make/code/check/judge'
 
@@ -279,10 +280,10 @@ if (writeAt > 0) {
   console.log(`wrote ${join(dir, 'stdlib.lean')} and ${join(dir, 'planted.lean')}`)
 }
 
-// LEAN ITSELF, when it is here
-const lean = process.env.TERM_LEAN ?? spawnSync('which', ['lean'], { encoding: 'utf8' }).stdout.trim()
+// LEAN ITSELF, at TERM_LEAN or else on the PATH, found as `term hold --lean` finds it
+const lean = findLean()
 
-if (lean && existsSync(lean)) {
+if (lean) {
   const dir = new URL('../../tmp/lean-export/run/', import.meta.url).pathname
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'stdlib.lean'), out.lean)
@@ -291,7 +292,10 @@ if (lean && existsSync(lean)) {
   ok('lean checks the export', good.status === 0, `${good.stdout}${good.stderr}`.slice(0, 2000))
   const axiomFree = CLAIMS.every(c => new RegExp(`'TermExport\\.${c}' does not depend on any axioms`).test(good.stdout))
   ok('lean reports every claim free of axioms', axiomFree, good.stdout.slice(0, 2000))
-  ok('lean prints no warning on the export', !/warning:/.test(`${good.stdout}${good.stderr}`), good.stdout.slice(0, 2000))
+  // Lean's own warnings only, `<file>:<line>:<col>: warning:`. The elan proxy says `warning: failed to query latest
+  // release` on stderr when it cannot reach the network, and that is not Lean's verdict on the file (traps.md)
+  const leanWarnings = `${good.stdout}${good.stderr}`.split('\n').filter(line => /:\d+:\d+: warning:/.test(line))
+  ok('lean prints no warning on the export', leanWarnings.length === 0, leanWarnings.slice(0, 5).join(' | '))
   const bad = spawnSync(lean, [join(dir, 'planted.lean')], { encoding: 'utf8' })
   ok('lean refuses the planted proof', bad.status !== 0, `${bad.stdout}${bad.stderr}`.slice(0, 2000))
   // refused for the plant and nothing else: one error, on the planted body line, and symmetry alone rests on sorry

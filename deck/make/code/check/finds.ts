@@ -81,24 +81,109 @@ export function checkFinds(
   }
 }
 
+// THE CALLER ASKS AGAIN AFTER EVERY READ (compile.ts `staleFindsOf`), handing the same program, the same scope list and
+// the same source list it appends to, so what is built from the program and the scopes is kept with that list (one
+// list is one run of the loop, so nothing is kept past it) and each source's names with its record. Rebuilt every
+// pass, the program's definitions and every source's lines were read once per file the check wanted: on a file of
+// @term/bind that was 77% of a whole compile (term-term-gates-0003, 2026-10-21). The answers are the same
+type Scope = Map<string, { finds: Map<string, string[]>; bears: string[]; at: Map<string, Span> }>
+
+// `read` indexes the list by file, the first record of each, as far as `indexed`: the list is only ever appended to
+type Run = {
+  program: Program
+  scopes: FileScope[]
+  scope: Scope
+  defined?: Map<string, Set<string>>
+  read: Map<string, ReadSource>
+  indexed: number
+}
+
+const runMemo = new WeakMap<ReadSource[], Run>()
+const sourceMemo = new WeakMap<ReadSource, Set<string>>()
+
 function findsChecked(program: Program, file: string, scopes: FileScope[], sources: ReadSource[]): Diagnostic[] {
-  const scope = new Map(
-    scopes.map(one => [
-      one.file,
-      {
-        finds: new Map(one.finds.map(f => [f.name, f.targets])),
-        bears: one.bears,
-        at: new Map(one.finds.flatMap(f => (f.at ? [[f.name, f.at] as const] : []))),
-      },
-    ]),
-  )
+  const kept = runMemo.get(sources)
+  const run: Run =
+    kept && kept.program === program && kept.scopes === scopes
+      ? kept
+      : {
+          program,
+          scopes,
+          scope: new Map(
+            scopes.map(one => [
+              one.file,
+              {
+                finds: new Map(one.finds.map(f => [f.name, f.targets])),
+                bears: one.bears,
+                at: new Map(one.finds.flatMap(f => (f.at ? [[f.name, f.at] as const] : []))),
+              },
+            ]),
+          ) as Scope,
+          read: new Map(),
+          indexed: 0,
+        }
+  runMemo.set(sources, run)
+
+  for (; run.indexed < sources.length; run.indexed++) {
+    const source = sources[run.indexed]!
+
+    if (!run.read.has(source.file)) {
+      run.read.set(source.file, source)
+    }
+  }
+  const scope = run.scope
   const own = scope.get(file)
 
   if (!own || own.finds.size === 0) {
     return []
   }
 
-  // what each file defines, from the program
+  const defined = run.defined ?? definedIn(program)
+  run.defined = defined
+
+  // and from the source, for what is gone by the time the program is built
+  const readSource = (target: string): Set<string> => {
+    const read = run.read.get(target)
+
+    if (!read) {
+      throw { [WANT]: target }
+    }
+
+    const cached = sourceMemo.get(read)
+
+    if (cached) {
+      return cached
+    }
+
+    const names = new Set<string>()
+
+    if (read.text !== undefined) {
+      for (const line of read.text.split('\n')) {
+        const match = DEFINING.exec(line)
+
+        if (match) {
+          names.add(match[1]!)
+        }
+
+        // a dock alias (`load <node:fs>, name fs`) and a `find ..., name alias` are names the module exposes too
+        const alias = /^\s+(?:load|find)\s.*,\s*name\s+([^\s,]+)/.exec(line)
+
+        if (alias) {
+          names.add(alias[1]!)
+        }
+      }
+    }
+
+    sourceMemo.set(read, names)
+
+    return names
+  }
+
+  return unfound(program, file, scope, own, defined, readSource)
+}
+
+// what each file defines, from the program
+function definedIn(program: Program): Map<string, Set<string>> {
   const defined = new Map<string, Set<string>>()
   const add = (where: string | undefined, name: string | undefined): void => {
     if (!where || !name) {
@@ -137,44 +222,17 @@ function findsChecked(program: Program, file: string, scopes: FileScope[], sourc
     }
   }
 
-  // and from the source, for what is gone by the time the program is built
-  const sourceNames = new Map<string, Set<string>>()
-  const readSource = (target: string): Set<string> => {
-    const cached = sourceNames.get(target)
+  return defined
+}
 
-    if (cached) {
-      return cached
-    }
-
-    const names = new Set<string>()
-    const read = sources.find(source => source.file === target)
-
-    if (!read) {
-      throw { [WANT]: target }
-    }
-
-    if (read.text !== undefined) {
-      for (const line of read.text.split('\n')) {
-        const match = DEFINING.exec(line)
-
-        if (match) {
-          names.add(match[1]!)
-        }
-
-        // a dock alias (`load <node:fs>, name fs`) and a `find ..., name alias` are names the module exposes too
-        const alias = /^\s+(?:load|find)\s.*,\s*name\s+([^\s,]+)/.exec(line)
-
-        if (alias) {
-          names.add(alias[1]!)
-        }
-      }
-    }
-
-    sourceNames.set(target, names)
-
-    return names
-  }
-
+function unfound(
+  program: Program,
+  file: string,
+  scope: Scope,
+  own: NonNullable<ReturnType<Scope['get']>>,
+  defined: Map<string, Set<string>>,
+  readSource: (target: string) => Set<string>,
+): Diagnostic[] {
   // a name is reachable from a file when it defines it, or a file it bears does
   const reaches = (target: string, name: string, seen: Set<string>): boolean => {
     if (seen.has(target)) {

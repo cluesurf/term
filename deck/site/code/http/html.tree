@@ -1,0 +1,107 @@
+# THE NODE SERIALIZER AS THE KERNEL READS IT (claims in test/assurance/notes/code/law.tree, law 7). The node and
+# cloudflare hosts (dom/native/cloudflare/dom.tree reuses the node dom whole) turn a rendered `view` into HTML with
+# dom/native/node/runtime/html.ts `compactNode`: a text node is its text through `escapeText`, an element is `<tag`,
+# each attribute ` name="` its value through `escapeAttr` `"`, then `>`, its children, and `</tag>`. That serializer is
+# TypeScript, which the kernel cannot read, so this is its model, task for task: `serialize` is `compactNode`,
+# `serialize-attributes` is `openTag`'s attribute walk, and the two escapes are glyph.tree's `escape-text-glyphs` and
+# `escape-attr-glyphs`. Nothing runs this file. That html.ts does what it says is read off html.ts, not proven: change
+# one and change the other.
+#
+# The output is a list of CHUNKS that say where each part came from: the serializer's own syntax (`<`, a tag or
+# attribute name the program wrote, `>`, `</tag>`), a text node's text, or an attribute's value. The law about it
+# (law.tree `safe-text-of-view`) is that every text and every value reaches the output escaped for where it stands.
+#
+# Left out, since none of them writes a value the page was given: the tag and attribute names (the program's own
+# literals), the `class` attribute (one more attribute, through the same `escapeAttr`), a void element's missing
+# children and end tag (it writes less, never more), and the pretty layout's whitespace (the same escapes, more
+# spaces).
+load ./glyph
+  find glyphs
+  find pieces
+  find escape-text-glyphs
+  find escape-attr-glyphs
+
+# an element's attributes, each value a text the page was given
+form attributes
+  case attributes-end
+  case attribute-then
+    link value, like glyphs
+    link rest, like attributes
+
+# a view's rendered tree: nothing, a text node, an element over its children, or two runs of nodes side by side
+form node
+  case no-node
+  case text-node
+    link value, like glyphs
+  case element
+    link given, like attributes
+    link inner, like node
+  case beside
+    link first, like node
+    link second, like node
+
+# the serializer's output, front to back
+form html
+  case html-end
+  # `<!doctype html>`
+  case doctype-then
+    link rest, like html
+  # `<` and the tag's name
+  case tag-open-then
+    link rest, like html
+  # ` name="`, the value, `"`
+  case value-then
+    link value, like pieces
+    link rest, like html
+  # `>`
+  case tag-shut-then
+    link rest, like html
+  # `</`, the tag's name, `>`
+  case tag-close-then
+    link rest, like html
+  # a text node's text
+  case text-then
+    link value, like pieces
+    link rest, like html
+
+# `openTag`'s attributes, before `after`
+task serialize-attributes
+  take given, like attributes
+  take after, like html
+  like html
+  sift given
+    case attributes-end
+      back after
+    case attribute-then
+      back
+        make value-then
+          bind value, escape-attr-glyphs(value)
+          bind rest, serialize-attributes(rest, after)
+
+# `compactNode`: the node's HTML, before `after`
+task serialize
+  take n, like node
+  take after, like html
+  like html
+  sift n
+    case no-node
+      back after
+    case text-node
+      back
+        make text-then
+          bind value, escape-text-glyphs(value)
+          bind rest, after
+    case element
+      back
+        make tag-open-then
+          bind rest
+            serialize-attributes
+              read given
+              make tag-shut-then
+                bind rest
+                  serialize
+                    read inner
+                    make tag-close-then
+                      bind rest, after
+    case beside
+      back serialize(first, serialize(second, after))

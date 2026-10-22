@@ -921,7 +921,7 @@ function runMacos(): void {
 
   if (file && builds('macos', 'swiftc', ['-o', exe, file])) {
     const run = spawnSync(exe, [], { encoding: 'utf8', timeout: 60_000 })
-    ok('macos: the app exits 0', run.status === 0, `exit ${run.status} ${run.signal ?? ''}: ${(run.stdout + run.stderr).slice(0, 400)}`)
+    ok('macos: the app exits 0', run.status === 0, `exit ${run.status} ${run.signal ?? ''}: ${run.stdout.slice(0, 400)} | ${run.stderr.slice(0, 1600)}`)
     judge('macos', 'AppKit', run.stdout, png)
   }
 }

@@ -99,9 +99,10 @@ export function checkSupervision(program: Program, file: string): Diagnostic[] {
       form: 'function',
       name: `__supervised-work-${i}`,
       params: [],
+      generics: [],
       body: work.body,
       span: work.span,
-    }) as Extract<Statement, { form: 'function' }>,
+    }),
   )
   const sets = raiseSetsOf([...program, ...probes], [...exceptions])
   const diagnostics: Diagnostic[] = []

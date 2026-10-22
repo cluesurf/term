@@ -19,6 +19,13 @@
  * `--cross` additionally runs the cross-backend differential this command used to run by default (`@term/test`'s
  * incremental hold), which compares the backends rather than proving anything.
  *
+ * `--lean` additionally re-checks every claim in Lean 4, the second checker (call/code/hold-lean.ts): a claim Lean
+ * refuses, one resting on an axiom, one the exporter declines, or no Lean on the machine fails the gate.
+ *
+ * `--report` prints the MVP report (call/code/hold-report.ts): one row per law the project's `laws.tree` names, each in
+ * English from its Term form, what it rests on, and the counts, also written under the project's home. A law that does
+ * not hold, or a project with no `laws.tree`, fails the gate.
+ *
  * See note/project/term/proof/readme.md and note/project/term/proof/law-and-proof.md.
  *
  * What the gate decides without a build or the terminal is Term, in hold-plan.tree: an obligation's key, the baseline
@@ -50,6 +57,8 @@ import { projectHome } from '@term/call/code/home'
 import * as plan from '@term/call/code/hold-plan'
 import { holdLean, reportLean } from '@term/call/code/hold-lean'
 import type { HoldLean } from '@term/call/code/hold-lean'
+import { holdReport } from '@term/call/code/hold-report'
+import type { HoldReport } from '@term/call/code/hold-report'
 
 // where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
 // that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
@@ -273,6 +282,8 @@ export async function callHold(input: {
   force?: boolean
   json?: boolean
   commit?: boolean
+  lean?: boolean
+  report?: boolean
 }): Promise<void> {
   const { root } = input
   // the same files `term make` compiles for node, so the gate and the build agree on what the project is: another
@@ -282,7 +293,12 @@ export async function callHold(input: {
       ? await collectTreeFiles(input.paths, root)
       : findTreeFiles(root, [], 'node')
 
-  openRun({ verb: 'hold', root, counts: [count(files.length, 'files', 'file')], facts: input.commit ? ['--commit'] : [] })
+  openRun({
+    verb: 'hold',
+    root,
+    counts: [count(files.length, 'files', 'file')],
+    facts: [...(input.commit ? ['--commit'] : []), ...(input.lean ? ['--lean'] : []), ...(input.report ? ['--report'] : [])],
+  })
 
   if (files.length === 0) {
     report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to hold', message: input.paths.length ? [`Looked in ${input.paths.join(', ')}.`] : [] })
@@ -320,9 +336,18 @@ export async function callHold(input: {
     summary.gone = []
   }
 
-  // the summary is data the user asked for, on stdout, the same object it always was
+  // the second checker, when asked for: every claim exported and re-checked by Lean 4
+  const lean: HoldLean | undefined = input.lean ? holdLean(root, files) : undefined
+
+  // the MVP report, when asked for: one row per law of laws.tree, written under the project's home
+  const page: HoldReport | undefined = input.report ? holdReport({ root, files, summary, found, lean }) : undefined
+
+  // the summary is data the user asked for, on stdout, the same object it always was, with `lean` under --lean and
+  // `report` under --report. Without --json the report's page is the data
   if (input.json) {
-    printData(JSON.stringify(summary, null, 2) + '\n')
+    printData(JSON.stringify({ ...summary, ...(lean ? { lean } : {}), ...(page ? { report: page } : {}) }, null, 2) + '\n')
+  } else if (page) {
+    printData(page.page)
   }
 
   // each tier-0 obligation that is not proven and not in the baseline, a Problem item under `prove` (section 12)
@@ -453,11 +478,27 @@ export async function callHold(input: {
     }
   }
 
-  const { holds, counts } = plan.gateOf(summary.proven, summary.total, summary.baselined, summary.failed.length, summary.open.length, summary.fresh.length, crossOk, BASELINE)
+  if (lean) {
+    reportLean(lean)
+  }
+
+  if (page) {
+    report({
+      glyph: page.holds ? 'done' : 'failed',
+      ...(page.holds ? {} : { kind: 'problem' }),
+      verb: 'report',
+      subject: page.top,
+      fields: [field('file', page.file)],
+    })
+  }
+
+  const gate = plan.gateOf(summary.proven, summary.total, summary.baselined, summary.failed.length, summary.open.length, summary.fresh.length, crossOk, BASELINE)
+  const holds = gate.holds && (lean?.ok ?? true) && (page?.holds ?? true)
+  const counts = gate.counts
 
   // a gate that passed says so with a ✓ of its own: the items above are `·` summaries, and a run of `·` items closes
   // `·` (section 4), which reads as "nothing was done" for the one command whose whole job is a verdict
-  if (holds) {
+  if (gate.holds) {
     report({ glyph: 'done', verb: 'prove', subject: 'Every obligation is proven or in the baseline', counts: [count(summary.proven, 'proven', '', summary.total)] })
   }
 

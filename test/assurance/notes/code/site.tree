@@ -16,8 +16,9 @@
 # its rank in `x-rank` (`admin`, anything else is a member). A request without `x-person` is nobody: it sees an empty
 # list and every change it asks is refused with 401. A real site reads a signed session in `person-of`, and nowhere else.
 #
-# TEXT INTO HTML: a page is a `view`, which escapes every text it places. The answers a handler writes as markup itself
-# (the 401, 403 and 404 pages) put each text through `escape-html`.
+# TEXT INTO HTML (law 7, safe text): a page is a `view`, which escapes every text it places. The answers a handler writes
+# as markup itself (the 400, 401, 403 and 404 pages) put each text through `escape-html`. law.tree's `safe-text` proves
+# both over page.tree, whose `refusal` is `refuse` below: change one and change the other.
 load ./model
   find natural
   find rank

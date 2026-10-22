@@ -1,4 +1,4 @@
-// Write note/term/commands.md: every `term` verb, its subcommands, and its options.
+// Write note/project/term/commands.md: every `term` verb, its subcommands, and its options.
 //
 // GENERATED, from two sources, each used for what it is authoritative about:
 //
@@ -25,7 +25,7 @@ import { join } from 'node:path'
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const LINE = join(TERM, 'host/line.js')
-const PAGE = join(TERM, '../../../../note/term/commands.md')
+const PAGE = join(TERM, '../../../../note/project/term/commands.md')
 
 function help(argv: string[]): string {
   try {
@@ -249,10 +249,10 @@ const commit = process.argv.includes('--commit')
 
 if (commit) {
   writeFileSync(PAGE, page)
-  console.log(`wrote note/term/commands.md (${verbs.length} verbs)`)
+  console.log(`wrote note/project/term/commands.md (${verbs.length} verbs)`)
 } else if (!same) {
   console.log(
-    'note/term/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from deck/term/deck/term',
+    'note/project/term/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from deck/term/deck/term',
   )
 }
 

@@ -5,7 +5,7 @@
       "kind": "deck",
       "name": "@assurance/notes",
       "site": "",
-      "file": 4
+      "file": 5
     },
     {
       "host": "@term/base",
@@ -33,7 +33,7 @@
       "kind": "deck",
       "name": "@term/site",
       "site": "",
-      "file": 19
+      "file": 21
     }
   ],
   "exception": [
@@ -438,7 +438,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "answer-delete-notes-id",
-      "site": "code/site.tree:453:3",
+      "site": "code/site.tree:454:3",
       "take": [
         {
           "name": "request",
@@ -456,7 +456,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "answer-patch-notes-id",
-      "site": "code/site.tree:449:3",
+      "site": "code/site.tree:450:3",
       "take": [
         {
           "name": "request",
@@ -474,7 +474,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "answer-post-notes",
-      "site": "code/site.tree:434:3",
+      "site": "code/site.tree:435:3",
       "take": [
         {
           "name": "request",
@@ -506,7 +506,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "answer-post-notes-id",
-      "site": "code/site.tree:445:3",
+      "site": "code/site.tree:446:3",
       "take": [
         {
           "name": "request",
@@ -524,7 +524,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "answer-post-notes-id-delete",
-      "site": "code/site.tree:464:3",
+      "site": "code/site.tree:465:3",
       "take": [
         {
           "name": "request",
@@ -542,7 +542,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "boot",
-      "site": "code/site.tree:431:1",
+      "site": "code/site.tree:432:1",
       "take": [
         {
           "name": "url",
@@ -568,7 +568,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "create",
-      "site": "code/site.tree:276:1",
+      "site": "code/site.tree:277:1",
       "take": [
         {
           "name": "request",
@@ -633,7 +633,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "deleted-stays-gone",
-      "site": "code/law.tree:441:1",
+      "site": "code/law.tree:472:1",
       "take": [
         {
           "name": "s",
@@ -659,7 +659,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "deleted-stays-gone-of-view",
-      "site": "code/law.tree:1547:1",
+      "site": "code/law.tree:1578:1",
       "take": [
         {
           "name": "s",
@@ -699,7 +699,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "erase-by",
-      "site": "code/site.tree:269:1",
+      "site": "code/site.tree:270:1",
       "take": [
         {
           "name": "p",
@@ -727,7 +727,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "events-of",
-      "site": "code/site.tree:125:1",
+      "site": "code/site.tree:126:1",
       "take": [
         {
           "name": "taken",
@@ -741,7 +741,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "find-note",
-      "site": "code/site.tree:227:1",
+      "site": "code/site.tree:228:1",
       "take": [
         {
           "name": "s",
@@ -811,8 +811,22 @@
     {
       "host": "@assurance/notes",
       "kind": "task",
+      "name": "html-of",
+      "site": "code/page.tree:41:1",
+      "take": [
+        {
+          "name": "pg",
+          "like": "page"
+        }
+      ],
+      "like": "html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
       "name": "id-of",
-      "site": "code/site.tree:423:1",
+      "site": "code/site.tree:424:1",
       "take": [
         {
           "name": "params",
@@ -840,7 +854,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "isolation",
-      "site": "code/law.tree:485:1",
+      "site": "code/law.tree:516:1",
       "take": [
         {
           "name": "s",
@@ -866,7 +880,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "isolation-of-view",
-      "site": "code/law.tree:1581:1",
+      "site": "code/law.tree:1612:1",
       "take": [
         {
           "name": "s",
@@ -888,7 +902,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "listed",
-      "site": "code/site.tree:203:1",
+      "site": "code/site.tree:204:1",
       "take": [
         {
           "name": "request",
@@ -902,7 +916,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "listed-one",
-      "site": "code/site.tree:214:1",
+      "site": "code/site.tree:215:1",
       "take": [
         {
           "name": "request",
@@ -938,7 +952,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "natural-of",
-      "site": "code/site.tree:87:1",
+      "site": "code/site.tree:88:1",
       "take": [
         {
           "name": "n",
@@ -952,7 +966,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "next-id",
-      "site": "code/site.tree:111:1",
+      "site": "code/site.tree:112:1",
       "take": [],
       "like": "natural",
       "halt": []
@@ -961,7 +975,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "number-of",
-      "site": "code/site.tree:101:1",
+      "site": "code/site.tree:102:1",
       "take": [
         {
           "name": "n",
@@ -975,7 +989,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership",
-      "site": "code/law.tree:574:1",
+      "site": "code/law.tree:605:1",
       "take": [
         {
           "name": "es",
@@ -997,7 +1011,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-apply",
-      "site": "code/law.tree:969:1",
+      "site": "code/law.tree:1000:1",
       "take": [
         {
           "name": "a",
@@ -1035,7 +1049,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-build",
-      "site": "code/law.tree:899:1",
+      "site": "code/law.tree:930:1",
       "take": [
         {
           "name": "a",
@@ -1077,7 +1091,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-carry",
-      "site": "code/law.tree:605:1",
+      "site": "code/law.tree:636:1",
       "take": [
         {
           "name": "a",
@@ -1103,7 +1117,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-cross",
-      "site": "code/law.tree:702:1",
+      "site": "code/law.tree:733:1",
       "take": [
         {
           "name": "s",
@@ -1133,7 +1147,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-join",
-      "site": "code/law.tree:767:1",
+      "site": "code/law.tree:798:1",
       "take": [
         {
           "name": "a",
@@ -1167,7 +1181,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay",
-      "site": "code/law.tree:1952:1",
+      "site": "code/law.tree:1983:1",
       "take": [
         {
           "name": "es",
@@ -1181,7 +1195,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-aim",
-      "site": "code/law.tree:1753:1",
+      "site": "code/law.tree:1784:1",
       "take": [
         {
           "name": "at",
@@ -1219,7 +1233,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-cross",
-      "site": "code/law.tree:1841:1",
+      "site": "code/law.tree:1872:1",
       "take": [
         {
           "name": "s",
@@ -1245,7 +1259,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-may",
-      "site": "code/law.tree:1695:1",
+      "site": "code/law.tree:1726:1",
       "take": [
         {
           "name": "at",
@@ -1271,7 +1285,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-own",
-      "site": "code/law.tree:1634:1",
+      "site": "code/law.tree:1665:1",
       "take": [
         {
           "name": "at",
@@ -1301,7 +1315,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-run",
-      "site": "code/law.tree:1930:1",
+      "site": "code/law.tree:1961:1",
       "take": [
         {
           "name": "es",
@@ -1315,7 +1329,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-settle",
-      "site": "code/law.tree:1798:1",
+      "site": "code/law.tree:1829:1",
       "take": [
         {
           "name": "n",
@@ -1341,7 +1355,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-of-replay-step",
-      "site": "code/law.tree:1894:1",
+      "site": "code/law.tree:1925:1",
       "take": [
         {
           "name": "s",
@@ -1359,7 +1373,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-settle",
-      "site": "code/law.tree:1003:1",
+      "site": "code/law.tree:1034:1",
       "take": [
         {
           "name": "n",
@@ -1389,7 +1403,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-split",
-      "site": "code/law.tree:826:1",
+      "site": "code/law.tree:857:1",
       "take": [
         {
           "name": "a",
@@ -1419,7 +1433,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "ownership-step",
-      "site": "code/law.tree:634:1",
+      "site": "code/law.tree:665:1",
       "take": [
         {
           "name": "s",
@@ -1445,7 +1459,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "person-of",
-      "site": "code/site.tree:144:1",
+      "site": "code/site.tree:145:1",
       "take": [
         {
           "name": "request",
@@ -1480,8 +1494,22 @@
     {
       "host": "@assurance/notes",
       "kind": "task",
+      "name": "refusal",
+      "site": "code/page.tree:24:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "glyphs"
+        }
+      ],
+      "like": "html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
       "name": "refuse",
-      "site": "code/site.tree:249:1",
+      "site": "code/site.tree:250:1",
       "take": [
         {
           "name": "status",
@@ -1499,7 +1527,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "remove",
-      "site": "code/site.tree:350:1",
+      "site": "code/site.tree:351:1",
       "take": [
         {
           "name": "request",
@@ -1531,7 +1559,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "retitle",
-      "site": "code/site.tree:302:1",
+      "site": "code/site.tree:303:1",
       "take": [
         {
           "name": "request",
@@ -1549,7 +1577,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "retitle-with",
-      "site": "code/site.tree:330:1",
+      "site": "code/site.tree:331:1",
       "take": [
         {
           "name": "request",
@@ -1582,7 +1610,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "route",
-      "site": "code/site.tree:431:1",
+      "site": "code/site.tree:432:1",
       "take": [
         {
           "name": "host",
@@ -1616,7 +1644,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "row-of",
-      "site": "code/site.tree:174:1",
+      "site": "code/site.tree:175:1",
       "take": [
         {
           "name": "n",
@@ -1630,7 +1658,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "rows-of",
-      "site": "code/site.tree:191:1",
+      "site": "code/site.tree:192:1",
       "take": [
         {
           "name": "s",
@@ -1642,6 +1670,258 @@
         }
       ],
       "like": "list, like row",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text",
+      "site": "code/law.tree:2710:1",
+      "take": [
+        {
+          "name": "pg",
+          "like": "page"
+        }
+      ],
+      "like": "safe-html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-attribute",
+      "site": "code/law.tree:2536:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "attribute-safe",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-attribute-glyph",
+      "site": "code/law.tree:2491:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        },
+        {
+          "name": "ok",
+          "like": "attribute-safe"
+        }
+      ],
+      "like": "attribute-safe",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-attributes",
+      "site": "code/law.tree:2556:1",
+      "take": [
+        {
+          "name": "given",
+          "like": "attributes"
+        },
+        {
+          "name": "after",
+          "like": "html"
+        },
+        {
+          "name": "ok",
+          "like": "safe-html"
+        }
+      ],
+      "like": "safe-html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-escape",
+      "site": "code/law.tree:2290:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "escaped",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-escape-glyph",
+      "site": "code/law.tree:2242:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        },
+        {
+          "name": "ok",
+          "like": "escaped"
+        }
+      ],
+      "like": "escaped",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-escaped-text",
+      "site": "code/law.tree:2395:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "pieces"
+        },
+        {
+          "name": "ok",
+          "like": "escaped"
+        }
+      ],
+      "like": "text-safe",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-of-refusal",
+      "site": "code/law.tree:2659:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "glyphs"
+        }
+      ],
+      "like": "safe-html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-of-view",
+      "site": "code/law.tree:2642:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "node"
+        }
+      ],
+      "like": "safe-html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-round-glyph",
+      "site": "code/law.tree:2317:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "xs",
+          "like": "glyphs"
+        },
+        {
+          "name": "ys",
+          "like": "pieces"
+        },
+        {
+          "name": "ok",
+          "like": "same-glyphs"
+        }
+      ],
+      "like": "same-glyphs",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-round-trip",
+      "site": "code/law.tree:2376:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "same-glyphs",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-serialize",
+      "site": "code/law.tree:2583:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "node"
+        },
+        {
+          "name": "after",
+          "like": "html"
+        },
+        {
+          "name": "ok",
+          "like": "safe-html"
+        }
+      ],
+      "like": "safe-html",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-text",
+      "site": "code/law.tree:2472:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "text-safe",
+      "halt": []
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "task",
+      "name": "safe-text-text-glyph",
+      "site": "code/law.tree:2426:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        },
+        {
+          "name": "ok",
+          "like": "text-safe"
+        }
+      ],
+      "like": "text-safe",
       "halt": []
     },
     {
@@ -1688,7 +1968,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "shelf-now",
-      "site": "code/site.tree:138:1",
+      "site": "code/site.tree:139:1",
       "take": [],
       "like": "shelf",
       "halt": []
@@ -1755,7 +2035,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-pick",
-      "site": "code/law.tree:1463:1",
+      "site": "code/law.tree:1494:1",
       "take": [
         {
           "name": "top",
@@ -1789,7 +2069,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-pick-by",
-      "site": "code/law.tree:1286:1",
+      "site": "code/law.tree:1317:1",
       "take": [
         {
           "name": "at",
@@ -1831,7 +2111,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-pick-live",
-      "site": "code/law.tree:1418:1",
+      "site": "code/law.tree:1449:1",
       "take": [
         {
           "name": "at",
@@ -1869,7 +2149,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-same",
-      "site": "code/law.tree:1146:1",
+      "site": "code/law.tree:1177:1",
       "take": [
         {
           "name": "w",
@@ -1887,7 +2167,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-same-lift",
-      "site": "code/law.tree:1112:1",
+      "site": "code/law.tree:1143:1",
       "take": [
         {
           "name": "p",
@@ -1913,7 +2193,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-same-succ",
-      "site": "code/law.tree:1221:1",
+      "site": "code/law.tree:1252:1",
       "take": [
         {
           "name": "p",
@@ -1935,7 +2215,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-same-zero",
-      "site": "code/law.tree:1181:1",
+      "site": "code/law.tree:1212:1",
       "take": [
         {
           "name": "i",
@@ -1949,7 +2229,7 @@
       "host": "@assurance/notes",
       "kind": "task",
       "name": "view-shows",
-      "site": "code/law.tree:1508:1",
+      "site": "code/law.tree:1539:1",
       "take": [
         {
           "name": "s",
@@ -9375,8 +9655,72 @@
     {
       "host": "@term/site",
       "kind": "task",
+      "name": "escape-attr-glyph",
+      "site": "code/http/glyph.tree:141:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        }
+      ],
+      "like": "pieces",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "escape-attr-glyphs",
+      "site": "code/http/glyph.tree:177:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "pieces",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "escape-glyph",
+      "site": "code/http/glyph.tree:47:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        }
+      ],
+      "like": "pieces",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "escape-glyphs",
+      "site": "code/http/glyph.tree:85:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "pieces",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
       "name": "escape-html",
-      "site": "code/http/escape.tree:10:1",
+      "site": "code/http/escape.tree:29:1",
       "take": [
         {
           "name": "value",
@@ -9384,6 +9728,38 @@
         }
       ],
       "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "escape-text-glyph",
+      "site": "code/http/glyph.tree:95:1",
+      "take": [
+        {
+          "name": "g",
+          "like": "glyph"
+        },
+        {
+          "name": "rest",
+          "like": "pieces"
+        }
+      ],
+      "like": "pieces",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "escape-text-glyphs",
+      "site": "code/http/glyph.tree:131:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "glyphs"
+        }
+      ],
+      "like": "pieces",
       "halt": []
     },
     {
@@ -9506,6 +9882,20 @@
     {
       "host": "@term/site",
       "kind": "task",
+      "name": "glyph-of-entity",
+      "site": "code/http/glyph.tree:187:1",
+      "take": [
+        {
+          "name": "e",
+          "like": "entity"
+        }
+      ],
+      "like": "glyph",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
       "name": "go-back",
       "site": "code/dom/native/node/page.tree:64:1",
       "take": [],
@@ -9556,7 +9946,7 @@
       "take": [
         {
           "name": "route",
-          "like": "task(view, request) -> maybe, like response"
+          "like": "task(view, request) -> maybe, like response !async"
         },
         {
           "name": "port",
@@ -10784,6 +11174,42 @@
     {
       "host": "@term/site",
       "kind": "task",
+      "name": "serialize",
+      "site": "code/http/html.tree:82:1",
+      "take": [
+        {
+          "name": "n",
+          "like": "node"
+        },
+        {
+          "name": "after",
+          "like": "html"
+        }
+      ],
+      "like": "html",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "serialize-attributes",
+      "site": "code/http/html.tree:68:1",
+      "take": [
+        {
+          "name": "given",
+          "like": "attributes"
+        },
+        {
+          "name": "after",
+          "like": "html"
+        }
+      ],
+      "like": "html",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
       "name": "serve",
       "site": "code/http/native/node/serve.tree:16:1",
       "take": [
@@ -11086,6 +11512,20 @@
         }
       ],
       "like": "void",
+      "halt": []
+    },
+    {
+      "host": "@term/site",
+      "kind": "task",
+      "name": "unescape-glyphs",
+      "site": "code/http/glyph.tree:203:1",
+      "take": [
+        {
+          "name": "xs",
+          "like": "pieces"
+        }
+      ],
+      "like": "glyphs",
       "halt": []
     },
     {

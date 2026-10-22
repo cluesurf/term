@@ -1,0 +1,218 @@
+# TEXT AS THE KERNEL READS IT, for the HTML escape. A text is read as a list of GLYPHS, one per character: one of the
+# five characters HTML gives a meaning (`<`, `>`, `&`, `"`, `'`), or any other character, `other-point`. A glyph does
+# not carry its character: an escape decides by the glyph alone, so a proof about it holds whatever the other
+# characters are, and escape.tree's `escape-html` writes each kept character back in its place.
+#
+# What an escape writes is a list of PIECES, one per glyph: the glyph kept, so its character is written as it was, or
+# an entity (`&lt;`) written whole. So every `&` in the output of an escape that keeps no `ampersand` is the first
+# character of an entity it wrote, and a law about the output is a law about which glyphs it keeps.
+#
+# Pure and recursive, with no loads, so the kernel reads every task here as a term and the Lean export writes each
+# one through its form's recursor. `escape-glyphs` is what escape.tree's `escape-html` runs. The claims about these
+# tasks (no `<`, `>`, `"` or `'` kept and every `&` an entity, the round trip, the serializer's two escapes) are in
+# the notes demo, test/assurance/notes/code/law.tree under law 7, because a file holding claims cannot be loaded yet
+# (term-proof-0005) and escape.tree loads this one.
+form glyph
+  case angle-open
+  case angle-shut
+  case ampersand
+  case double-quote
+  case single-quote
+  case other-point
+
+form glyphs
+  case no-glyph
+  case glyph-then
+    link first, like glyph
+    link rest, like glyphs
+
+# the five entities an escape writes: `&lt;`, `&gt;`, `&amp;`, `&quot;` and `&#39;`
+form entity
+  case entity-lt
+  case entity-gt
+  case entity-amp
+  case entity-quot
+  case entity-apos
+
+form pieces
+  case no-piece
+  case kept-then
+    link kept, like glyph
+    link rest, like pieces
+  case entity-then
+    link named, like entity
+    link rest, like pieces
+
+# ESCAPE-HTML, one glyph before the rest: each of the five becomes its entity, any other glyph is kept
+task escape-glyph
+  take g, like glyph
+  take rest, like pieces
+  like pieces
+  sift g
+    case angle-open
+      back
+        make entity-then
+          bind named, make entity-lt
+          bind rest, rest
+    case angle-shut
+      back
+        make entity-then
+          bind named, make entity-gt
+          bind rest, rest
+    case ampersand
+      back
+        make entity-then
+          bind named, make entity-amp
+          bind rest, rest
+    case double-quote
+      back
+        make entity-then
+          bind named, make entity-quot
+          bind rest, rest
+    case single-quote
+      back
+        make entity-then
+          bind named, make entity-apos
+          bind rest, rest
+    case other-point
+      back
+        make kept-then
+          bind kept, make other-point
+          bind rest, rest
+
+# ESCAPE-HTML over a whole text (escape.tree `escape-html`): safe as element text and inside an attribute quoted with
+# either quote
+task escape-glyphs
+  take xs, like glyphs
+  like pieces
+  sift xs
+    case no-glyph
+      back make no-piece
+    case glyph-then
+      back escape-glyph(first, escape-glyphs(rest))
+
+# THE NODE SERIALIZER'S TEXT ESCAPE (dom/native/node/runtime/html.ts `escapeText`): `&`, `<` and `>`, quotes kept
+task escape-text-glyph
+  take g, like glyph
+  take rest, like pieces
+  like pieces
+  sift g
+    case angle-open
+      back
+        make entity-then
+          bind named, make entity-lt
+          bind rest, rest
+    case angle-shut
+      back
+        make entity-then
+          bind named, make entity-gt
+          bind rest, rest
+    case ampersand
+      back
+        make entity-then
+          bind named, make entity-amp
+          bind rest, rest
+    case double-quote
+      back
+        make kept-then
+          bind kept, make double-quote
+          bind rest, rest
+    case single-quote
+      back
+        make kept-then
+          bind kept, make single-quote
+          bind rest, rest
+    case other-point
+      back
+        make kept-then
+          bind kept, make other-point
+          bind rest, rest
+
+task escape-text-glyphs
+  take xs, like glyphs
+  like pieces
+  sift xs
+    case no-glyph
+      back make no-piece
+    case glyph-then
+      back escape-text-glyph(first, escape-text-glyphs(rest))
+
+# THE NODE SERIALIZER'S ATTRIBUTE ESCAPE (html.ts `escapeAttr`): `&` and `"`, for a value it always quotes with `"`
+task escape-attr-glyph
+  take g, like glyph
+  take rest, like pieces
+  like pieces
+  sift g
+    case angle-open
+      back
+        make kept-then
+          bind kept, make angle-open
+          bind rest, rest
+    case angle-shut
+      back
+        make kept-then
+          bind kept, make angle-shut
+          bind rest, rest
+    case ampersand
+      back
+        make entity-then
+          bind named, make entity-amp
+          bind rest, rest
+    case double-quote
+      back
+        make entity-then
+          bind named, make entity-quot
+          bind rest, rest
+    case single-quote
+      back
+        make kept-then
+          bind kept, make single-quote
+          bind rest, rest
+    case other-point
+      back
+        make kept-then
+          bind kept, make other-point
+          bind rest, rest
+
+task escape-attr-glyphs
+  take xs, like glyphs
+  like pieces
+  sift xs
+    case no-glyph
+      back make no-piece
+    case glyph-then
+      back escape-attr-glyph(first, escape-attr-glyphs(rest))
+
+# the glyph an entity stands for
+task glyph-of-entity
+  take e, like entity
+  like glyph
+  sift e
+    case entity-lt
+      back make angle-open
+    case entity-gt
+      back make angle-shut
+    case entity-amp
+      back make ampersand
+    case entity-quot
+      back make double-quote
+    case entity-apos
+      back make single-quote
+
+# READ BACK what an escape wrote: an entity is the glyph it stands for, a kept glyph is itself
+task unescape-glyphs
+  take xs, like pieces
+  like glyphs
+  sift xs
+    case no-piece
+      back make no-glyph
+    case kept-then
+      back
+        make glyph-then
+          bind first, kept
+          bind rest, unescape-glyphs(rest)
+    case entity-then
+      back
+        make glyph-then
+          bind first, glyph-of-entity(named)
+          bind rest, unescape-glyphs(rest)

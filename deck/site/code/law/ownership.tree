@@ -1,0 +1,131 @@
+# LAW OWNERSHIP, from the law library (note/project/term/assurance/prove-loop/decision/002-law-library.md): after any
+# sequence of events, every deleted note was deleted by its owner or an admin. The events are run from the empty state
+# through the app's own `step` (`replay-events`, made here), so the law is about `step` itself and no replay of the
+# app's can skip one.
+#
+# A project states the law by FUSING this template with its own forms and its step task, and proves the claim it
+# makes with a `task ownership` of its own. It may not write the claim itself: `term knit` refuses a claim named
+# `ownership` that is not this one (call/code/knit-law.ts). The template is used IN the file that fuses it: `term knit`
+# appends this text below a marker at that file's end, because `term hold --report` and the Lean exporter read only a
+# file's own templates.
+#
+#   fuse ownership-law
+#     bind state, shelf
+#     bind note, note
+#     bind natural, natural
+#     bind rank, rank
+#     bind person, person
+#     bind events, events
+#     bind step, step
+#
+# THE SHAPE IT READS, whatever the forms are called: `state` is a list with the cases `bare` and `more` (`top`, a
+# note, and `rest`), a note has the cases `live` (`at`, `whose`) and `gone` (`at`, `whose`, `by`, the person who
+# deleted it), `person` is a record of `id` (a `natural`) and `rank`, whose case `admin` is the admin, `events` is a
+# list with the cases `begin` and `after` (`event`, the latest, and `earlier`), and `step` takes the state and an event
+# to the next state.
+#
+# Its shape is law.tree's `ownership-of-replay` in test/assurance/notes, the notes demo, with `allowed`, `fair` and
+# `fair-shelf` from the same file. The body is written so it reads the same in a lean file and a longhand one.
+
+tree ownership-law
+  take state, like name
+  take note, like name
+  take natural, like name
+  take rank, like name
+  take person, like name
+  take events, like name
+  take step, like name
+
+  hook fuse
+    # THE POLICY: a person may delete a note when the person is an admin, or owns it
+    form allowed
+      head by, like {person}
+      head whose, like {natural}
+      case as-admin
+        link i, like {natural}
+        link w, like {natural}
+        head
+          make {person}
+            bind id, i
+            bind rank, make admin
+        head
+          read w
+      case as-owner
+        link w, like {natural}
+        link r, like {rank}
+        head
+          make {person}
+            bind id, w
+            bind rank, r
+        head
+          read w
+
+    # A FAIR note: live, or deleted by someone the policy allowed
+    form fair
+      head n, like {note}
+      case fresh
+        link at, like {natural}
+        link whose, like {natural}
+        head
+          make live
+            bind at, at
+            bind whose, whose
+      case buried
+        link at, like {natural}
+        link whose, like {natural}
+        link by, like {person}
+        link allowed-by
+          like allowed
+            head
+              read by
+            head
+              read whose
+        head
+          make gone
+            bind at, at
+            bind whose, whose
+            bind by, by
+
+    # every note on the list is fair
+    form fair-shelf
+      head s, like {state}
+      case clean
+        head
+          make bare
+      case also
+        link top, like {note}
+        link rest, like {state}
+        link top-fair
+          like fair
+            head
+              read top
+        link rest-fair
+          like fair-shelf
+            head
+              read rest
+        head
+          make more
+            bind top, top
+            bind rest, rest
+
+    # the events, run through `step` from the empty state
+    task replay-events
+      take es, like {events}
+      like {state}
+      sift es
+        case begin
+          send back, make bare
+        case after
+          send back
+            call {step}
+              call replay-events
+                read earlier
+              read event
+
+    # OWNERSHIP: after any events, every note `step` has deleted was deleted by its owner or an admin
+    rule ownership
+      take es, like {events}
+      like fair-shelf
+        head
+          call replay-events
+            read es

@@ -77,13 +77,20 @@ const run = new Function(
   ratio: (a: number, b: number) => number
 }
 
-// the form a call raised, or undefined when it answered
+// the form a call raised, or undefined when it answered. An integer overflow is a STOP (D15 d): a `__TermStop`, not a
+// Term exception, its message led by the side it went past (`excess:` or `shortage:`), read here as `stop excess`
 const raised = (f: () => unknown): string | undefined => {
   try {
     f()
     return undefined
   } catch (e) {
-    return (e as { form?: string }).form ?? 'not a Term exception'
+    const error = e as { name?: string; message?: string; form?: string }
+
+    if (error.name === '__TermStop') {
+      return `stop ${/^(\w+):/.exec(error.message ?? '')?.[1] ?? 'unnamed'}`
+    }
+
+    return error.form ?? 'not a Term exception'
   }
 }
 
@@ -112,13 +119,13 @@ check('typescript: a float quotient stays a float', run.ratio(7, 2) === 3.5, `go
 // past the safe integers a double is a DIFFERENT integer: 2^30 * 2^30 would come back as 2^60 rounded
 check('typescript: a product inside the safe integers is exact', run.grow(2 ** 26, 2 ** 26) === 2 ** 52, '')
 check(
-  'typescript: a product past the safe integers raises excess, not a rounded integer',
-  raised(() => run.grow(2 ** 30, 2 ** 30)) === 'excess',
+  'typescript: a product past the safe integers stops with excess (D15), not a rounded integer',
+  raised(() => run.grow(2 ** 30, 2 ** 30)) === 'stop excess',
   String(raised(() => run.grow(2 ** 30, 2 ** 30))),
 )
 check(
-  'typescript: and below them raises shortage',
-  raised(() => run.grow(-(2 ** 30), 2 ** 30)) === 'shortage',
+  'typescript: and below them stops with shortage',
+  raised(() => run.grow(-(2 ** 30), 2 ** 30)) === 'stop shortage',
   String(raised(() => run.grow(-(2 ** 30), 2 ** 30))),
 )
 check(

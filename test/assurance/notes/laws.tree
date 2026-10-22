@@ -1,0 +1,26 @@
+list law
+  mesh
+    host name, <ownership>
+    list rule
+      <ownership>, <ownership-of-replay>
+  mesh
+    host name, <no-forged-permit>
+    host hide, <permit>
+  mesh
+    host name, <every-mutating-route-asks>
+    host sole, <permit>
+    host private, <bury-at>
+  mesh
+    host name, <deleted-stays-gone>
+    list rule
+      <deleted-stays-gone>, <deleted-stays-gone-of-view>
+  mesh
+    host name, <isolation>
+    list rule
+      <isolation>, <isolation-of-view>
+  mesh
+    host name, <no-crash>
+    host tier, 0
+  mesh
+    host name, <safe-text>
+    host rule, <safe-text>

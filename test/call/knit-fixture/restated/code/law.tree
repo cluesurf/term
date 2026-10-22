@@ -1,0 +1,87 @@
+# WRITTEN BY THE MODEL in term knit's run-4-no-example (2026-10-21, note/project/term/assurance/prove-loop/runs/), kept
+# as written. It holds under term hold --lean, and its `isolation` is a second statement of the delete policy, not a law
+# about any view: the law library's instance check must refuse it (test/call/knit.ts)
+load ./model
+  find answer
+  find role
+  find serial
+  find note
+  find is-same
+  find is-any
+  find is-admin
+  find owner-of
+  find may-delete
+
+load @term/base/proof/equal
+  find equal
+
+load @term/base/proof/equal/refl
+  find refl
+
+rule same-self
+  take p, like serial
+  like equal answer
+    head
+      is-same(p, p)
+    head
+      make yes
+
+task same-self
+  take p
+  sift p
+    case origin
+      back refl(make yes)
+    case after
+      back same-self(prior)
+
+rule ownership
+  take rank, like role
+  take target, like note
+  like equal answer
+    head
+      may-delete(rank, owner-of(target), target)
+    head
+      make yes
+
+task ownership
+  take rank
+  take target
+  sift rank
+    case admin
+      back refl(make yes)
+    case member
+      back same-self(owner-of(target))
+
+rule isolation
+  take who, like serial
+  take target, like note
+  like equal answer
+    head
+      call may-delete
+        make member
+        read who
+        read target
+    head
+      is-same(who, owner-of(target))
+
+task isolation
+  take who
+  take target
+  back refl(is-same(who, owner-of(target)))
+
+rule admin-override
+  take who, like serial
+  take target, like note
+  like equal answer
+    head
+      call may-delete
+        make admin
+        read who
+        read target
+    head
+      make yes
+
+task admin-override
+  take who
+  take target
+  back refl(make yes)

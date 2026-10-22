@@ -52,6 +52,8 @@ form hold-ask
   link cache, like boolean
   link force, like boolean
   link json, like boolean
+  link lean, like boolean
+  link report, like boolean
 
 form zone-ask
   link root, like text
@@ -113,6 +115,8 @@ task hold
   take cache, like boolean
   take force, like boolean
   take json, like boolean
+  take lean, like boolean
+  take report, like boolean
 
   like void
 
@@ -128,6 +132,8 @@ task hold
         bind cache, read cache
         bind force, read force
         bind json, read json
+        bind lean, read lean
+        bind report, read report
       wait true
   halt take
     take error

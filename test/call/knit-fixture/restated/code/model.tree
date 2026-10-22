@@ -1,0 +1,85 @@
+form answer
+  case yes
+  case no
+
+form role
+  case admin
+  case member
+
+form serial
+  case origin
+  case after
+    link prior, like serial
+
+form user
+  link id, like serial
+  link rank, like role
+
+form note
+  link key, like serial
+  link owner, like serial
+
+form outcome
+  case removed
+  case refused
+
+task is-same
+  take a, like serial
+  take b, like serial
+  like answer
+  sift a
+    case origin
+      sift b
+        case origin
+          back make yes
+        case after
+          back make no
+    case after
+      link a-prior
+      sift b
+        case origin
+          back make no
+        case after
+          link b-prior
+          back is-same(a-prior, b-prior)
+
+task is-any
+  take a, like answer
+  take b, like answer
+  like answer
+  sift b
+    case yes
+      back make yes
+    case no
+      back a
+
+task is-admin
+  take rank, like role
+  like answer
+  sift rank
+    case admin
+      back make yes
+    case member
+      back make no
+
+task owner-of
+  take target, like note
+  like serial
+  back target/owner
+
+task may-delete
+  take rank, like role
+  take who, like serial
+  take target, like note
+  like answer
+  back is-any(is-same(who, owner-of(target)), is-admin(rank))
+
+task request-delete
+  take viewer, like user
+  take target, like note
+  like outcome
+  sift may-delete(viewer/rank, viewer/id, target)
+    case yes
+      back make removed
+    case no
+      back make refused

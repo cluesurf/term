@@ -39,6 +39,7 @@ load ../parser/diagnostic
   find span
 
 load ../compile/node
+  find binding
   find expression
   find expression-span
   find match-case
@@ -699,6 +700,25 @@ task walk-calls
     take one
     visit-statement(out, frame, one, binds-given)
 
+# did the resolver bind this name to a local or a parameter, so that it names no task
+task locally-bound
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case local
+          back true
+        case parameter
+          back true
+        miss
+          back false
+    case none
+      back false
+
 task visit-expression
   take out, like walked
   take frame, like frame
@@ -713,19 +733,32 @@ task visit-expression
 
   sift node
     case variable
-      push(out/values, name)
+      # a name the resolver bound to a local or a parameter is not the task of that name. `link body` in a match arm
+      # binds a local the walk's own `local-names` does not list, and in a merged build a task `body` from another
+      # file then looked read as a value: eight tasks of elaborating-terms.tree joined a cycle only the merged build
+      # saw (term-term-gates-0005)
+      fork test, not(locally-bound(binding))
+        hold
+          push(out/values, name)
     case call
-      # a named callee is a call, not a value: reading it as a value would count every call twice
+      # a named callee is a call, not a value: reading it as a value would count every call twice. A callee bound to
+      # a local or a parameter (a closure handed in) calls no task by that name
       sift callee
         case variable
+          # a prefixed `link` takes the variant's fields in order: name, span, type, binding
           link callee-name
-          save made
-            make call-at
-              bind callee, callee-name
-              bind args, args
-              bind frame, frame
-              bind guards, at
-          push(out/calls, made)
+          link callee-span
+          link callee-type
+          link callee-binding
+          fork test, not(locally-bound(callee-binding))
+            hold
+              save made
+                make call-at
+                  bind callee, callee-name
+                  bind args, args
+                  bind frame, frame
+                  bind guards, at
+              push(out/calls, made)
         miss
           visit-expression(out, frame, callee, at, binds-given)
       walk args

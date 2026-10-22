@@ -161,7 +161,13 @@ if (!only || only === 'typescript') {
     const kotlin = emitKotlin(built.program)
 
     ok('Rust: the same product is checked_mul', /fn twice[\s\S]*checked_mul/.test(rust), rust.slice(rust.indexOf('fn twice')))
-    ok('Kotlin: the same product is Math.multiplyExact', /fun <T : Measurer> twice[\s\S]*multiplyExact/.test(kotlin), kotlin.slice(kotlin.indexOf('twice')))
+    // since D15 the checked product is the prelude's termMultiply, which wraps Math.multiplyExact and turns its
+    // ArithmeticException into a TermStop
+    ok(
+      'Kotlin: the same product is termMultiply, Math.multiplyExact as a stop',
+      /fun <T : Measurer> twice[\s\S]*termMultiply\(/.test(kotlin) && /fun termMultiply\(a: Long, b: Long\): Long = try \{ Math\.multiplyExact\(a, b\) \} catch \(e: ArithmeticException\) \{ throw TermStop\(/.test(kotlin),
+      kotlin.slice(kotlin.indexOf('twice')),
+    )
   }
 
   // a mask task's declared parameter types hold at a call through the mask

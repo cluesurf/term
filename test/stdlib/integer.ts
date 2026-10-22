@@ -57,6 +57,19 @@ function raisedForm(run: () => unknown): string {
   }
 }
 
+// the side an integer STOP went past (D15 d: an overflow is a `__TermStop`, not a Term exception, and no guard catches
+// it), read from its message's lead word, or `none` when the call returns and `not a stop` when it raised something else
+function stoppedAt(run: () => unknown): string {
+  try {
+    run()
+    return 'none'
+  } catch (error) {
+    const stop = error as { name?: string; message?: string }
+
+    return stop.name === '__TermStop' ? (/^(\w+):/.exec(stop.message ?? '')?.[1] ?? 'unnamed') : 'not a stop'
+  }
+}
+
 function eq(name: string, got: unknown, want: unknown): void {
   if (JSON.stringify(got) === JSON.stringify(want)) {
     pass++
@@ -159,8 +172,8 @@ async function main(): Promise<void> {
   eq('i64 add (native)', i64.i64Add(1000000000, 2000000000), 3000000000)
   eq('i64 negate', i64.i64Negate(42), -42)
   // -2^63 is past 2^53, so on TypeScript the bound STOPS with `shortage` (integer/64.tree, guides: library/numbers)
-  eq('i64 minimum bound stops below 2^53', raisedForm(() => i64.i64MinimumValue()), 'shortage')
-  eq('i64 maximum bound stops past 2^53', raisedForm(() => i64.i64MaximumValue()), 'shortage')
+  eq('i64 minimum bound stops below 2^53', stoppedAt(() => i64.i64MinimumValue()), 'shortage')
+  eq('i64 maximum bound stops past 2^53', stoppedAt(() => i64.i64MaximumValue()), 'shortage')
   eq('u64 minimum is 0', i64.u64MinimumValue(), 0)
 
   // floats: f32 rounds every result to single precision; f64 is the native double

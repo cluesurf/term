@@ -7,9 +7,10 @@
  * declined by the exporter with its reason. Any of the last three fails the gate, and so does a machine with no Lean:
  * the re-check is never passed in silence.
  *
- * The files exported are the ones holding a claim and every file they load by a relative path. The exporter joins
- * them into one program and reads no module binding yet (the spec's "Not on real modules"), so a package load in
- * that set is dropped and named, and a claim that needed it is declined by the exporter.
+ * The files exported are the ones holding a claim and every file they load, transitively: a relative load by its path,
+ * a package load through the project's resolver. The exporter joins them into one program and reads no module binding
+ * yet (the spec's "Not on real modules"), so a load nothing resolves (a native one) is dropped and named, and a claim
+ * that needed it is declined by the exporter.
  */
 
 import path from 'node:path'
@@ -18,9 +19,11 @@ import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import { headWord } from '@term/make/code/compile/mill-run'
 import { millLoadTargets } from '@term/make/code/compile/mill-check'
+import { expandTemplates } from '@term/make/code/compile/template'
 import { exportLean, joinSources } from '@term/make/code/check/lean-export'
 import { findLean, leanVersion, LEAN_INSTALL, runLean } from '@term/make/code/check/lean-run'
-import { resolveTreeFile } from '@term/call/code/make'
+import { projectResolver, resolveTreeFile } from '@term/call/code/make'
+import { withNativeEnv } from '@term/make/code/compile/native'
 import { projectHome } from '@term/call/code/home'
 import { count, field, report } from '@term/call/code/output'
 
@@ -61,7 +64,9 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
 
   const claims: string[] = []
 
-  for (const group of groupsOf(parsed.tree.nodes)) {
+  // a claim a template in the file makes (`fuse`) is the file's claim too: a law of the law library is stated that way
+  // (call/code/knit-law.ts), and the exporter expands the file's templates as the build does
+  for (const group of groupsOf(expandTemplates(parsed.tree).nodes)) {
     if (headWord(group) !== 'rule') {
       continue
     }
@@ -74,8 +79,10 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
 
     const shows = [...group.nodes, ...name.nodes].some(child => child.kind === 'group' && headWord(child) === 'show')
 
-    if (!shows) {
-      claims.push(headWord(name))
+    const word = headWord(name)
+
+    if (!shows && word) {
+      claims.push(word)
     }
   }
 
@@ -84,6 +91,7 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
 
 export function holdLean(root: string, files: string[]): HoldLean {
   const read = new Map(files.map(file => [file, readFile(file)]))
+  const resolver = withNativeEnv('node', projectResolver(root))
   const stating = files.filter(file => read.get(file)!.claims.length > 0)
 
   // the files to join: each stating file and what it loads by a relative path, every file after what it loads
@@ -101,7 +109,11 @@ export function holdLean(root: string, files: string[]): HoldLean {
     read.set(file, own)
 
     for (const target of own.loads) {
-      const found = target.startsWith('.') ? resolveTreeFile(path.resolve(path.dirname(file), target)) : undefined
+      const found = target.startsWith('.')
+        ? resolveTreeFile(path.resolve(path.dirname(file), target))
+        : target
+          ? resolver(target, file)?.file
+          : undefined
 
       if (found) {
         visit(found)
@@ -115,7 +127,11 @@ export function holdLean(root: string, files: string[]): HoldLean {
 
   stating.forEach(visit)
 
-  const stated = order.flatMap(file => read.get(file)!.claims.map(name => ({ name, file: path.relative(root, file) })))
+  // the project's own claims: a package's are exported with it, and not reported as the project's
+  const own = new Set(files)
+  const stated = order
+    .filter(file => own.has(file))
+    .flatMap(file => read.get(file)!.claims.map(name => ({ name, file: path.relative(root, file) })))
   const lean = findLean()
   const result: HoldLean = { missing: lean === undefined, claims: [], dropped, diagnostics: [], ok: false }
 
