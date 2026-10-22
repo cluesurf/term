@@ -47,12 +47,12 @@ import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
 import { announce, loadPublishKeypair } from '@term/call/code/host'
 import { writeFileList } from '@term/call/code/need-load'
-// the terminal output library, as a TYPE only: the module itself is loaded after the port build has run, because the
-// port build is what writes the modules it is made of (see `main`)
+// the terminal output library, as a TYPE only: the module itself is loaded by `loadOutput`, because the port build is
+// what writes the modules it is made of, and a fresh clone has none until it runs (see `main`)
 import type * as Output from '@term/call/code/output'
 
 // the release's run, once the library is loaded: every line goes through it, as every term command's does. Unset
-// until `main` has run the port build
+// until `main` loads it
 let output = undefined as unknown as typeof Output
 
 // the package a release is: the toolchain (09, "The name")
@@ -231,6 +231,13 @@ function portBuild(): { ok: boolean; built: number; unchanged: number; failed: n
     ok = false
   }
 
+  return summarize(text, ok)
+}
+
+// the port build's stdout read for its summary line, `term port-build: N built, N unchanged, N failed`
+type PortResult = { ok: boolean; built: number; unchanged: number; failed: number; lines: string[] }
+
+function summarize(text: string, ok: boolean): PortResult {
   const summary = /(\d+) built, (\d+) unchanged.*?(\d+) failed/.exec(text)
 
   return {
@@ -240,6 +247,35 @@ function portBuild(): { ok: boolean; built: number; unchanged: number; failed: n
     failed: Number(summary?.[3] ?? (ok ? 0 : 1)),
     lines: text.split('\n').filter(line => line.trim() !== ''),
   }
+}
+
+// the port build as a child the release watches while it runs (about 2.5 minutes, 2026-10-22): `--progress` makes it
+// write `progress <done> <total>` on stderr per module, drawn as the running `port` step (section 10). Every other line
+// it writes is kept, in order, for the quote under a failed item, exactly as `portBuild` keeps them
+async function portBuildLive(): Promise<PortResult> {
+  const child = spawn('pnpm', ['-s', 'exec', 'tsx', 'task/port-build.ts', '--progress'], { cwd: TERM, stdio: ['ignore', 'pipe', 'pipe'] })
+  const out: string[] = []
+  const errors: string[] = []
+
+  child.stdout!.on('data', (chunk: Buffer) => out.push(chunk.toString('utf8')))
+  const reading = (async () => {
+    for await (const line of createInterface({ input: child.stderr! })) {
+      const told = /^progress (\d+) (\d+)$/.exec(line)
+
+      if (told) {
+        output.progress({ verb: 'port', subject: 'toolchain modules', done: Number(told[1]), total: Number(told[2]), noun: 'modules', one: 'module' })
+      } else {
+        errors.push(`${line}\n`)
+      }
+    }
+  })()
+  const status = await new Promise<number | null>(resolve => {
+    child.on('error', () => resolve(null))
+    child.on('close', code => resolve(code))
+  })
+  await reading
+
+  return summarize(`${out.join('')}${errors.join('')}`, status === 0)
 }
 
 // bin\term.exe, the Windows launcher winget links onto PATH (task/launcher/term.go), cross-compiled by Go with no C
@@ -252,7 +288,7 @@ function buildWindowsExe(input: { out: string; arch: 'amd64' | 'arm64' }): void 
 }
 
 // line.js, dock.mjs and the two dispatch modules, bundled once: they are the same for every platform
-async function bundle(into: string): Promise<void> {
+async function bundle(into: string, step: (done: number) => void = () => {}): Promise<void> {
   const common = {
     absWorkingDir: TERM,
     bundle: true,
@@ -264,9 +300,13 @@ async function bundle(into: string): Promise<void> {
     logLevel: 'warning' as const,
   }
 
+  step(0)
   await build({ ...common, entryPoints: ['deck/call/code/line.ts'], outfile: path.join(into, 'host', 'line.js') })
+  step(1)
   await build({ ...common, entryPoints: ['deck/call/code/hook-dispatch.ts'], outfile: path.join(into, 'host', 'dock.mjs') })
+  step(2)
   await build({ ...common, entryPoints: ['deck/call/code/need-run.ts'], outfile: path.join(into, 'host', 'need.mjs') })
+  step(3)
   await build({ ...common, entryPoints: ['deck/call/code/need-hand.ts'], outfile: path.join(into, 'host', 'need-hand.mjs') })
 }
 
@@ -387,10 +427,13 @@ async function main(): Promise<void> {
   rmSync(out, { recursive: true, force: true })
   mkdirSync(cache, { recursive: true })
 
-  // the port build first, on its own: the output library is loaded from the ports it writes
-  const port = portBuild()
-  output = await import('@term/call/code/output')
+  // the run opens BEFORE the port build, so its two and a half minutes show as a running step (section 10). The
+  // library is the ports of the last build, which `loadOutput` builds first on a fresh clone; the bundle below reads
+  // the ones this build writes from disk
+  output = await loadOutput()
   output.openRun({ verb: 'release', root: TERM, facts: [`${PACKAGE} ${version}`, ...(dry ? ['--dry'] : [])], started })
+  output.progress({ verb: 'port', subject: 'toolchain modules' })
+  const port = await portBuildLive()
   output.report({
     glyph: port.ok && port.failed === 0 ? 'done' : 'failed',
     verb: 'port',
@@ -408,13 +451,16 @@ async function main(): Promise<void> {
   }
 
   const bundled = Date.now()
-  await bundle(common)
-  output.report({ glyph: 'done', verb: 'bundle', subject: 'line.js, dock.mjs, need.mjs and need-hand.mjs', duration: Date.now() - bundled })
+  const bundleSubject = 'line.js, dock.mjs, need.mjs and need-hand.mjs'
+  await bundle(common, done => output.progress({ verb: 'bundle', subject: bundleSubject, done, total: 4, noun: 'files', one: 'file' }))
+  output.report({ glyph: 'done', verb: 'bundle', subject: bundleSubject, duration: Date.now() - bundled })
 
   const built: Built[] = []
 
-  for (const platform of PLATFORMS) {
+  for (const [at, platform] of PLATFORMS.entries()) {
     const packed = Date.now()
+    // each platform is a running `pack` step with the platforms done so far, which its own ✓ item below replaces
+    output.progress({ verb: 'pack', subject: platform.name, done: at, total: PLATFORMS.length, noun: 'platforms', one: 'platform' })
     const stage = path.join(out, platform.name)
     const root = path.join(stage, 'term')
 

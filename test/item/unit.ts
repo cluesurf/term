@@ -658,6 +658,46 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   ok('--raw passes stderr through untouched', raw.stderr.includes('level=warn module=smtp msg="slow to respond" duration=3000\n'), raw.stderr)
 }
 
+// ---- section 10: a running step through a real process (deck/call/code/output.ts `progress`) ----
+
+{
+  const step = (flags: string[]) =>
+    spawnSync(process.execPath, [join(process.cwd(), '../../../../node_modules/tsx/dist/cli.mjs'), 'test/item/progress-child.ts', ...flags], {
+      encoding: 'utf8',
+      env: {
+        ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !['CI', 'NO_COLOR', 'FORCE_COLOR', 'FORCE_HYPERLINK', 'COLORTERM', 'TERM'].includes(name))),
+        LANG: 'en_US.UTF-8',
+        NO_COLOR: '1',
+      },
+    })
+
+  // on a terminal: frames redrawn in place, each one up over the last and cleared, then the finished item for good
+  const tty = step(['--tty'])
+  const frames = tty.stderr.split(/\u001b\[\d+A\r\u001b\[J/)
+  ok('a terminal gets the running step redrawn in place, frame after frame', frames.length >= 6, JSON.stringify(tty.stderr.slice(0, 400)))
+  ok('a frame shows the step running with n/N and the bar', /port toolchain modules\n {2}[^\n]*3\/6 modules\n {2}━{12}─{12}/.test(tty.stderr), JSON.stringify(tty.stderr.slice(0, 600)))
+  ok('the spinner turns through its frames with motion', ['◐', '◓', '◑', '◒'].filter(glyph => tty.stderr.includes(`${glyph} port`)).length >= 2, JSON.stringify(tty.stderr.slice(0, 600)))
+  const last = frames.at(-1)!
+  ok('after the last clear: the finished item once, no bar, then the closing', /^✓ port toolchain modules\n/.test(last) && !last.includes('━') && last.includes('✓ release Built, nothing published'), JSON.stringify(last))
+  same('NO_COLOR: the frames carry no color, only the cursor moves', /\u001b\[[\d;]*m/.test(tty.stderr), false)
+
+  const still = step(['--tty', '--no-motion'])
+  ok('--no-motion draws the running step with a still ◐', still.stderr.includes('◐ port') && !['◓', '◑', '◒'].some(glyph => still.stderr.includes(`${glyph} port`)), JSON.stringify(still.stderr.slice(0, 400)))
+
+  // without one: nothing redraws, and a 24-second step reports a ● progress item at 12 and at 24 seconds
+  const piped = step([])
+  same('a pipe gets no cursor movement', piped.stderr.includes('\u001b['), false)
+  same('a pipe gets one progress item per 10 seconds of the step', piped.stderr.match(/^● port toolchain modules$/gm)?.length, 2)
+  ok('the progress item carries the time so far and n/N', /● port toolchain modules\n {2}[^\n]*12\.0s · 3\/6 modules/.test(piped.stderr), piped.stderr)
+  same('and the finished item, once', piped.stderr.match(/^✓ port toolchain modules$/gm)?.length, 1)
+
+  // --log json: one event per finished item, never a running step or a frame
+  const json = step(['--log-json', '--tty'])
+  const events = json.stdout.trim().split('\n').map(line => JSON.parse(line) as { kind: string; glyph: string })
+  same('--log json carries the opening, the finished step and the closing, nothing more', events.map(one => `${one.kind} ${one.glyph}`), ['open info', 'step done', 'close done'])
+  same('--log json writes no redraw bytes anywhere', `${json.stdout}${json.stderr}`.includes('\u001b['), false)
+}
+
 // ---- section 12: a compiler diagnostic as a Problem item (deck/call/code/output.ts) ----
 
 {

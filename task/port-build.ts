@@ -18,8 +18,9 @@
 //   npx tsx task/port-build.ts            build every port, report what changed
 //   npx tsx task/port-build.ts --check    write nothing, exit 1 if any port's output is missing or stale
 //   npx tsx task/port-build.ts --only dev/hmr    only the ports whose path holds the text, for a fast port loop
+//   npx tsx task/port-build.ts --progress        also `progress <done> <total>` on stderr per module (task/release.ts)
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, writeSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
@@ -89,11 +90,20 @@ function trees(dir: string, out: string[]): void {
   }
 }
 
+// `--progress`: a `progress <done> <total>` line on STDERR after each module, for a caller that shows the step live
+// (task/release.ts). Stderr, so the stdout this script has always printed, and the summary line make:port and the
+// release read off it, stay as they were. It cannot print through the output library: it builds the ports that library
+// is made of
+const showProgress = process.argv.includes('--progress')
+
 function main(): void {
   let built = 0
   let unchanged = 0
   let stale = 0
   let failed = 0
+
+  // every module first, so the progress has its total before the first one compiles
+  const plan: { root: string; files: string[] }[] = []
 
   for (const [deck, subtrees] of Object.entries(DECKS)) {
     const root = join(TERM, 'deck', deck)
@@ -107,17 +117,44 @@ function main(): void {
       }
     }
 
-    if (files.length === 0) {
-      continue
+    const chosen = files.filter(file => only === undefined || relative(TERM, file).includes(only))
+
+    if (chosen.length > 0) {
+      plan.push({ root, files: chosen })
+    }
+  }
+
+  const total = plan.reduce((sum, one) => sum + one.files.length, 0)
+  let done = 0
+  // written at once with writeSync: the loop below is synchronous, and a `process.stderr.write` to a pipe may wait in
+  // node's buffer until it ends, which is the silence this exists to fill
+  const tell = (): void => {
+    if (!showProgress) {
+      return
     }
 
+    const bytes = Buffer.from(`progress ${done} ${total}\n`)
+    let at = 0
+
+    while (at < bytes.length) {
+      try {
+        at += writeSync(2, bytes, at)
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'EAGAIN') {
+          throw error
+        }
+      }
+    }
+  }
+
+  for (const { root, files } of plan) {
     const resolve = projectResolver(root)
     const leanOf = projectLeanOf(root)
 
     for (const file of files) {
-      if (only !== undefined && !relative(TERM, file).includes(only)) {
-        continue
-      }
+      // the modules finished before this one, told as it starts: every way out of the turn below is a `continue`
+      tell()
+      done++
 
       const text = readFileSync(file, 'utf8')
 
@@ -181,6 +218,8 @@ function main(): void {
       console.log(`  built ${relative(TERM, outPath)}`)
     }
   }
+
+  tell()
 
   console.log(
     `term port-build: ${built} built, ${unchanged} unchanged${check ? `, ${stale} stale` : ''}, ${failed} failed`,

@@ -28,6 +28,8 @@ import { blankEvent, plainField, plainSubject } from '@term/call/code/work/item/
 import type { Event, Frame, ItemField, Tally } from '@term/call/code/work/item/event'
 import { makeStandard } from '@term/call/code/work/item/standard'
 import { formatPath } from '@term/call/code/work/item/format'
+import { isProgressDue, isRunning, makeProgressItem, placeItem, planFrame, writeFrame } from '@term/call/code/work/item/live'
+import type { Region } from '@term/call/code/work/item/live'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import * as plan from '@term/call/code/output-plan'
 
@@ -206,8 +208,172 @@ export function report(input: ItemInput | Event): void {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
 
-  const event = 'tallies' in input ? (input as Event) : makeItem(input as ItemInput)
-  runner = reportOut(runner!, event.verb === '' ? { ...event, verb } : event)
+  const made = 'tallies' in input ? (input as Event) : makeItem(input as ItemInput)
+  const event = made.verb === '' ? { ...made, verb } : made
+
+  steps.delete(stepKey(event))
+
+  if (live.items.length > 0) {
+    reportLive(event)
+
+    return
+  }
+
+  runner = reportOut(runner!, event)
+}
+
+// ---- progress (section 10) ----
+
+// A RUNNING STEP is an item with the ◐ glyph, placed by `progress` and finished by the `report` of an item with the
+// same verb, subject and source. ON A TERMINAL the running items are the live region at the bottom of the output,
+// drawn by work/item/live.tree: `place-item` puts an item in its place, `plan-frame` decides the frame (at most one
+// redraw per `redraw-ms`), `write-frame` makes its bytes. A finished item at the top of the region leaves it through
+// the run's own `report`, so the session counts it and the final output is what it would be with no region at all.
+// WITHOUT ONE (a pipe, `--plain`) nothing redraws: a step longer than `quiet-progress-ms` reports a `●` progress item
+// once per interval (`is-progress-due`, `make-progress-item`). `--log json` and `--quiet` carry no progress at all: a
+// JSON line is one finished event, never a redraw
+let live: Region = { items: [], height: 0, drawnAt: -1, turn: 0 }
+let ticker: ReturnType<typeof setInterval> | undefined
+
+// when each step began and when its progress item was last reported, for the view without a terminal
+const steps = new Map<string, { started: number; reported: number }>()
+
+function stepKey(event: Event): string {
+  return `${event.verb}\u0000${event.subject.map(span => span.value).join('')}\u0000${event.source}`
+}
+
+// how progress shows under the flags: a redrawn region, an item every interval, or not at all
+function progressView(): 'live' | 'interval' | 'none' {
+  if (!runner || options.json || options.quiet) {
+    return 'none'
+  }
+
+  if (options.plain || options.depth > 0 || process.stderr.isTTY !== true) {
+    return 'interval'
+  }
+
+  return 'live'
+}
+
+// a step under way: `done` of `total` (a total below 0 is unknown, and draws no bar), counted in `noun`
+export function progress(input: { verb: string; subject: string; done?: number; total?: number; noun?: string; one?: string; source?: string }): void {
+  if (!runner) {
+    openRun({ verb: verb || 'term', root: process.cwd() })
+  }
+
+  const now = Date.now()
+  const done = input.done ?? -1
+  const total = input.total ?? -1
+  const step = makeItem({
+    glyph: 'running',
+    kind: 'progress',
+    verb: input.verb,
+    subject: input.subject,
+    source: input.source,
+    clock: now,
+    counts: input.noun !== undefined && done >= 0 ? [count(done, input.noun, input.one ?? '', total)] : [],
+    done,
+    total,
+  })
+  const key = stepKey(step)
+  const known = steps.get(key) ?? { started: now, reported: -1 }
+  steps.set(key, known)
+  // the clock and the time so far are the step's, from when it began
+  step.clock = known.started
+  step.duration = now - known.started
+
+  const view = progressView()
+
+  if (view === 'live') {
+    live = placeItem(live, step)
+    drawLive(false)
+
+    if (!ticker && options.motion) {
+      // the spinner and the elapsed time move while the step works, between its own updates. Unref'd: a run that is
+      // done never waits on it
+      ticker = setInterval(() => drawLive(false), STANDARD.lives.redrawMs)
+      ticker.unref()
+    }
+  } else if (view === 'interval' && isProgressDue(known.started, known.reported, now, STANDARD)) {
+    known.reported = now
+    runner = reportOut(runner!, makeProgressItem(step, known.started, now))
+  }
+}
+
+// the region redrawn: every running item's time brought up to now, then a frame if the redraw limit allows one
+function drawLive(force: boolean): void {
+  if (!runner || live.items.length === 0) {
+    return
+  }
+
+  const now = Date.now()
+  const room = runner.output.room
+  live = { ...live, items: live.items.map(each => (isRunning(each) ? { ...each, duration: now - each.clock } : each)) }
+  const plan = planFrame(live, [], now, force, options.motion, room, options.source === '')
+
+  if (plan.draw) {
+    emitPort.printRawError(writeFrame(plan, live.height, runner.output.palette, room.standard))
+    live = plan.region
+  }
+}
+
+// the region taken off the screen: up over its lines and cleared, so the next line printed is where it began
+function eraseLive(): void {
+  if (runner && live.height > 0) {
+    const blank = { region: live, committed: [], lines: [], draw: true }
+    emitPort.printRawError(writeFrame(blank, live.height, runner.output.palette, runner.output.room.standard))
+  }
+
+  live = { ...live, height: 0, drawnAt: -1 }
+}
+
+// an item reported while the region is on screen: put in its place (finishing the running step it names), the
+// finished items at the top printed for good through the run, and what is still running drawn again under them
+function reportLive(event: Event): void {
+  live = placeItem(live, event)
+  eraseLive()
+
+  while (live.items.length > 0 && !isRunning(live.items[0]!)) {
+    const first = live.items[0]!
+    live = { ...live, items: live.items.slice(1) }
+    runner = reportOut(runner!, first)
+  }
+
+  if (live.items.length === 0) {
+    stopTicker()
+
+    return
+  }
+
+  drawLive(true)
+}
+
+function stopTicker(): void {
+  if (ticker) {
+    clearInterval(ticker)
+    ticker = undefined
+  }
+}
+
+// the region settled before the run closes: finished items printed in their order, a step still running dropped (the
+// closing item says how the run ended)
+function settleLive(): void {
+  stopTicker()
+  steps.clear()
+
+  if (live.items.length === 0) {
+    return
+  }
+
+  eraseLive()
+  const items = live.items
+  live = { items: [], height: 0, drawnAt: -1, turn: 0 }
+
+  for (const one of items) {
+    if (!isRunning(one)) {
+      runner = reportOut(runner!, one)
+    }
+  }
 }
 
 // the closing item: the verdict, the total time and the counts, a `next` field when there is one. The glyph is the
@@ -220,6 +386,8 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
   if (!runner) {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
+
+  settleLive()
 
   const now = Date.now()
   // under --strict a run whose worst item is a warning closes ✗ and exits 1 (section 18), whatever its verdict says
@@ -499,6 +667,10 @@ const BUG_ERRORS = [TypeError, ReferenceError, RangeError, SyntaxError, EvalErro
 const FAILURE_KINDS = new Set(['usage', 'environment', 'bug', 'interrupted'])
 
 export function failRun(error: unknown, root: string): number {
+  if (runner) {
+    settleLive()
+  }
+
   const message = error instanceof Error ? error.message : String(error)
   const named = error instanceof Error ? (error as { failure?: string }).failure : undefined
   const failure = named && FAILURE_KINDS.has(named) ? named : undefined
