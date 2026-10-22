@@ -405,8 +405,15 @@ function container(input: { image: string; mounts: Record<string, string>; env: 
 
 // gpg asks for the key's passphrase through pinentry, which draws on the terminal GPG_TTY names. This run captures
 // gpg's output, so it names the terminal itself; with no terminal (a test's throwaway key in GNUPGHOME has no
-// passphrase) gpg runs in batch mode
+// passphrase) gpg runs in batch mode. APT_PWD, zone's passphrase for this key (`zone deck` / `zone task`), is handed
+// to gpg on its stdin instead, so `deck/zone/bin/zone load deck/task -- pnpm term:distro` signs with no terminal
 function gpg(args: string[]): void {
+  const passphrase = process.env.TERM_DISTRO_KEY ? undefined : process.env.APT_PWD
+  if (passphrase) {
+    run('gpg', ['--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--local-user', KEY, ...args], { input: passphrase })
+    return
+  }
+
   if (!process.env.GPG_TTY && process.stdin.isTTY) {
     try {
       process.env.GPG_TTY = execFileSync('tty', { stdio: ['inherit', 'pipe', 'ignore'], encoding: 'utf8' }).trim()
@@ -419,9 +426,15 @@ function gpg(args: string[]): void {
 }
 
 // A child's output is captured and shown only when it fails, under the item that ran it
-function run(command: string, args: string[], options: { cwd?: string } = {}): string {
+function run(command: string, args: string[], options: { cwd?: string; input?: string } = {}): string {
   try {
-    return execFileSync(command, args, { cwd: options.cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
+    return execFileSync(command, args, {
+      cwd: options.cwd,
+      encoding: 'utf8',
+      input: options.input,
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+    })
   } catch (error) {
     const failed = error as { stdout?: string; stderr?: string; status?: number }
 
