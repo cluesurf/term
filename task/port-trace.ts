@@ -1,0 +1,227 @@
+// THE READ TRACE behind task/port-build.ts's skip (term-cli-in-term-0002).
+//
+// A port's output is a function of the compiler (fingerprinted apart, from the bundle's inputs) and of every file the
+// compile reads. Rather than predict that set, which spans the load closure, the stdlib, role and lean files, mill
+// grammars, native files the prelude reads and any cache the compiler keeps on disk, this module WATCHES it: it wraps
+// the synchronous `fs` reads every importer of `node:fs` / `fs` reaches (named ESM imports too, through
+// `syncBuiltinESMExports`), and writes down each observation once, as what was seen: a content hash for a read, a yes or
+// no for `existsSync`, a kind and size for a stat, the sorted entries for a directory. A later run re-performs every
+// observation and skips a module only when each one still sees the same thing.
+//
+// It must be imported BEFORE the compiler, so a read a compiler module makes while it loads is in the trace too: ESM
+// evaluates imports in order, and port-build.ts imports this first.
+//
+// SOUNDNESS. A compiler may cache across compiles in one process, so a module's output can depend on a file another
+// module's compile read. Each module is therefore keyed by EVERY observation the process made up to the end of its own
+// compile, never only its own. A read the trace cannot describe (a file descriptor, `openSync`, a stream) marks the
+// process UNTRACKABLE from that point on, and an untrackable module is never skipped.
+
+import fs from 'node:fs'
+import { createHash } from 'node:crypto'
+import { syncBuiltinESMExports } from 'node:module'
+import { resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// the unwrapped functions, for port-build's own IO (the module list, reading and writing outputs, the manifest) and for
+// checking an observation, none of which belongs in a trace
+export const real = {
+  readFileSync: fs.readFileSync,
+  writeFileSync: fs.writeFileSync,
+  existsSync: fs.existsSync,
+  statSync: fs.statSync,
+  lstatSync: fs.lstatSync,
+  readdirSync: fs.readdirSync,
+  realpathSync: fs.realpathSync,
+  accessSync: fs.accessSync,
+  mkdirSync: fs.mkdirSync,
+  renameSync: fs.renameSync,
+}
+
+// the key an observation is filed under: the operation and the absolute path, `\0` between
+export const UNTRACKABLE = 'untrackable\0'
+
+// every distinct observation this process made, in the order first made, with what it saw
+const seen = new Map<string, string>()
+let recording = true
+let depth = 0
+
+export function sha(data: string | Buffer): string {
+  return createHash('sha256').update(data).digest('hex')
+}
+
+function absolute(path: unknown): string | undefined {
+  if (typeof path === 'string') {
+    return resolvePath(path)
+  }
+
+  if (path instanceof URL) {
+    return fileURLToPath(path)
+  }
+
+  if (Buffer.isBuffer(path)) {
+    return resolvePath(path.toString())
+  }
+
+  return undefined
+}
+
+function thrown(error: unknown): string {
+  return `throw:${(error as { code?: string }).code ?? 'unknown'}`
+}
+
+// what the operation sees at the path NOW, through the unwrapped functions. The same function records an observation
+// and checks one, so the two can never disagree about what counts as the same
+export function observe(op: string, path: string): string {
+  return untraced(() => look(op, path))
+}
+
+// run port-build's own IO with nothing recorded: Node's `readFileSync` of a Buffer opens the file through the module
+// object, which would otherwise mark the process untrackable
+export function untraced<T>(run: () => T): T {
+  depth++
+
+  try {
+    return run()
+  } finally {
+    depth--
+  }
+}
+
+function look(op: string, path: string): string {
+  try {
+    switch (op) {
+      case 'read':
+        return sha(real.readFileSync(path))
+      case 'exists':
+        return real.existsSync(path) ? '1' : '0'
+      case 'stat':
+      case 'lstat': {
+        const stat = op === 'stat' ? real.statSync(path) : real.lstatSync(path)
+        const kind = stat.isFile() ? 'f' : stat.isDirectory() ? 'd' : stat.isSymbolicLink() ? 'l' : 'o'
+
+        // a file's size, which is what a reader could learn of it without reading it. Never its time: the key is content
+        return stat.isFile() ? `${kind}:${stat.size}` : kind
+      }
+      case 'list':
+        return real
+          .readdirSync(path, { withFileTypes: true })
+          .map(entry => `${entry.name}/${entry.isFile() ? 'f' : entry.isDirectory() ? 'd' : entry.isSymbolicLink() ? 'l' : 'o'}`)
+          .sort()
+          .join('\n')
+      case 'real':
+        return real.realpathSync(path)
+      case 'access':
+        real.accessSync(path)
+        return 'ok'
+      default:
+        return 'unknown-op'
+    }
+  } catch (error) {
+    return thrown(error)
+  }
+}
+
+function note(op: string, path: unknown): void {
+  if (!recording || depth > 0) {
+    return
+  }
+
+  const at = absolute(path)
+
+  if (at === undefined) {
+    seen.set(UNTRACKABLE, 'never')
+    return
+  }
+
+  const key = `${op}\0${at}`
+
+  if (!seen.has(key)) {
+    seen.set(key, observe(op, at))
+  }
+}
+
+// a wrapper that records the observation, then calls through. Calls the original makes into `fs` itself (Node's
+// `readFileSync` opens, stats and reads through the module object) are inside it and not observed again
+function wrap<F extends (...args: any[]) => any>(original: F, op: string | null): F {
+  return function (this: unknown, ...args: any[]) {
+    if (op === null) {
+      if (recording && depth === 0) {
+        seen.set(UNTRACKABLE, 'never')
+      }
+    } else {
+      note(op, args[0])
+    }
+
+    depth++
+
+    try {
+      return original.apply(this, args)
+    } finally {
+      depth--
+    }
+  } as F
+}
+
+const target = fs as unknown as Record<string, (...args: any[]) => any>
+
+target.readFileSync = wrap(fs.readFileSync, 'read')
+target.existsSync = wrap(fs.existsSync, 'exists')
+target.statSync = wrap(fs.statSync, 'stat')
+target.lstatSync = wrap(fs.lstatSync, 'lstat')
+target.readdirSync = wrap(fs.readdirSync, 'list')
+target.realpathSync = wrap(fs.realpathSync, 'real')
+target.accessSync = wrap(fs.accessSync, 'access')
+
+;(target.realpathSync as unknown as { native: unknown }).native = wrap(fs.realpathSync.native, 'real')
+
+// reads the trace cannot describe as content at a path, and every asynchronous read, which could land at any time:
+// one made while recording marks the process untrackable, so no module after it is skipped
+const UNTRACKED = [
+  'openSync',
+  'readSync',
+  'readvSync',
+  'fstatSync',
+  'opendirSync',
+  'readlinkSync',
+  'createReadStream',
+  'readFile',
+  'readdir',
+  'stat',
+  'lstat',
+  'access',
+  'open',
+  'opendir',
+  'realpath',
+  'exists',
+  'readlink',
+]
+
+for (const name of UNTRACKED) {
+  if (typeof target[name] === 'function') {
+    target[name] = wrap(target[name]!, null)
+  }
+}
+
+const promises = fs.promises as unknown as Record<string, (...args: any[]) => any>
+
+for (const name of ['readFile', 'readdir', 'stat', 'lstat', 'access', 'open', 'opendir', 'realpath', 'readlink']) {
+  if (typeof promises[name] === 'function') {
+    promises[name] = wrap(promises[name]!, null)
+  }
+}
+
+syncBuiltinESMExports()
+
+// stop or resume recording: port-build pauses it around its own bookkeeping that reaches `fs` through another module
+export function setRecording(on: boolean): void {
+  recording = on
+}
+
+// every observation so far, in the order first made
+export function observations(): [string, string][] {
+  return [...seen]
+}
+
+export function observationCount(): number {
+  return seen.size
+}
