@@ -2515,35 +2515,20 @@ task emit-statement
       walk mask-methods
         take method
         save line, <  {to-camel(method)}(...args: Array\<unknown\>): unknown>
-        sift mask-tasks
-          case some
-            link declared
-            walk declared
-              take one
-              fork test, is-equal(one/name, method)
-                hold
-                  save params, make list
-                  walk one/signature/params
-                    take param
-                    take at
-                    fork test, is-equal(at, 0)
-                      hold
-                        push(params, <self: unknown>)
-                      miss
-                        sift param/type
-                          case some
-                            push(params, <input{at}: {ts-type-of(param/type, facts)}>)
-                          case none
-                            push(params, <input{at}: unknown>)
-                  save result, <unknown>
-                  sift one/signature/result
-                    case some
-                      save result, ts-type-of(one/signature/result, facts)
-                    case none
-                      save nothing, 0
-                  save line, <  {to-camel(method)}({join-texts(params, <, >)}): {result}>
-          case none
-            save nothing, 0
+        walk mask-tasks
+          take one
+          fork test, is-equal(one/name, method)
+            hold
+              save params, make list
+              walk one/signature/params
+                take param
+                take at
+                fork test, is-equal(at, 0)
+                  hold
+                    push(params, <self: unknown>)
+                  miss
+                    push(params, <input{at}: {ts-type-of(param/type, facts)}>)
+              save line, <  {to-camel(method)}({join-texts(params, <, >)}): {ts-type-of(one/signature/result, facts)}>
         push(methods, line)
       back <interface {to-pascal(mask-name)} \{\n{join-texts(methods, <\n>)}\n\}>
     case instance

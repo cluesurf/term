@@ -7254,7 +7254,7 @@ task emit-function
       save st/move-args, previous-move-args
       save st/cell-vars, previous-cells
       save st/assigned-vars, previous-assigned
-      save left, facts/leave-task()
+      facts/leave-task()
       save async-mark, <>
       fork test, fn-async
         hold

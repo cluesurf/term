@@ -4243,7 +4243,16 @@ task body-default-text
   like text
   mark private
 
+  # a default the checker fills at a Term call is awaited there, and is no `await` node here: a call to an asynchronous
+  # task is awaited in the body as it would be at the call
+  fork test, default-waits(fallback, facts)
+    hold
+      save st/awaiting, true
   save value, emit-expr(fallback, empty-scope(), st, facts)
+  save st/awaiting, false
+  fork test, and(default-waits(fallback, facts), not(starts-with(value, <await >)))
+    hold
+      save value, <await {value}>
   save effects, <>
   save prefix, <>
   fork test, is-above(split(value, <await >)/length, 1)

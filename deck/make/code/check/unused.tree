@@ -238,6 +238,23 @@ task warning
   save kind, make unused-binding
   back diagnose(kind, input)
 
+# one character, a digit
+task is-digit-text
+  take value, like text
+  like boolean
+  mark private
+
+  save digits, <0123456789>
+  save at, 0
+  walk test
+    hook test, is-below(at, digits/length)
+    hook hold
+      fork test, is-equal(value, char-at(digits, at))
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
 # two names one edit apart: a letter left out, put in, changed, or two neighbors swapped (`totl` and `total`). Names
 # under three letters are never matched, since `a` and `b` are one edit apart and nobody misspells one for the other
 task is-one-edit
@@ -271,6 +288,10 @@ task is-one-edit
           save at, add(at, 1)
       fork test, is-below(second, 0)
         hold
+          # numbered siblings (`match-0`, `match-1`) differ by a digit on purpose, as a generated grammar names them
+          fork test, and(is-digit-text(char-at(a, first)), is-digit-text(char-at(b, first)))
+            hold
+              back false
           back is-minimum(first, 0)
       # two differences: a swap of neighbors
       back and(is-equal(second, add(first, 1)), and(is-equal(char-at(a, first), char-at(b, second)), is-equal(char-at(a, second), char-at(b, first))))
@@ -293,7 +314,8 @@ task is-one-edit
         hold
           save i, add(i, 1)
         miss
-          fork test, skipped
+          # a digit put in is a numbered sibling (`row-1`, `row-12`), not a misspelling
+          fork test, or(skipped, is-digit-text(char-at(long, j)))
             hold
               back false
           save skipped, true
