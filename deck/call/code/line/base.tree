@@ -737,17 +737,17 @@ hook term
   hook boot
     # moon, dev or development (the default), or star, prod or production
     slot mode
-      like text
+      like maybe, like text
     # Entry .tree module (defaults to deck.tree boot)
     slot entry
-      like text
+      like maybe, like text
     # Port to serve on
     take port
       code p
-      like number
+      like maybe, like number
     # Target env (node, browser)
     take env
-      like text
+      like maybe, like text
     # Remote cache endpoint (pull before, push after)
     take remote
       like text

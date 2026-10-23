@@ -1,6 +1,11 @@
 load @term/call/work/home
   find root, name project-root
 
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 load @term/call/work/tint
   find log-good
   find log-fail
@@ -33,6 +38,7 @@ dock load
   load <node:process>, name node-process
   # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
   load <global:process>, name host-process
+  load <global:JSON>, name host-json
 
 form view-ask
   link root, like text
@@ -60,17 +66,6 @@ form mold-ask
   link lines, like boolean
   link code, like boolean
   link canonical, like boolean
-
-form boot-ask
-  link root, like text
-  link mode, like text
-  link entry, like text
-  link env, like text
-  link port, like number
-  link remote, like text
-  link remoteToken, like text
-  link args, like list, like text
-  link out, like text
 
 # `term view [path]`: check a document in the view role and print what it uses
 task view
@@ -189,12 +184,18 @@ task words-after-dashes
 # bare extras line.ts also passed (`term boot dev cli.tree show`) never reach here: the dispatcher refuses a word no
 # take holds. No tint, catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of
 # cli-in-term)
+#
+# line.ts left a flag that was not given undefined, and callBoot tells undefined apart for four of them: `mode ===
+# undefined` skips bootMode, `env ?? 'node'`, `port ?? findFreePort`, and an entry reaches bootMode as none. Those
+# four are maybes (decision cli-in-term/008 part 1), and the ask is built as JSON from the somes only, so an absent
+# `--env` is left out and callBoot boots for node (`term mark list`, verb-pair row 100). `remote`, `remote-token`
+# and `out` are read only for truth, so the empty text is their absence and they stay plain
 task boot
   mark async
-  take mode, like text
-  take entry, like text
-  take port, like number
-  take env, like text
+  take mode, like maybe, like text
+  take entry, like maybe, like text
+  take port, like maybe, like number
+  take env, like maybe, like text
   take remote, like text
   take remote-token, like text
   take out, like text
@@ -203,15 +204,39 @@ task boot
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call boot-module/callBoot
-    make boot-ask
-      bind root, read root
-      bind mode, read mode
-      bind entry, read entry
-      bind env, read env
-      bind port, read port
-      bind remote, read remote
-      bind remoteToken, read remote-token
-      bind args, words-after-dashes(host-process/argv)
-      bind out, read out
-    wait true
+  save entries, make list
+  entries/push <"root":{host-json/stringify(root)}>
+  maybe-entry(entries, <mode>, mode)
+  maybe-entry(entries, <entry>, entry)
+  maybe-entry(entries, <env>, env)
+  sift port
+    case some
+      entries/push <"port":{value}>
+    case none
+      save nothing, 0
+  entries/push <"remote":{host-json/stringify(remote)}>
+  entries/push <"remoteToken":{host-json/stringify(remote-token)}>
+  entries/push <"args":{host-json/stringify(words-after-dashes(host-process/argv))}>
+  entries/push <"out":{host-json/stringify(out)}>
+  save text, <>
+  walk entries
+    take entry-text
+    fork test, is-equal(text, <>)
+      hold
+        save text, entry-text
+      miss
+        save text, <{text},{entry-text}>
+  wait boot-module/callBoot(host-json/parse(<\{{text}\}>))
+
+# an entry of the boot ask for a text that was given, left out when none
+task maybe-entry
+  mark private
+  take entries, like list, like text
+  take name, like text
+  take given, like maybe, like text
+  like void
+  sift given
+    case some
+      entries/push <"{name}":{host-json/stringify(value)}>
+    case none
+      save nothing, 0
