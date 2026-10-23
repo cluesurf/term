@@ -21,6 +21,16 @@ load @term/call/work/hold/project-hold
   find hold-failure
   find baseline-keys
 
+# the second checker and the report, ported: the items of the Lean re-check print through this console's own output
+# state (the printer port), never through the TypeScript output module, which is another state
+load @term/call/work/hold/lean-check
+  find report-lean
+  find hold-lean
+
+load @term/call/work/hold/law-report
+  find hold-report
+  find report-ask
+
 load @term/call/work/output/printer
   find open-run
   find report
@@ -34,8 +44,6 @@ load @term/call/work/output/printer
 dock load
   load <@term/call/code/make>, name tree-finding
   load <@term/call/code/files>, name file-collecting
-  load <@term/call/code/hold-lean>, name lean-holding
-  load <@term/call/code/hold-report>, name report-holding
   load <@term/call/code/role-of>, name role-reading
   load <@term/call/code/cache-store>, name version-reading
   load <@term/call/code/home>, name home-finding
@@ -141,24 +149,12 @@ bind page-file
   case node
     text <$page.file>
 
-bind lean-of-root
-  take holding, like dynamic
-  take root, like text
-  take files, like list, like text
+# a record of this console as the host value the summary prints
+bind as-host
+  take value, like unknown
   like dynamic
   case node
-    text <$holding.holdLean($root, $files)>
-
-bind report-of-root
-  take holding, like dynamic
-  take root, like text
-  take files, like list, like text
-  take summary, like hold-summary
-  take found, like dynamic
-  take lean, like dynamic
-  like dynamic
-  case node
-    text <$holding.holdReport(\{ root: $root, files: $files, summary: $summary, found: $found, lean: $lean \})>
+    text <$value>
 
 bind nothing-yet
   like dynamic
@@ -414,15 +410,19 @@ task call-hold
 
   # the second checker, when asked for: every claim exported and re-checked by Lean 4
   save lean, nothing-yet()
+  save checked, make none
   fork test, lean-asked
     hold
-      save lean, lean-of-root(lean-holding, root, files)
+      save rechecked, hold-lean(root, files)
+      save lean, as-host(rechecked)
+      save checked, make(some, rechecked)
 
   # the MVP report, when asked for: one row per law of laws.tree, written under the project's home
   save page, nothing-yet()
   fork test, report-asked
     hold
-      save page, report-of-root(report-holding, root, files, summary, found, lean)
+      save written, hold-report(make(report-ask, bind(root, root), bind(files, files), bind(summary, summary), bind(found, found), bind(lean, checked)))
+      save page, as-host(written)
 
   fork test, flag(input/json)
     hold
@@ -534,7 +534,7 @@ task call-hold
 
   fork test, verdict-truth(lean)
     hold
-      lean-holding/report-lean(lean)
+      report-lean(as-lean(lean))
 
   fork test, verdict-truth(page)
     hold
@@ -563,6 +563,13 @@ task call-hold
     hold
       save verdict, <Holds>
   host-process/exit(close-run(make(close-counts, bind(verdict, verdict), bind(counts, gate/counts))))
+
+# hold-lean.ts's answer, the record lean-check.tree's hold-lean describes
+bind as-lean
+  take lean, like dynamic
+  like hold-lean
+  case node
+    text <$lean>
 
 bind forced-value
   take value, like boolean

@@ -1,0 +1,206 @@
+# A release: one published version of a package, committed on @cluesurf/save. Ported from
+# deck/deck/code/object/release.ts (term-cli-in-term-0086): RELEASE_BRANCH, buildRelease, closureOf,
+# reachableFromCommit.
+#
+# A version is a save dataset of file records (file-dataset.tree), built by package-version.tree and committed through
+# save's Repository, which brings history, branches, tags, reflog and merge with it.
+#
+# The closure is the set of chunk ids a receiver needs to reach the release: the tree's own nodes, plus every chunk of
+# every file. It is what is negotiated against the registry with `findMissing`, so only what is absent moves.
+#
+# The decisions:
+#   - RELEASE_BRANCH is release-branch()
+#   - build-release takes every parameter: the chunk parameters (default-chunk-params() where the original defaulted
+#     them), the exclusions a LIST of names (default-version-exclude() where the original defaulted its Set) and the
+#     included paths a list (empty where left out); a release is the original's record
+#   - save's Repository, MemoryRefStore and treeNodeRefs are docked; a commit is the original's `repo.commit` call
+#   - an id set is a host Set, as the original's; the closure is sorted in UTF-16 order, as the original's sort()
+
+load @term/base/list
+  find list
+
+load ./content-chunking
+  find chunk-params
+
+load ./package-version
+  find build-version
+
+load ./file-dataset
+  find dataset-of-files
+
+dock load
+  load <@cluesurf/save/repo/repo>, name save-repo
+  load <@cluesurf/save/store/ref-store>, name save-ref-store
+  load <@cluesurf/save/store/tree>, name save-tree
+
+# one published version: the save commit naming it, its prolly-tree root, its files, every chunk id a receiver needs,
+# and the tree and commit chunks held in memory until they are shipped
+form release
+  link commit, like text
+  link root, like text
+  link files, like list, like dynamic
+  link closure, like list, like text
+  link chunks, like dynamic
+
+bind release-repository
+  take repo, like dynamic
+  take refs, like dynamic
+  take chunks, like dynamic
+  like dynamic
+  case node
+    text <new $repo.Repository($chunks, new $refs.MemoryRefStore())>
+
+bind release-commit
+  take repository, like dynamic
+  take branch, like text
+  take meta, like dynamic
+  take dataset, like dynamic
+  like dynamic
+  case node
+    text <$repository.commit($branch, $meta, $dataset)>
+
+bind release-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.ok)>
+
+bind release-failure
+  take result, like dynamic
+  like text
+  case node
+    text <<((first) => `could not commit release${first ? `: ${first.message}` : ""}`)($result.diagnostics?.[0])>>
+
+bind release-closure-ids
+  take commit, like text
+  take chunks, like dynamic
+  take files, like list, like dynamic
+  like list, like text
+  case node
+    text <<((closureHeld) => { closureHeld.add($commit); for (const closureFile of $files) { for (const closurePiece of closureFile.chunks) { closureHeld.add(closurePiece) } } return [...closureHeld].sort() })(new Set($chunks.keys()))>>
+
+bind release-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind release-root-of
+  take bytes, like dynamic
+  like text
+  case node
+    text <JSON.parse($bytes.toString("utf8")).root>
+
+bind release-node-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind release-set-of
+  take id, like text
+  like dynamic
+  case node
+    text <new Set([$id])>
+
+bind release-set-has
+  take ids, like dynamic
+  take id, like text
+  like boolean
+  case node
+    text <$ids.has($id)>
+
+bind release-set-add
+  take ids, like dynamic
+  take id, like text
+  like void
+  case node
+    text <$ids.add($id)>
+
+# the branch a package's releases are committed on: one line of history per package
+task release-branch
+  like text
+
+  back <main>
+
+# a release built from a folder: walked, chunked, its tree written, committed
+task build-release
+  take dir, like text
+  take store, like dynamic
+  take meta, like dynamic
+  take params, like chunk-params
+  take exclude, like list, like text
+  take include, like list, like text
+  like release
+
+  save built, build-version(dir, store, params, exclude, include)
+
+  # the version committed through save, which owns history. The stores are in memory: a publish computes locally and
+  # then ships, so nothing here waits
+  save chunks, built/tree-chunks
+  save repository, release-repository(save-repo, save-ref-store, chunks)
+  save files, built/files
+  save result, release-commit(repository, release-branch(), meta, dataset-of-files(files))
+  fork test, not(release-ok(result))
+    hold
+      save failure-text, release-failure(result)
+      halt <{failure-text}>
+
+  save commit, result/commit
+  back
+    make release
+      bind commit, commit
+      bind root, built/root
+      bind files, files
+      bind closure, closure-of(commit, chunks, files)
+      bind chunks, chunks
+
+# every chunk id needed to reach a release, sorted: the tree's nodes from the store it was written into, the commit,
+# and every file's chunks. All content-addressed, so a receiver holding an id holds its whole subtree, which makes the
+# transfer O(change)
+task closure-of
+  take commit, like text
+  take chunks, like dynamic
+  take files, like list, like dynamic
+  like list, like text
+
+  back release-closure-ids(commit, chunks, files)
+
+# every node under `id` and every record chunk its leaves name, added to `ids`
+task reach-node
+  take id, like text
+  take store, like dynamic
+  take ids, like dynamic
+  like void
+  mark private
+
+  fork test, release-set-has(ids, id)
+    hold
+      back
+
+  release-set-add(ids, id)
+  save node, wait release-store-get(store, id)
+  save refs-of, save-tree/tree-node-refs(release-node-text(node))
+  save leaf, refs-of/leaf
+  walk refs-of/refs
+    take ref
+    fork test, leaf
+      hold
+        # a leaf's refs are record chunks, which are terminal
+        release-set-add(ids, ref)
+      miss
+        reach-node(ref, store, ids)
+
+# the closure of a release already IN a store, walked over save's prolly tree. The server needs it to check that a
+# publish is complete before it moves a ref: every node and record chunk the commit reaches must be present
+task reachable-from-commit
+  take commit-id, like text
+  take store, like dynamic
+  like dynamic
+
+  save ids, release-set-of(commit-id)
+  save bytes, wait release-store-get(store, commit-id)
+  save root, release-root-of(bytes)
+  reach-node(root, store, ids)
+  back ids

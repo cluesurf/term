@@ -1,0 +1,436 @@
+# A registry HTTP server over the registry operations (deck/deck/code/object/registry.ts). Ported from
+# deck/deck/code/object/serve.ts (term-cli-in-term-0085): REGISTRY_TOKEN_VARIABLE, writeAccessFromEnv, serveRegistry.
+#
+# It answers the endpoints registry-client.tree speaks, handing each to acceptObject, acceptPack, resolveRef,
+# publishCommit and build-manifest over an object store and a ref store. A plain node:http server, so it runs in
+# process for tests with nothing else; the production registry mounts the same handlers as routes on the shared
+# backend over R2 and Postgres, the route logic the same.
+#
+# The decisions:
+#   - a write policy is the original's host value, `{ token }` or `open`; the stores and the scope keys are the
+#     caller's host values
+#   - every answer is the original's, its status, headers and body text, written in binds
+#   - registry.ts (acceptObject, acceptPack, resolveRef, publishCommit) is docked until its lane; build-manifest is
+#     object-closure.tree's
+#   - REGISTRY_TOKEN_VARIABLE is registry-token-variable(), and write-access-from-env takes its environment (the
+#     caller's process.env where the original defaulted it)
+
+load @term/base/list
+  find list
+
+load ./object-closure
+  find build-manifest
+
+dock load
+  load <node:http>, name node-http
+  load <node:crypto>, name node-crypto
+  load <@term/deck/code/object/registry>, name registry-module
+
+# what a server is made over
+form server-setup
+  link store, like dynamic
+  link refs, like dynamic
+  link scope-keys, like dynamic
+  link write, like dynamic
+
+form write-token
+  link token, like text
+
+form object-ask
+  link store, like dynamic
+  link id, like text
+  link bytes, like dynamic
+
+form pack-ask
+  link store, like dynamic
+  link bytes, like dynamic
+
+form resolve-ask
+  link refs, like dynamic
+  link package, like text
+  link ref, like dynamic
+
+form commit-ask
+  link store, like dynamic
+  link refs, like dynamic
+  link scope-keys, like dynamic
+  link package, like dynamic
+  link target, like dynamic
+  link commit, like dynamic
+  link sig, like dynamic
+  link key, like dynamic
+
+bind env-token
+  take env, like dynamic
+  like dynamic
+  case node
+    text <$env["TERM_REGISTRY_TOKEN"]?.trim()>
+
+bind serve-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-open-write
+  take write, like dynamic
+  like boolean
+  case node
+    text <($write === "open")>
+
+bind bearer-of
+  take req, like dynamic
+  like dynamic
+  case node
+    text <<((header) => { if (!header) return null; const match = /^Bearer +(.+)$/i.exec(header.trim()); return match ? match[1].trim() : null })($req.headers.authorization)>>
+
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+bind request-url
+  take req, like dynamic
+  like dynamic
+  case node
+    text <new URL($req.url ?? "/", "http://localhost")>
+
+bind url-parts
+  take url, like dynamic
+  like list, like dynamic
+  case node
+    text <$url.pathname.split("/").filter(Boolean)>
+
+bind is-part
+  take parts, like list, like dynamic
+  take index, like number
+  take word, like text
+  like boolean
+  case node
+    text <($parts[$index] === $word)>
+
+bind has-part
+  take parts, like list, like dynamic
+  take index, like number
+  like boolean
+  case node
+    text <Boolean($parts[$index])>
+
+bind part-is-scope
+  take parts, like list, like dynamic
+  take index, like number
+  like boolean
+  case node
+    text <Boolean($parts[$index]?.startsWith("@"))>
+
+bind part-at
+  take parts, like list, like dynamic
+  take index, like number
+  like text
+  case node
+    text <$parts[$index]>
+
+bind object-id-of
+  take parts, like list, like dynamic
+  like text
+  case node
+    text <decodeURIComponent($parts.slice(1).join("/"))>
+
+bind header-object-id
+  take req, like dynamic
+  like text
+  case node
+    text <decodeURIComponent(String($req.headers["x-object-id"] ?? ""))>
+
+bind read-body
+  take req, like dynamic
+  like dynamic
+  case node
+    text <<(async (request) => { const chunks = []; for await (const chunk of request) chunks.push(chunk); return Buffer.concat(chunks) })($req)>>
+
+bind json-of-bytes
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind send-json
+  take res, like dynamic
+  take code, like number
+  take body, like dynamic
+  like void
+  case node
+    text <<((text) => { $res.writeHead($code, { "content-type": "application/json" }); $res.end(text) })(JSON.stringify($body))>>
+
+bind send-refusal
+  take res, like dynamic
+  like void
+  case node
+    text <<($res.writeHead(401, { "content-type": "application/json", "www-authenticate": "Bearer realm=\"registry\"" }), $res.end(JSON.stringify({ error: "a valid bearer token is required to publish" })))>>
+
+bind send-status
+  take res, like dynamic
+  take code, like number
+  like void
+  case node
+    text <($res.writeHead($code), $res.end())>
+
+bind send-object
+  take res, like dynamic
+  take bytes, like dynamic
+  like void
+  case node
+    text <<($res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "public, immutable, max-age=31536000" }), $res.end($bytes))>>
+
+bind send-not-found
+  take res, like dynamic
+  like void
+  case node
+    text <($res.writeHead(404), $res.end("not found"))>
+
+bind ok-body
+  like dynamic
+  case node
+    text <<({ ok: true })>>
+
+bind missing-body
+  take missing, like dynamic
+  like dynamic
+  case node
+    text <<({ missing: $missing })>>
+
+bind stored-body
+  take stored, like dynamic
+  like dynamic
+  case node
+    text <<({ ok: true, stored: $stored })>>
+
+bind refs-body
+  take versions, like dynamic
+  take branches, like dynamic
+  like dynamic
+  case node
+    text <<({ versions: $versions, branches: $branches })>>
+
+bind error-body
+  take message, like text
+  like dynamic
+  case node
+    text <<({ error: $message })>>
+
+bind error-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind query-ref
+  take url, like dynamic
+  like dynamic
+  case node
+    text <<((params) => { const version = params.get("version"); const branch = params.get("branch"); const commit = params.get("commit"); if (version) return { kind: "version", version }; if (branch) return { kind: "branch", branch }; if (commit) return { kind: "commit", commit }; return null })($url.searchParams)>>
+
+# the environment variable a deployed registry reads its publish token from
+task registry-token-variable
+  like text
+
+  back <TERM_REGISTRY_TOKEN>
+
+# The write policy of a deployed registry, from the environment. Refused when the variable is missing or blank, never
+# `open`: a registry that takes anonymous publishes because a variable was not set is the failure this prevents, and
+# it would not show until someone else found it
+task write-access-from-env
+  take env, like dynamic
+  like write-token
+
+  save token, env-token(env)
+  fork test, not(serve-truthy(token))
+    hold
+      halt <TERM_REGISTRY_TOKEN is not set, so the registry would accept anonymous publishes>
+  back make(write-token, bind(token, token))
+
+task digest-of
+  take value, like text
+  like dynamic
+  mark private
+
+  save hasher, node-crypto/create-hash(<sha256>)
+  hasher/update(value)
+  back hasher/digest()
+
+# Whether the presented token is the expected one. Both are hashed first, so the comparison is over digests of one
+# length: it cannot throw on a length mismatch, and leaks neither the token nor its length
+task token-matches
+  take presented, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  back node-crypto/timing-safe-equal(digest-of(presented), digest-of(expected))
+
+task allows-write
+  take req, like dynamic
+  take write, like dynamic
+  like boolean
+  mark private
+
+  fork test, is-open-write(write)
+    hold
+      back true
+  save presented, bearer-of(req)
+  fork test, is-null(presented)
+    hold
+      back false
+  back token-matches(presented, write/token)
+
+# One request answered. One gate before every handler: it lists the READS and gates the rest, so anything new is closed
+# by default (a list of the writes would leave a route added later open until someone remembered it). Reads are safe:
+# installing must work with no credentials, and an object is content-addressed, so serving it reveals nothing its hash
+# did not name
+task answer-request
+  take req, like dynamic
+  take res, like dynamic
+  take setup, like server-setup
+  like void
+  mark private
+
+  fork
+    mark unsafe
+    save url, request-url(req)
+    save parts, url-parts(url)
+    save method, req/method
+    save is-get, is-equal(method, <GET>)
+    save is-head, is-equal(method, <HEAD>)
+    save is-post, is-equal(method, <POST>)
+    # the have / want negotiation is a POST only because the id list is too long for a query; it changes nothing
+    save is-verify, and(is-post, and(is-part(parts, 0, <packages>), is-part(parts, 1, <verify!>)))
+    save is-read, or(is-get, or(is-head, is-verify))
+    fork test, and(not(is-read), not(allows-write(req, setup/write)))
+      hold
+        send-refusal(res)
+        back
+
+    # POST /package-objects/mutate!  <bytes>, the id in x-object-id
+    fork test, and(is-post, and(is-part(parts, 0, <package-objects>), is-part(parts, 1, <mutate!>)))
+      hold
+        save id, header-object-id(req)
+        save bytes, wait read-body(req)
+        wait registry-module/accept-object(make(object-ask, bind(store, setup/store), bind(id, id), bind(bytes, bytes)))
+        send-json(res, 200, ok-body())
+        back
+
+    # GET / HEAD /package-objects/:id
+    fork test, and(is-part(parts, 0, <package-objects>), has-part(parts, 1))
+      hold
+        save object-id, object-id-of(parts)
+        fork test, is-head
+          hold
+            save has
+              call setup/store/has
+                read object-id
+                wait true
+            fork test, has
+              hold
+                send-status(res, 200)
+              miss
+                send-status(res, 404)
+            back
+        fork test, is-get
+          hold
+            save held
+              call setup/store/has
+                read object-id
+                wait true
+            fork test, not(held)
+              hold
+                send-status(res, 404)
+                back
+            save bytes
+              call setup/store/get
+                read object-id
+                wait true
+            send-object(res, bytes)
+            back
+
+    # POST /packages/verify!  { ids } -> { missing }, the delta handshake
+    fork test, is-verify
+      hold
+        save body-bytes, wait read-body(req)
+        save body, json-of-bytes(body-bytes)
+        save missing
+          call setup/store/missing
+            read body/ids
+            wait true
+        send-json(res, 200, missing-body(missing))
+        back
+
+    # POST /packages/bundle!  <pack> -> { ok, stored }: a pack unpacked, each object it holds checked and stored, one
+    # request carrying hundreds of objects (note/term/registry/17)
+    fork test, and(is-post, and(is-part(parts, 0, <packages>), is-part(parts, 1, <bundle!>)))
+      hold
+        save bytes, wait read-body(req)
+        save stored, wait registry-module/accept-pack(make(pack-ask, bind(store, setup/store), bind(bytes, bytes)))
+        send-json(res, 200, stored-body(stored))
+        back
+
+    # POST /packages/commit!  { package, target, commit, sig, key } -> { ok, ref }
+    fork test, and(is-post, and(is-part(parts, 0, <packages>), is-part(parts, 1, <commit!>)))
+      hold
+        save body-bytes, wait read-body(req)
+        save body, json-of-bytes(body-bytes)
+        save result, wait registry-module/publish-commit(make(commit-ask, bind(store, setup/store), bind(refs, setup/refs), bind(scope-keys, setup/scope-keys), bind(package, body/package), bind(target, body/target), bind(commit, body/commit), bind(sig, body/sig), bind(key, body/key)))
+        send-json(res, 200, result)
+        back
+
+    # GET /packages/@scope/:name/references       -> { versions, branches }
+    # GET /packages/@scope/:name/files?commit=...  -> the manifest (the same for ever, per commit)
+    fork test, and(is-get, and(is-part(parts, 0, <packages>), and(part-is-scope(parts, 1), and(has-part(parts, 2), has-part(parts, 3)))))
+      hold
+        save package-name, <{part-at(parts, 1)}/{part-at(parts, 2)}>
+        fork test, is-part(parts, 3, <references>)
+          hold
+            save versions
+              call setup/refs/list-versions
+                read package-name
+                wait true
+            save branches
+              call setup/refs/list-branches
+                read package-name
+                wait true
+            send-json(res, 200, refs-body(versions, branches))
+            back
+        fork test, is-part(parts, 3, <files>)
+          hold
+            save ref, query-ref(url)
+            fork test, is-null(ref)
+              hold
+                send-json(res, 400, error-body(<a ref is required>))
+                back
+            save commit, wait registry-module/resolve-ref(make(resolve-ask, bind(refs, setup/refs), bind(package, package-name), bind(ref, ref)))
+            save manifest, build-manifest(commit, commit, package-name, setup/store)
+            send-json(res, 200, manifest)
+            back
+
+    send-not-found(res)
+  halt take
+    take problem
+    send-json(res, 400, error-body(error-message(problem)))
+
+# a registry HTTP server over the given stores; call its `listen(port)`
+task serve-registry
+  take store, like dynamic
+  take refs, like dynamic
+  take scope-keys, like dynamic
+  take write, like dynamic
+  like dynamic
+
+  save setup, make(server-setup, bind(store, store), bind(refs, refs), bind(scope-keys, scope-keys), bind(write, write))
+  save handler
+    task
+      take req, like dynamic
+      take res, like dynamic
+      like void
+      mark async
+      answer-request(req, res, setup)
+  back node-http/create-server(handler)

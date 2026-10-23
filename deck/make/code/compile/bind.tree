@@ -287,6 +287,8 @@ task render-bind
         miss
           save nothing, 0
       back make(some, out)
+    case none
+      back make none
 
 # a bind's text with every hole filled: see render-bind
 task splice-holes
@@ -320,7 +322,10 @@ task splice-holes
       save piece, <{piece}{one}>
       save at, add(at, 1)
   push(pieces, piece)
-  # what each parameter's holes take: its argument, or a temporary bound once around the whole text
+  # what each parameter's holes take: its argument, or a temporary bound once around the whole text. An argument that
+  # names a local the text declares is bound outside it too, or the text's own `const manifest` reads for the caller's
+  # `manifest` (term-compiler-0054)
+  save declared, declared-names(text)
   save fills, make list
   save temps, make list
   save temp-values, make list
@@ -328,9 +333,11 @@ task splice-holes
     take name
     take index
     save given, get(givens, index)
-    fork test, and(is-above(uses-of(holes, index), 1), and(is-unequal(given, <>), not(is-plain-value(given))))
+    save repeated, and(is-above(uses-of(holes, index), 1), not(is-plain-value(given)))
+    fork test, and(is-unequal(given, <>), or(repeated, names-any(given, declared)))
       hold
-        save temp, <__bind_{join(split(name, <->), <_>)}>
+        save snake, join(split(name, <->), <_>)
+        save temp, <__bind_{snake}>
         push(temps, temp)
         push(temp-values, given)
         push(fills, temp)
@@ -393,6 +400,80 @@ task is-name-code
   mark private
 
   back or(and(is-minimum(code, 48), is-maximum(code, 57)), or(and(is-minimum(code, 65), is-maximum(code, 90)), or(and(is-minimum(code, 97), is-maximum(code, 122)), is-equal(code, 95))))
+
+# the words of a text, each a run of letters, digits, `_` and `$`
+task words-of
+  take text, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save word, <>
+  save at, 0
+  save size, char-count(text)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, or(is-name-code(code), is-equal(code, 36))
+        hold
+          save word, <{word}{char-at(text, at)}>
+        miss
+          fork test, is-unequal(word, <>)
+            hold
+              push(out, word)
+              save word, <>
+      save at, add(at, 1)
+  fork test, is-unequal(word, <>)
+    hold
+      push(out, word)
+  back out
+
+# the locals a host text declares: the word after `const`, `let`, `var` or `val` (and after `let mut`)
+task declared-names
+  take text, like text
+  like list, like text
+  mark private
+
+  save words, words-of(text)
+  save out, make list
+  walk words
+    take word
+    take at
+    fork test, and(one-of-words(word), is-below(add(at, 1), words/length))
+      hold
+        save next, get(words, add(at, 1))
+        fork test, and(is-equal(next, <mut>), is-below(add(at, 2), words/length))
+          hold
+            save next, get(words, add(at, 2))
+        push(out, next)
+  back out
+
+task one-of-words
+  take word, like text
+  like boolean
+  mark private
+
+  back or(is-equal(word, <const>), or(is-equal(word, <let>), or(is-equal(word, <var>), is-equal(word, <val>))))
+
+# whether an argument names any of `names` as a whole word
+task names-any
+  take given, like text
+  take names, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back false
+  walk words-of(given)
+    take word
+    walk names
+      take name
+      fork test, is-equal(word, name)
+        hold
+          back true
+  back false
 
 # how many holes are the parameter at `index`
 task uses-of
@@ -473,11 +554,11 @@ task bound-once
       back <(\{ ({temp}) in {body} \}({value}))>
   fork test, is-equal(env, <kotlin>)
     hold
-      back <(({value}).let \{ {temp} -> {body} \})>
+      back <(({value}).let \{ {temp} -\> {body} \})>
   fork test, is-above(split(body, <await >)/length, 1)
     hold
-      back <(await (async ({temp}) => {body})({value}))>
-  back <(({temp}) => {body})({value})>
+      back <(await (async ({temp}) =\> {body})({value}))>
+  back <(({temp}) =\> {body})({value})>
 
 # a bind's text is host code: the escapes the text literal turned into control characters are written back as escapes,
 # since a line break, return or tab inside a host string is not the character it named
@@ -488,9 +569,8 @@ task host-text
 
   save out, join(split(text, <\n>), <\\n>)
   save out, join(split(out, <\r>), <\\r>)
-  back join(split(out, <\t>), <\\t>)
-    case none
-      back make none
+  save out, join(split(out, <\t>), <\\t>)
+  back out
 
 # the distinct imports every bind in the program needs for one environment, in first-seen order. A backend emits these
 # alongside its native-dock imports (e.g. swift `import Foundation` for `Foundation.pow`)

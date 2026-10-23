@@ -1,0 +1,332 @@
+# Tell the package index a version exists (note/term/registry/19). Ported from deck/deck/code/oci/index-ping.ts
+# (term-cli-in-term-0087): publishStatement, pingIndex.
+#
+# After a successful push, `term host` posts the pinned reference to the index. The index fetches and verifies the
+# artifact from the registry itself, so the reference alone carries no trust and needs no account. It is a HINT: the
+# index's periodic crawl finds what a lost ping missed, so a failed ping is a warning and never a failed publish.
+#
+# A term.surf token ATTRIBUTES the version. With one, the ping carries it as `Authorization: Bearer` and adds a claim
+# signed by the key that signed the version: `term.publish.v1 <reference> <time>`. The token goes to the index and
+# NEVER to a registry. Sent only for a registry the index can read (a public one), so a private mirror or a localhost
+# registry never announces itself. `TERM_INDEX=0` turns it off, `TERM_INDEX_URL` points it elsewhere, and a token is
+# sent only over https, or to a loopback index for a test.
+#
+# The decisions:
+#   - ping-index takes every parameter positionally: the token and keypair none where left out, the environment, the
+#     fetch and the clock given (the caller's process.env, global fetch and `new Date()` where the original defaulted)
+#   - an answer is the original's `{ form, ... }` record; every request is the original's URL, method, headers in
+#     order, JSON body and ten-second timeout, written in binds
+#   - a failure anywhere in the request or its answer is caught, as the original's try, and answered `failed` with its
+#     message; the GHCR visibility check catches its own, as the original's
+#   - the claim is signed by id-signing.tree's sign-id; KEYS_REPOSITORY is oci-routing.tree's keys-repository()
+
+load @term/base/list
+  find list
+
+load ./oci-routing
+  find keys-repository
+
+load ../object/id-signing
+  find sign-id
+
+bind announcing-env-text
+  take env, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$env[$key]>
+
+bind announcing-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind announcing-is-indexed-host
+  take host, like dynamic
+  like boolean
+  case node
+    text <($host === "ghcr.io")>
+
+bind announcing-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind announcing-base
+  take env, like dynamic
+  like text
+  case node
+    text <<($env["TERM_INDEX_URL"]?.trim() || "https://tool.term.surf").replace(/\/+$/, "")>>
+
+bind announcing-trimmed
+  take token, like dynamic
+  like dynamic
+  case node
+    text <$token?.trim()>
+
+bind announcing-skipped
+  take reason, like text
+  like dynamic
+  case node
+    text <<({ form: "skipped", reason: $reason })>>
+
+bind announcing-failed
+  take reason, like dynamic
+  like dynamic
+  case node
+    text <<({ form: "failed", reason: $reason })>>
+
+bind announcing-sent
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <<((said) => ((publisher) => ({ form: "sent", outcome: said.base?.outcome ?? said.outcome ?? "published", ...(publisher ? { publisher } : {}) }))(said.base?.publisher?.id ?? said.publisher?.id))($answer)>>
+
+bind announcing-now
+  take clock, like dynamic
+  like text
+  case node
+    text <$clock().toISOString()>
+
+bind announcing-headers
+  take token, like dynamic
+  like dynamic
+  case node
+    text <<($token ? { "content-type": "application/json", "user-agent": "term", authorization: `Bearer ${$token}` } : { "content-type": "application/json", "user-agent": "term" })>>
+
+bind announcing-body
+  take reference, like text
+  like dynamic
+  case node
+    text <<({ reference: $reference })>>
+
+bind announcing-claim
+  take reference, like text
+  take time, like text
+  take key, like text
+  take sig, like text
+  like dynamic
+  case node
+    text <<({ reference: $reference, time: $time, key: $key, sig: $sig })>>
+
+bind announcing-post
+  take fetcher, like dynamic
+  take base, like text
+  take headers, like dynamic
+  take body, like dynamic
+  like dynamic
+  case node
+    text <<$fetcher(`${$base}/packages/publish!`, { method: "POST", headers: $headers, body: JSON.stringify($body), signal: AbortSignal.timeout(10000) })>>
+
+bind announcing-status
+  take response, like dynamic
+  like number
+  case node
+    text <$response.status>
+
+bind announcing-ok
+  take response, like dynamic
+  like boolean
+  case node
+    text <Boolean($response.ok)>
+
+bind announcing-json
+  take response, like dynamic
+  like dynamic
+  case node
+    text <<$response.json().catch(() => ({}))>>
+
+bind announcing-message
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <$problem.message>
+
+bind announcing-ghcr-ask
+  take fetcher, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<((url) => { url.searchParams.set("scope", `repository:${$name}:pull`); url.searchParams.set("service", "ghcr.io"); return $fetcher(url.toString(), { signal: AbortSignal.timeout(10000) }) })(new URL("https://ghcr.io/token"))>>
+
+bind announcing-ghcr-page
+  take name, like text
+  like text
+  case node
+    text <<((parts) => `ghcr.io/${$name} at https://github.com/orgs/${parts[0]}/packages/container/${encodeURIComponent(parts.slice(1).join("/"))}/settings`)($name.split("/"))>>
+
+bind announcing-join-pages
+  take pages, like list, like text
+  like text
+  case node
+    text <$pages.join(", and ")>
+
+bind announcing-refusal
+  take answer, like dynamic
+  take status, like number
+  take base, like text
+  like text
+  case node
+    text <<($answer.link?.expected ? `${$status} from ${$base}: the ${$answer.link?.field ?? "request"} needs ${$answer.link.expected}` : $answer.note ? `${$status} from ${$base}: ${$answer.note}` : `${$status} from ${$base}`)>>
+
+bind announcing-safe-for-token
+  take base, like text
+  like boolean
+  case node
+    text <<(() => { try { const indexUrl = new URL($base); return indexUrl.protocol === "https:" || (indexUrl.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(indexUrl.hostname)) } catch { return false } })()>>
+
+# the statement a publisher claim signs, byte for byte the index's `publishStatement`
+task publish-statement
+  take reference, like text
+  take time, like text
+  like text
+
+  back <term.publish.v1 {reference} {time}>
+
+# one GHCR repository: true when an anonymous pull token is refused. False when granted, and false when the question
+# could not be asked, so a network failure never invents a visibility problem
+task is-private-on-ghcr
+  take name, like text
+  take fetcher, like dynamic
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    save response, wait announcing-ghcr-ask(fetcher, name)
+    save status, announcing-status(response)
+    back or(is-equal(status, 401), is-equal(status, 403))
+  halt take
+    take problem
+    back false
+
+# whether the GHCR packages the index reads are still private: the version's own repository AND the scope's key set,
+# a separate package the index reads to check the signer. A NEW PACKAGE ON GHCR IS ALWAYS PRIVATE, and GitHub has no
+# API to change that, so the one fix is a click in each package's settings, once and for good. The message naming
+# every page to visit, or none when both are public or the question could not be asked
+task private-on-ghcr
+  take repository, like dynamic
+  take fetcher, like dynamic
+  like dynamic
+  mark private
+
+  fork test, not(announcing-is-indexed-host(repository/host))
+    hold
+      back announcing-nothing()
+
+  save namespace, repository/namespace
+  save keys, keys-repository()
+  fork test, announcing-truthy(namespace)
+    hold
+      save keys, <{namespace}/{keys-repository()}>
+
+  save asked, make list
+  asked/push(repository/name)
+  asked/push(keys)
+  save hidden, make list
+  walk asked
+    take name
+    fork test, is-private-on-ghcr(name, fetcher)
+      hold
+        hidden/push(name)
+
+  fork test, is-equal(hidden/length, 0)
+    hold
+      back announcing-nothing()
+
+  save pages, make list
+  walk hidden
+    take name
+    pages/push(announcing-ghcr-page(name))
+  save which, <each>
+  fork test, is-equal(hidden/length, 1)
+    hold
+      save which, <it>
+  back <the index cannot read a private package. Make {which} public once (Danger Zone, Change visibility; it cannot be made private again), then run term host --ping: {announcing-join-pages(pages)}>
+
+# the reference posted to the index, after the checks: an answer, or the failure it met
+task post-ping
+  take base, like text
+  take headers, like dynamic
+  take body, like dynamic
+  take token, like dynamic
+  take fetcher, like dynamic
+  like dynamic
+  mark private
+
+  save response, wait announcing-post(fetcher, base, headers, body)
+  save status, announcing-status(response)
+  save with-token, announcing-truthy(token)
+
+  fork test, and(is-equal(status, 401), with-token)
+    hold
+      back announcing-failed(<{base} refused the term.surf token. It is revoked, expired, or lacks package:publish. Make one at https://term.surf/settings/tokens>)
+
+  fork test, and(is-equal(status, 403), with-token)
+    hold
+      back announcing-failed(<{base} refused the claim: this machine's key did not sign that version>)
+
+  fork test, is-equal(status, 409)
+    hold
+      back announcing-failed(<409 from {base}: the version is indexed under another digest, its scope is reserved by another namespace, or this machine's signing key is bound to another term.surf account>)
+
+  fork test, not(announcing-ok(response))
+    hold
+      save refusal, wait announcing-json(response)
+      back announcing-failed(announcing-refusal(refusal, status, base))
+
+  save answer, wait announcing-json(response)
+  back announcing-sent(answer)
+
+# the index told a version exists: sent, skipped, or failed with the reason
+task ping-index
+  take repository, like dynamic
+  take digest, like text
+  take token, like dynamic
+  take keypair, like dynamic
+  take env, like dynamic
+  take fetcher, like dynamic
+  take clock, like dynamic
+  like dynamic
+
+  fork test, is-equal(announcing-env-text(env, <TERM_INDEX>), <0>)
+    hold
+      back announcing-skipped(<TERM_INDEX=0>)
+
+  save host, repository/host
+  fork test, and(not(announcing-is-indexed-host(host)), not(announcing-truthy(announcing-env-text(env, <TERM_INDEX_URL>))))
+    hold
+      back announcing-skipped(<{host} is not a registry the index reads>)
+
+  save base, announcing-base(env)
+  save reference, <oci://{host}/{repository/name}@{digest}>
+
+  # the index reads the artifact anonymously, so a private package is refused there whatever this sends. Asked here
+  # first, so the message names the one fix rather than a status code
+  save hidden, private-on-ghcr(repository, fetcher)
+  fork test, announcing-truthy(hidden)
+    hold
+      back announcing-failed(hidden)
+
+  save trimmed, announcing-trimmed(token)
+  save headers, announcing-headers(trimmed)
+  save body, announcing-body(reference)
+  fork test, announcing-truthy(trimmed)
+    hold
+      fork test, not(announcing-truthy(keypair))
+        hold
+          back announcing-failed(<a term.surf token was given without the signing key that proves the claim>)
+      fork test, not(announcing-safe-for-token(base))
+        hold
+          back announcing-failed(<{base} is not https, so the term.surf token was not sent>)
+      save time, announcing-now(clock)
+      save sig, sign-id(publish-statement(reference, time), keypair/private-key)
+      save body, announcing-claim(reference, time, keypair/public-key, sig)
+
+  fork
+    mark unsafe
+    back post-ping(base, headers, body, trimmed, fetcher)
+  halt take
+    take problem
+    back announcing-failed(announcing-message(problem))

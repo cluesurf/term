@@ -85,7 +85,8 @@ check(
         read n
       code 2
 `,
-  /return \(\(try half\(n: n\)\) == 2\)/,
+  // the call may carry its Term frame, `(try termCall("site") { try half(n: n) })` (term/hive decision 001)
+  /return \(\(try (termCall\("[^"]*"\) \{ try )?half\(n: n\)( \})?\) == 2\)/,
 )
 
 // arithmetic over a raising call, inside a comparison. `n` has no proven range, so the add goes through the prelude's
@@ -100,7 +101,7 @@ check(
           read n
       code 3
 `,
-  /return \(\(termAdd\(n, \(try half\(n: n\)\)\)\) > 3\)/,
+  /return \(\(termAdd\(n, \(try (termCall\("[^"]*"\) \{ try )?half\(n: n\)( \})?\)\)\) > 3\)/,
 )
 
 // `&&` with the raising call on its right, an autoclosure: the `try` in front of the whole

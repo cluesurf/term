@@ -1,0 +1,370 @@
+# Where a Term package lives on an OCI registry, and the grammar every name, tag and digest has to fit. Ported from
+# deck/deck/code/oci/reference.ts (term-cli-in-term-0087): OCI_SCHEME, isOciRegistry, parseOciRegistry, repositoryOf,
+# tagOfVersion, versionOfTag, assertTag, assertDigest, isDigest, pinnedReference, parsePinnedReference.
+#
+# A registry is written `oci://<host>[:port]/<namespace>`, the way a scope maps to one in name.ts:
+#
+#   oci://ghcr.io/cluesurf/term          @term/bind   -> ghcr.io  cluesurf/term/bind
+#   oci://localhost:5000/term            @term/bind   -> localhost:5000  term/bind
+#
+# Every identifier is checked against the OCI distribution spec's own grammar before it is put into a URL. A
+# repository or tag that does not fit is refused with a message, never rewritten in silence, because a name that is
+# quietly changed is a name somebody else can claim.
+#
+# The decisions:
+#   - OCI_SCHEME is oci-scheme(); every task takes positional parameters, repository-of's scope given always (none or
+#     empty where the original left it out)
+#   - each grammar is the original's own regular expression, in a bind, and every text cut is JavaScript's (UTF-16),
+#     so a name holding astral text is refused exactly where the original refused it
+#   - a refusal is a failure carrying the original's message (the original an Error)
+#   - a registry and a repository are the original's host records: a repository is the registry's fields and `name`
+
+load @term/base/list
+  find list
+
+# the spec's repository path: lowercase components joined by `/`, each separated internally by `.`, `_`, `__` or runs
+# of `-`
+bind address-is-repository
+  take value, like dynamic
+  like boolean
+  case node
+    text <</^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$/.test($value)>>
+
+# the spec's tag: at most 128 characters, a word character first
+bind address-is-tag
+  take value, like dynamic
+  like boolean
+  case node
+    text <</^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$/.test($value)>>
+
+# only sha256 digests, which is what every object id in Term is
+bind address-is-digest
+  take value, like dynamic
+  like boolean
+  case node
+    text <</^sha256:[a-f0-9]{64}$/.test($value)>>
+
+# a registry host: a DNS name or `localhost`, an optional port. No userinfo, no path, no query
+bind address-is-host
+  take value, like dynamic
+  like boolean
+  case node
+    text <</^(localhost|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+|\[[0-9a-f:]+\]|\d{1,3}(\.\d{1,3}){3})(:\d{1,5})?$/i.test($value)>>
+
+bind address-starts-with-scheme
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value.startsWith("oci://")>
+
+bind address-maybe-scheme
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value?.startsWith("oci://") ?? false)>
+
+bind address-trimmed-rest
+  take value, like dynamic
+  like text
+  case node
+    text <<$value.slice(6).replace(/\/+$/, "")>>
+
+bind address-index-of
+  take value, like text
+  take part, like text
+  like number
+  case node
+    text <$value.indexOf($part)>
+
+bind address-last-index-of
+  take value, like text
+  take part, like text
+  like number
+  case node
+    text <$value.lastIndexOf($part)>
+
+bind address-slice
+  take value, like text
+  take start, like number
+  take stop, like number
+  like text
+  case node
+    text <$value.slice($start, $stop)>
+
+bind address-slice-from
+  take value, like text
+  take start, like number
+  like text
+  case node
+    text <$value.slice($start)>
+
+bind address-lower
+  take value, like text
+  like text
+  case node
+    text <$value.toLowerCase()>
+
+bind address-registry
+  take host, like text
+  take namespace, like text
+  like dynamic
+  case node
+    text <<({ host: $host, namespace: $namespace })>>
+
+# the repository below the scope: the registry's own fields, then the package's segments after its scope
+bind address-repository-name
+  take registry, like dynamic
+  take below, like list, like text
+  like text
+  case node
+    text <<[$registry.namespace, ...$below].filter(Boolean).join("/")>>
+
+bind address-repository
+  take registry, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<({ ...$registry, name: $name })>>
+
+bind address-pinned-repository
+  take host, like text
+  take name, like text
+  like dynamic
+  case node
+    text <<({ host: $host.toLowerCase(), namespace: "", name: $name })>>
+
+bind address-pinned
+  take repository, like dynamic
+  take digest, like text
+  like dynamic
+  case node
+    text <<({ repository: $repository, digest: $digest })>>
+
+bind address-scope-parts
+  take parts, like list, like text
+  take scope, like dynamic
+  like list, like text
+  case node
+    text <<($scope ? $scope.split("/") : $parts[0]?.startsWith("@") ? [$parts[0]] : [])>>
+
+bind address-split
+  take value, like dynamic
+  like list, like text
+  case node
+    text <$value.split("/")>
+
+bind address-outside-scope
+  take parts, like list, like text
+  take scoped, like list, like text
+  like boolean
+  case node
+    text <<$scoped.some((part, at) => $parts[at] !== part)>>
+
+bind address-rest
+  take parts, like list, like text
+  take count, like number
+  like list, like text
+  case node
+    text <$parts.slice($count)>
+
+bind address-rest-is-misshapen
+  take rest, like list, like text
+  like boolean
+  case node
+    text <<($rest.length === 0 || $rest.slice(0, -1).some(part => !part.startsWith("@")) || $rest.at(-1).startsWith("@"))>>
+
+bind address-below
+  take rest, like list, like text
+  like list, like text
+  case node
+    text <<$rest.map(part => part.replace(/^@/, ""))>>
+
+bind address-below-is-misshapen
+  take below, like list, like text
+  like boolean
+  case node
+    text <<($below.length === 0 || $below.some(part => !/^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*$/.test(part)))>>
+
+bind address-plus-as-underscore
+  take value, like text
+  like text
+  case node
+    text <<$value.replace(/\+/g, "_")>>
+
+bind address-underscore-as-plus
+  take value, like text
+  like text
+  case node
+    text <<$value.replace(/_/g, "+")>>
+
+bind address-starts-with-digit
+  take value, like dynamic
+  like boolean
+  case node
+    text <</^\d/.test($value)>>
+
+bind address-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# the scheme an OCI registry reference starts with
+task oci-scheme
+  like text
+
+  back <oci://>
+
+# whether `value` names an OCI registry: false for none
+task is-oci-registry
+  take value, like dynamic
+  like boolean
+
+  back address-maybe-scheme(value)
+
+# `oci://host[:port]/namespace` read into its host (lower-cased) and namespace; refused when it is not exactly that
+task parse-oci-registry
+  take value, like text
+  like dynamic
+
+  fork test, not(address-starts-with-scheme(value))
+    hold
+      halt <not an OCI registry reference: {value} (expected oci://\<host\>/\<namespace\>)>
+
+  save rest, address-trimmed-rest(value)
+  save slash, address-index-of(rest, </>)
+  save host, rest
+  save namespace, <>
+  fork test, not(is-equal(slash, -1))
+    hold
+      save host, address-slice(rest, 0, slash)
+      save namespace, address-slice-from(rest, add(slash, 1))
+
+  fork test, not(address-is-host(host))
+    hold
+      halt <OCI registry host is not a host: {host}>
+  fork test, and(not(is-equal(namespace, <>)), not(address-is-repository(namespace)))
+    hold
+      halt <OCI namespace does not fit the repository grammar: {namespace}>
+
+  back address-registry(address-lower(host), namespace)
+
+# the repository a package lives in. `@term/bind` under `cluesurf/term` is `cluesurf/term/bind`. The scope the registry
+# was chosen by is the namespace, so it is not repeated: a nested scope routed by its leading space
+# (`@cluesurf/@wordsurf/x` under `@cluesurf`) keeps its inner spaces as path components below the namespace. `scope`
+# is the scope-map key that chose the registry; none or empty takes the leading space
+task repository-of
+  take package-name, like text
+  take registry, like dynamic
+  take scope, like dynamic
+  like dynamic
+
+  save parts, address-split(package-name)
+  save scoped, address-scope-parts(parts, scope)
+  fork test, address-outside-scope(parts, scoped)
+    hold
+      halt <package {package-name} is not in the scope {scope}>
+
+  # below the scope: any inner spaces, then exactly one bare name. Dropping an inner space's `@` is one to one only
+  # because a bare segment can never sit before another, so `@a/@b/x` and `@a/b/x` cannot both claim `a/b/x`
+  save rest, address-rest(parts, scoped/length)
+  fork test, address-rest-is-misshapen(rest)
+    hold
+      halt <package {package-name} is not \<scope\>/[\<@space\>/...]\<name\>, so it has no OCI repository>
+
+  save below, address-below(rest)
+  fork test, address-below-is-misshapen(below)
+    hold
+      halt <package {package-name} cannot be an OCI repository: every segment must be lowercase letters, digits and . _ ->
+
+  save name, address-repository-name(registry, below)
+  fork test, not(address-is-repository(name))
+    hold
+      halt <repository {name} does not fit the OCI repository grammar>
+
+  back address-repository(registry, name)
+
+# the tag a version is published under. A tag may not hold `+`, so build metadata is written with `_`, which is Helm's
+# rule for the same problem. Anything else that does not fit is refused
+task tag-of-version
+  take version, like text
+  like text
+
+  save tag, address-plus-as-underscore(version)
+  fork test, not(address-is-tag(tag))
+    hold
+      halt <version {version} cannot be an OCI tag>
+  back tag
+
+# the version a tag carries, the inverse of tag-of-version, or none for a tag that is not a version: a version tag
+# starts with a digit, and `branch.main`, `sha256-...` (a referrers fallback tag) and `latest` do not
+task version-of-tag
+  take tag, like text
+  like dynamic
+
+  fork test, not(address-starts-with-digit(tag))
+    hold
+      back address-nothing()
+  back address-underscore-as-plus(tag)
+
+task assert-tag
+  take tag, like text
+  like void
+
+  fork test, not(address-is-tag(tag))
+    hold
+      halt <not an OCI tag: {tag}>
+
+task assert-digest
+  take digest, like text
+  like void
+
+  fork test, not(address-is-digest(digest))
+    hold
+      halt <not a sha256 digest: {digest}>
+
+task is-digest
+  take value, like text
+  like boolean
+
+  back address-is-digest(value)
+
+# `oci://ghcr.io/cluesurf/term/bind@sha256:...`: how a lockfile names one exact version
+task pinned-reference
+  take repository, like dynamic
+  take digest, like text
+  like text
+
+  assert-digest(digest)
+  back <oci://{repository/host}/{repository/name}@{digest}>
+
+# what pinned-reference wrote, read back
+task parse-pinned-reference
+  take value, like text
+  like dynamic
+
+  fork test, not(address-starts-with-scheme(value))
+    hold
+      halt <not a pinned OCI reference: {value}>
+
+  save at, address-last-index-of(value, <@>)
+  fork test, is-equal(at, -1)
+    hold
+      halt <OCI reference is not pinned to a digest: {value}>
+
+  save digest, address-slice-from(value, add(at, 1))
+  assert-digest(digest)
+
+  save rest, address-slice(value, 6, at)
+  save slash, address-index-of(rest, </>)
+  fork test, is-equal(slash, -1)
+    hold
+      halt <pinned OCI reference names no repository: {value}>
+
+  save host, address-slice(rest, 0, slash)
+  save name, address-slice-from(rest, add(slash, 1))
+  fork test, or(not(address-is-host(host)), not(address-is-repository(name)))
+    hold
+      halt <pinned OCI reference is malformed: {value}>
+
+  save pinned-repository, address-pinned-repository(host, name)
+  back address-pinned(pinned-repository, digest)

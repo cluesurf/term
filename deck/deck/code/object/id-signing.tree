@@ -1,0 +1,96 @@
+# Ed25519 signing and verification of commit and version ids. Ported from deck/deck/code/object/sign.ts
+# (term-cli-in-term-0086): generateKeypair, signId, verifyId.
+#
+# A publish is authenticated by signing the commit id (a Merkle root over the whole package) with a keypair the
+# publisher controls. A client, or the registry, verifies the signature against a public key bound to the scope.
+# Because the signature covers the content hash, it binds the exact bytes to the signer (note/term/registry/07).
+#
+# A signature is carried beside the object as `ed25519:<base64>` and the public key as `<base64>` (SPKI DER for the
+# public key, PKCS8 DER for the private one), never inside the signed object, so the object id stays stable.
+#
+# The decisions:
+#   - a keypair is the original's `{ publicKey, privateKey }` record
+#   - node:crypto is docked and handed to binds that make the original's own calls (generateKeyPairSync, sign,
+#     verify, createPublicKey, createPrivateKey), with the original's DER encodings
+#   - a verify that throws (a malformed key or signature) answers false, inside the guard, as the original's try
+
+dock load
+  load <node:crypto>, name signing-crypto
+
+form keypair
+  link public-key, like text
+  link private-key, like text
+
+bind signing-new-pair
+  take crypto, like dynamic
+  like keypair
+  case node
+    text <<((made) => ({ publicKey: made.publicKey.export({ type: "spki", format: "der" }).toString("base64"), privateKey: made.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64") }))($crypto.generateKeyPairSync("ed25519"))>>
+
+bind signing-sign
+  take crypto, like dynamic
+  take id, like text
+  take secret, like text
+  like text
+  case node
+    text <<$crypto.sign(null, Buffer.from($id, "utf8"), $crypto.createPrivateKey({ key: Buffer.from($secret, "base64"), format: "der", type: "pkcs8" })).toString("base64")>>
+
+bind signing-has-prefix
+  take sig, like dynamic
+  like boolean
+  case node
+    text <$sig.startsWith("ed25519:")>
+
+bind signing-sig-bytes
+  take sig, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($sig.slice(8), "base64")>
+
+bind signing-verify
+  take crypto, like dynamic
+  take id, like text
+  take shown, like text
+  take signature, like dynamic
+  like boolean
+  case node
+    text <<$crypto.verify(null, Buffer.from($id, "utf8"), $crypto.createPublicKey({ key: Buffer.from($shown, "base64"), format: "der", type: "spki" }), $signature)>>
+
+# the text a signature starts with
+task signature-prefix
+  like text
+
+  back <ed25519:>
+
+# a fresh ed25519 keypair, each key DER encoded in base64
+task generate-keypair
+  like keypair
+
+  back signing-new-pair(signing-crypto)
+
+# a signature over an id (a commit id or any id text) with a private key: `ed25519:<base64>`
+task sign-id
+  take id, like text
+  take private-key, like text
+  like text
+
+  back <{signature-prefix()}{signing-sign(signing-crypto, id, private-key)}>
+
+# whether `sig` is a signature over the id by the public key's private key
+task verify-id
+  take id, like text
+  take sig, like text
+  take public-key, like text
+  like boolean
+
+  fork test, not(signing-has-prefix(sig))
+    hold
+      back false
+
+  save sig-bytes, signing-sig-bytes(sig)
+  fork
+    mark unsafe
+    back signing-verify(signing-crypto, id, public-key, sig-bytes)
+  halt take
+    take problem
+    back false

@@ -1,0 +1,641 @@
+# Who may publish a scope, when the registry is a generic OCI registry that has never heard of Term. Ported from
+# deck/deck/code/oci/keys.ts (term-cli-in-term-0090): KEYS_ARTIFACT_TYPE, KEYS_CONFIG_MEDIA_TYPE, KEYS_TAG,
+# keySetStatement, trustedKeys, ensurePublisher, rotateKeys.
+#
+# A container registry checks only that the pusher has write access to the repository, which says nothing about who
+# SIGNED the bytes, and nothing at all once the artifact is copied to another registry. So the scope's key set is
+# published as an artifact of its own, in the namespace repository, and the client checks every version against it:
+#
+#   ghcr.io/cluesurf/term:keys        the current key set of @term
+#   ghcr.io/cluesurf/term:keys.<n>    every generation, kept tagged so a registry never collects one
+#
+# A key set is a sequence number, a list of ed25519 public keys and the digest of the generation before it, signed by
+# a key of the PREVIOUS generation (the first generation signs itself). A client pins the generation it last accepted,
+# per registry and scope, and accepts a newer one only when the chain of `previous` links reaches the pinned one with
+# every step signed by the step before:
+#
+#   - an older generation is a rollback and is refused
+#   - a set that does not chain to the pin is a replacement and is refused
+#   - a version signed by a key outside the set is refused
+#
+# The first sight of a scope is trust on first use, the way SSH's known_hosts is. `TERM_TRUSTED_KEYS` pins a scope out
+# of band (`@term=<key>,<key>;@other=<key>`), and a lockfile pins each package's key besides.
+#
+# The decisions:
+#   - the constants are tasks: keys-artifact-type(), keys-config-media-type(), keys-tag()
+#   - every task takes positional parameters: trusted-keys(transport, repository, scope, host, trust-dir, env) with env
+#     none (undefined) where left out, ensure-publisher(transport, repository, scope, keypair), rotate-keys(transport,
+#     repository, scope, keypair, add, remove) with add and remove none where left out
+#   - the transport is the caller's host record, called with the original's one record per method; key sets, pins and
+#     answers are the original's records, built in binds in its key order
+#   - every OciError is a halt of oci-failure (decision 007); signatures are object/id-signing.tree's, the empty
+#     descriptor artifact-format.tree's
+
+load ./oci-address
+  find is-digest
+
+load ./oci-failure
+  find oci-failure
+
+load ./registry-transport
+  find manifest-media-type
+  find sha256-digest
+  find is-descriptor
+
+load ./artifact-format
+  find empty-bytes
+  find empty-descriptor
+
+load ../object/id-signing
+  find sign-id
+  find verify-id
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
+  load <global:process>, name host-process
+
+bind keyset-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind keyset-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind keyset-field
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind keyset-includes
+  take items, like dynamic
+  take item, like dynamic
+  like boolean
+  case node
+    text <$items.includes($item)>
+
+bind keyset-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+bind keyset-statement
+  take set, like dynamic
+  take kind, like text
+  like text
+  case node
+    text <<JSON.stringify({ type: $kind, scope: $set.scope, sequence: $set.sequence, keys: [...$set.keys].sort(), previous: $set.previous })>>
+
+bind keyset-parse
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind keyset-is-sound
+  take set, like dynamic
+  take scope, like text
+  like boolean
+  case node
+    text <<((said) => !(said.v !== 1 || said.scope !== $scope || !Number.isSafeInteger(said.sequence) || said.sequence < 1 || !Array.isArray(said.keys) || said.keys.length === 0 || said.keys.length > 256 || !said.keys.every(key => typeof key === "string" && /^[A-Za-z0-9+/]{40,200}={0,2}$/.test(key)) || !(said.previous === null || (typeof said.previous === "string" && /^sha256:[a-f0-9]{64}$/.test(said.previous))) || (said.sequence === 1) !== (said.previous === null) || typeof said.signer !== "string" || typeof said.sig !== "string"))($set)>>
+
+bind keyset-get-manifest
+  take transport, like dynamic
+  take repository, like dynamic
+  take reference, like dynamic
+  like dynamic
+  case node
+    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
+
+bind keyset-get-blob
+  take transport, like dynamic
+  take repository, like dynamic
+  take config, like dynamic
+  like dynamic
+  case node
+    text <<$transport.getBlob({ repository: $repository, digest: $config.digest, size: $config.size, limit: 262144 })>>
+
+bind keyset-put-blob
+  take transport, like dynamic
+  take repository, like dynamic
+  take digest, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$transport.putBlob({ repository: $repository, digest: $digest, bytes: $bytes })>>
+
+bind keyset-put-manifest
+  take transport, like dynamic
+  take repository, like dynamic
+  take reference, like text
+  take bytes, like dynamic
+  take kind, like text
+  like dynamic
+  case node
+    text <<$transport.putManifest({ repository: $repository, reference: $reference, bytes: $bytes, mediaType: $kind })>>
+
+bind keyset-fetched
+  take set, like dynamic
+  take digest, like dynamic
+  like dynamic
+  case node
+    text <<({ set: $set, digest: $digest })>>
+
+bind keyset-env-keys
+  take scope, like text
+  take env, like dynamic
+  like dynamic
+  case node
+    text <<((raw) => { if (!raw) return undefined; for (const part of raw.split(";")) { const eq = part.indexOf("="); if (eq > 0 && part.slice(0, eq).trim() === $scope) return part.slice(eq + 1).split(",").map(key => key.trim()).filter(key => /^[A-Za-z0-9+/]{40,200}={0,2}$/.test(key)) } return undefined })($env["TERM_TRUSTED_KEYS"])>>
+
+bind keyset-pin-file
+  take paths, like dynamic
+  take trust, like text
+  take host, like text
+  take repository, like text
+  take scope, like text
+  like text
+  case node
+    text <<((safe) => $paths.join($trust, safe($host), `${safe($repository)}.${safe($scope)}.json`))((value) => value.replace(/[^a-zA-Z0-9._-]/g, "_"))>>
+
+bind keyset-read-pin-text
+  take files, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$files.readFile($file, "utf8")>
+
+bind keyset-pin-of
+  take text, like text
+  like dynamic
+  case node
+    text <<((pin) => (Number.isSafeInteger(pin.sequence) && /^sha256:[a-f0-9]{64}$/.test(pin.digest) && Array.isArray(pin.keys) ? pin : undefined))(JSON.parse($text))>>
+
+bind keyset-pin
+  take sequence, like dynamic
+  take digest, like dynamic
+  take keys, like dynamic
+  like dynamic
+  case node
+    text <<({ sequence: $sequence, digest: $digest, keys: $keys })>>
+
+bind keyset-mkdir
+  take files, like dynamic
+  take paths, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <<$files.mkdir($paths.dirname($file), { recursive: true })>>
+
+bind keyset-tmp-name
+  take hashing, like dynamic
+  take file, like text
+  like text
+  case node
+    text <<`${$file}.tmp-${$hashing.randomUUID()}`>>
+
+bind keyset-write-pin
+  take files, like dynamic
+  take file, like text
+  take pin, like dynamic
+  like dynamic
+  case node
+    text <<$files.writeFile($file, JSON.stringify($pin, null, 2), { mode: 0o644 })>>
+
+bind keyset-rename
+  take files, like dynamic
+  take from, like text
+  take into, like text
+  like dynamic
+  case node
+    text <$files.rename($from, $into)>
+
+bind keyset-trusted
+  take keys, like dynamic
+  take source, like text
+  take sequence, like dynamic
+  like dynamic
+  case node
+    text <<($sequence === undefined ? { keys: $keys, source: $source } : { keys: $keys, source: $source, sequence: $sequence })>>
+
+bind keyset-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind keyset-to-bytes
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($value))>
+
+bind keyset-config
+  take kind, like text
+  take digest, like text
+  take size, like number
+  like dynamic
+  case node
+    text <<({ mediaType: $kind, digest: $digest, size: $size })>>
+
+bind keyset-manifest
+  take kind, like text
+  take artifact, like text
+  take config, like dynamic
+  take empty, like dynamic
+  take set, like dynamic
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: $kind, artifactType: $artifact, config: $config, layers: [$empty], annotations: { "org.opencontainers.image.title": `${$set.scope} keys ${$set.sequence}` } }))>>
+
+bind keyset-first-body
+  take scope, like text
+  take key, like text
+  like dynamic
+  case node
+    text <<({ v: 1, scope: $scope, sequence: 1, keys: [$key], previous: null })>>
+
+bind keyset-next-body
+  take scope, like text
+  take sequence, like number
+  take keys, like dynamic
+  take previous, like dynamic
+  like dynamic
+  case node
+    text <<({ v: 1, scope: $scope, sequence: $sequence, keys: $keys, previous: $previous })>>
+
+bind keyset-signed
+  take body, like dynamic
+  take signer, like text
+  take sig, like text
+  like dynamic
+  case node
+    text <<({ ...$body, signer: $signer, sig: $sig })>>
+
+bind keyset-created
+  take created, like boolean
+  take sequence, like dynamic
+  like dynamic
+  case node
+    text <<({ created: $created, sequence: $sequence })>>
+
+bind keyset-rotated
+  take sequence, like dynamic
+  take keys, like dynamic
+  like dynamic
+  case node
+    text <<({ sequence: $sequence, keys: $keys })>>
+
+bind keyset-bad-key
+  take add, like dynamic
+  like dynamic
+  case node
+    text <<($add ?? []).find(key => !/^[A-Za-z0-9+/]{40,200}={0,2}$/.test(key))>>
+
+bind keyset-has-bad-key
+  take add, like dynamic
+  like boolean
+  case node
+    text <<($add ?? []).some(key => !/^[A-Za-z0-9+/]{40,200}={0,2}$/.test(key))>>
+
+bind keyset-next-keys
+  take held, like dynamic
+  take add, like dynamic
+  take remove, like dynamic
+  like dynamic
+  case node
+    text <<((removed) => [...new Set([...$held, ...($add ?? [])])].filter(key => !removed.has(key)).sort())(new Set($remove ?? []))>>
+
+task keys-artifact-type
+  like text
+
+  back <application/vnd.cluesurf.term.keys.v1>
+
+task keys-config-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.keys.v1+json>
+
+task keys-tag
+  like text
+
+  back <keys>
+
+task key-set-statement
+  take set, like dynamic
+  like text
+
+  back keyset-statement(set, keys-artifact-type())
+
+task parse-key-set
+  take bytes, like dynamic
+  take scope, like text
+  like dynamic
+  mark private
+
+  save set, keyset-nothing()
+  fork
+    mark unsafe
+    save set, keyset-parse(bytes)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <key set of {scope} is not JSON>
+
+  fork test, not(keyset-is-sound(set, scope))
+    hold
+      halt oci-failure
+        bind thing, <key set of {scope} is malformed>
+  back set
+
+# a generation is signed by its signer, and the signer is one of `allowed`
+task signed-by
+  take set, like dynamic
+  take allowed, like dynamic
+  like boolean
+  mark private
+
+  save signer, keyset-field(set, <signer>)
+  fork test, not(keyset-includes(allowed, signer))
+    hold
+      back false
+  back verify-id(key-set-statement(set), keyset-field(set, <sig>), signer)
+
+task fetch-key-set
+  take transport, like dynamic
+  take repository, like dynamic
+  take scope, like text
+  take reference, like dynamic
+  like dynamic
+  mark private
+
+  save manifest, wait keyset-get-manifest(transport, repository, reference)
+  fork test, not(keyset-truthy(manifest))
+    hold
+      back keyset-nothing()
+
+  save parsed, keyset-parse(keyset-field(manifest, <bytes>))
+  save config, keyset-field(parsed, <config>)
+  fork test, or(not(is-equal(keyset-field(parsed, <artifactType>), keys-artifact-type())), or(not(is-descriptor(config)), not(is-equal(keyset-field(config, <mediaType>), keys-config-media-type()))))
+    hold
+      halt oci-failure
+        bind thing, <{repository}:{reference} is not a Term key set>
+
+  save bytes, wait keyset-get-blob(transport, repository, config)
+  back keyset-fetched(parse-key-set(bytes, scope), keyset-field(manifest, <digest>))
+
+task read-pin
+  take file, like text
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save text, wait keyset-read-pin-text(fs-promise, file)
+    back keyset-pin-of(text)
+  halt take
+    take problem
+    back keyset-nothing()
+
+task write-pin
+  take file, like text
+  take pin, like dynamic
+  like void
+  mark private
+
+  wait keyset-mkdir(fs-promise, node-path, file)
+  save tmp, keyset-tmp-name(node-crypto, file)
+  wait keyset-write-pin(fs-promise, tmp, pin)
+  wait keyset-rename(fs-promise, tmp, file)
+
+# the generation before a step, verified: none for the first generation, which must be signed by one of its own keys
+task verify-step
+  take transport, like dynamic
+  take repository, like dynamic
+  take scope, like text
+  take step, like dynamic
+  like dynamic
+  mark private
+
+  save set, keyset-field(step, <set>)
+  save previous, keyset-field(set, <previous>)
+  save sequence, keyset-field(set, <sequence>)
+  fork test, keyset-is-null(previous)
+    hold
+      fork test, not(signed-by(set, keyset-field(set, <keys>)))
+        hold
+          halt oci-failure
+            bind thing, <the first key set of {scope} is not signed by one of its own keys>
+      back keyset-nothing()
+
+  save before, fetch-key-set(transport, repository, scope, previous)
+  fork test, not(keyset-truthy(before))
+    hold
+      halt oci-failure
+        bind thing, <key set {sequence} of {scope} names a previous generation the registry does not hold>
+
+  save earlier, keyset-minus-one(sequence)
+  fork test, not(is-equal(keyset-field(keyset-field(before, <set>), <sequence>), earlier))
+    hold
+      halt oci-failure
+        bind thing, <key set {sequence} of {scope} is not signed by generation {earlier}>
+  save signed, signed-by(set, keyset-field(keyset-field(before, <set>), <keys>))
+  fork test, not(signed)
+    hold
+      halt oci-failure
+        bind thing, <key set {sequence} of {scope} is not signed by generation {earlier}>
+  back before
+
+bind keyset-is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+bind keyset-minus-one
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value - 1)>
+
+bind keyset-is-above
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left \> $right)>
+
+bind keyset-at-most
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left \<= $right)>
+
+# the keys allowed to sign packages of `scope`, or none when the scope publishes no key set. The served generation is
+# verified against the pin, and the pin moved forward along a verified rotation
+task trusted-keys
+  take transport, like dynamic
+  take repository, like dynamic
+  take scope, like text
+  take host, like text
+  take trust-dir, like text
+  take env, like dynamic
+  like dynamic
+
+  save from-env, keyset-env-keys(scope, keyset-or(env, host-process/env))
+  fork test, and(keyset-truthy(from-env), is-above(keyset-length(from-env), 0))
+    hold
+      back keyset-trusted(from-env, <env>, keyset-nothing())
+
+  save served, fetch-key-set(transport, repository, scope, keys-tag())
+  save file, keyset-pin-file(node-path, trust-dir, host, repository, scope)
+  save pin, read-pin(file)
+
+  fork test, not(keyset-truthy(served))
+    hold
+      # a scope that once published a key set and now serves none has had it deleted: keep trusting the pin
+      fork test, keyset-truthy(pin)
+        hold
+          back keyset-trusted(keyset-field(pin, <keys>), <pinned>, keyset-field(pin, <sequence>))
+      back keyset-nothing()
+
+  save served-set, keyset-field(served, <set>)
+  save served-sequence, keyset-field(served-set, <sequence>)
+  save served-digest, keyset-field(served, <digest>)
+
+  fork test, not(keyset-truthy(pin))
+    hold
+      # first use: the served generation must still be internally sound, all the way back to the first
+      save step, served
+      save hops, 0
+      walk test
+        hook test, and(keyset-truthy(step), is-below(hops, 10000))
+        hook hold
+          save step, verify-step(transport, repository, scope, step)
+          save hops, add(hops, 1)
+      write-pin(file, keyset-pin(served-sequence, served-digest, keyset-field(served-set, <keys>)))
+      back keyset-trusted(keyset-field(served-set, <keys>), <first-use>, served-sequence)
+
+  save pinned-sequence, keyset-field(pin, <sequence>)
+  save pinned-digest, keyset-field(pin, <digest>)
+  fork test, is-equal(served-digest, pinned-digest)
+    hold
+      back keyset-trusted(keyset-field(served-set, <keys>), <pinned>, pinned-sequence)
+
+  fork test, keyset-at-most(served-sequence, pinned-sequence)
+    hold
+      halt oci-failure
+        bind thing, <the registry serves key set {served-sequence} of {scope}, but generation {pinned-sequence} was already accepted: a rollback or a replaced key set>
+
+  # walk back from the served generation to the pinned one, every step verified
+  save step, served
+  walk test
+    hook test, and(keyset-truthy(step), keyset-is-above(keyset-field(keyset-field(step, <set>), <sequence>), pinned-sequence))
+    hook hold
+      save step, verify-step(transport, repository, scope, step)
+
+  fork test, or(not(keyset-truthy(step)), not(is-equal(keyset-field(step, <digest>), pinned-digest)))
+    hold
+      halt oci-failure
+        bind thing, <key set {served-sequence} of {scope} does not descend from the pinned generation {pinned-sequence}: the key set was replaced, not rotated>
+
+  write-pin(file, keyset-pin(served-sequence, served-digest, keyset-field(served-set, <keys>)))
+  back keyset-trusted(keyset-field(served-set, <keys>), <rotated>, served-sequence)
+
+task push-key-set
+  take transport, like dynamic
+  take repository, like dynamic
+  take set, like dynamic
+  like text
+  mark private
+
+  save bytes, keyset-to-bytes(set)
+  save config, keyset-config(keys-config-media-type(), sha256-digest(bytes), keyset-length(bytes))
+  wait keyset-put-blob(transport, repository, keyset-field(config, <digest>), bytes)
+  save empty, empty-descriptor()
+  wait keyset-put-blob(transport, repository, keyset-field(empty, <digest>), empty-bytes())
+
+  save manifest, keyset-manifest(manifest-media-type(), keys-artifact-type(), config, empty, set)
+  # the numbered tag first, so the moving tag never names a generation that is not also kept
+  save generation, keyset-field(set, <sequence>)
+  save numbered, <{keys-tag()}.{generation}>
+  save put, wait keyset-put-manifest(transport, repository, numbered, manifest, manifest-media-type())
+  wait keyset-put-manifest(transport, repository, keys-tag(), manifest, manifest-media-type())
+  back keyset-field(put, <digest>)
+
+# make sure `keypair` may publish `scope`. A scope with no key set gets one, with this key as its only member. A scope
+# whose key set does not hold this key is refused, with the command a holder runs to add it
+task ensure-publisher
+  take transport, like dynamic
+  take repository, like dynamic
+  take scope, like text
+  take keypair, like dynamic
+  like dynamic
+
+  save public-key, keyset-field(keypair, <publicKey>)
+  save served, fetch-key-set(transport, repository, scope, keys-tag())
+  fork test, keyset-truthy(served)
+    hold
+      save set, keyset-field(served, <set>)
+      save sequence, keyset-field(set, <sequence>)
+      fork test, not(keyset-includes(keyset-field(set, <keys>), public-key))
+        hold
+          halt oci-failure
+            bind thing, <this machine's key is not in the key set of {scope} (generation {sequence}). A holder of a key in the set adds it with: term host --trust {public-key}>
+      back keyset-created(false, sequence)
+
+  save body, keyset-first-body(scope, public-key)
+  save sig, sign-id(key-set-statement(body), keyset-field(keypair, <privateKey>))
+  push-key-set(transport, repository, keyset-signed(body, public-key, sig))
+  back keyset-created(true, 1)
+
+# rotate a scope's key set: add and remove keys, signed by a key of the current generation
+task rotate-keys
+  take transport, like dynamic
+  take repository, like dynamic
+  take scope, like text
+  take keypair, like dynamic
+  take add, like dynamic
+  take remove, like dynamic
+  like dynamic
+
+  save public-key, keyset-field(keypair, <publicKey>)
+  save served, fetch-key-set(transport, repository, scope, keys-tag())
+  fork test, not(keyset-truthy(served))
+    hold
+      halt oci-failure
+        bind thing, <{scope} has no key set yet. The first term host to it creates one>
+
+  save set, keyset-field(served, <set>)
+  fork test, not(keyset-includes(keyset-field(set, <keys>), public-key))
+    hold
+      halt oci-failure
+        bind thing, <this machine's key is not in the key set of {scope}, so it cannot rotate it>
+
+  fork test, keyset-has-bad-key(add)
+    hold
+      save bad, keyset-bad-key(add)
+      halt oci-failure
+        bind thing, <not an ed25519 public key: {bad}>
+
+  save keys, keyset-next-keys(keyset-field(set, <keys>), add, remove)
+  fork test, is-equal(keyset-length(keys), 0)
+    hold
+      halt oci-failure
+        bind thing, <refusing to leave {scope} with no keys>
+
+  save sequence, add(keyset-field(set, <sequence>), 1)
+  save body, keyset-next-body(scope, sequence, keys, keyset-field(served, <digest>))
+  save sig, sign-id(key-set-statement(body), keyset-field(keypair, <privateKey>))
+  push-key-set(transport, repository, keyset-signed(body, public-key, sig))
+  back keyset-rotated(sequence, keys)

@@ -1,0 +1,653 @@
+# `term load` from an OCI registry. Ported from deck/deck/code/oci/install.ts (term-cli-in-term-0091):
+# listOciVersions, readOciVersion, installOciVersion.
+#
+# Resolving reads one manifest and one small config per version, verifies both, and asks the trust policy whether the
+# signer may publish the scope. Installing then fetches only what the local store lacks: a pack is skipped when every
+# object it holds is already local, which is the normal case for a near-identical version, since an unchanged run of
+# objects packs to the same digest. Every object is re-hashed before it enters the store, every pack is opened under
+# a decompression limit and must hold exactly what the files layer placed in it, and the checkout writes nowhere
+# outside its destination.
+#
+# What a lockfile pins, and what each pin defends against:
+#
+#   hash   the manifest digest. A tag moved to other bytes fails the install, loudly, instead of installing them
+#   key    the signer's public key. A version re-signed by another key fails, even one the scope's key set allows,
+#          because a key the set gained after the lock was written is a key nobody reviewed for this lock
+#
+# The decisions:
+#   - every task takes positional parameters: list-oci-versions(transport, repository); read-oci-version(transport,
+#     repository, package, reference, scope, keys-repository, host, trust-dir, expect, env, warn), install-oci-version(
+#     transport, repository, version, dest, local, cache, concurrency), each optional one none (undefined) where left out
+#   - the transport, the store and the cache are the caller's host records, called with the original's one record
+#   - packs and loose objects are fetched by `concurrency` workers at once (8 by default), started together and waited
+#     for together as the original's Promise.all, so a failure leaves the others running as it did; the counts are a
+#     host record the workers add to
+#   - the checkout is object/package-installing.tree's, over a registry of the local store alone; every OciError is a
+#     halt of oci-failure (decision 007)
+
+load ./oci-address
+  find is-digest
+  find version-of-tag
+
+load ./oci-failure
+  find oci-failure
+
+load ./registry-transport
+  find sha256-digest
+
+load ./artifact-format
+  find artifact-limits
+  find open-remote-pack
+  find parse-deck-config
+  find parse-deck-manifest
+  find parse-files-layer
+  find verify-deck-config
+
+load ./key-trust
+  find trusted-keys
+
+load ../object/package-installing
+  find install-package
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
+
+form install-try
+  link failed, like boolean
+  link problem, like dynamic
+
+bind install-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind install-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind install-field
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind install-expect
+  take expect, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$expect?.[$name]>
+
+bind install-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind install-at
+  take items, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$items[$index]>
+
+bind install-push
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.push($item)>
+
+bind install-list
+  like dynamic
+  case node
+    text <[]>
+
+bind install-raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+bind install-list-tags
+  take transport, like dynamic
+  take repository, like dynamic
+  like dynamic
+  case node
+    text <<$transport.listTags({ repository: $repository })>>
+
+bind install-get-manifest
+  take transport, like dynamic
+  take repository, like dynamic
+  take reference, like dynamic
+  like dynamic
+  case node
+    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
+
+bind install-get-blob
+  take transport, like dynamic
+  take repository, like dynamic
+  take descriptor, like dynamic
+  take limit, like number
+  like dynamic
+  case node
+    text <<$transport.getBlob({ repository: $repository, digest: $descriptor.digest, size: $descriptor.size, limit: $limit })>>
+
+bind install-warn
+  take warn, like dynamic
+  take message, like text
+  like void
+  case node
+    text <($warn ? $warn($message) : undefined)>
+
+bind install-version
+  take fetched, like dynamic
+  take manifest, like dynamic
+  take config, like dynamic
+  take raw, like dynamic
+  take trust, like dynamic
+  like dynamic
+  case node
+    text <<({ digest: $fetched.digest, manifest: $manifest, manifestBytes: $fetched.bytes, config: $config, configBytes: $raw, trust: $trust })>>
+
+bind install-tally
+  like dynamic
+  case node
+    text <<({ packsFetched: 0, packsSkipped: 0, looseFetched: 0, bytes: 0, next: 0 })>>
+
+bind install-bump
+  take tally, like dynamic
+  take name, like text
+  take by, like number
+  like void
+  case node
+    text <($tally[$name] += $by)>
+
+bind install-take-next
+  take tally, like dynamic
+  like number
+  case node
+    text <($tally.next++)>
+
+bind install-reset-next
+  take tally, like dynamic
+  like void
+  case node
+    text <($tally.next = 0)>
+
+bind install-workers
+  take width, like number
+  take count, like number
+  take worker, like dynamic
+  like dynamic
+  case node
+    text <<Promise.all(Array.from({ length: Math.min($width, $count) }, () => $worker()))>>
+
+bind install-ids-of
+  take placed, like dynamic
+  like dynamic
+  case node
+    text <<$placed.map(([id]) => id)>>
+
+bind install-missing
+  take local, like dynamic
+  take ids, like dynamic
+  like dynamic
+  case node
+    text <$local.missing($ids)>
+
+bind install-has
+  take local, like dynamic
+  take id, like dynamic
+  like dynamic
+  case node
+    text <$local.has($id)>
+
+bind install-get
+  take local, like dynamic
+  take id, like dynamic
+  like dynamic
+  case node
+    text <$local.get($id)>
+
+bind install-put
+  take local, like dynamic
+  take id, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$local.put({ id: $id, bytes: $bytes })>>
+
+bind install-set-of
+  take items, like dynamic
+  like dynamic
+  case node
+    text <new Set($items)>
+
+bind install-set-has
+  take items, like dynamic
+  take item, like dynamic
+  like boolean
+  case node
+    text <$items.has($item)>
+
+bind install-slice
+  take body, like dynamic
+  take site, like number
+  take size, like number
+  like dynamic
+  case node
+    text <Buffer.from($body.subarray($site, $site + $size))>
+
+bind install-commit-tree
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<JSON.parse($bytes.toString("utf8"))["root"]>>
+
+bind install-named-text
+  take named, like dynamic
+  like text
+  case node
+    text <<String($named ?? "none")>>
+
+bind install-put-manifest
+  take cache, like dynamic
+  take repository, like dynamic
+  take tag, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$cache.putManifest({ repository: $repository, reference: $tag, bytes: $bytes, mediaType: "application/vnd.oci.image.manifest.v1+json" })>>
+
+bind install-staging
+  take hashing, like dynamic
+  take dest, like text
+  like text
+  case node
+    text <<`${$dest}.tmp-${$hashing.randomUUID()}`>>
+
+bind install-commit-ref
+  take commit, like dynamic
+  like dynamic
+  case node
+    text <<({ kind: "commit", commit: $commit })>>
+
+bind install-mkdir-parent
+  take files, like dynamic
+  take paths, like dynamic
+  take dest, like text
+  like dynamic
+  case node
+    text <<$files.mkdir($paths.dirname($dest), { recursive: true })>>
+
+bind install-remove
+  take files, like dynamic
+  take dir, like text
+  like dynamic
+  case node
+    text <<$files.rm($dir, { recursive: true, force: true })>>
+
+bind install-remove-quietly
+  take files, like dynamic
+  take dir, like text
+  like dynamic
+  case node
+    text <<$files.rm($dir, { recursive: true, force: true }).catch(() => {})>>
+
+bind install-rename
+  take files, like dynamic
+  take from, like text
+  take into, like text
+  like dynamic
+  case node
+    text <$files.rename($from, $into)>
+
+bind install-store-registry
+  take finds, like dynamic
+  take refuses, like dynamic
+  take gets, like dynamic
+  take holds, like dynamic
+  take resolves, like dynamic
+  like dynamic
+  case node
+    text <<({ findMissing: $finds, putObject: $refuses, putPack: $refuses, getObject: $gets, hasObject: $holds, resolve: $resolves, publishCommit: $refuses, manifest: $refuses })>>
+
+bind install-answer
+  take tally, like dynamic
+  take files, like dynamic
+  like dynamic
+  case node
+    text <<({ packsFetched: $tally.packsFetched, packsSkipped: $tally.packsSkipped, looseFetched: $tally.looseFetched, bytes: $tally.bytes, files: $files })>>
+
+# every version a repository's tags carry, in the order the registry listed them
+task list-oci-versions
+  take transport, like dynamic
+  take repository, like dynamic
+  like dynamic
+
+  save tags, wait install-list-tags(transport, repository)
+  save out, install-list()
+  walk tags
+    take tag
+    save version, version-of-tag(tag)
+    fork test, install-truthy(version)
+      hold
+        install-push(out, version)
+  back out
+
+# one version read and verified: the manifest (against the pinned digest when there is one), the config, its signature,
+# and the signer against the lockfile's key pin and the scope's key set
+task read-oci-version
+  take transport, like dynamic
+  take repository, like dynamic
+  take package-name, like text
+  take reference, like dynamic
+  take scope, like text
+  take keys-repository, like dynamic
+  take host, like text
+  take trust-dir, like text
+  take expect, like dynamic
+  take env, like dynamic
+  take warn, like dynamic
+  like dynamic
+
+  save fetched, wait install-get-manifest(transport, repository, reference)
+  fork test, not(install-truthy(fetched))
+    hold
+      save label, install-field(transport, <label>)
+      halt oci-failure
+        bind thing, <{package-name}: {label}/{repository} has no {reference}>
+        bind status, 404
+
+  save pinned, install-expect(expect, <digest>)
+  save served, install-field(fetched, <digest>)
+  fork test, and(install-truthy(pinned), not(is-equal(served, pinned)))
+    hold
+      halt oci-failure
+        bind thing, <{package-name}@{reference} has moved: lock.tree pins {pinned}, the registry now serves {served}. A published version must never change. If this is expected, delete the entry from lock.tree and load again>
+
+  save manifest, parse-deck-manifest(install-field(fetched, <bytes>))
+  save config-bytes, wait install-get-blob(transport, repository, install-field(manifest, <config>), install-field(artifact-limits(), <config>))
+  save config, parse-deck-config(config-bytes)
+
+  save tag, install-nothing()
+  fork test, not(is-digest(reference))
+    hold
+      save tag, reference
+  verify-deck-config(config, manifest, package-name, tag, install-expect(expect, <version>))
+
+  save version, install-field(config, <version>)
+  save key, install-field(config, <key>)
+  save pinned-key, install-expect(expect, <key>)
+  fork test, and(install-truthy(pinned-key), not(is-equal(key, pinned-key)))
+    hold
+      halt oci-failure
+        bind thing, <{package-name}@{version} is signed by a different key than lock.tree pins. If the scope rotated its keys on purpose, delete the entry from lock.tree and load again>
+
+  save trust, trusted-keys(transport, keys-repository, scope, host, trust-dir, env)
+  fork test, install-truthy(trust)
+    hold
+      fork test, not(install-has-key(install-field(trust, <keys>), key))
+        hold
+          save source, install-field(trust, <source>)
+          halt oci-failure
+            bind thing, <{package-name}@{version} is signed by a key outside the key set of {scope} ({source})>
+
+  fork test, and(not(install-truthy(trust)), not(install-truthy(pinned-key)))
+    hold
+      install-warn(warn, <{scope} publishes no key set: trusting the signer of {package-name}@{version} on first use, pinned in lock.tree>)
+
+  back install-version(fetched, manifest, config, config-bytes, trust)
+
+bind install-has-key
+  take keys, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$keys.includes($key)>
+
+# one pack: skipped when every object it holds is already local, else fetched, opened, every wanted object re-hashed
+# and stored, and the pack itself kept, so the store is a complete layout `oras cp` can copy from
+task install-pack
+  take transport, like dynamic
+  take repository, like dynamic
+  take local, like dynamic
+  take files, like dynamic
+  take pack, like dynamic
+  take at, like number
+  take tally, like dynamic
+  like void
+  mark private
+
+  save placed, install-field(install-at(install-field(files, <packs>), at), <objects>)
+  save missing, wait install-missing(local, install-ids-of(placed))
+  fork test, is-equal(install-length(missing), 0)
+    hold
+      install-bump(tally, <packsSkipped>, 1)
+      back
+
+  save digest, install-field(pack, <digest>)
+  save pack-bytes, wait install-get-blob(transport, repository, pack, install-field(artifact-limits(), <pack>))
+  save open, open-remote-pack(pack-bytes, placed)
+  save wanted, install-set-of(missing)
+  save body, install-field(open, <body>)
+  walk install-field(open, <toc>)
+    take entry
+    save id, install-field(entry, <id>)
+    fork test, install-set-has(wanted, id)
+      hold
+        save object, install-slice(body, install-field(entry, <site>), install-field(entry, <size>))
+        fork test, not(is-equal(sha256-digest(object), id))
+          hold
+            halt oci-failure
+              bind thing, <pack {digest} holds bytes that do not hash to {id}>
+        wait install-put(local, id, object)
+
+  wait install-put(local, digest, pack-bytes)
+  install-bump(tally, <packsFetched>, 1)
+  install-bump(tally, <bytes>, install-length(pack-bytes))
+
+task install-loose
+  take transport, like dynamic
+  take repository, like dynamic
+  take local, like dynamic
+  take layer, like dynamic
+  take tally, like dynamic
+  like void
+  mark private
+
+  save digest, install-field(layer, <digest>)
+  save held, wait install-has(local, digest)
+  fork test, install-truthy(held)
+    hold
+      back
+  save object, wait install-get-blob(transport, repository, layer, install-field(artifact-limits(), <object>))
+  wait install-put(local, digest, object)
+  install-bump(tally, <looseFetched>, 1)
+  install-bump(tally, <bytes>, install-length(object))
+
+task try-install
+  take package-name, like dynamic
+  take commit, like dynamic
+  take staging, like text
+  take dest, like text
+  take local, like dynamic
+  take registry, like dynamic
+  like install-try
+  mark private
+
+  fork
+    mark unsafe
+    install-package(package-name, install-commit-ref(commit), staging, local, registry)
+    wait install-mkdir-parent(fs-promise, node-path, dest)
+    wait install-remove(fs-promise, dest)
+    wait install-rename(fs-promise, staging, dest)
+    back make(install-try, bind(failed, false), bind(problem, install-nothing()))
+  halt take
+    take problem
+    back make(install-try, bind(failed, true), bind(problem, problem))
+
+task get-commit
+  take local, like dynamic
+  take commit, like dynamic
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save got, wait install-get(local, commit)
+    back got
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <closure incomplete: the commit {commit} is in no layer of the artifact>
+
+# a verified version's objects fetched into the local store and checked out at `dest`. The checkout goes to a fresh
+# directory beside `dest` and is renamed into place, so a failed install never leaves half a package
+task install-oci-version
+  take transport, like dynamic
+  take repository, like dynamic
+  take version, like dynamic
+  take dest, like text
+  take local, like dynamic
+  take cache, like dynamic
+  take concurrency, like dynamic
+  like dynamic
+
+  save manifest, install-field(version, <manifest>)
+  save config, install-field(version, <config>)
+  save width, install-or-width(concurrency)
+  save tally, install-tally()
+  save limits, artifact-limits()
+
+  save files-descriptor, install-field(manifest, <files>)
+  save files-bytes, wait install-get-blob(transport, repository, files-descriptor, install-field(limits, <files>))
+  save files, parse-files-layer(files-bytes, manifest, config)
+  install-bump(tally, <bytes>, install-length(files-bytes))
+
+  save packs, install-field(manifest, <packs>)
+  save pack-count, install-length(packs)
+  save pack-worker
+    task
+      like void
+      mark async
+      save working, true
+      walk test
+        hook test, working
+        hook hold
+          save at, install-take-next(tally)
+          fork test, not(is-below(at, pack-count))
+            hold
+              save working, false
+            miss
+              install-pack(transport, repository, local, files, install-at(packs, at), at, tally)
+  wait install-workers(width, pack-count, pack-worker)
+
+  install-reset-next(tally)
+  save loose, install-field(manifest, <loose>)
+  save loose-count, install-length(loose)
+  save loose-worker
+    task
+      like void
+      mark async
+      save working, true
+      walk test
+        hook test, working
+        hook hold
+          save at, install-take-next(tally)
+          fork test, not(is-below(at, loose-count))
+            hold
+              save working, false
+            miss
+              install-loose(transport, repository, local, install-at(loose, at), tally)
+  wait install-workers(width, loose-count, loose-worker)
+
+  # the commit must name the tree the signed config names, or the signature covered a different tree. The commit
+  # object is @cluesurf/save's, which spells that field `root`
+  save commit, install-field(config, <commit>)
+  save commit-bytes, get-commit(local, commit)
+  save named, install-commit-tree(commit-bytes)
+  save tree, install-field(config, <tree>)
+  fork test, not(install-same(named, tree))
+    hold
+      save said, install-named-text(named)
+      halt oci-failure
+        bind thing, <commit {commit} names the tree {said}, the signed config names {tree}>
+
+  # keep what an offline install needs: the config, the files layer and the tagged manifest
+  fork test, install-truthy(cache)
+    hold
+      wait install-put(local, install-field(install-field(manifest, <config>), <digest>), install-field(version, <configBytes>))
+      wait install-put(local, install-field(files-descriptor, <digest>), files-bytes)
+      wait install-put-manifest(cache, repository, install-field(config, <tag>), install-field(version, <manifestBytes>))
+
+  save staging, install-staging(node-crypto, dest)
+  save registry, store-registry(local, commit)
+  save tried, try-install(install-field(config, <package>), commit, staging, dest, local, registry)
+  fork test, tried/failed
+    hold
+      wait install-remove-quietly(fs-promise, staging)
+      install-raise-again(tried/problem)
+
+  back install-answer(tally, files)
+
+bind install-or-width
+  take given, like dynamic
+  like number
+  case node
+    text <($given ?? 8)>
+
+bind install-same
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left === $right)>
+
+# a registry over the local store alone. By the time it is used every object of the closure has been fetched and
+# verified, so a miss here is an incomplete closure, and it says so
+task store-registry
+  take local, like dynamic
+  take commit, like dynamic
+  like dynamic
+  mark private
+
+  save finds
+    task
+      take ids, like dynamic
+      like dynamic
+      back install-missing(local, ids)
+  save refuses
+    task
+      like void
+      halt oci-failure
+        bind thing, <the local store is read-only during a checkout>
+  save gets
+    task
+      take id, like dynamic
+      like dynamic
+      mark async
+      save held, wait install-has(local, id)
+      fork test, not(install-truthy(held))
+        hold
+          halt oci-failure
+            bind thing, <closure incomplete: object {id} is in no layer of the artifact>
+      save got, wait install-get(local, id)
+      back got
+  save holds
+    task
+      take id, like dynamic
+      like dynamic
+      back install-has(local, id)
+  save resolves
+    task
+      like dynamic
+      mark async
+      back commit
+  back install-store-registry(finds, refuses, gets, holds, resolves)

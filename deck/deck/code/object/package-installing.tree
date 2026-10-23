@@ -1,0 +1,250 @@
+# Client install: a ref resolved to a commit, only the objects the local store lacks fetched, then the files restored.
+# Ported from deck/deck/code/object/install.ts (term-cli-in-term-0086): installPackage.
+#
+# The release's closure is pulled from the commit down: a tree node or chunk already held locally is read from the
+# local store and costs no request, so an incremental install transfers only the change (note/term/registry/05).
+# Every fetched object is checked against its own address, so a corrupted or spoofed one is refused.
+#
+# The decisions:
+#   - every parameter is positional; the stores, the registry and the ref are the caller's host values
+#   - the commit and its prolly-tree nodes are save chunks, held in save's MemoryChunkStore (docked) and read with
+#     save's readDataset and treeNodeRefs (docked); file-dataset.tree reads the files out, version-restore.tree writes
+#     them
+#   - `fetched` is 0, as the original's: its count of the local store was a stub answering 0 before and after
+#   - the original's syncBlob was called by nothing and is not ported
+
+load @term/base/list
+  find list
+
+load ./registry-operations
+  find object-matches
+
+load ./file-dataset
+  find files-of-dataset
+
+load ./version-restore
+  find restore-files
+
+dock load
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/store/chunk-store>, name save-chunk-store
+
+form installed-package
+  link commit-id, like text
+  link fetched, like number
+
+bind installing-resolve
+  take registry, like dynamic
+  take name, like dynamic
+  take ref, like dynamic
+  like dynamic
+  case node
+    text <<$registry.resolve({ package: $name, ref: $ref })>>
+
+bind installing-get-object
+  take registry, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$registry.getObject($id)>
+
+bind installing-has
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.has($id)>
+
+bind installing-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind installing-put
+  take shelf, like dynamic
+  take id, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$shelf.put({ id: $id, bytes: $bytes })>>
+
+bind installing-chunk-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+bind installing-chunk-put
+  take chunks, like dynamic
+  take text, like text
+  like void
+  case node
+    text <$chunks.put($text)>
+
+bind installing-utf8
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+bind installing-root-of-text
+  take text, like text
+  like text
+  case node
+    text <JSON.parse($text).root>
+
+bind installing-chunk-text
+  take chunks, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$chunks.get($id)>
+
+bind installing-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind installing-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind installing-set-has
+  take ids, like dynamic
+  take id, like text
+  like boolean
+  case node
+    text <$ids.has($id)>
+
+bind installing-set-add
+  take ids, like dynamic
+  take id, like text
+  like void
+  case node
+    text <$ids.add($id)>
+
+bind installing-file-chunks
+  take file, like dynamic
+  like list, like text
+  case node
+    text <$file.chunks>
+
+# an object fetched from the registry, refused unless its bytes hash to its id
+task fetch-verified
+  take id, like text
+  take registry, like dynamic
+  like dynamic
+  mark private
+
+  save bytes, wait installing-get-object(registry, id)
+  fork test, not(object-matches(id, bytes))
+    hold
+      halt <fetched object {id} failed verification>
+  back bytes
+
+# one chunk, from the local store when held there, else fetched and checked; put in the local store and the pulled
+# chunks either way: its text
+task pull-chunk
+  take id, like text
+  take registry, like dynamic
+  take local, like dynamic
+  take chunks, like dynamic
+  like text
+  mark private
+
+  save held, wait installing-has(local, id)
+  save bytes, held
+  fork test, held
+    hold
+      save bytes, wait installing-get(local, id)
+    miss
+      save bytes, fetch-verified(id, registry)
+  wait installing-put(local, id, bytes)
+  save text, installing-utf8(bytes)
+  installing-chunk-put(chunks, text)
+  back text
+
+# the tree under `id` pulled: a leaf's refs are record chunks, which are terminal
+task pull-node
+  take id, like text
+  take registry, like dynamic
+  take local, like dynamic
+  take chunks, like dynamic
+  take seen, like dynamic
+  like void
+  mark private
+
+  fork test, installing-set-has(seen, id)
+    hold
+      back
+  installing-set-add(seen, id)
+  save refs-of, save-tree/tree-node-refs(pull-chunk(id, registry, local, chunks))
+  save leaf, refs-of/leaf
+  walk refs-of/refs
+    take ref
+    fork test, leaf
+      hold
+        pull-chunk(ref, registry, local, chunks)
+      miss
+        pull-node(ref, registry, local, chunks, seen)
+
+# every chunk of a release pulled into an in-memory chunk store, from the commit down
+task pull-release
+  take commit-id, like text
+  take registry, like dynamic
+  take local, like dynamic
+  like dynamic
+  mark private
+
+  save chunks, installing-chunk-store(save-chunk-store)
+  save seen, installing-set()
+  save root, installing-root-of-text(pull-chunk(commit-id, registry, local, chunks))
+  pull-node(root, registry, local, chunks, seen)
+  back chunks
+
+# the tree root a commit names
+task root-of-commit
+  take commit-id, like text
+  take chunks, like dynamic
+  like text
+  mark private
+
+  save text, installing-chunk-text(chunks, commit-id)
+  fork test, installing-is-absent(text)
+    hold
+      halt <missing commit {commit-id}>
+  back installing-root-of-text(text)
+
+# a package ref installed into `dest`, fetching only what the local store lacks
+task install-package
+  take package-name, like dynamic
+  take ref, like dynamic
+  take dest, like text
+  take local, like dynamic
+  take registry, like dynamic
+  like installed-package
+
+  save commit-id, wait installing-resolve(registry, package-name, ref)
+
+  # the release's whole closure pulled, then the version read out of it
+  save chunks, pull-release(commit-id, registry, local)
+  save files, files-of-dataset(save-tree/read-dataset(root-of-commit(commit-id, chunks), chunks))
+
+  # the tree reaches RECORD chunks, and a record names its FILE chunks one level below: fetched too, or a checkout
+  # finds the metadata and none of the bytes
+  walk files
+    take file
+    walk installing-file-chunks(file)
+      take id
+      save held, wait installing-has(local, id)
+      fork test, not(held)
+        hold
+          save bytes, fetch-verified(id, registry)
+          wait installing-put(local, id, bytes)
+
+  restore-files(files, dest, local)
+  back make(installed-package, bind(commit-id, commit-id), bind(fetched, 0))

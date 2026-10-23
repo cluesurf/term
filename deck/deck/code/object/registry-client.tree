@@ -1,0 +1,402 @@
+# The HTTP registry client: a registry that talks to a registry server over HTTP, the wire under the registry logic
+# (deck/deck/code/object/registry.ts). Ported from deck/deck/code/object/http.ts (term-cli-in-term-0085): httpRegistry.
+# Publish and install do not change: they are handed this registry instead of the in-process one.
+#
+# The endpoints (note/term/registry/12):
+#   POST /packages/verify!              { ids }   -> { missing }
+#   POST /package-objects/mutate!       <bytes>   (the id in x-object-id)
+#   POST /packages/bundle!              <pack>    (the id in x-pack-id)
+#   GET  /package-objects/:id                     -> <bytes>
+#   HEAD /package-objects/:id                     -> 200 | 404
+#   POST /packages/commit!              { package, target, commit, sig, key } -> { ok, ref }
+#   GET  /packages/@scope/name/references         -> { versions, branches }
+#   GET  /packages/@scope/name/files?commit=      -> the manifest
+#
+# The decisions:
+#   - the registry is the original's Registry shape, a record of eight async tasks each taking the original's input, so
+#     publish and install take it unchanged; a ref and a publish target are the caller's host records
+#   - every request is the original's: the same URL, method, headers in the same order and body (an object's and a
+#     pack's bytes copied into a Blob, the Node 24 undici workaround), written whole in binds
+#   - a refusal is the original's message, the server's first 500 UTF-16 units of body after ` — `
+#   - the original's unused refQuery is not ported
+
+load @term/base/list
+  find list
+
+dock load
+  load <global:global>, name host-global
+
+form registry-client
+  link find-missing
+    like task
+      mark async
+      take ids, like list, like text
+      like list, like text
+  link put-object
+    like task
+      mark async
+      take item, like dynamic
+      like void
+  link put-pack
+    like task
+      mark async
+      take pack, like dynamic
+      like void
+  link get-object
+    like task
+      mark async
+      take id, like text
+      like dynamic
+  link has-object
+    like task
+      mark async
+      take id, like text
+      like boolean
+  link resolve
+    like task
+      mark async
+      take asked, like dynamic
+      like text
+  link publish-commit
+    like task
+      mark async
+      take asked, like dynamic
+      like dynamic
+  link manifest
+    like task
+      mark async
+      take asked, like dynamic
+      like dynamic
+
+bind trimmed-base
+  take url, like text
+  like text
+  case node
+    text <<$url.replace(/\/$/, "")>>
+
+bind auth-headers
+  take token, like dynamic
+  like dynamic
+  case node
+    text <<($token ? { authorization: `Bearer ${$token}` } : {})>>
+
+bind uri-part
+  take value, like text
+  like text
+  case node
+    text <encodeURIComponent($value)>
+
+bind verify-request
+  take ids, like list, like text
+  like dynamic
+  case node
+    text <<({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: $ids }) })>>
+
+bind object-request
+  take id, like text
+  take bytes, like dynamic
+  take auth, like dynamic
+  like dynamic
+  case node
+    text <<({ method: "POST", headers: { "content-type": "application/octet-stream", "x-object-id": $id, ...$auth }, body: new Blob([new Uint8Array($bytes)]) })>>
+
+bind pack-request
+  take id, like text
+  take bytes, like dynamic
+  take auth, like dynamic
+  like dynamic
+  case node
+    text <<({ method: "POST", headers: { "content-type": "application/octet-stream", "x-pack-id": $id, ...$auth }, body: new Blob([new Uint8Array($bytes)]) })>>
+
+bind head-request
+  like dynamic
+  case node
+    text <<({ method: "HEAD" })>>
+
+bind commit-request
+  take asked, like dynamic
+  take auth, like dynamic
+  like dynamic
+  case node
+    text <<({ method: "POST", headers: { "content-type": "application/json", ...$auth }, body: JSON.stringify($asked) })>>
+
+bind body-head
+  take body, like text
+  like text
+  case node
+    text <$body.slice(0, 500)>
+
+bind is-filled
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind buffer-of
+  take data, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($data)>
+
+bind slice-ids
+  take ids, like list, like text
+  take start, like number
+  take stop, like number
+  like list, like text
+  case node
+    text <$ids.slice($start, $stop)>
+
+# ` — ` and the start of the server's answer, or nothing when it has none or it cannot be read
+task read-error
+  take response, like dynamic
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save body
+      call response/text
+        wait true
+    fork test, is-filled(body)
+      hold
+        back < — {body-head(body)}>
+    back <>
+  halt take
+    take unread
+    back <>
+
+# a ref resolved to a commit id: a commit ref is itself, a version or branch is looked up in the package's
+# `references`, which carry each ref's commit, so there is no resolve endpoint
+task resolve-ref
+  take base, like text
+  take package-name, like text
+  take ref, like dynamic
+  like text
+  mark private
+
+  fork test, is-equal(ref/kind, <commit>)
+    hold
+      back ref/commit
+
+  save response, wait host-global/fetch(package-url(base, package-name, <references>))
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <resolve failed: {response/status}{detail}>
+  save refs
+    call response/json
+      wait true
+
+  fork test, is-equal(ref/kind, <version>)
+    hold
+      save wanted, ref/version
+      walk refs/versions
+        take one
+        fork test, is-equal(one/version, wanted)
+          hold
+            back one/commit
+      halt <no such version {package-name}@{wanted}>
+
+  save wanted, ref/branch
+  walk refs/branches
+    take one
+    fork test, is-equal(one/branch, wanted)
+      hold
+        back one/commit
+  halt <no such branch {package-name}#{wanted}>
+
+# a package is `@scope/name`, its slash a path separator, so it is not percent-encoded (scope and name are URL-safe)
+task package-url
+  take base, like text
+  take package-name, like text
+  take sub, like text
+  like text
+  mark private
+
+  back <{base}/packages/{package-name}/{sub}>
+
+task object-url
+  take base, like text
+  take id, like text
+  like text
+  mark private
+
+  back <{base}/package-objects/{uri-part(id)}>
+
+# The id list in POSTs of 8,000: a big package (bind is about 93,000 ids, 7 MB) in one request drops the socket over a
+# slow uplink; 8,000 ids (0.5 MB) a request is robust and still few round trips
+task find-missing-of
+  take base, like text
+  take ids, like list, like text
+  like list, like text
+  mark private
+
+  save missing, make list
+  save start, 0
+  walk test
+    hook test, is-below(start, ids/length)
+    hook hold
+      save batch, slice-ids(ids, start, add(start, 8000))
+      save response, wait host-global/fetch(<{base}/packages/verify!>, verify-request(batch))
+      fork test, not(response/ok)
+        hold
+          save detail, read-error(response)
+          halt <negotiate failed: {response/status}{detail}>
+      save answer
+        call response/json
+          wait true
+      walk answer/missing
+        take id
+        missing/push(id)
+      save start, add(start, 8000)
+  back missing
+
+task put-object-of
+  take base, like text
+  take auth, like dynamic
+  take item, like dynamic
+  like void
+  mark private
+
+  save id, item/id
+  save response, wait host-global/fetch(<{base}/package-objects/mutate!>, object-request(id, item/bytes, auth))
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <put object {id} failed: {response/status}{detail}>
+
+task put-pack-of
+  take base, like text
+  take auth, like dynamic
+  take pack, like dynamic
+  like void
+  mark private
+
+  save id, pack/id
+  save response, wait host-global/fetch(<{base}/packages/bundle!>, pack-request(id, pack/bytes, auth))
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <put pack {id} failed: {response/status}{detail}>
+
+task get-object-of
+  take base, like text
+  take id, like text
+  like dynamic
+  mark private
+
+  save response, wait host-global/fetch(object-url(base, id))
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <get object {id} failed: {response/status}{detail}>
+  save data
+    call response/array-buffer
+      wait true
+  back buffer-of(data)
+
+task has-object-of
+  take base, like text
+  take id, like text
+  like boolean
+  mark private
+
+  save response, wait host-global/fetch(object-url(base, id), head-request())
+  back response/ok
+
+task publish-commit-of
+  take base, like text
+  take auth, like dynamic
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save response, wait host-global/fetch(<{base}/packages/commit!>, commit-request(asked, auth))
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <commit failed: {response/status}{detail}>
+  save answer
+    call response/json
+      wait true
+  back answer
+
+# resolved to the commit first, then the file list fetched by commit: a commit's files never change, so that URL
+# caches at the edge for ever
+task manifest-of
+  take base, like text
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save package-name, asked/package
+  save commit, resolve-ref(base, package-name, asked/ref)
+  save response, wait host-global/fetch(<{package-url(base, package-name, <files>)}?commit={uri-part(commit)}>)
+  fork test, not(response/ok)
+    hold
+      save detail, read-error(response)
+      halt <manifest failed: {response/status}{detail}>
+  save answer
+    call response/json
+      wait true
+  back answer
+
+# a registry served over HTTP at `base-url`; `token`, when given, authenticates publishes
+task http-registry
+  take base-url, like text
+  take token, like dynamic
+  like registry-client
+
+  save base, trimmed-base(base-url)
+  save auth, auth-headers(token)
+
+  save find-missing
+    task
+      take ids, like list, like text
+      like list, like text
+      mark async
+      back find-missing-of(base, ids)
+  save put-object
+    task
+      take item, like dynamic
+      like void
+      mark async
+      put-object-of(base, auth, item)
+  save put-pack
+    task
+      take pack, like dynamic
+      like void
+      mark async
+      put-pack-of(base, auth, pack)
+  save get-object
+    task
+      take id, like text
+      like dynamic
+      mark async
+      back get-object-of(base, id)
+  save has-object
+    task
+      take id, like text
+      like boolean
+      mark async
+      back has-object-of(base, id)
+  save resolve
+    task
+      take asked, like dynamic
+      like text
+      mark async
+      back resolve-ref(base, asked/package, asked/ref)
+  save publish-commit
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back publish-commit-of(base, auth, asked)
+  save manifest
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back manifest-of(base, asked)
+
+  back make(registry-client, bind(find-missing, find-missing), bind(put-object, put-object), bind(put-pack, put-pack), bind(get-object, get-object), bind(has-object, has-object), bind(resolve, resolve), bind(publish-commit, publish-commit), bind(manifest, manifest))

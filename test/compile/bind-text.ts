@@ -202,5 +202,27 @@ task run
 
 ok('$stored is its own hole beside $store', prefix.answer === 'two/one', prefix.failure ?? JSON.stringify(prefix.answer))
 
+// 0054: a local the text declares never captures the caller's value of that name pasted into a hole
+const capture = await build(`form stamp
+  link version, like text
+
+bind version-of
+  take value, like stamp
+  like text
+  case node
+    text <(() =\\> \\{ const manifest = \\{ version: "0.0.0" \\}; return $value.version ?? manifest.version \\})()>
+
+task run
+  like text
+  save manifest
+    make stamp
+      bind version, text <1.2.3>
+  send back
+    call version-of
+      read manifest
+`)
+
+ok('the text\'s own const manifest leaves the caller\'s manifest alone', capture.answer === '1.2.3', capture.failure ?? JSON.stringify(capture.answer))
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

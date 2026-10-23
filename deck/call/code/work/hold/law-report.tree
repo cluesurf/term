@@ -1,0 +1,712 @@
+# `term hold --report`: the MVP report (note/project/term/assurance/mvp.md section 3), one page per run, ported from
+# call/code/hold-report.ts (term-cli-in-term-0048). The project's laws are named in `laws.tree` at its root, a data file
+# (note/project/term/proof/lean-export/decision/001-laws-manifest.md): one entry per law, its `name` and what proves
+# it, each by NAME only (`rule` a claim or theorem, `hide` and `sole` a form carrying that mark, `private` a task
+# marked private, `tier` 0 every tier-0 obligation). A claim the manifest does not name is a lemma, and is not a row.
+#
+# THE ENGLISH COMES FROM THE TERM FORM, never from the manifest. A law holds when what it names exists as named and
+# nothing the gate refused falls inside it. The parser, the mill, the data reader and the law sentences are docked;
+# milled statements and the gate's `found` are host values.
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/work/hold/project-hold
+  find hold-summary
+  find hold-failure
+
+load @term/call/work/hold/lean-check
+  find hold-lean
+  find lean-claim
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-parsing
+  load <@term/make/code/parser/narrow>, name narrowing
+  load <@term/make/code/compile/mill-run>, name mill-running
+  load <@term/make/code/compile/template>, name templating
+  load <@term/make/code/compile/mill>, name milling
+  load <@term/make/code/compile/host>, name data-reading
+  load <@term/make/code/check/law-english>, name law-wording
+  load <@term/deck/code/read>, name tree-reading
+  load <@term/call/code/role-of>, name role-reading
+  load <@term/call/code/home>, name home-finding
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+  load <node:child_process>, name host-child
+
+# ---- the host's values ----
+
+# the manifest's entries, read by the data reader: a list `law` of maps, each `{ name, proofs: [{ kind, name }] }`,
+# and what did not read pushed onto `problems`
+bind manifest-entries
+  take reading, like dynamic
+  take file, like text
+  take text, like text
+  take problems, like list, like text
+  like list, like dynamic
+  case node
+    text <<(() => { const read = $reading.readDataText({ file: $file, text: $text }); if (!read.ok) { $problems.push(`laws.tree does not read: ${read.diagnostics[0]?.message ?? "not data"}`); return [] } const expanded = $reading.expandData(read.data, $file); if (!expanded.ok) { $problems.push(`laws.tree does not read: ${expanded.diagnostics[0]?.message ?? "not data"}`); return [] } const value = $reading.toJsonValue(expanded.data); const entries = Array.isArray(value.law) ? value.law : []; const texts = v => (typeof v === "string" ? [v] : typeof v === "number" ? [String(v)] : Array.isArray(v) ? v.flatMap(texts) : []); return entries.map((entry, index) => { const e = entry ?? {}; const name = texts(e.name)[0] ?? `law ${index + 1}`; const proofs = ["rule", "hide", "sole", "private", "tier"].flatMap(kind => texts(e[kind]).map(one => ({ kind, name: one }))); return { name, proofs } }) })()>>
+
+bind manifest-entry-name
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.name>
+
+bind entry-proofs
+  take entry, like dynamic
+  like list, like dynamic
+  case node
+    text <$entry.proofs>
+
+bind proof-kind
+  take proof, like dynamic
+  like text
+  case node
+    text <$proof.kind>
+
+bind proof-name
+  take proof, like dynamic
+  like text
+  case node
+    text <$proof.name>
+
+# `have`, `must` and `down` written on a file's tasks: its contracts
+bind contracts-of
+  take parsing, like dynamic
+  take narrow, like dynamic
+  take running, like dynamic
+  take file, like text
+  take text, like text
+  like number
+  case node
+    text <<((parsed) => { if (!parsed.ok) return 0; const count = node => node.kind === "group" ? (["have", "must", "down"].includes($running.headWord(node) ?? "") ? 1 : 0) + node.nodes.reduce((sum, child) => sum + count(child), 0) : 0; return $narrow.groupsOf(parsed.tree.nodes).filter(group => $running.headWord(group) === "task").reduce((sum, group) => sum + group.nodes.reduce((inner, child) => inner + count(child), 0), 0) })($parsing.parse({ file: $file, text: $text }))>>
+
+# the `deck` line's first term of a project's deck.tree, the empty text for none
+bind deck-name
+  take reading, like dynamic
+  take file, like text
+  take text, like text
+  like text
+  case node
+    text <<((read) => (read.ok ? read.forms.find(form => form.head === "deck") : undefined)?.terms[0] ?? "")($reading.readTree({ file: $file, text: $text }))>>
+
+# the commit the project is at, read-only, `uncommitted` when its files differ from it
+bind commit-at
+  take child, like dynamic
+  take root, like text
+  like text
+  case node
+    text <<((head) => head.status !== 0 ? "no commit" : `${head.stdout.trim()}${$child.spawnSync("git", ["-C", $root, "status", "--porcelain", "--", "."], { encoding: "utf8" }).stdout?.trim() ? ", with uncommitted changes" : ""}`)($child.spawnSync("git", ["-C", $root, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }))>>
+
+# every top-level definition of a file, milled the way the build mills it, added to `definitions` (a host Map, name to
+# its list), and every rule in words added to `sentences` (a host Map, name to sentence)
+bind gather-file
+  take parsing, like dynamic
+  take templates, like dynamic
+  take mill, like dynamic
+  take wording, like dynamic
+  take definitions, like dynamic
+  take sentences, like dynamic
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  take lean, like boolean
+  like void
+  case node
+    text <<(() => { const parsed = $parsing.parse({ file: $file, text: $text }); if (!parsed.ok) return; const built = $mill.mill($templates.expandTemplates(parsed.tree), $file, $role ?? undefined, $lean); if (!built.ok) return; for (const statement of built.program) { const name = statement.name; const span = statement.span; if (typeof name === "string" && span) { const list = $definitions.get(name) ?? []; list.push({ name, file: $file, start: span.start.line, end: span.end.line, statement }); $definitions.set(name, list) } } for (const sentence of $wording.lawSentences(built.program)) $sentences.set(sentence.name, sentence) })()>>
+
+bind report-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind call-file
+  take reader, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$reader($file)>
+
+# what a definition reaches, itself included: every definition named anywhere inside it, transitively
+bind reach-of
+  take definitions, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<(() => { const wordsOf = (value, into) => { if (typeof value === "string") into.add(value); else if (Array.isArray(value)) { for (const item of value) wordsOf(item, into) } else if (value && typeof value === "object") { for (const [key, item] of Object.entries(value)) { if (key !== "span") wordsOf(item, into) } } return into }; const seen = new Set(); const stack = [$name]; while (stack.length > 0) { const one = stack.pop(); if (seen.has(one) || !$definitions.has(one)) continue; seen.add(one); for (const definition of $definitions.get(one)) { for (const word of wordsOf(definition.statement, new Set())) { if ($definitions.has(word) && !seen.has(word)) stack.push(word) } } } return seen })()>>
+
+bind reach-has
+  take set, like dynamic
+  take value, like text
+  like boolean
+  case node
+    text <$set.has($value)>
+
+# the refusals of the gate, each with the definition it falls in (`at`) and where (`file:line`)
+bind refusals-of
+  take found, like dynamic
+  take definitions, like dynamic
+  take paths, like dynamic
+  take root, like text
+  like list, like dynamic
+  case node
+    text <<$found.compile.map(problem => { const diagnostic = problem.diagnostic; const file = diagnostic.file ? $paths.resolve($root, diagnostic.file) : undefined; const line = diagnostic.span?.start?.line; let at; if (file && line !== undefined) { for (const [name, list] of $definitions) { if (list.some(d => $paths.resolve(d.file) === file && d.start <= line && line <= d.end)) { at = name; break } } } return { diagnostic, at, where: `${$paths.relative($root, diagnostic.file ?? "")}:${(diagnostic.span?.start?.line ?? 0) + 1}` } })>>
+
+# the first refusal that falls inside what a rule reaches, nothing for none
+bind refusal-in
+  take refusals, like list, like dynamic
+  take reached, like dynamic
+  like dynamic
+  case node
+    text <<$refusals.find(r => r.at !== undefined && $reached.has(r.at))>>
+
+# the first refusal named for a mark (`hidden-make`, `sole-reused`, `private-name`) that names a definition, quoted
+# first, then anywhere in its message
+bind refusal-named
+  take refusals, like list, like dynamic
+  take refusal, like text
+  take name, like text
+  like dynamic
+  case node
+    text <<($refusals.find(r => r.diagnostic.name === $refusal && r.diagnostic.message.includes(`"${$name}"`)) ?? $refusals.find(r => r.diagnostic.name === $refusal && r.diagnostic.message.includes($name)))>>
+
+bind refusal-message
+  take refusal, like dynamic
+  like text
+  case node
+    text <$refusal.diagnostic.message>
+
+bind refusal-at
+  take refusal, like dynamic
+  like text
+  case node
+    text <$refusal.at>
+
+bind refusal-where
+  take refusal, like dynamic
+  like text
+  case node
+    text <$refusal.where>
+
+bind law-row-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind sentence-of
+  take sentences, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$sentences.get($name)>
+
+bind sentence-shown
+  take sentence, like dynamic
+  like text
+  case node
+    text <($sentence.text ?? `(not rendered: ${$sentence.refused})`)>
+
+bind sentence-kind
+  take sentence, like dynamic
+  like text
+  case node
+    text <$sentence.kind>
+
+# the file a definition is in, relative to the project ("" for none)
+bind file-of
+  take definitions, like dynamic
+  take paths, like dynamic
+  take root, like text
+  take name, like text
+  like text
+  case node
+    text <$paths.relative($root, $definitions.get($name)?.[0]?.file ?? "")>
+
+# a definition's statement of one form, nothing for none
+bind statement-of
+  take definitions, like dynamic
+  take name, like text
+  take form, like text
+  like dynamic
+  case node
+    text <<$definitions.get($name)?.find(d => d.statement.form === $form)?.statement>>
+
+bind statement-marked
+  take statement, like dynamic
+  take mark, like text
+  like boolean
+  case node
+    text <($statement[$mark] === true)>
+
+# the outside calls and axioms of the ledger by task name (`<file> <task>`), a host Map that keeps the first place a
+# name took
+bind outside-of
+  take entries, like list, like text
+  like dynamic
+  case node
+    text <<(() => { const outside = new Map(); for (const entry of $entries) outside.set(entry.slice(entry.lastIndexOf(" ") + 1), entry); return outside })()>>
+
+bind outside-get
+  take outside, like dynamic
+  take name, like text
+  like text
+  case node
+    text <($outside.get($name) ?? "")>
+
+bind outside-values
+  take outside, like dynamic
+  like list, like text
+  case node
+    text <[...$outside.values()]>
+
+bind set-values
+  take set, like dynamic
+  like list, like text
+  case node
+    text <[...$set]>
+
+# the tasks the fresh obligations name, each once (`<file> <task>` of each key)
+bind not-proven-count
+  take fresh, like list, like hold-failure
+  like number
+  case node
+    text <<new Set($fresh.map(f => f.key.split(" ").slice(0, 2).join(" "))).size>>
+
+bind padded
+  take text, like text
+  take width, like number
+  like text
+  case node
+    text <$text.padEnd($width)>
+
+# a text's length in UTF-16 units, as `padEnd` counts
+bind name-units
+  take text, like text
+  like number
+  case node
+    text <$text.length>
+
+bind day-now
+  like text
+  case node
+    text <new Date().toISOString().slice(0, 10)>
+
+bind page-lines
+  take lines, like list, like text
+  like text
+  case node
+    text <$lines.join(String.fromCharCode(10))>
+
+bind make-folder-of
+  take fs, like dynamic
+  take dir, like text
+  like void
+  case node
+    text <$fs.mkdirSync($dir, \{ recursive: true \})>
+
+# ---- the shapes ----
+
+form law-row
+  link name, like text
+  # `rule ownership`, `hide permit`, `tier 0`
+  link proof, like list, like text
+  link holds, like boolean
+  # why it does not hold, the first reason found
+  link why
+    like maybe, like text
+    need false
+  # each proof in words, from its Term form
+  link english, like list, like text
+  # the outside calls (impure tasks) and axioms it rests on
+  link rests, like list, like text
+
+form report-obligations
+  link proven, like number
+  link total, like number
+  link baselined, like number
+
+form lean-count
+  link checked, like number
+  link total, like number
+
+form hold-report
+  link project, like text
+  link commit, like text
+  link date, like text
+  # the manifest was found and read
+  link manifest, like boolean
+  link problems, like list, like text
+  link laws, like list, like law-row
+  link obligations, like report-obligations
+  link contracts, like number
+  # every outside call taken as an axiom, and every axiom
+  link assumed, like list, like text
+  link not-proven, like number
+  link declined, like number
+  link lean
+    like maybe, like lean-count
+    need false
+  # the top line, without its glyph
+  link top, like text
+  link holds, like boolean
+  # the page, as printed
+  link page, like text
+  # where the page was written
+  link file, like text
+
+form report-ask
+  link root, like text
+  link files, like list, like text
+  link summary, like hold-summary
+  # the gate's host record { compile, obligations }
+  link found, like dynamic
+  link lean
+    like maybe, like hold-lean
+    need false
+
+# what a law row is while it is read: its row, and the run it is built in
+form row-ask
+  link root, like text
+  link summary, like hold-summary
+  link definitions, like dynamic
+  link sentences, like dynamic
+  link refusals, like list, like dynamic
+  link outside, like dynamic
+
+# ---- the report ----
+
+host tier-zero, <every list read is inside its list, every division is by something other than zero, and every `walk test` ends>
+
+task plural
+  take amount, like number
+  take one, like text
+  take many, like text
+  like text
+  mark private
+
+  fork test, is-equal(amount, 1)
+    hold
+      back one
+  back many
+
+# record why a row does not hold, once: the first reason found
+task fail-row
+  take row, like law-row
+  take why, like text
+  like law-row
+  mark private
+
+  fork test, row/holds
+    hold
+      save row/holds, false
+      save row/why, make(some, why)
+  back row
+
+task row-of
+  take ask, like row-ask
+  take entry, like dynamic
+  like law-row
+  mark private
+
+  save name, manifest-entry-name(entry)
+  save proofs, entry-proofs(entry)
+  save shown, make list
+  walk proofs
+    take proof
+    shown/push <{proof-kind(proof)} {proof-name(proof)}>
+  save row, make(law-row, bind(name, name), bind(proof, shown), bind(holds, true), bind(english, make list), bind(rests, make list))
+  save summary, ask/summary
+  fork test, is-equal(proofs/length, 0)
+    hold
+      save row, fail-row(row, <laws.tree names nothing that proves it>)
+
+  walk proofs
+    take proof
+    save kind, proof-kind(proof)
+    save named, proof-name(proof)
+    fork test, is-equal(kind, <rule>)
+      hold
+        save sentence, sentence-of(ask/sentences, named)
+        fork test, not(law-row-truth(sentence))
+          hold
+            save row, fail-row(row, <no rule named {named}>)
+            turn next
+        row/english/push sentence-shown(sentence)
+        fork test, is-equal(sentence-kind(sentence), <axiom>)
+          hold
+            row/rests/push <axiom {named}>
+        fork test, contains-name(summary/open, named)
+          hold
+            save row, fail-row(row, <{named} is left open>)
+        save reached, reach-of(ask/definitions, named)
+        save refused, refusal-in(ask/refusals, reached)
+        save home, file-of(ask/definitions, host-path, ask/root, named)
+        fork test, law-row-truth(refused)
+          hold
+            save row, fail-row(row, <{refusal-message(refused)} ({refusal-at(refused)}, {refusal-where(refused)})>)
+          miss
+            fork test, contains-name(summary/failed, home)
+              hold
+                save row, fail-row(row, <{home} does not compile>)
+        walk set-values(reached)
+          take one
+          save call, outside-get(ask/outside, one)
+          fork test, and(is-unequal(call, <>), not(contains-name(row/rests, call)))
+            hold
+              row/rests/push call
+        turn next
+    fork test, is-equal(kind, <tier>)
+      hold
+        row/english/push <{tier-zero}: {summary/proven} of {summary/total} obligations proven, {summary/baselined} in the baseline>
+        save fresh, summary/fresh
+        fork test, is-above(fresh/length, 0)
+          hold
+            save first, fresh/0
+            save are, plural(fresh/length, < is>, <s are>)
+            save row, fail-row(row, <{fresh/length} tier-0 obligation{are} not proven: {first/message} ({first/key})>)
+        turn next
+    save want, <record-type>
+    fork test, is-equal(kind, <private>)
+      hold
+        save want, <function>
+    save statement, statement-of(ask/definitions, named, want)
+    save home, file-of(ask/definitions, host-path, ask/root, named)
+    fork test, not(law-row-truth(statement))
+      hold
+        save what, <form>
+        fork test, is-equal(want, <function>)
+          hold
+            save what, <task>
+        save row, fail-row(row, <no {what} named {named}>)
+        turn next
+    fork test, not(statement-marked(statement, kind))
+      hold
+        save row, fail-row(row, <{named} is not `mark {kind}`>)
+        turn next
+    save words, <only {home} calls {named}>
+    save refusal, <private-name>
+    fork test, is-equal(kind, <hide>)
+      hold
+        save words, <only {home} makes a {named}>
+        save refusal, <hidden-make>
+    fork test, is-equal(kind, <sole>)
+      hold
+        save words, <a {named} is used at most once>
+        save refusal, <sole-reused>
+    row/english/push words
+    save refused, refusal-named(ask/refusals, refusal, named)
+    fork test, law-row-truth(refused)
+      hold
+        save row, fail-row(row, <{refusal-message(refused)} ({refusal-where(refused)})>)
+      miss
+        fork test, contains-name(summary/failed, home)
+          hold
+            save row, fail-row(row, <{home} does not compile>)
+  back row
+
+bind contains-name
+  take values, like list, like text
+  take value, like text
+  like boolean
+  case node
+    text <$values.includes($value)>
+
+task project-name
+  take root, like text
+  like text
+  mark private
+
+  save file, host-path/join(root, <deck.tree>)
+  fork test, host-fs/exists-sync(file)
+    hold
+      save named, deck-name(tree-reading, file, host-fs/read-file-sync(file, <utf8>))
+      fork test, is-unequal(named, <>)
+        hold
+          back named
+  back host-path/basename(root)
+
+task hold-report
+  take input, like report-ask
+  like hold-report
+
+  save root, input/root
+  save summary, input/summary
+  save problems, make list
+  save law-file, host-path/join(root, <laws.tree>)
+  save has-manifest, host-fs/exists-sync(law-file)
+  save entries, make list
+  fork test, has-manifest
+    hold
+      save entries, manifest-entries(data-reading, law-file, host-fs/read-file-sync(law-file, <utf8>), problems)
+      walk entries
+        take entry
+        fork test, is-equal(entry-proofs(entry)/length, 0)
+          hold
+            problems/push <laws.tree: {manifest-entry-name(entry)} names nothing that proves it>
+  save role-of, role-reading/project-role-of(root)
+  save lean-of, role-reading/project-lean-of(root)
+
+  save definitions, report-new-map()
+  save sentences, report-new-map()
+  walk input/files
+    take file
+    gather-file(tree-parsing, templating, milling, law-wording, definitions, sentences, file, host-fs/read-file-sync(file, <utf8>), call-file(role-of, file), call-file(lean-of, file))
+
+  save refusals, refusals-of(input/found, definitions, host-path, root)
+  save ledger, summary/ledger
+  save outside-names, make list
+  walk ledger/native
+    take entry
+    outside-names/push entry
+  walk ledger/axioms
+    take entry
+    outside-names/push entry
+  save outside, outside-of(outside-names)
+  save ask, make(row-ask, bind(root, root), bind(summary, summary), bind(definitions, definitions), bind(sentences, sentences), bind(refusals, refusals), bind(outside, outside))
+
+  save laws, make list
+  walk entries
+    take entry
+    laws/push row-of(ask, entry)
+
+  fork test, not(has-manifest)
+    hold
+      problems/push <there is no laws.tree at the project root, so no law is named>
+
+  save held, 0
+  save resting, 0
+  save failing, make list
+  walk laws
+    take law
+    fork test, law/holds
+      hold
+        save held, add(held, 1)
+      miss
+        failing/push law/name
+    fork test, is-above(law/rests/length, 0)
+      hold
+        save resting, add(resting, 1)
+  save contracts, 0
+  walk input/files
+    take file
+    save contracts, add(contracts, contracts-of(tree-parsing, narrowing, mill-running, file, host-fs/read-file-sync(file, <utf8>)))
+  save not-proven, not-proven-count(summary/fresh)
+  save lean, make none
+  sift input/lean
+    case some
+      link checked-lean
+      fork test, not(checked-lean/missing)
+        hold
+          save checked, 0
+          walk checked-lean/claims
+            take claim
+            fork test, is-equal(claim/verdict, <checked>)
+              hold
+                save checked, add(checked, 1)
+          save lean, make(some, make(lean-count, bind(checked, checked), bind(total, checked-lean/claims/length)))
+    case none
+      save lean, lean
+
+  save holds, and(and(has-manifest, is-above(laws/length, 0)), and(and(is-equal(held, laws/length), is-equal(problems/length, 0)), is-equal(summary/failed/length, 0)))
+  save parts, make list
+  fork test, is-equal(held, laws/length)
+    hold
+      parts/push <{laws/length} law{plural(laws/length, <>, <s>)} hold>
+    miss
+      save short, subtract(laws/length, held)
+      parts/push <{held} of {laws/length} laws hold, {short} {plural(short, <does>, <do>)} not ({failing/join(<, >)})>
+  parts/push <{summary/total} obligations>
+  parts/push <{contracts} contracts>
+  fork test, is-above(summary/kernel/declined, 0)
+    hold
+      parts/push <{summary/kernel/declined} tasks declined by the kernel>
+  fork test, is-above(resting, 0)
+    hold
+      parts/push <{resting} law{plural(resting, < rests>, <s rest>)} on an outside call>
+  fork test, is-above(summary/failed/length, 0)
+    hold
+      parts/push <{summary/failed/length} file{plural(summary/failed/length, < does>, <s do>)} not compile>
+  walk problems
+    take problem
+    parts/push problem
+  save top, parts/join(<, >)
+
+  save project, project-name(root)
+  save commit, commit-at(host-child, root)
+  save date, day-now()
+  save width, 0
+  walk laws
+    take law
+    save units, name-units(law/name)
+    fork test, is-above(units, width)
+      hold
+        save width, units
+  save width, add(width, 2)
+
+  save lines, make list
+  lines/push <{project}  commit {commit}  {date}>
+  lines/push <>
+  save glyph, <✗>
+  fork test, holds
+    hold
+      save glyph, <✓>
+  lines/push <{glyph} {top}>
+  lines/push <>
+  walk laws
+    take law
+    save verdict, <does not hold>
+    fork test, law/holds
+      hold
+        save verdict, <holds>
+    save rests, <nothing>
+    fork test, is-above(law/rests/length, 0)
+      hold
+        save rests, law/rests/join(<, >)
+    lines/push <{padded(law/name, width)}{verdict}   rests on: {rests}>
+    sift law/why
+      case some
+        link why
+        lines/push <  why: {why}>
+      case none
+        save rests, rests
+    lines/push <  proven by: {law/proof/join(<, >)}>
+    walk law/english
+      take sentence
+      lines/push <  {sentence}>
+    lines/push <>
+  lines/push <assumed (outside calls, each an axiom):>
+  save assumed, outside-values(outside)
+  fork test, is-above(assumed/length, 0)
+    hold
+      walk assumed
+        take entry
+        lines/push <  {entry}>
+    miss
+      lines/push <  nothing>
+  lines/push <>
+  save declined, summary/kernel/declined
+  lines/push <not proven: {not-proven} task{plural(not-proven, <>, <s>)}. declined by the kernel: {declined} task{plural(declined, <>, <s>)}>
+  sift lean
+    case some
+      link counted
+      lines/push <re-checked in Lean 4: {counted/checked} of {counted/total}>
+    case none
+      sift input/lean
+        case some
+          link asked-lean
+          fork test, asked-lean/missing
+            hold
+              lines/push <re-checked in Lean 4: not run, Lean is not installed>
+        case none
+          save declined, declined
+  lines/push <>
+  save page, page-lines(lines)
+
+  save file, home-finding/project-home(root, <report>, <hold.txt>)
+  make-folder-of(host-fs, host-path/dirname(file))
+  host-fs/write-file-sync(file, page)
+
+  save obligations, make(report-obligations, bind(proven, summary/proven), bind(total, summary/total), bind(baselined, summary/baselined))
+  back make(hold-report, bind(project, project), bind(commit, commit), bind(date, date), bind(manifest, has-manifest), bind(problems, problems), bind(laws, laws), bind(obligations, obligations), bind(contracts, contracts), bind(assumed, assumed), bind(not-proven, not-proven), bind(declined, declined), bind(lean, lean), bind(top, top), bind(holds, holds), bind(page, page), bind(file, file))

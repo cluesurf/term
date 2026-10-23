@@ -1,0 +1,202 @@
+# Where a package's OCI registry is, how to talk to it, and where the local store lives. Ported from
+# deck/deck/code/oci/client.ts (term-cli-in-term-0087): storeDir, trustDir, localStore, storeTransport, transportFor,
+# KEYS_REPOSITORY, ociRouteOf.
+#
+# The decisions:
+#   - KEYS_REPOSITORY is keys-repository(); every task takes positional parameters, transport-for's `offline` given
+#     always (false where the original left it out)
+#   - the one transport per host for the life of the process is a hash held by this module, as the original's Map: a
+#     port that loads this module holds its own copy of it (traps, term-cli-in-term-0050), so a token is reused across
+#     every package of one resolve only while every caller reaches transports through one copy
+#   - a route is the original's host record; the fetch config is the caller's host value, read as the original read it
+#   - store.ts (getBaseDir, getStoreRoot), name.ts (parseScope, resolveRegistry, rootScope), auth.ts (credentialsFor),
+#     layout.ts (layoutObjectStore, layoutTransport) and transport.ts (httpTransport) are docked until their lanes
+
+load ./oci-address
+  find is-oci-registry
+  find parse-oci-registry
+  find repository-of
+
+dock load
+  load <node:path>, name node-path
+  load <global:process>, name host-process
+  load <@term/deck/code/store>, name store-module
+  load <@term/deck/code/name>, name naming-module
+  load <@term/deck/code/oci/auth>, name auth-module
+  load <@term/deck/code/oci/layout>, name layout-module
+  load <@term/deck/code/oci/transport>, name transport-module
+
+form folder-ask
+  link dir, like text
+
+form layout-ask
+  link dir, like text
+  link prefix, like text
+
+form host-ask
+  link host, like text
+
+form scope-ask
+  link name, like text
+
+bind routing-env-text
+  take env, like dynamic
+  take key, like text
+  like text
+  case node
+    text <($env[$key]?.trim() ?? "")>
+
+bind routing-transport
+  take module, like dynamic
+  take host, like text
+  take credentials, like dynamic
+  like dynamic
+  case node
+    text <<$module.httpTransport({ host: $host, credentials: $credentials })>>
+
+bind routing-scope-map
+  take config, like dynamic
+  like dynamic
+  case node
+    text <($config.scopeRegistries ?? \{\})>
+
+bind routing-has-key
+  take map, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <Boolean($key && $map[$key])>
+
+bind routing-resolve-registry
+  take module, like dynamic
+  take name, like text
+  take config, like dynamic
+  take map, like dynamic
+  like dynamic
+  case node
+    text <<$module.resolveRegistry({ name: $name, registry: $config.registry, scopeRegistries: $map })>>
+
+bind routing-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind routing-route
+  take registry, like dynamic
+  take repository, like dynamic
+  take scope, like dynamic
+  take keys, like text
+  like dynamic
+  case node
+    text <<({ registry: $registry, repository: $repository, scope: $scope, keysRepository: $keys })>>
+
+# one transport per host for the life of the process
+host transports, make hash
+
+# the repository below every namespace that holds the scope's key set, so no package may be called this. It sits
+# BELOW the namespace because GHCR, like most registries, has no repository at the bare owner. `name`, not `keys`,
+# since 2026-10-04 (the mesh index reads the same repository, KEYS_REPOSITORY in mesh/deck/back/code/resource/package/
+# oci.ts, and the two change together); the tag inside it is still `keys`
+task keys-repository
+  like text
+
+  back <name>
+
+# the OCI image layout every install fills and every offline install reads: `~/.base/@term/code/base`, or TERM_STORE
+task store-dir
+  like text
+
+  save pinned, routing-env-text(host-process/env, <TERM_STORE>)
+  fork test, not(is-equal(pinned, <>))
+    hold
+      back pinned
+  back store-module/get-base-dir()
+
+# where scope key pins are kept, beside the store. Not a cache: deleting it re-trusts every scope on first use
+task trust-dir
+  like text
+
+  save pinned, routing-env-text(host-process/env, <TERM_TRUST_DIR>)
+  fork test, not(is-equal(pinned, <>))
+    hold
+      back pinned
+  back node-path/join(store-module/get-store-root(), <trust>)
+
+task local-store
+  like dynamic
+
+  back layout-module/layout-object-store(make(folder-ask, bind(dir, store-dir())))
+
+# the local store read as a registry for one host, which is what an offline install resolves against
+task store-transport
+  take host, like text
+  like dynamic
+
+  back layout-module/layout-transport(make(layout-ask, bind(dir, store-dir()), bind(prefix, host)))
+
+# one transport per host for the life of the process, so tokens are reused across every package of a resolve;
+# offline, the local store read as that host's registry
+task transport-for
+  take host, like text
+  take offline, like boolean
+  like dynamic
+
+  fork test, offline
+    hold
+      back store-transport(host)
+
+  fork test, transports/has(host)
+    hold
+      back transports/get(host)
+
+  save credentials
+    task
+      like dynamic
+      back auth-module/credentials-for(make(host-ask, bind(host, host)))
+  save made, routing-transport(transport-module, host, credentials)
+  save transports/{host}, made
+  back made
+
+# the OCI route of a package under a fetch config, or none when it is not on an `oci://` registry. The scope is
+# matched the way resolveRegistry matches it, the full space path and then its leading space, and a scope no project
+# names comes from `ghcr.io/<scope>`
+task oci-route-of
+  take name, like text
+  take config, like dynamic
+  like dynamic
+
+  save scope, naming-module/parse-scope(make(scope-ask, bind(name, name)))/scope
+  save map, routing-scope-map(config)
+  # the leading space of a nested scope, `@cluesurf` of `@cluesurf/@wordsurf`
+  save leading, naming-module/root-scope(scope)
+  save key, routing-nothing()
+  fork test, routing-has-key(map, scope)
+    hold
+      save key, scope
+    miss
+      fork test, routing-has-key(map, leading)
+        hold
+          save key, leading
+  save registry, routing-resolve-registry(naming-module, name, config, map)
+
+  fork test, not(is-oci-registry(registry))
+    hold
+      back routing-nothing()
+
+  save reference, parse-oci-registry(registry)
+  save namespace, reference/namespace
+  fork test, is-equal(namespace, <>)
+    hold
+      halt <OCI registry {registry} needs a namespace, so its packages and key set have repositories to live in>
+
+  save repository, repository-of(name, reference, key)
+  save keys, <{namespace}/{keys-repository()}>
+  fork test, is-equal(repository/name, keys)
+    hold
+      halt <{name}: `{keys-repository()}` is reserved for the scope's key set, so no package can be named it>
+
+  save chosen, key
+  fork test, not(routing-has-key(map, key))
+    hold
+      save chosen, leading
+  back routing-route(reference, repository, chosen, keys)

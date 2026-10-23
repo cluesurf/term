@@ -1,0 +1,174 @@
+# An object graph written back onto disk: each blob rebuilt from its chunks in order, the tree written out as real
+# folders and files. Ported from deck/deck/code/object/checkout.ts (term-cli-in-term-0084): reassembleBlob,
+# checkoutTree, checkoutCommit.
+#
+# Every step checks again against the object model and the checkout threat model (names and paths, size,
+# containment), so an object hashed right but made to harm still cannot leave the destination (note/term/registry/07).
+# This is object-building's inverse: building a folder and checking it out elsewhere gives the same bytes, for text and
+# large binaries alike.
+#
+# The decisions:
+#   - the store is the caller's host object (its `get`, awaited), an object read back the host value JSON.parse makes
+#   - the refusals are the original's messages, raised as failures
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+
+load ./object-address
+  find is-object-id
+
+load ./object-shape
+  find validate-entries
+
+load ./directory-node
+  find read-dir-entries
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+form folder-ask
+  link recursive, like boolean
+
+bind checkout-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind checkout-json-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind checkout-concat
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind checkout-length
+  take data, like dynamic
+  like number
+  case node
+    text <$data.length>
+
+bind checkout-chunks
+  take blob, like dynamic
+  like list, like dynamic
+  case node
+    text <$blob.chunks>
+
+bind checkout-is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind checkout-same-number
+  take left, like dynamic
+  take right, like number
+  like boolean
+  case node
+    text <($left === $right)>
+
+task read-json
+  take store, like dynamic
+  take id, like text
+  like dynamic
+  mark private
+
+  save bytes, wait checkout-store-get(store, id)
+  back checkout-json-of(bytes)
+
+# a blob's bytes, its chunks joined in order
+task reassemble-blob
+  take blob-id, like text
+  take store, like dynamic
+  like dynamic
+
+  save blob, read-json(store, blob-id)
+  save parts, make list
+  walk checkout-chunks(blob)
+    take chunk
+    # the original's isObjectId takes any value and tests it as text
+    fork test, not(and(checkout-is-text(chunk), is-object-id(chunk)))
+      hold
+        halt <blob {blob-id} has malformed chunk id>
+    save bytes, wait checkout-store-get(store, chunk)
+    parts/push(bytes)
+
+  save data, checkout-concat(parts)
+  save size, blob/size
+  fork test, not(checkout-same-number(size, checkout-length(data)))
+    hold
+      halt <blob {blob-id} size mismatch: expected {size}, got {checkout-length(data)}>
+  back data
+
+# the place `name` names under `dest`, refused when it would leave `dest`
+task contained-target
+  take dest, like text
+  take name, like text
+  like text
+  mark private
+
+  save target, node-path/join(dest, name)
+  save resolved-dest, node-path/resolve(dest)
+  save resolved-target, node-path/resolve(target)
+  fork test, and(not(is-equal(resolved-target, resolved-dest)), not(starts-with(resolved-target, <{resolved-dest}{node-path/sep}>)))
+    hold
+      halt <entry '{name}' escapes the destination>
+  back target
+
+# a tree written out as folders and files under `dest`
+task checkout-tree
+  take tree-id, like text
+  take dest, like text
+  take store, like dynamic
+  like void
+
+  save entries, read-dir-entries(tree-id, store)
+  save problem, validate-entries(entries)
+  sift problem
+    case some
+      link reason
+      halt <invalid tree {tree-id}: {reason}>
+    case none
+      save valid, true
+
+  fs-promise/mkdir(dest, make(folder-ask, bind(recursive, true)))
+
+  walk entries
+    take entry
+    save target, contained-target(dest, entry/name)
+    fork test, is-equal(entry/kind, <tree>)
+      hold
+        checkout-tree(entry/id, target, store)
+      miss
+        save data, reassemble-blob(entry/id, store)
+        fs-promise/write-file(target, data)
+        fork test, is-equal(entry/mode, <exec>)
+          hold
+            fs-promise/chmod(target, 493)
+          miss
+            fs-promise/chmod(target, 420)
+
+# a whole commit checked out under `dest`, its tree written out; the commit
+task checkout-commit
+  take commit-id, like text
+  take dest, like text
+  take store, like dynamic
+  like dynamic
+
+  save commit, read-json(store, commit-id)
+  checkout-tree(commit/tree, dest, store)
+  back commit

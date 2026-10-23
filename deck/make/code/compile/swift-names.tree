@@ -120,25 +120,48 @@ task swift-keywords
   back split-words(<associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as catch false is nil super self throw throws true try async await actor any some>)
 
 # whether an emitted operand holds a `try` that no parenthesis of its own closes over, `/(^|[^(])\btry /`: so an
-# operator beside it needs the `try` in front of the whole expression
+# operator beside it needs the `try` in front of the whole expression. A `try` inside a closure (`termCall`'s
+# `\{ try f() \}`, term/hive decision 001) is the closure's own, and a string literal holds none: both are skipped
+# (base-v1-0048)
 task open-try
   take text, like text
   like boolean
 
   save size, char-count(text)
+  save depth, 0
+  save quoted, false
   save at, 0
   walk test
     hook test, is-maximum(add(at, 4), size)
     hook hold
-      fork test, is-equal(substring(text, at, add(at, 4)), <try >)
+      save code, char-code-at(text, at)
+      fork test, quoted
         hold
-          fork test, is-equal(at, 0)
+          fork test, is-equal(code, 92)
             hold
-              back true
-          save before, char-code-at(text, subtract(at, 1))
-          fork test, and(is-unequal(before, 40), not(is-word-code(before)))
+              save at, add(at, 1)
+          fork test, is-equal(code, 34)
             hold
-              back true
+              save quoted, false
+        miss
+          fork test, is-equal(code, 34)
+            hold
+              save quoted, true
+          fork test, is-equal(code, 123)
+            hold
+              save depth, add(depth, 1)
+          fork test, is-equal(code, 125)
+            hold
+              save depth, subtract(depth, 1)
+          fork test, and(is-equal(depth, 0), is-equal(substring(text, at, add(at, 4)), <try >))
+            hold
+              fork test, is-equal(at, 0)
+                hold
+                  back true
+              save before, char-code-at(text, subtract(at, 1))
+              fork test, and(is-unequal(before, 40), not(is-word-code(before)))
+                hold
+                  back true
       save at, add(at, 1)
   back false
 

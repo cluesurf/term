@@ -1,0 +1,207 @@
+# The object graph of a package directory built: every file chunked into a blob, every directory made a tree, a
+# commit on top. Ported from deck/deck/code/object/build.ts (term-cli-in-term-0084): buildBlob, buildTree,
+# buildCommit.
+#
+# Every object goes into the store as it is made (create-if-absent, so an unchanged object of an earlier build is
+# reused, which is the whole of dedup). Chunking is content-defined (content-chunking.tree), so a three-line text file
+# and a binary of gigabytes take the same path (note/term/registry/11).
+#
+# The decisions:
+#   - every parameter is given: the chunk and tree parameters (the caller's default-chunk-params() and
+#     default-tree-params() where the original defaulted them), the exclusions as a list of names
+#     (default-build-exclude() where it defaulted its Set), a commit's message and parents (empty where left out)
+#   - the store is the caller's host object (its `put`, awaited), a file's bytes a host Buffer
+#   - a commit is object-shape's commit form, its deps the caller's host object, as the original's
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find starts-with
+
+load ./object-shape
+  find blob
+  find commit
+  find tree-entry
+  find tree-params
+  find blob-id
+  find chunk-id
+  find commit-id
+  find canonical-json
+
+load ./content-chunking
+  find chunk-params
+  find chunk-buffer
+
+load ./directory-node
+  find build-dir-node
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+form folder-ask
+  link with-file-types, like boolean
+
+form built-object
+  link id, like text
+  link bytes, like dynamic
+
+# what build-commit answers: the commit's id and the commit
+form built-commit
+  link commit-id, like text
+  link commit, like commit
+
+bind building-put
+  take shelf, like dynamic
+  take item, like built-object
+  like dynamic
+  case node
+    text <$shelf.put($item)>
+
+bind building-slice
+  take data, like dynamic
+  take start, like number
+  take stop, like number
+  like dynamic
+  case node
+    text <$data.subarray($start, $stop)>
+
+bind building-copy
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($bytes)>
+
+bind building-length
+  take data, like dynamic
+  like number
+  case node
+    text <$data.length>
+
+bind building-utf8
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+bind building-is-executable
+  take mode, like number
+  like boolean
+  case node
+    text <(($mode & 0o111) !== 0)>
+
+# directories never published: build output, a local install, version control, and the toolchain's folder under both
+# names it has had (deck/call/code/home.ts)
+task default-build-exclude
+  like list, like text
+
+  save names, make list
+  names/push(<link>)
+  names/push(<.base/@term/code>)
+  names/push(<.base/@cluesurf/term>)
+  names/push(<.term>)
+  names/push(<node_modules>)
+  names/push(<.git>)
+  names/push(<host>)
+  names/push(<dist>)
+  back names
+
+task is-excluded
+  take exclude, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk exclude
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# one file chunked into a blob, the chunks and the blob stored; the blob's id
+task build-blob
+  take file-path, like text
+  take store, like dynamic
+  take params, like chunk-params
+  like text
+
+  save data, fs-promise/read-file(file-path)
+  save chunks, make list
+  walk chunk-buffer(data, params)
+    take cut
+    save slice, building-slice(data, cut/start, cut/end)
+    save id, chunk-id(slice)
+    wait building-put(store, make(built-object, bind(id, id), bind(bytes, building-copy(slice))))
+    chunks/push(id)
+
+  save made, make(blob, bind(chunks, chunks), bind(size, building-length(data)))
+  save id, blob-id(made)
+  wait building-put(store, make(built-object, bind(id, id), bind(bytes, building-utf8(canonical-json(made)))))
+  back id
+
+# a directory walked into a tree, every object stored; the tree's id. Dotfiles are skipped, as the tarball publisher
+# skips them, and symbolic links and other kinds too (the checkout threat model)
+task build-tree
+  take dir, like text
+  take store, like dynamic
+  take params, like chunk-params
+  take tree, like tree-params
+  take exclude, like list, like text
+  like text
+
+  save dirents, fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
+  save entries, make list
+
+  walk dirents
+    take dirent
+    save name, dirent/name
+    fork test, is-excluded(exclude, name)
+      hold
+        turn next
+    fork test, and(starts-with(name, <.>), not(is-equal(name, <.treeignore>)))
+      hold
+        turn next
+
+    save full, node-path/join(dir, name)
+    fork test, dirent/is-directory()
+      hold
+        save id, build-tree(full, store, params, tree, exclude)
+        entries/push(make(tree-entry, bind(id, id), bind(kind, <tree>), bind(mode, <dir>), bind(name, name)))
+      miss
+        fork test, dirent/is-file()
+          hold
+            save id, build-blob(full, store, params)
+            save stat, fs-promise/stat(full)
+            save mode, <file>
+            fork test, building-is-executable(stat/mode)
+              hold
+                save mode, <exec>
+            entries/push(make(tree-entry, bind(id, id), bind(kind, <blob>), bind(mode, mode), bind(name, name)))
+
+  back build-dir-node(entries, store, tree)
+
+# a commit of a package directory: a content-addressed snapshot of its files, linked to its parent commits. The time is
+# handed in, never read from the clock, so a build is reproducible and the caller owns the timestamp
+task build-commit
+  take dir, like text
+  take package-name, like text
+  take deps, like dynamic
+  take author, like text
+  take time, like text
+  take message, like text
+  take parents, like list, like text
+  take store, like dynamic
+  take params, like chunk-params
+  take tree, like tree-params
+  like built-commit
+
+  save tree-id, build-tree(dir, store, params, tree, default-build-exclude())
+  # the blob id of deck.tree, a quick handle on the manifest file
+  save manifest, build-blob(node-path/join(dir, <deck.tree>), store, params)
+  save made, make(commit, bind(author, author), bind(deps, deps), bind(manifest, manifest), bind(message, message), bind(package, package-name), bind(parents, parents), bind(time, time), bind(tree, tree-id))
+  save id, commit-id(made)
+  wait building-put(store, make(built-object, bind(id, id), bind(bytes, building-utf8(canonical-json(made)))))
+  back make(built-commit, bind(commit-id, id), bind(commit, made))

@@ -43,6 +43,15 @@
 // every `.tree` its compile read is written down (port-trace.ts openWindow), and just before the write each is read
 // again: one that changed compiles the module again from the new text, and after ATTEMPTS the module is not written
 // and is reported `MOVED` (exit 1). test/call/port-race.ts holds it.
+//
+// THE MANIFEST LOSES NO ROW (term-cli-in-term-0158). Each entry is keyed by EVERY observation its build made, and the
+// table holds one value per observation, so an old entry that saw a file otherwise than this run did cannot be written
+// beside this run's. It was dropped, and with dozens of sessions editing the tree nearly every build disagreed with
+// something: one folder build left 6 modules of 321, and `--verify` said 'no build has recorded it' of ports that were
+// their source's last build (a rerun said `unchanged`). Such an entry is now kept with its reads replaced by the one
+// row that never holds (UNTRACKABLE): never skipped, so it compiles next time, while `--verify` still has the text and
+// the output its build wrote. A module this run reached and left unwritten (MOVED, FAIL) keeps its old entry the same
+// way, a FAIL marked `failed` so `--verify` never calls its port current.
 
 // FIRST, before the compiler loads: the trace must see every read a compiler module makes, including while it loads
 import { closeWindow, observations, observationCount, observe, openWindow, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
@@ -254,7 +263,9 @@ const SCHEMA = 1
 // one module's last good build. `reads` are ranges [from, to) of rows of the manifest's `table`, each row an
 // observation `[op\0path, what it saw]`: every observation the building process had made by the end of this compile
 // `run`: the hash of the console's run entry written beside it, for a module that declares hooks (THE RUN ENTRY)
-type Entry = { text: string; fingerprint: string; out: string; reads: [number, number][]; run?: string }
+// `failed`: a later build of the module failed and wrote nothing, so the port on disk is this entry's (THE MANIFEST
+// LOSES NO ROW)
+type Entry = { text: string; fingerprint: string; out: string; reads: [number, number][]; run?: string; failed?: true }
 type Manifest = { schema: number; table: [string, string][]; modules: Record<string, Entry> }
 
 function readManifest(path: string): Manifest | undefined {
@@ -449,7 +460,9 @@ function verifyPorts(plan: { root: string; files: { file: string; text: string }
       const problem =
         entry === undefined
           ? 'no build has recorded it: run port-build'
-          : out === undefined
+          : entry.failed
+            ? 'its last build failed: run port-build to see why'
+            : out === undefined
             ? 'its port is missing'
             : entry.text !== sha(text)
               ? 'its source changed after its port was built'
@@ -493,7 +506,9 @@ async function main(): Promise<void> {
 
   const manifestPath = projectHome(TERM, 'port-build.json')
   const print = verify ? undefined : await fingerprint()
-  const old = full || print === undefined ? undefined : readManifest(manifestPath)
+  // the last manifest, whose entries this run keeps where it writes none of its own; under `--full` none is skipped
+  const previous = print === undefined ? undefined : readManifest(manifestPath)
+  const old = full ? undefined : previous
   setRecording(true)
 
   // whether a row of the old manifest's table still sees what it saw, checked at most once a run
@@ -521,6 +536,8 @@ async function main(): Promise<void> {
   // observations. And those carried from the old manifest, whose `reads` still index its table
   const fresh: Record<string, Entry> = {}
   const carried: Record<string, Entry> = {}
+  // the modules this run reached and left unwritten, each with whether its compile failed (THE MANIFEST LOSES NO ROW)
+  const left = new Map<string, boolean>()
 
   // every module first, so the progress has its total before the first one compiles
   const plan: { root: string; files: { file: string; text: string }[] }[] = []
@@ -606,6 +623,7 @@ async function main(): Promise<void> {
       let text = sourceOf(file)
 
       if (text === undefined) {
+        left.set(name, false)
         moved++
         console.log(`  MOVED ${name}  (removed or shelved since this run began: run port-build again)`)
         continue
@@ -678,12 +696,14 @@ async function main(): Promise<void> {
       }
 
       if (changed !== undefined) {
+        left.set(name, false)
         moved++
         console.log(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
         continue
       }
 
       if (!result.ok) {
+        left.set(name, true)
         failed++
         console.log(`  FAIL  ${name}`)
 
@@ -700,6 +720,7 @@ async function main(): Promise<void> {
       const run = basename(root) === 'call' ? runEntry(name, content, result.program) : undefined
 
       if (run && 'missing' in run) {
+        left.set(name, true)
         failed++
         console.log(`  FAIL  ${name}`)
         console.log(`        run-entry: the port exports no task for ${run.missing.join(', ')}, which a hook names`)
@@ -751,8 +772,9 @@ async function main(): Promise<void> {
   tell()
 
   // the manifest: this run's observations first, so a fresh entry's ranges index them as they are, then each row a
-  // carried entry needs. A carried entry, or an old one this run did not reach (`--only`), whose row now disagrees with
-  // what this run saw (a file changed while it ran) is dropped, and compiles next time
+  // carried entry needs. A carried entry, or an old one this run did not reach (`--only`) or reached and left unwritten
+  // (MOVED, FAIL), whose row now disagrees with what this run saw (a file changed since its build) is kept with the row
+  // that never holds as its reads, and compiles next time (THE MANIFEST LOSES NO ROW)
   if (!check && print !== undefined) {
     setRecording(false)
 
@@ -762,19 +784,34 @@ async function main(): Promise<void> {
     const reached = new Set([...plan.flatMap(one => one.files.map(({ file }) => relative(TERM, file)))])
     const keep: Record<string, Entry> = { ...carried }
 
-    for (const [name, entry] of Object.entries(old?.modules ?? {})) {
+    for (const [name, entry] of Object.entries(previous?.modules ?? {})) {
       if (!reached.has(name) && every.has(name)) {
         keep[name] = entry
+      } else if (left.has(name)) {
+        keep[name] = left.get(name) ? { ...entry, failed: true } : entry
       }
+    }
+
+    // the one row no skip ever passes (stillHolds answers false for it)
+    const never = (): [number, number][] => {
+      let index = at.get(UNTRACKABLE)
+
+      if (index === undefined) {
+        index = table.length
+        table.push([UNTRACKABLE, 'never'])
+        at.set(UNTRACKABLE, index)
+      }
+
+      return [[index, index + 1]]
     }
 
     for (const [name, entry] of Object.entries(keep)) {
       const rows: number[] = []
-      let agrees = true
+      let agrees = !entry.failed
 
       for (const [from, to] of entry.reads) {
         for (let row = from; row < to && agrees; row++) {
-          const seen = old!.table[row]
+          const seen = previous!.table[row]
 
           if (!seen) {
             agrees = false
@@ -795,9 +832,7 @@ async function main(): Promise<void> {
         }
       }
 
-      if (agrees) {
-        modules[name] = { ...entry, reads: ranges(rows) }
-      }
+      modules[name] = { ...entry, reads: agrees ? ranges(rows) : never() }
     }
 
     try {

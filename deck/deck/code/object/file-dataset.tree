@@ -1,0 +1,303 @@
+# A package version as a @cluesurf/save dataset: the join between the package manager and the substrate. Ported from
+# deck/deck/code/object/dataset.ts (term-cli-in-term-0084): FILE_TYPE, TREE_TYPE, markOfPath, fileRecord,
+# datasetOfFiles, fileOfRecord, filesOfDataset.
+#
+# Save stores a DATASET: records keyed by mark, written into a prolly tree by `writeDataset`, and diffed by
+# `diffRoots` in time proportional to the CHANGE. A version is a set of files, each one record, so the package
+# manager has that tree, that diff and save's sync instead of a prolly tree and a reachability walk of its own.
+#
+# The mapping is FLAT: one record per file, keyed by a mark derived from its path, no nested directory objects (the
+# prolly tree dedups unchanged folders by content now). A path is just a field.
+#
+# The decisions:
+#   - a record, a field value and a dataset are save's own host values (a Map of fields, made by save/base/make's
+#     text, integer, blob and list), and a package file is the original's host record, `record` present only for a
+#     `.tree` kept as one
+#   - FILE_TYPE is file-type(), TREE_TYPE tree-type()
+#   - a mark's bytes are the path digest's first sixteen, read as hex and stamped v4, as the original's
+
+load @term/base/list
+  find list
+
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+
+dock load
+  load <@cluesurf/save/canon/hash>, name save-hash
+  load <@cluesurf/save/canon/mark>, name save-mark
+  load <@cluesurf/save/base/make>, name save-make
+
+# one item of a save list collection
+form list-item
+  link value, like dynamic
+
+form record-node
+  link mark, like text
+  link type, like text
+  link label, like text
+  link fields, like dynamic
+
+bind digest-hex
+  take digest, like text
+  like text
+  case node
+    text <($digest.split(":")[1] ?? "")>
+
+bind hex-pair
+  take hex, like text
+  take index, like number
+  like number
+  case node
+    text <Number.parseInt($hex.slice($index * 2, $index * 2 + 2), 16)>
+
+bind byte-array
+  take values, like list, like number
+  like dynamic
+  case node
+    text <Uint8Array.from($values)>
+
+bind dataset-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind record-value
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<({ kind: "record", record: $record })>>
+
+bind field-of
+  take fields, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$fields.get($name)>
+
+bind record-fields
+  take record, like dynamic
+  like dynamic
+  case node
+    text <$record.fields>
+
+bind record-type
+  take record, like dynamic
+  like text
+  case node
+    text <$record.type>
+
+bind scalar-text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value?.kind === "text" ? $value.value : undefined)>
+
+bind scalar-integer
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value?.kind === "integer" ? Number($value.value) : undefined)>
+
+bind is-blob-collection
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value?.kind === "collection" && $value.order === "list")>
+
+bind collection-items
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value.items>
+
+bind is-blob-item
+  take item, like dynamic
+  like boolean
+  case node
+    text <($item.value.kind === "blob")>
+
+bind blob-item-hash
+  take item, like dynamic
+  like text
+  case node
+    text <$item.value.hash>
+
+bind is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind nested-record
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($value?.kind === "record" ? $value.record : undefined)>
+
+bind package-file-of
+  take path, like dynamic
+  take mode, like dynamic
+  take size, like dynamic
+  take chunks, like list, like text
+  like dynamic
+  case node
+    text <<({ path: $path, mode: $mode ?? "file", size: $size ?? 0, chunks: $chunks })>>
+
+bind file-record-set
+  take file, like dynamic
+  take record, like dynamic
+  like void
+  case node
+    text <($file.record = $record)>
+
+bind dataset-values
+  take dataset, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$dataset.values()]>
+
+bind path-sorted
+  take files, like list, like dynamic
+  like void
+  case node
+    text <<$files.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0 })>>
+
+bind no-file
+  like dynamic
+  case node
+    text <undefined>
+
+# the form every file record carries, so a dataset can hold more than files later without a collision
+task file-type
+  like text
+
+  back <file>
+
+# the form a `.tree` file's own record carries, so a checkout regenerates the file from it rather than from chunks
+task tree-type
+  like text
+
+  back <tree-file>
+
+# A path's stable identity. DERIVED, never minted: the same path in two versions must land on the same record, or every
+# version reads as a wholesale replacement. Sixteen bytes of the path's digest, shaped into a v4 UUID so it is a mark
+task mark-of-path
+  take path, like text
+  like text
+
+  save hex, digest-hex(save-hash/hash-bytes(path))
+  save bytes, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, 16)
+    hook hold
+      save byte, hex-pair(hex, at)
+      # the version and variant nibbles stamped, so the result is a well-formed v4 UUID
+      fork test, is-equal(at, 6)
+        hold
+          save byte, bitwise-or(bitwise-and(byte, 15), 64)
+      fork test, is-equal(at, 8)
+        hold
+          save byte, bitwise-or(bitwise-and(byte, 63), 128)
+      bytes/push(byte)
+      save at, add(at, 1)
+  back save-mark/bytes-to-mark(byte-array(bytes))
+
+# a file's record. A `.tree` carries its parsed record rather than chunks, nested so the path and the content are ONE
+# record and a field-level edit of the nested record is a field-level change
+task file-record
+  take file, like dynamic
+  like record-node
+
+  save fields, make hash
+  save path, file/path
+  fields/set(<path>, save-make/text(path))
+  fields/set(<mode>, save-make/text(file/mode))
+  fields/set(<size>, save-make/integer(file/size))
+
+  save record, file/record
+  fork test, dataset-truthy(record)
+    hold
+      fields/set(<tree>, record-value(record))
+      back make(record-node, bind(mark, mark-of-path(path)), bind(type, tree-type()), bind(label, path), bind(fields, fields))
+
+  save items, make list
+  walk file/chunks
+    take chunk
+    items/push(make(list-item, bind(value, save-make/blob(chunk))))
+  fields/set(<chunks>, save-make/list(items))
+  back make(record-node, bind(mark, mark-of-path(path)), bind(type, file-type()), bind(label, path), bind(fields, fields))
+
+# every file of a version, as a dataset ready for `writeDataset`
+task dataset-of-files
+  take files, like list, like dynamic
+  like hash, like text, like record-node
+
+  save dataset, make hash
+  walk files
+    take file
+    save record, file-record(file)
+    dataset/set(record/mark, record)
+  back dataset
+
+task chunk-ids
+  take value, like dynamic
+  like list, like text
+  mark private
+
+  save out, make list
+  # `list()` makes a COLLECTION whose order is `list`, not a value of kind `list`: a guard on kind `list` never matches
+  # and yields no chunks
+  fork test, not(is-blob-collection(value))
+    hold
+      back out
+  walk collection-items(value)
+    take item
+    fork test, is-blob-item(item)
+      hold
+        out/push(blob-item-hash(item))
+  back out
+
+# a record back as a file, for checkout; nothing for a record that is no file
+task file-of-record
+  take record, like dynamic
+  like dynamic
+
+  save type, record-type(record)
+  fork test, and(not(is-equal(type, file-type())), not(is-equal(type, tree-type())))
+    hold
+      back no-file()
+
+  save fields, record-fields(record)
+  save path, scalar-text(field-of(fields, <path>))
+  save mode, scalar-text(field-of(fields, <mode>))
+  save size, scalar-integer(field-of(fields, <size>))
+  save chunks, chunk-ids(field-of(fields, <chunks>))
+
+  fork test, is-nothing(path)
+    hold
+      back no-file()
+
+  save file, package-file-of(path, mode, size, chunks)
+  save nested, nested-record(field-of(fields, <tree>))
+  fork test, not(is-nothing(nested))
+    hold
+      file-record-set(file, nested)
+  back file
+
+# every file of a dataset, sorted by path in UTF-16 order
+task files-of-dataset
+  take dataset, like dynamic
+  like list, like dynamic
+
+  save files, make list
+  walk dataset-values(dataset)
+    take record
+    save file, file-of-record(record)
+    fork test, not(is-nothing(file))
+      hold
+        files/push(file)
+  path-sorted(files)
+  back files

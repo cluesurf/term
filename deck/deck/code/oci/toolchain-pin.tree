@@ -1,0 +1,175 @@
+# A project's `need`, pinned: the exact toolchain release a `need @term/code, mark <2.6.x>` resolves to, and the digest
+# of that release's image index, which `lock.tree` records (note/project/term/term-versions.md, "Files"). Ported from
+# deck/deck/code/oci/need.ts (term-cli-in-term-0087): TOOLCHAIN, releasedVersions, newestMatching, pinSatisfies,
+# pinNeed, showPin.
+#
+# THE INDEX DIGEST, NOT A LAYER DIGEST. A release is one image index with a manifest per platform, so the index digest
+# covers every platform's build at once: a teammate on Linux and one on a Mac pin the same thing.
+#
+# A PIN THAT STILL SATISFIES THE REQUEST IS KEPT. `term load` re-resolves only when the request moved past the pin, the
+# way a lockfile keeps every other dependency, so a project does not drift to a newer toolchain because one was
+# released.
+#
+# The decisions:
+#   - TOOLCHAIN is toolchain(); every task takes positional parameters, pin-need's `previous` none where left out and
+#     its `offline` given always
+#   - a need, a pin and an answer are the original's host records (an answer's `pin` and `reason` present only when
+#     set); the transport is the caller's host value
+#   - versions are parsed, compared, matched and shown by code.ts (the face over version.tree, docked so the
+#     callers' shapes stay); oci/release.ts releaseRoute is docked until its lane; transport-for is oci-routing.tree's
+
+load ./oci-routing
+  find transport-for
+
+dock load
+  load <@term/deck/code/code>, name code-module
+  load <@term/deck/code/oci/release>, name release-module
+
+form route-ask
+  link package, like text
+
+bind pin-list-tags
+  take transport, like dynamic
+  take repository, like text
+  like dynamic
+  case node
+    text <<$transport.listTags({ repository: $repository })>>
+
+bind pin-newest-first
+  take module, like dynamic
+  take tags, like dynamic
+  like list, like text
+  case node
+    text <<$tags.filter(tag => /^\d+\.\d+\.\d+$/.test(tag)).sort((a, b) => $module.compareCode($module.parseCode(b), $module.parseCode(a)))>>
+
+bind pin-get-manifest
+  take transport, like dynamic
+  take repository, like text
+  take reference, like text
+  like dynamic
+  case node
+    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
+
+bind pin-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind pin-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind pin-kept
+  take pin, like dynamic
+  like dynamic
+  case node
+    text <<({ pin: $pin, kept: true })>>
+
+bind pin-refused
+  take reason, like text
+  like dynamic
+  case node
+    text <<({ kept: false, reason: $reason })>>
+
+bind pin-made
+  take name, like text
+  take code, like dynamic
+  take hash, like dynamic
+  like dynamic
+  case node
+    text <<({ pin: { name: $name, code: $code, hash: $hash }, kept: false })>>
+
+# the one package a `need` may name today: the toolchain
+task toolchain
+  like text
+
+  back <@term/code>
+
+# every version released under the toolchain's repository, newest first
+task released-versions
+  take transport, like dynamic
+  take repository, like text
+  like list, like text
+
+  save tags, wait pin-list-tags(transport, repository)
+  back pin-newest-first(code-module, tags)
+
+# the newest version in a list (newest first) that a request accepts, or none
+task newest-matching
+  take versions, like list, like text
+  take hold, like dynamic
+  like dynamic
+
+  walk versions
+    take version
+    fork test, code-module/code-match(code-module/parse-code(version), hold)
+      hold
+        back version
+  back pin-nothing()
+
+# whether a pinned version still satisfies the request it was pinned for
+task pin-satisfies
+  take need, like dynamic
+  take pin, like dynamic
+  like boolean
+
+  fork test, not(pin-truthy(pin))
+    hold
+      back false
+  fork test, not(is-equal(pin/name, need/name))
+    hold
+      back false
+  back pin-truthy(code-module/code-match(pin/code, need/mark))
+
+# a project's `need` pinned: the previous pin kept while it satisfies the request, otherwise the newest released
+# version in the range resolved and its index digest read. Offline, an unsatisfied request keeps no pin rather than
+# guessing, and the caller says so
+task pin-need
+  take need, like dynamic
+  take previous, like dynamic
+  take offline, like boolean
+  like dynamic
+
+  save name, toolchain()
+  fork test, not(is-equal(need/name, name))
+    hold
+      back pin-refused(<need names {need/name}, and only {name} can be needed>)
+
+  fork test, pin-satisfies(need, previous)
+    hold
+      back pin-kept(previous)
+
+  fork test, offline
+    hold
+      back pin-refused(<the toolchain request is not pinned, and an offline load cannot read the releases>)
+
+  save route, release-module/release-route(make(route-ask, bind(package, name)))
+  save transport, transport-for(route/registry/host, false)
+  save repository, route/repository/name
+  save versions, released-versions(transport, repository)
+  save version, newest-matching(versions, need/mark)
+
+  fork test, not(pin-truthy(version))
+    hold
+      save newest, <>
+      fork test, is-above(versions/length, 0)
+        hold
+          save first, versions/0
+          save newest, <. The newest is {first}>
+      back pin-refused(<{name} has no release in the requested range{newest}>)
+
+  save index, wait pin-get-manifest(transport, repository, version)
+  fork test, not(pin-truthy(index))
+    hold
+      back pin-refused(<{name}@{version} is listed and could not be read>)
+
+  back pin-made(name, code-module/parse-code(version), index/digest)
+
+# a pin as one line a person reads: `@term/code 2.6.4 (sha256:...)`
+task show-pin
+  take pin, like dynamic
+  like text
+
+  back <{pin/name} {code-module/show-code(pin/code)} ({pin/hash})>

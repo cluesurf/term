@@ -95,6 +95,22 @@ task is-on-disk
     take absent
     back false
 
+# whether the object is in the store under `root`: an id with no path (not a well-formed id) is not, as the original
+# worked its path out inside its guard
+task is-held
+  take root, like text
+  take id, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    fs-promise/access(object-file-path(root, id))
+    back true
+  halt take
+    take absent
+    back false
+
 # an object's bytes written at `file` unless it is there already: to a temp then renamed, so a reader never sees a
 # partial object, the temp named by a fresh UUID, or two writers of one id would share it and one rename the other's
 # half
@@ -144,7 +160,7 @@ task missing-of
   save out, make list
   walk ids
     take id
-    fork test, not(is-on-disk(object-file-path(root, id)))
+    fork test, not(is-held(root, id))
       hold
         out/push(id)
   back out
@@ -162,7 +178,7 @@ task rooted-object-store
       take id, like text
       like boolean
       mark async
-      back is-on-disk(object-file-path(root, id))
+      back is-held(root, id)
 
   save get-object
     task

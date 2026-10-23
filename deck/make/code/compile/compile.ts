@@ -1218,6 +1218,19 @@ export function compileProgram(
     for (const name of routeTaskNames(program)) {
       roots.add(name)
     }
+
+    // an entry task the arity pass renamed apart (`front-dir` at two arities is `front-dir__0` and `front-dir__1`, a typed
+    // group's member `<name>__<n>__<k>`) is still the entry's public surface: the roots held only the written name, so
+    // the shake and the simplifier left every arity out (term-compiler-0036)
+    for (const statement of program) {
+      if (statement.form === 'function' && statement.span.file === file) {
+        const written = /^(.+?)__\d+(?:__\d+)?$/.exec(statement.name)?.[1]
+
+        if (written !== undefined && roots.has(written)) {
+          roots.add(statement.name)
+        }
+      }
+    }
   }
 
   // the render runtime names as the build bound them (a name two files define is split by file, D020): the view

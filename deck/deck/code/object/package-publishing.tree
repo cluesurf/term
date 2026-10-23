@@ -1,0 +1,278 @@
+# Client publish: a commit built locally, only the objects the registry is missing uploaded, then the version created
+# or the branch moved. Ported from deck/deck/code/object/publish.ts (term-cli-in-term-0086): publishPackage.
+#
+# The delta-publish flow: after building the release into the local store, the client asks the registry which of
+# its object ids it lacks (FindMissingBlobs), packs and uploads exactly those, signs the commit id, and commits. A
+# one-line change to a big package uploads a handful of objects (note/term/registry/04).
+#
+# The decisions:
+#   - every parameter is positional and given: the release's commit message (the caller's empty text where the
+#     original defaulted it) and the chunk parameters (default-chunk-params()); the original's `parents` and `deps`
+#     were read by nothing and are not taken
+#   - the store, the registry and the target are the caller's host values; the keypair id-signing.tree's record
+#   - the progress lines are the original's, on stderr through console.error, timed from the start
+#   - the packs go up twelve at a time through @term/base/task's gather, the original's Promise.all (gather also
+#     cancels the rest of a batch on a failure, which Promise.all left running); each pack is tried five times with
+#     the original's backoff, and the last failure is raised again as it was
+
+load @term/base/list
+  find list
+
+load @term/base/task
+  find gather
+
+load ./content-chunking
+  find chunk-params
+
+load ./blob-packing
+  find build-packs
+  find default-pack-params
+
+load ./package-version
+  find default-version-exclude
+
+load ./release-building
+  find build-release
+  find release
+
+load ./id-signing
+  find keypair
+  find sign-id
+
+form publish-meta
+  link author, like text
+  link time, like number
+  link message, like text
+
+form published-package
+  link commit-id, like text
+  link ref, like text
+  link uploaded, like number
+  link packs, like number
+
+form put-attempt
+  link failed, like boolean
+  link problem, like dynamic
+
+bind publishing-now
+  like number
+  case node
+    text <Date.now()>
+
+bind publishing-log
+  take name, like dynamic
+  take line, like text
+  take start, like number
+  like void
+  case node
+    text <<console.error(`  [publish ${$name}] ${$line} (${((Date.now() - $start) / 1000).toFixed(1)}s)`)>>
+
+bind publishing-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind publishing-time-of
+  take time, like dynamic
+  like number
+  case node
+    text <(Date.parse($time) || 0)>
+
+bind publishing-chunk-text
+  take chunks, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$chunks.get($id)>
+
+bind publishing-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind publishing-utf8
+  take text, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($text, "utf8")>
+
+bind publishing-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind publishing-pack-input
+  take id, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ id: $id, path: $id, bytes: $bytes })>>
+
+bind publishing-sort-by-id
+  take inputs, like list, like dynamic
+  like void
+  case node
+    text <<$inputs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))>>
+
+bind publishing-megabytes
+  take packs, like list, like dynamic
+  like text
+  case node
+    text <(($packs.reduce((sum, one) =\> sum + one.bytes.length, 0)) / 1024 / 1024).toFixed(1)>
+
+bind publishing-put-pack
+  take registry, like dynamic
+  take pack, like dynamic
+  like dynamic
+  case node
+    text <<$registry.putPack({ id: $pack.id, bytes: $pack.bytes })>>
+
+bind publishing-sleep
+  take ms, like number
+  like dynamic
+  case node
+    text <new Promise(wake =\> setTimeout(wake, $ms))>
+
+bind publishing-raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+bind publishing-commit
+  take registry, like dynamic
+  take name, like dynamic
+  take target, like dynamic
+  take commit, like text
+  take sig, like text
+  take key, like text
+  like dynamic
+  case node
+    text <<$registry.publishCommit({ package: $name, target: $target, commit: $commit, sig: $sig, key: $key })>>
+
+# one try at a pack's upload: whether it failed, and the failure
+task put-pack-once
+  take registry, like dynamic
+  take pack, like dynamic
+  like put-attempt
+  mark private
+
+  fork
+    mark unsafe
+    wait publishing-put-pack(registry, pack)
+    back make(put-attempt, bind(failed, false), bind(problem, publishing-nothing()))
+  halt take
+    take problem
+    back make(put-attempt, bind(failed, true), bind(problem, problem))
+
+# one pack uploaded, retried on a failure with exponential backoff: a large publish is many packs, and a retry per
+# pack re-sends one pack instead of abandoning the run
+task upload-pack
+  take registry, like dynamic
+  take pack, like dynamic
+  like void
+  mark private
+
+  save last, publishing-nothing()
+  save attempt, 0
+  walk test
+    hook test, is-below(attempt, 5)
+    hook hold
+      save tried, put-pack-once(registry, pack)
+      fork test, not(tried/failed)
+        hold
+          back
+      save last, tried/problem
+      wait publishing-sleep(multiply(300, power(2, attempt)))
+      save attempt, add(attempt, 1)
+  publishing-raise-again(last)
+
+# a package published: built into the local store, the registry's missing objects packed and uploaded, the commit id
+# signed and committed
+task publish-package
+  take dir, like text
+  take package-name, like dynamic
+  take target, like dynamic
+  take local, like dynamic
+  take registry, like dynamic
+  take signer, like keypair
+  take author, like text
+  take time, like dynamic
+  take message, like text
+  take params, like chunk-params
+  like published-package
+
+  # 1. the release built into the local content store
+  save start, publishing-now()
+  save meta, make(publish-meta, bind(author, author), bind(time, publishing-time-of(time)), bind(message, message))
+  # the release's default exclusions and no inclusions, as the original left both out
+  save include, make list
+  save built, build-release(dir, local, meta, params, default-version-exclude(), include)
+  save commit-id, built/commit
+  publishing-log(package-name, <built release, {built/files/length} files>, start)
+
+  # 2. the closure: the tree's nodes and every chunk of every file
+  save ids, built/closure
+  publishing-log(package-name, <closure = {ids/length} objects>, start)
+
+  # 3. the registry asked which it is missing
+  save missing, wait registry/find-missing(ids)
+  publishing-log(package-name, <{missing/length} missing on registry>, start)
+
+  # 4. the missing objects packed by content, sorted by id so unchanged regions make packs the registry already has
+  save inputs, make list
+  walk missing
+    take id
+    # a tree or commit chunk is still in memory; a file chunk is in the store already
+    save in-memory, publishing-chunk-text(built/chunks, id)
+    save bytes, in-memory
+    fork test, publishing-is-absent(in-memory)
+      hold
+        save bytes, wait publishing-store-get(local, id)
+      miss
+        save bytes, publishing-utf8(in-memory)
+    inputs/push(publishing-pack-input(id, bytes))
+  publishing-sort-by-id(inputs)
+
+  save packing, build-packs(inputs, default-pack-params())
+  save packs, packing/packs
+  save count, packs/length
+  publishing-log(package-name, <packed into {count} packs, {publishing-megabytes(packs)} MB gzipped>, start)
+
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save batch, make list
+      save k, at
+      walk test
+        hook test, and(is-below(k, add(at, 12)), is-below(k, count))
+        hook hold
+          save one, packs/{k}
+          save upload
+            task
+              like void
+              mark async
+              upload-pack(registry, one)
+          batch/push(upload)
+          save k, add(k, 1)
+      gather(batch)
+      save done, add(at, 12)
+      fork test, is-above(done, count)
+        hold
+          save done, count
+      publishing-log(package-name, <uploaded {done}/{count} packs>, start)
+      save at, add(at, 12)
+
+  # 5. the commit id signed and published: a version created or a branch moved
+  save sig, sign-id(commit-id, signer/private-key)
+  save answer, wait publishing-commit(registry, package-name, target, commit-id, sig, signer/public-key)
+  back
+    make published-package
+      bind commit-id, commit-id
+      bind ref, answer/ref
+      bind uploaded, missing/length
+      bind packs, count

@@ -5,6 +5,7 @@ import { compile } from '@term/make/code/compile/compile'
 import {
   commandRoutes,
   dispatch,
+  programOf,
 } from '@term/call/code/hook-dispatch'
 
 let pass = 0
@@ -50,7 +51,7 @@ hook make
     task make-face
 
 hook load
-  take name
+  slot name
   task load-deck
 
 hook lock
@@ -86,7 +87,7 @@ task join
     code 0
 
 hook join
-  take words, like list, like text
+  slot words, like list, like text
   task join
 
 task gather
@@ -95,7 +96,7 @@ task gather
     code 0
 
 hook gather
-  take items
+  slot items
     like list
   task gather
 `
@@ -122,8 +123,9 @@ function main(): void {
     'repeat',
   ])
 
-  // A LIST TAKE IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the
-  // element is written (`like list, like text`) or not (`like list`)
+  // A LIST SLOT IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the
+  // element is written (`like list, like text`) or not (`like list`). A list `take` under a command is refused
+  // (decision term/003 part 1, test/compile/hook-route.ts)
   const join = dispatch(routes, ['join', 'The', 'Name', 'of', 'the', 'Rose'])
   expect('a list take collects every word left', join.ok && join.args.words, ['The', 'Name', 'of', 'the', 'Rose'])
   const gather = dispatch(routes, ['gather', 'a.txt', 'b.txt'])
@@ -155,7 +157,7 @@ function main(): void {
   expect('make face: path', b.ok && b.command, ['make', 'face'])
   expect('make face: arg', b.ok && b.args.name, 'y')
 
-  // positional bound to the first take
+  // positional bound to the first slot
   const c = dispatch(routes, ['load', 'mydeck'])
   expect('load positional -> task', c.ok && c.task, 'load-deck')
   expect('load positional -> name', c.ok && c.args.name, 'mydeck')
@@ -218,6 +220,50 @@ function main(): void {
   // the task's parameters are filled by name, whatever order the hook lists its takes in
   const pairCall = routes.find(route => route.path === 'pair')?.calls[0]
   expect('a bound call carries its task parameters', pairCall?.params, ['first', 'second'])
+
+  // ONE PROGRAM HOOK (decision term/003 part 3): its nested hooks are the commands and its takes the global options,
+  // accepted on every command and handed to the console (`globals`), never to the task. A positional binds to a slot
+  // only, and a long alias reaches its take
+  const PROGRAM = `task build
+  take file, like text
+  take ride, like boolean
+  send back
+    code 0
+
+hook tool
+  take quiet
+    like boolean
+    code q
+  take color
+    like text
+    pick auto
+    pick never
+    bind <auto>
+  hook build
+    slot file
+      like text
+    take ride, name watch
+      like boolean
+    task build
+`
+  const built = compile({ file: 'program.tree', text: PROGRAM }, {})
+
+  if (!built.ok) {
+    console.log('FAIL compile program', JSON.stringify(built.diagnostics.slice(0, 3)))
+    process.exit(1)
+  }
+
+  const program = commandRoutes(built.program)
+  expect('the program is read as its commands', programOf(program).commands.map(route => route.path), ['build'])
+  const run = dispatch(program, ['build', 'a.tree', '--watch', '-q', '--color', 'never'])
+  expect('a slot takes the positional', run.ok && run.args.file, 'a.tree')
+  expect('a long alias reaches its take', run.ok && run.args.ride, true)
+  expect('a global is the console\'s', run.ok && run.globals, { quiet: true, color: 'never' })
+  expect('and never the task\'s', run.ok && Object.keys(run.args).sort(), ['file', 'ride'])
+  const noSlot = dispatch(program, ['build', '--ride', 'a.tree', 'b.tree'])
+  expect('a word no slot holds is refused', noSlot.ok, false)
+  const badGlobal = dispatch(program, ['build', '--color', 'red'])
+  expect('a global\'s choices are checked', badGlobal.ok, false)
 
   console.log(`\nhook: ${pass} pass, ${fail} fail`)
 

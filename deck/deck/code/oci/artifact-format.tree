@@ -1,0 +1,942 @@
+# The OCI artifact a Term version is, built from a release and read back, with every rule it has to obey checked in
+# both directions (note/project/term/registry/18-oci-registry-default.md, "The artifact format"). Ported from
+# deck/deck/code/oci/artifact.ts (term-cli-in-term-0089): the media types, COMMIT_ANNOTATION, EMPTY_BYTES,
+# EMPTY_DESCRIPTOR, LIMITS, deckStatement, buildArtifact, checkClosure, parseDeckManifest, parseDeckConfig,
+# verifyDeckConfig, parseFilesLayer, openRemotePack, buildSignatureReferrer.
+#
+#   manifest   an OCI 1.1 image manifest, `artifactType` application/vnd.cluesurf.term.deck.v1
+#   config     who published what: package, version, tag, commit, tree, links, the key and the signature
+#   layer 0    the files layer: every file's path, mode, size and chunks, and where each packed object sits
+#   layer 1..  packs, from build-packs, byte for byte
+#   layer n..  loose objects: anything binary or of 64 KB or more, under its own id
+#
+# THE CLOSURE RULE. Every object the commit reaches is in a listed layer, either packed or loose. A registry
+# garbage-collects a blob no manifest references, and `oras pull` must fetch a complete version, so a manifest that
+# leans on another version's layers is refused here when it is built and again when it is read.
+#
+# THE SIGNED STATEMENT. The signature covers the package, the version, the tag, the commit, the tree's top node and the
+# links, not the commit alone, so none of the fields a resolver acts on can be changed without the key.
+#
+# The decisions:
+#   - every constant is a task (artifact-type(), config-media-type(), ..., empty-bytes(), empty-descriptor(),
+#     artifact-limits()), each answering a fresh value
+#   - every task takes positional parameters: build-artifact(release, read, package, version, tag, link, keypair,
+#     annotations), check-closure(closure, files, layers), verify-deck-config(config, manifest, package, tag, version)
+#     with tag and version none (undefined) where left out, parse-files-layer(bytes, manifest, config),
+#     open-remote-pack(bytes, expect), build-signature-referrer(subject, config)
+#   - every record that becomes JSON (a descriptor, the files layer, the config, the manifests) is built in a bind with
+#     the original's key order, so the bytes and their digests are the original's; a read checks what the original
+#     checked in the order it checked it, so a value the original stumbled on (a null manifest) throws the same error
+#   - every OciError is a halt of oci-failure (decision 007); packs are object/blob-packing.tree's, signatures
+#     object/id-signing.tree's, digests and descriptors registry-transport.tree's
+
+load ./oci-address
+  find is-digest
+
+load ./oci-failure
+  find oci-failure
+  find oci-failure-message
+
+load ./registry-transport
+  find manifest-media-type
+  find sha256-digest
+  find is-descriptor
+
+load ../object/blob-packing
+  find build-packs
+  find default-pack-params
+
+load ../object/id-signing
+  find sign-id
+  find verify-id
+
+dock load
+  load <node:zlib>, name node-zlib
+
+bind artifact-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind artifact-list
+  like dynamic
+  case node
+    text <[]>
+
+bind artifact-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind artifact-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind artifact-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind artifact-field
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind artifact-at
+  take items, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$items[$index]>
+
+bind artifact-push
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.push($item)>
+
+bind artifact-is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind artifact-from-json
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind artifact-to-bytes
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($value))>
+
+bind artifact-limits-record
+  like dynamic
+  case node
+    text <<({ config: 1048576, files: 268435456, pack: 67108864, packOpen: 268435456, object: 2147483648, layers: 100000 })>>
+
+bind artifact-empty-bytes
+  like dynamic
+  case node
+    text <Buffer.from("\{\}")>
+
+bind artifact-descriptor
+  take kind, like text
+  take digest, like text
+  take size, like number
+  like dynamic
+  case node
+    text <<({ mediaType: $kind, digest: $digest, size: $size })>>
+
+bind artifact-titled-descriptor
+  take kind, like text
+  take digest, like text
+  take size, like number
+  take title, like text
+  like dynamic
+  case node
+    text <<({ mediaType: $kind, digest: $digest, size: $size, annotations: { "org.opencontainers.image.title": $title } })>>
+
+bind artifact-blob
+  take descriptor, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ descriptor: $descriptor, bytes: $bytes })>>
+
+bind artifact-sorted-links
+  take links, like dynamic
+  like dynamic
+  case node
+    text <<[...$links].sort((one, two) => (one.deck < two.deck ? -1 : one.deck > two.deck ? 1 : 0))>>
+
+# the exact string a deck signature covers. Canonical: fixed key order, links sorted
+bind artifact-statement
+  take given, like dynamic
+  take kind, like text
+  like text
+  case node
+    text <<JSON.stringify({ type: $kind, package: $given.package, version: $given.version, tag: $given.tag, commit: $given.commit, tree: $given.tree, link: [...$given.link].sort((one, two) => (one.deck < two.deck ? -1 : one.deck > two.deck ? 1 : 0)).map(each => [each.deck, each.code]) })>>
+
+bind artifact-is-text
+  take bytes, like dynamic
+  like boolean
+  case node
+    text <<(() => { try { new TextDecoder("utf-8", { fatal: true }).decode($bytes); return true } catch { return false } })()>>
+
+bind artifact-read
+  take reader, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$reader($id)>
+
+bind artifact-object-title
+  take id, like text
+  like text
+  case node
+    text <<`object-${$id.slice(7)}`>>
+
+bind artifact-pack-title
+  take id, like text
+  like text
+  case node
+    text <<`pack-${$id.slice(7)}.gz`>>
+
+bind artifact-packable
+  take id, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ id: $id, path: $id, bytes: $bytes })>>
+
+# IN FILE ORDER: every file's chunks in path order, then the objects no file names (the version's index nodes and
+# commit) by id. The cuts are content-defined, so an unchanged run of files packs to the same digests, and a change
+# re-cuts only the packs around it (pnpm term:install-bench)
+bind artifact-sort-packable
+  take packable, like dynamic
+  take files, like dynamic
+  like void
+  case node
+    text <<((rank) => { for (const file of $files) for (const chunk of file.chunks) if (!rank.has(chunk)) rank.set(chunk, rank.size); $packable.sort((one, two) => { const left = rank.get(one.id) ?? Infinity; const right = rank.get(two.id) ?? Infinity; return left !== right ? left - right : one.id < two.id ? -1 : one.id > two.id ? 1 : 0 }) })(new Map())>>
+
+bind artifact-sort-loose
+  take loose, like dynamic
+  like void
+  case node
+    text <<$loose.sort((one, two) => (one.descriptor.digest < two.descriptor.digest ? -1 : 1))>>
+
+bind artifact-placed
+  take placement, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <<((at) => (at?.kind !== "pack" ? undefined : [$id, at.site, at.size]))($placement.get($id))>>
+
+bind artifact-files-layer
+  take package, like text
+  take version, like text
+  take release, like dynamic
+  take packs, like dynamic
+  like dynamic
+  case node
+    text <<({ v: 1, package: $package, version: $version, commit: $release.commit, files: $release.files.map(file => ({ path: file.path, mode: file.mode, size: file.size, chunks: file.chunks })), packs: $packs })>>
+
+bind artifact-pack-entry
+  take digest, like text
+  take objects, like dynamic
+  like dynamic
+  case node
+    text <<({ digest: $digest, objects: $objects })>>
+
+bind artifact-config
+  take package, like text
+  take version, like text
+  take tag, like text
+  take release, like dynamic
+  take links, like dynamic
+  take key, like text
+  take sig, like text
+  like dynamic
+  case node
+    text <<({ v: 1, package: $package, version: $version, tag: $tag, commit: $release.commit, tree: $release.root, link: $links, key: $key, sig: $sig })>>
+
+bind artifact-body
+  take package, like text
+  take version, like text
+  take tag, like text
+  take release, like dynamic
+  take links, like dynamic
+  like dynamic
+  case node
+    text <<({ package: $package, version: $version, tag: $tag, commit: $release.commit, tree: $release.root, link: $links })>>
+
+bind artifact-layers
+  take files, like dynamic
+  take packs, like dynamic
+  take loose, like dynamic
+  like dynamic
+  case node
+    text <<[$files, ...$packs, ...$loose]>>
+
+bind artifact-descriptors
+  take layers, like dynamic
+  like dynamic
+  case node
+    text <<$layers.map(layer => layer.descriptor)>>
+
+bind artifact-manifest
+  take kind, like text
+  take artifact, like text
+  take config, like dynamic
+  take layers, like dynamic
+  take annotations, like dynamic
+  take package, like text
+  take version, like text
+  take commit, like text
+  like dynamic
+  case node
+    text <<({ schemaVersion: 2, mediaType: $kind, artifactType: $artifact, config: $config, layers: $layers.map(layer => layer.descriptor), annotations: { ...$annotations, "org.opencontainers.image.title": $package, "org.opencontainers.image.version": $version, "surf.clue.term.commit": $commit } })>>
+
+bind artifact-built
+  take manifest, like dynamic
+  take digest, like text
+  take config, like dynamic
+  take files, like dynamic
+  take blobs, like dynamic
+  take packed, like number
+  take loose, like number
+  like dynamic
+  case node
+    text <<({ manifest: $manifest, digest: $digest, config: $config, files: $files, blobs: $blobs, packed: $packed, loose: $loose })>>
+
+bind artifact-with-first
+  take first, like dynamic
+  take rest, like dynamic
+  like dynamic
+  case node
+    text <<[$first, ...$rest]>>
+
+bind artifact-held-of
+  take layers, like dynamic
+  take kind, like text
+  like dynamic
+  case node
+    text <<new Set($layers.filter(layer => layer.mediaType === $kind).map(layer => layer.digest))>>
+
+bind artifact-set-has
+  take items, like dynamic
+  take item, like dynamic
+  like boolean
+  case node
+    text <$items.has($item)>
+
+bind artifact-set-add
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.add($item)>
+
+bind artifact-absent-of
+  take closure, like dynamic
+  take held, like dynamic
+  like dynamic
+  case node
+    text <<$closure.filter(id => !$held.has(id))>>
+
+bind artifact-media-type-or
+  take record, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <<($record.mediaType ?? $fallback)>>
+
+bind artifact-type-or
+  take record, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <<($record.artifactType ?? $fallback)>>
+
+bind artifact-layers-or-none
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<($record.layers ?? [])>>
+
+bind artifact-annotations-or-none
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<($record.annotations ?? {})>>
+
+bind artifact-of-type
+  take layers, like dynamic
+  take kind, like text
+  like dynamic
+  case node
+    text <<$layers.filter(layer => layer.mediaType === $kind)>>
+
+bind artifact-rest
+  take layers, like dynamic
+  like dynamic
+  case node
+    text <$layers.slice(1)>
+
+bind artifact-parsed-manifest
+  take record, like dynamic
+  take files, like dynamic
+  take packs, like dynamic
+  take loose, like dynamic
+  take commit, like dynamic
+  take annotations, like dynamic
+  like dynamic
+  case node
+    text <<({ config: $record.config, files: $files, packs: $packs, loose: $loose, commit: $commit, annotations: $annotations })>>
+
+# a config's shape, checked in the original's order, so a config that is not an object throws where the original threw
+bind artifact-config-is-sound
+  take config, like dynamic
+  like boolean
+  case node
+    text <<((said) => { const text = (value) => typeof value === "string" && value.length > 0 && value.length < 512; return !(said.v !== 1 || !text(said.package) || !text(said.version) || !text(said.tag) || !/^sha256:[a-f0-9]{64}$/.test(said.commit) || !/^sha256:[a-f0-9]{64}$/.test(said.tree) || !Array.isArray(said.link) || said.link.length > 10000 || !said.link.every(link => text(link?.deck) && text(link?.code)) || typeof said.key !== "string" || !/^[A-Za-z0-9+/]{40,200}={0,2}$/.test(said.key) || typeof said.sig !== "string" || !/^ed25519:[A-Za-z0-9+/]{80,100}={0,2}$/.test(said.sig)) })($config)>>
+
+bind artifact-files-is-sound
+  take files, like dynamic
+  take config, like dynamic
+  like boolean
+  case node
+    text <<!($files.v !== 1 || $files.commit !== $config.commit || !Array.isArray($files.packs) || !Array.isArray($files.files))>>
+
+bind artifact-pack-matches
+  take pack, like dynamic
+  take expected, like dynamic
+  like boolean
+  case node
+    text <<!($pack.digest !== $expected.digest || !Array.isArray($pack.objects))>>
+
+bind artifact-placement-is-sound
+  take entry, like dynamic
+  like boolean
+  case node
+    text <<!(!Array.isArray($entry) || !/^sha256:[a-f0-9]{64}$/.test($entry[0]) || !Number.isSafeInteger($entry[1]) || !Number.isSafeInteger($entry[2]))>>
+
+bind artifact-gunzip
+  take zlib, like dynamic
+  take bytes, like dynamic
+  take limit, like number
+  like dynamic
+  case node
+    text <<$zlib.gunzipSync($bytes, { maxOutputLength: $limit })>>
+
+bind artifact-toc-length
+  take raw, like dynamic
+  like number
+  case node
+    text <$raw.readUInt32BE(0)>
+
+bind artifact-toc
+  take raw, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <<JSON.parse($raw.subarray(4, 4 + $size).toString("utf8")).toc>>
+
+bind artifact-body-of
+  take raw, like dynamic
+  take size, like number
+  like dynamic
+  case node
+    text <$raw.subarray(4 + $size)>
+
+bind artifact-toc-count
+  take toc, like dynamic
+  like number
+  case node
+    text <(Array.isArray($toc) ? $toc.length : 0)>
+
+bind artifact-entry-placed
+  take entry, like dynamic
+  take expected, like dynamic
+  take room, like number
+  like boolean
+  case node
+    text <<((wanted) => !($entry.id !== wanted[0] || $entry.site !== wanted[1] || $entry.size !== wanted[2] || wanted[1] < 0 || wanted[2] < 0 || wanted[1] + wanted[2] > $room))($expected)>>
+
+bind artifact-opened
+  take body, like dynamic
+  take toc, like dynamic
+  like dynamic
+  case node
+    text <<({ body: $body, toc: $toc })>>
+
+bind artifact-signature-bytes
+  take statement, like text
+  take config, like dynamic
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ statement: $statement, sig: $config.sig, key: $config.key }))>>
+
+bind artifact-signature-manifest
+  take kind, like text
+  take artifact, like text
+  take empty, like dynamic
+  take layer, like dynamic
+  take subject, like dynamic
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: $kind, artifactType: $artifact, config: $empty, layers: [$layer.descriptor], subject: $subject }))>>
+
+bind artifact-referrer
+  take manifest, like dynamic
+  take layer, like dynamic
+  like dynamic
+  case node
+    text <<({ manifest: $manifest, layer: $layer })>>
+
+task artifact-type
+  like text
+
+  back <application/vnd.cluesurf.term.deck.v1>
+
+task config-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.deck.config.v1+json>
+
+task files-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.files.v1+json>
+
+task pack-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.pack.v1+gzip>
+
+task object-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.object.v1>
+
+task signature-artifact-type
+  like text
+
+  back <application/vnd.cluesurf.term.signature.v1>
+
+task signature-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.signature.v1+json>
+
+task empty-media-type
+  like text
+
+  back <application/vnd.oci.empty.v1+json>
+
+task commit-annotation
+  like text
+
+  back <surf.clue.term.commit>
+
+# the OCI empty descriptor's bytes: the two bytes `{}`
+task empty-bytes
+  like dynamic
+
+  back artifact-empty-bytes()
+
+task empty-descriptor
+  like dynamic
+
+  save bytes, empty-bytes()
+  back artifact-descriptor(empty-media-type(), sha256-digest(bytes), artifact-length(bytes))
+
+# what a reader will accept, so a hostile registry cannot make an install allocate without bound. `packOpen` is what
+# a pack may decompress to: `maxPack` is 1 MB of input, so it is generous and still bounded
+task artifact-limits
+  like dynamic
+
+  back artifact-limits-record()
+
+# the exact string a deck signature covers. Canonical: fixed key order, links sorted
+task deck-statement
+  take given, like dynamic
+  like text
+
+  back artifact-statement(given, artifact-type())
+
+# the closure rule: every object the commit reaches sits in a pack the files layer places it in, or is a loose layer
+task check-closure
+  take closure, like dynamic
+  take files, like dynamic
+  take layers, like dynamic
+  like void
+  halt oci-failure
+
+  save held, artifact-held-of(layers, object-media-type())
+  save pack-layers, artifact-held-of(layers, pack-media-type())
+  save packs, artifact-field(files, <packs>)
+  save count, artifact-length(packs)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save pack, artifact-at(packs, at)
+      save digest, artifact-field(pack, <digest>)
+      fork test, not(artifact-set-has(pack-layers, digest))
+        hold
+          halt oci-failure
+            bind thing, <the files layer places objects in pack {digest}, which the manifest does not list>
+      save objects, artifact-field(pack, <objects>)
+      save placed, artifact-length(objects)
+      save k, 0
+      walk test
+        hook test, is-below(k, placed)
+        hook hold
+          artifact-set-add(held, artifact-at(artifact-at(objects, k), 0))
+          save k, add(k, 1)
+      save at, add(at, 1)
+
+  save absent, artifact-absent-of(closure, held)
+  save missing, artifact-length(absent)
+  fork test, is-above(missing, 0)
+    hold
+      save first, artifact-at(absent, 0)
+      halt oci-failure
+        bind thing, <closure incomplete: {missing} objects are in no listed layer, the first {first}>
+
+# the artifact for a release. `read` answers any object of the closure. Deterministic: the same release, links and key
+# give the same manifest digest, which is what lets an unchanged republish be recognized
+task build-artifact
+  take release, like dynamic
+  take read, like dynamic
+  take package-name, like text
+  take version, like text
+  take tag, like text
+  take link, like dynamic
+  take keypair, like dynamic
+  take annotations, like dynamic
+  like dynamic
+
+  save packable, artifact-list()
+  save loose, artifact-list()
+  save threshold, default-pack-params()/loose-threshold
+  save closure, artifact-field(release, <closure>)
+  save count, artifact-length(closure)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save id, artifact-at(closure, at)
+      save bytes, wait artifact-read(read, id)
+      fork test, not(is-equal(sha256-digest(bytes), id))
+        hold
+          halt oci-failure
+            bind thing, <object {id} does not hash to its id, refusing to publish it>
+      save size, artifact-length(bytes)
+      fork test, or(not(is-below(size, threshold)), not(artifact-is-text(bytes)))
+        hold
+          artifact-push(loose, artifact-blob(artifact-titled-descriptor(object-media-type(), id, size, artifact-object-title(id)), bytes))
+        miss
+          artifact-push(packable, artifact-packable(id, bytes))
+      save at, add(at, 1)
+
+  artifact-sort-packable(packable, artifact-field(release, <files>))
+  artifact-sort-loose(loose)
+
+  save packing, build-packs(packable, default-pack-params())
+  save packs, packing/packs
+  save placement, packing/placement
+  save pack-layers, artifact-list()
+  save pack-entries, artifact-list()
+  walk packs
+    take pack
+    artifact-push(pack-layers, artifact-blob(artifact-titled-descriptor(pack-media-type(), pack/id, artifact-length(pack/bytes), artifact-pack-title(pack/id)), pack/bytes))
+    save objects, artifact-list()
+    walk pack/blobs
+      take blob-id
+      save placed, artifact-placed(placement, blob-id)
+      fork test, artifact-is-absent(placed)
+        hold
+          halt oci-failure
+            bind thing, <packed object {blob-id} has no placement>
+      artifact-push(objects, placed)
+    artifact-push(pack-entries, artifact-pack-entry(pack/id, objects))
+
+  save files, artifact-files-layer(package-name, version, release, pack-entries)
+  save files-bytes, artifact-to-bytes(files)
+  save files-layer, artifact-blob(artifact-titled-descriptor(files-media-type(), sha256-digest(files-bytes), artifact-length(files-bytes), <files.json>), files-bytes)
+
+  save links, artifact-sorted-links(link)
+  save body, artifact-body(package-name, version, tag, release, links)
+  save sig, sign-id(deck-statement(body), artifact-field(keypair, <privateKey>))
+  save config, artifact-config(package-name, version, tag, release, links, artifact-field(keypair, <publicKey>), sig)
+  save config-bytes, artifact-to-bytes(config)
+  save config-blob, artifact-blob(artifact-descriptor(config-media-type(), sha256-digest(config-bytes), artifact-length(config-bytes)), config-bytes)
+
+  save layers, artifact-layers(files-layer, pack-layers, loose)
+  check-closure(closure, files, artifact-descriptors(layers))
+
+  save manifest, artifact-manifest(manifest-media-type(), artifact-type(), artifact-field(config-blob, <descriptor>), layers, annotations, package-name, version, artifact-field(release, <commit>))
+  save manifest-bytes, artifact-to-bytes(manifest)
+  back artifact-built(manifest-bytes, sha256-digest(manifest-bytes), config, files, artifact-with-first(config-blob, layers), artifact-length(packable), artifact-length(loose))
+
+# a manifest's bytes read back, refusing anything that is not a Term deck artifact of exactly this shape
+task parse-deck-manifest
+  take bytes, like dynamic
+  like dynamic
+  halt oci-failure
+
+  save manifest, artifact-nothing()
+  fork
+    mark unsafe
+    save manifest, artifact-from-json(bytes)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <manifest is not JSON>
+
+  fork test, or(not(is-equal(artifact-field(manifest, <schemaVersion>), 2)), not(is-equal(artifact-field(manifest, <mediaType>), manifest-media-type())))
+    hold
+      save said, artifact-media-type-or(manifest, <no media type>)
+      halt oci-failure
+        bind thing, <manifest is not an OCI image manifest ({said})>
+
+  save artifact, artifact-field(manifest, <artifactType>)
+  fork test, not(is-equal(artifact, artifact-type()))
+    hold
+      save said, artifact-type-or(manifest, <plain image>)
+      halt oci-failure
+        bind thing, <manifest is a {said}, not a Term deck ({artifact-type()})>
+
+  save config, artifact-field(manifest, <config>)
+  fork test, or(not(is-descriptor(config)), not(is-equal(artifact-field(config, <mediaType>), config-media-type())))
+    hold
+      halt oci-failure
+        bind thing, <manifest config is not a Term deck config>
+
+  save layers, artifact-layers-or-none(manifest)
+  save sound, artifact-is-list(layers)
+  fork test, sound
+    hold
+      save count, artifact-length(layers)
+      fork test, or(is-equal(count, 0), is-above(count, 100000))
+        hold
+          save sound, false
+        miss
+          save at, 0
+          walk test
+            hook test, and(sound, is-below(at, count))
+            hook hold
+              fork test, not(is-descriptor(artifact-at(layers, at)))
+                hold
+                  save sound, false
+              save at, add(at, 1)
+  fork test, not(sound)
+    hold
+      halt oci-failure
+        bind thing, <manifest layers are malformed>
+
+  save files, artifact-at(layers, 0)
+  save rest, artifact-rest(layers)
+  fork test, not(is-equal(artifact-field(files, <mediaType>), files-media-type()))
+    hold
+      halt oci-failure
+        bind thing, <the first layer is not the files layer>
+
+  save packs, artifact-of-type(rest, pack-media-type())
+  save loose, artifact-of-type(rest, object-media-type())
+  fork test, not(is-equal(add(artifact-length(packs), artifact-length(loose)), artifact-length(rest)))
+    hold
+      halt oci-failure
+        bind thing, <manifest holds a layer of an unknown media type>
+
+  save annotations, artifact-annotations-or-none(manifest)
+  save commit, artifact-field(annotations, commit-annotation())
+  fork test, or(not(artifact-truthy(commit)), not(is-digest(commit)))
+    hold
+      halt oci-failure
+        bind thing, <manifest has no {commit-annotation()} annotation>
+
+  back artifact-parsed-manifest(manifest, files, packs, loose, commit, annotations)
+
+# a config blob read back, refusing anything malformed. The signature is verify-deck-config's to check
+task parse-deck-config
+  take bytes, like dynamic
+  like dynamic
+  halt oci-failure
+
+  save config, artifact-nothing()
+  fork
+    mark unsafe
+    save config, artifact-from-json(bytes)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <deck config is not JSON>
+
+  fork test, not(artifact-config-is-sound(config))
+    hold
+      halt oci-failure
+        bind thing, <deck config is malformed>
+  back config
+
+# a config verified: it names the package and tag it was fetched as, it agrees with its manifest about the commit, and
+# its signature verifies under its own key. Whether that KEY may publish the package is the trust policy's question
+task verify-deck-config
+  take config, like dynamic
+  take manifest, like dynamic
+  take package-name, like text
+  take tag, like dynamic
+  take version, like dynamic
+  like void
+  halt oci-failure
+
+  save named, artifact-field(config, <package>)
+  fork test, not(is-equal(named, package-name))
+    hold
+      halt oci-failure
+        bind thing, <the artifact is {named}, not {package-name}>
+
+  save signed-tag, artifact-field(config, <tag>)
+  fork test, and(not(artifact-is-absent(tag)), not(is-equal(signed-tag, tag)))
+    hold
+      halt oci-failure
+        bind thing, <tag {tag} serves an artifact signed for tag {signed-tag}>
+
+  save signed-version, artifact-field(config, <version>)
+  fork test, and(not(artifact-is-absent(version)), not(is-equal(signed-version, version)))
+    hold
+      halt oci-failure
+        bind thing, <expected {package-name}@{version}, the artifact is {signed-version}>
+
+  save commit, artifact-field(config, <commit>)
+  save listed, artifact-field(manifest, <commit>)
+  fork test, not(is-equal(commit, listed))
+    hold
+      halt oci-failure
+        bind thing, <config commit {commit} disagrees with the manifest's {listed}>
+
+  fork test, not(verify-id(deck-statement(config), artifact-field(config, <sig>), artifact-field(config, <key>)))
+    hold
+      halt oci-failure
+        bind thing, <the signature on {named}@{signed-version} does not verify>
+
+# the files layer read back and held to its manifest
+task parse-files-layer
+  take bytes, like dynamic
+  take manifest, like dynamic
+  take config, like dynamic
+  like dynamic
+  halt oci-failure
+
+  save files, artifact-nothing()
+  fork
+    mark unsafe
+    save files, artifact-from-json(bytes)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <files layer is not JSON>
+
+  fork test, not(artifact-files-is-sound(files, config))
+    hold
+      halt oci-failure
+        bind thing, <files layer is malformed or names another commit>
+
+  save packs, artifact-field(files, <packs>)
+  save listed, artifact-field(manifest, <packs>)
+  save count, artifact-length(packs)
+  save expected, artifact-length(listed)
+  fork test, not(is-equal(count, expected))
+    hold
+      halt oci-failure
+        bind thing, <files layer places objects in {count} packs, the manifest lists {expected}>
+
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save pack, artifact-at(packs, at)
+      fork test, not(artifact-pack-matches(pack, artifact-at(listed, at)))
+        hold
+          halt oci-failure
+            bind thing, <files layer pack {at} is not the manifest's pack {at}>
+      save objects, artifact-field(pack, <objects>)
+      save placed, artifact-length(objects)
+      save k, 0
+      walk test
+        hook test, is-below(k, placed)
+        hook hold
+          fork test, not(artifact-placement-is-sound(artifact-at(objects, k)))
+            hold
+              halt oci-failure
+                bind thing, <files layer pack {at} holds a malformed placement>
+          save k, add(k, 1)
+      save at, add(at, 1)
+  back files
+
+# a pack fetched from a registry opened: bounded decompression, a TOC that must fit inside the body, and the exact set
+# of objects the files layer said the pack holds. blob-packing's open-pack trusts its input, which is right for a pack
+# this process just built and wrong for one a registry sent
+task open-remote-pack
+  take bytes, like dynamic
+  take expect, like dynamic
+  like dynamic
+  halt oci-failure
+
+  save limit, 268435456
+  save raw, artifact-nothing()
+  fork
+    mark unsafe
+    save raw, artifact-gunzip(node-zlib, bytes, limit)
+  halt take
+    take problem
+    save said, oci-failure-message(problem)
+    halt oci-failure
+      bind thing, <pack does not decompress within {limit} bytes: {said}>
+
+  fork test, is-below(artifact-length(raw), 4)
+    hold
+      halt oci-failure
+        bind thing, <pack is truncated>
+
+  save size, artifact-toc-length(raw)
+  fork test, is-above(add(4, size), artifact-length(raw))
+    hold
+      halt oci-failure
+        bind thing, <pack table of contents runs past the pack>
+
+  save toc, artifact-nothing()
+  fork
+    mark unsafe
+    save toc, artifact-toc(raw, size)
+  halt take
+    take problem
+    halt oci-failure
+      bind thing, <pack table of contents is not JSON>
+
+  save body, artifact-body-of(raw, size)
+  save wanted, artifact-length(expect)
+  fork test, or(not(artifact-is-list(toc)), not(is-equal(artifact-toc-count(toc), wanted)))
+    hold
+      save held, artifact-toc-count(toc)
+      halt oci-failure
+        bind thing, <pack holds {held} objects, the files layer says {wanted}>
+
+  save room, artifact-length(body)
+  save at, 0
+  walk test
+    hook test, is-below(at, wanted)
+    hook hold
+      save expected, artifact-at(expect, at)
+      fork test, not(artifact-entry-placed(artifact-at(toc, at), expected, room))
+        hold
+          save id, artifact-at(expected, 0)
+          halt oci-failure
+            bind thing, <pack entry {at} is not where the files layer placed {id}>
+      save at, add(at, 1)
+
+  back artifact-opened(body, toc)
+
+# the signature referrer: an artifact whose subject is a version's manifest, readable by `oras discover`
+task build-signature-referrer
+  take subject, like dynamic
+  take config, like dynamic
+  like dynamic
+
+  save bytes, artifact-signature-bytes(deck-statement(config), config)
+  save layer, artifact-blob(artifact-descriptor(signature-media-type(), sha256-digest(bytes), artifact-length(bytes)), bytes)
+  save manifest, artifact-signature-manifest(manifest-media-type(), signature-artifact-type(), empty-descriptor(), layer, subject)
+  back artifact-referrer(manifest, layer)

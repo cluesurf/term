@@ -1,0 +1,122 @@
+# A release written back to disk. Ported from deck/deck/code/object/restore.ts (term-cli-in-term-0084): safeJoin,
+# restoreFiles, restoreVersion.
+#
+# A version is a flat set of file records (file-dataset.tree), so a restore reads the dataset, makes each path's
+# parent folders, and writes each file's chunks back in order: the folder tree comes from the paths, the way git's
+# index and tar both do it.
+#
+# The decisions:
+#   - a package file is the host record file-dataset answers; the store is the caller's host object (its `get`,
+#     awaited) and the chunk store save's own
+#   - a `.tree` kept as a record is written by save's formatTree, docked
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find starts-with
+
+load ./file-dataset
+  find files-of-dataset
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/tree/format>, name save-tree-format
+
+form folder-ask
+  link recursive, like boolean
+
+bind restore-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind restore-concat
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind restore-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# A path of a release never leaves the destination: a crafted `..` or an absolute path would write anywhere the process
+# reaches, so every path is resolved and checked against the destination before anything is made
+task safe-join
+  take dest, like text
+  take at, like text
+  like text
+
+  save target, node-path/resolve(dest, at)
+  save root, node-path/resolve(dest)
+  fork test, and(not(is-equal(target, root)), not(starts-with(target, <{root}{node-path/sep}>)))
+    hold
+      halt <path escapes the destination: {at}>
+  back target
+
+# one file's bytes written. A `.tree` is REGENERATED from its record by the canonical formatter, since it was parsed
+# rather than chunked on publish; anything else is rebuilt from its chunks in order
+task write-file
+  take file, like dynamic
+  take target, like text
+  take store, like dynamic
+  like void
+  mark private
+
+  save record, file/record
+  fork test, restore-truthy(record)
+    hold
+      fs-promise/write-file(target, save-tree-format/format-tree(record))
+      fork test, is-equal(file/mode, <exec>)
+        hold
+          fs-promise/chmod(target, 493)
+      back
+
+  save parts, make list
+  walk file/chunks
+    take id
+    save bytes, wait restore-store-get(store, id)
+    parts/push(bytes)
+  fs-promise/write-file(target, restore-concat(parts))
+  fork test, is-equal(file/mode, <exec>)
+    hold
+      fs-promise/chmod(target, 493)
+
+# every file of a version written into `dest`
+task restore-files
+  take files, like list, like dynamic
+  take dest, like text
+  take store, like dynamic
+  like void
+
+  fs-promise/mkdir(dest, make(folder-ask, bind(recursive, true)))
+  walk files
+    take file
+    save target, safe-join(dest, file/path)
+    # an empty folder is a record of its own, with no bytes
+    fork test, is-equal(file/mode, <dir>)
+      hold
+        fs-promise/mkdir(target, make(folder-ask, bind(recursive, true)))
+        turn next
+    fs-promise/mkdir(node-path/dirname(target), make(folder-ask, bind(recursive, true)))
+    write-file(file, target, store)
+
+# a version written out by its prolly-tree root; its files
+task restore-version
+  take root, like text
+  take dest, like text
+  take chunks, like dynamic
+  take store, like dynamic
+  like list, like dynamic
+
+  save files, files-of-dataset(save-tree/read-dataset(root, chunks))
+  restore-files(files, dest, store)
+  back files

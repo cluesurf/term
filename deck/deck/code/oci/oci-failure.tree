@@ -1,0 +1,73 @@
+# The one exception every oci port raises: a registry, a layout or an artifact refused, with the message the
+# original's OciError carried and the HTTP status where it had one (decision 007 of note/project/term/cli-in-term,
+# term-cli-in-term-0088). transport.ts's `class OciError extends Error` with an optional `status` is this form.
+#
+# The message is `thing`, failure's own prop: a raised exception's `note` is pinned, so a TypeScript reader of the
+# carrier's `message` sees the note. oci-failure-message reads the original's text back for any caught value, and
+# the test faces map the carrier to the original class until INTEGRATE moves the callers.
+
+load @term/base/exception
+  find failure
+
+form oci-failure
+  like failure
+    bind note, <OCI request failed>
+    link status, like number, need false
+
+bind failure-form-text
+  take problem, like dynamic
+  like text
+  case node
+    text <<((caught) => (caught !== null && typeof caught === "object" && typeof caught.form === "string" ? caught.form : ""))($problem)>>
+
+bind failure-status-number
+  take problem, like dynamic
+  like number
+  case node
+    text <<((caught) => (typeof caught?.link?.status === "number" ? caught.link.status : -1))($problem)>>
+
+bind failure-message-text
+  take problem, like dynamic
+  like text
+  case node
+    text <<((caught) => (caught?.form === "oci-failure" ? String(caught.link?.thing ?? "") : String(caught?.message ?? caught)))($problem)>>
+
+# whether a caught value is an oci-failure (the original's `error instanceof OciError`)
+task is-oci-failure
+  take problem, like dynamic
+  like boolean
+
+  back is-equal(failure-form-text(problem), <oci-failure>)
+
+# the status an oci-failure carries, or -1 when it carries none or is not one (the original's `error.status`, with
+# undefined as -1)
+task oci-failure-status
+  take problem, like dynamic
+  like number
+
+  fork test, not(is-oci-failure(problem))
+    hold
+      back -1
+  back failure-status-number(problem)
+
+# the text a caught value says: an oci-failure's message, or any other error's
+task oci-failure-message
+  take problem, like dynamic
+  like text
+
+  back failure-message-text(problem)
+
+# a probe raise, so the form is built and emitted (a pair and the faces read its shape)
+task raise-oci-failure
+  take message, like text
+  take status, like number
+  like void
+  halt oci-failure
+
+  fork test, is-below(status, 0)
+    hold
+      halt oci-failure
+        bind thing, message
+  halt oci-failure
+    bind thing, message
+    bind status, status

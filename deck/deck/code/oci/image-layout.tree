@@ -1,0 +1,1004 @@
+# An OCI image layout on disk, as a registry and as Term's local object store. Ported from deck/deck/code/oci/layout.ts
+# (term-cli-in-term-0090): initLayout, layoutTransport, layoutObjectStore.
+#
+#   <dir>/oci-layout              {"imageLayoutVersion":"1.0.0"}
+#   <dir>/index.json              one descriptor per tagged manifest, named by `org.opencontainers.image.ref.name`
+#   <dir>/blobs/sha256/<hex>      every blob, manifest and object, by digest
+#
+# Because a Term object id IS a sha256 digest, the object store and the blob store are one directory: an installed
+# object, a pack, a config and a manifest all sit in `blobs/sha256/`. That is what lets `term load --offline` read the
+# store as a registry, and `oras cp --from-oci-layout <dir>@sha256:<digest>` copy a version straight out of it.
+#
+# A blob is verified before it is written and written atomically, to a unique temporary name and renamed into place,
+# so a crash or two concurrent installs can never leave a partial or wrong blob under a digest. `index.json` is
+# rewritten under a lock file, because two installs racing on a read-modify-write would lose a tag.
+#
+# A layout holds tags for many repositories, so a tag's ref name is `<prefix><repository>:<tag>`, the full name
+# containerd also writes. A layout that `oras cp --to-oci-layout` wrote holds bare tags, and `bare` reads one.
+#
+# The decisions:
+#   - every task takes positional parameters: layout-transport(dir, prefix, bare) and layout-object-store(dir), prefix
+#     and bare none (undefined) where left out
+#   - a transport and a store are the original's host records of methods, each taking the original's one record; the
+#     layout made once per transport or store is a promise held in a host record, as the original's `ready`
+#   - the per-directory queue in front of the index lock is a host Map held by this module, as the original's
+#     module-level Map: a port that loads this module holds its own copy (traps, term-cli-in-term-0050)
+#   - every OciError is a halt of oci-failure (decision 007); a failure that is not one (a file system error, a JSON
+#     SyntaxError) passes through unchanged
+#   - every method is async, so the store's `has` and `missing` refuse a malformed id by a rejection where the
+#     original's `has` threw before answering a promise; an awaiting caller sees the same error
+
+load ./oci-address
+  find assert-digest
+  find assert-tag
+  find is-digest
+
+load ./oci-failure
+  find oci-failure
+
+load ./registry-transport
+  find assert-repository
+  find sha256-digest
+  find verify-digest
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
+
+form layout-try
+  link failed, like boolean
+  link problem, like dynamic
+  link answer, like dynamic
+
+bind layout-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind layout-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind layout-held
+  like dynamic
+  case node
+    text <<({ ready: undefined })>>
+
+bind layout-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind layout-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind layout-field
+  take record, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$record[$name]>
+
+bind layout-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind layout-at
+  take items, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$items[$index]>
+
+bind layout-push
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.push($item)>
+
+bind layout-list
+  like dynamic
+  case node
+    text <[]>
+
+bind layout-raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+bind layout-blob-file
+  take paths, like dynamic
+  take dir, like text
+  take digest, like text
+  like text
+  case node
+    text <$paths.join($dir, "blobs", "sha256", $digest.slice(7))>
+
+bind layout-join
+  take paths, like dynamic
+  take dir, like text
+  take name, like text
+  like text
+  case node
+    text <$paths.join($dir, $name)>
+
+bind layout-dirname
+  take paths, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$paths.dirname($file)>
+
+bind layout-resolve
+  take paths, like dynamic
+  take dir, like text
+  like text
+  case node
+    text <$paths.resolve($dir)>
+
+bind layout-access
+  take files, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$files.access($file)>
+
+bind layout-mkdir
+  take files, like dynamic
+  take dir, like text
+  like dynamic
+  case node
+    text <<$files.mkdir($dir, { recursive: true })>>
+
+bind layout-tmp-name
+  take hashing, like dynamic
+  take file, like text
+  like text
+  case node
+    text <<`${$file}.tmp-${$hashing.randomUUID()}`>>
+
+bind layout-write-new
+  take files, like dynamic
+  take file, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$files.writeFile($file, $bytes, { flag: "wx", mode: 0o644 })>>
+
+bind layout-rename
+  take files, like dynamic
+  take from, like text
+  take into, like text
+  like dynamic
+  case node
+    text <$files.rename($from, $into)>
+
+bind layout-unlink-quietly
+  take files, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <<$files.unlink($file).catch(() => {})>>
+
+bind layout-open
+  take files, like dynamic
+  take file, like text
+  take flags, like text
+  like dynamic
+  case node
+    text <$files.open($file, $flags)>
+
+bind layout-close
+  take handle, like dynamic
+  like dynamic
+  case node
+    text <$handle.close()>
+
+bind layout-handle-size
+  take handle, like dynamic
+  like dynamic
+  case node
+    text <<$handle.stat().then(found => found.size)>>
+
+bind layout-handle-read
+  take handle, like dynamic
+  like dynamic
+  case node
+    text <$handle.readFile()>
+
+bind layout-stat-quietly
+  take files, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <<$files.stat($file).catch(() => undefined)>>
+
+bind layout-is-stale
+  take found, like dynamic
+  like boolean
+  case node
+    text <<Boolean($found && Date.now() - $found.mtimeMs > 30000)>>
+
+bind layout-since
+  take started, like number
+  like number
+  case node
+    text <(Date.now() - $started)>
+
+bind layout-now
+  like number
+  case node
+    text <Date.now()>
+
+bind layout-error-code
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <$problem.code>
+
+bind layout-pause
+  take least, like number
+  like dynamic
+  case node
+    text <<new Promise(wake => setTimeout(wake, $least + Math.random() * 50))>>
+
+bind layout-run
+  take work, like dynamic
+  like dynamic
+  case node
+    text <$work()>
+
+bind layout-chain
+  take before, like dynamic
+  take next, like dynamic
+  like dynamic
+  case node
+    text <<$before.catch(() => {}).then($next)>>
+
+bind layout-promise
+  take promise, like dynamic
+  like dynamic
+  case node
+    text <$promise>
+
+bind layout-resolved
+  like dynamic
+  case node
+    text <Promise.resolve()>
+
+bind layout-map-has
+  take shelf, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$shelf.has($key)>
+
+bind layout-map-get
+  take shelf, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$shelf.get($key)>
+
+bind layout-map-set
+  take shelf, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <$shelf.set($key, $value)>
+
+bind layout-release-queue
+  take shelf, like dynamic
+  take key, like text
+  take run, like dynamic
+  like void
+  case node
+    text <<(($shelf.get($key) === $run) ? $shelf.delete($key) : undefined)>>
+
+bind layout-ready
+  take held, like dynamic
+  take starter, like dynamic
+  like dynamic
+  case node
+    text <($held.ready ??= $starter())>
+
+bind layout-file-text
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ imageLayoutVersion: "1.0.0" }))>>
+
+bind layout-empty-index
+  like dynamic
+  case node
+    text <<({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", manifests: [] })>>
+
+bind layout-index-bytes
+  take index, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($index, null, 2))>
+
+# the index read back, only its descriptors kept; anything unreadable is an empty index
+bind layout-read-index
+  take text, like text
+  like dynamic
+  case node
+    text <<((said) => ({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", manifests: (said.manifests ?? []).filter(entry => typeof entry === "object" && entry !== null && typeof entry.mediaType === "string" && typeof entry.digest === "string" && /^sha256:[a-f0-9]{64}$/.test(entry.digest) && Number.isSafeInteger(entry.size) && entry.size >= 0) }))(JSON.parse($text))>>
+
+bind layout-read-text
+  take files, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$files.readFile($file, "utf8")>
+
+bind layout-prefix
+  take prefix, like dynamic
+  like text
+  case node
+    text <<($prefix ? `${$prefix.replace(/\/+$/, "")}/` : "")>>
+
+bind layout-ref-name
+  take bare, like dynamic
+  take prefix, like text
+  take repository, like dynamic
+  take tag, like dynamic
+  like text
+  case node
+    text <<($bare ? $tag : `${$prefix}${$repository}:${$tag}`)>>
+
+bind layout-lead
+  take bare, like dynamic
+  take prefix, like text
+  take repository, like dynamic
+  like text
+  case node
+    text <<($bare ? "" : `${$prefix}${$repository}:`)>>
+
+bind layout-found-digest
+  take index, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<$index.manifests.find(entry => entry.annotations?.["org.opencontainers.image.ref.name"] === $name)?.digest>>
+
+bind layout-limit-of
+  take limit, like dynamic
+  take size, like dynamic
+  like number
+  case node
+    text <($size === undefined ? $limit : Math.min($limit, $size))>
+
+bind layout-parse
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind layout-fetched
+  take digest, like text
+  take parsed, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ digest: $digest, mediaType: $parsed.mediaType ?? "application/vnd.oci.image.manifest.v1+json", bytes: $bytes })>>
+
+bind layout-has-subject
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <Boolean($parsed.subject)>
+
+bind layout-add-referrer
+  take index, like dynamic
+  take kind, like text
+  take digest, like text
+  take size, like number
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <<(() => { if ($index.manifests.some(entry => entry.digest === $digest)) return false; $index.manifests.push({ mediaType: $kind, digest: $digest, size: $size, ...($parsed.artifactType ? { artifactType: $parsed.artifactType } : {}) }); return true })()>>
+
+bind layout-retag
+  take index, like dynamic
+  take kind, like text
+  take digest, like text
+  take size, like number
+  take parsed, like dynamic
+  take name, like text
+  like void
+  case node
+    text <<((made) => { $index.manifests = [...$index.manifests.filter(entry => entry.annotations?.["org.opencontainers.image.ref.name"] !== $name), made] })({ mediaType: $kind, digest: $digest, size: $size, ...($parsed.artifactType ? { artifactType: $parsed.artifactType } : {}), annotations: { "org.opencontainers.image.ref.name": $name } })>>
+
+bind layout-put-answer
+  take digest, like text
+  like dynamic
+  case node
+    text <<({ digest: $digest, subjectAccepted: true })>>
+
+bind layout-tags
+  take manifests, like dynamic
+  take lead, like text
+  like dynamic
+  case node
+    text <<((lead) => { const tags = []; for (const entry of $manifests) { const name = entry.annotations?.["org.opencontainers.image.ref.name"]; if (name?.startsWith(lead) && !name.slice(lead.length).includes(":")) tags.push(name.slice(lead.length)) } return tags })($lead)>>
+
+bind layout-refers-to
+  take manifest, like dynamic
+  take digest, like text
+  take kind, like dynamic
+  like boolean
+  case node
+    text <<($manifest.subject?.digest === $digest && (!$kind || $manifest.artifactType === $kind))>>
+
+bind layout-referrer
+  take entry, like dynamic
+  take manifest, like dynamic
+  like dynamic
+  case node
+    text <<({ mediaType: $entry.mediaType, digest: $entry.digest, size: $entry.size, artifactType: $manifest.artifactType })>>
+
+bind layout-transport-record
+  take label, like text
+  take holds, like dynamic
+  take pulls, like dynamic
+  take pushes, like dynamic
+  take reads, like dynamic
+  take writes, like dynamic
+  take lists, like dynamic
+  take refers, like dynamic
+  like dynamic
+  case node
+    text <<({ label: $label, hasBlob: $holds, getBlob: $pulls, putBlob: $pushes, getManifest: $reads, putManifest: $writes, listTags: $lists, referrers: $refers })>>
+
+bind layout-store-record
+  take holds, like dynamic
+  take gets, like dynamic
+  take puts, like dynamic
+  take lacks, like dynamic
+  like dynamic
+  case node
+    text <<({ has: $holds, get: $gets, put: $puts, missing: $lacks })>>
+
+# the per-directory queue in front of the index lock: within one process it serializes first, so the file lock only
+# ever arbitrates between processes
+host queues, layout-new-map()
+
+task blob-path
+  take dir, like text
+  take digest, like dynamic
+  like text
+  mark private
+
+  assert-digest(digest)
+  back layout-blob-file(node-path, dir, digest)
+
+task path-exists
+  take file, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    wait layout-access(fs-promise, file)
+    back true
+  halt take
+    take problem
+    back false
+
+task write-atomic
+  take file, like text
+  take bytes, like dynamic
+  like void
+  mark private
+
+  save tmp, layout-tmp-name(node-crypto, file)
+  fork
+    mark unsafe
+    wait layout-write-new(fs-promise, tmp, bytes)
+    wait layout-rename(fs-promise, tmp, file)
+  halt take
+    take problem
+    wait layout-unlink-quietly(fs-promise, tmp)
+    layout-raise-again(problem)
+
+# the layout's skeleton made if it is not there. Safe to call any number of times, from any number of processes
+task init-layout
+  take dir, like text
+  like void
+
+  wait layout-mkdir(fs-promise, layout-blob-file(node-path, dir, <sha256:>))
+  save marker, layout-join(node-path, dir, <oci-layout>)
+  save marked, path-exists(marker)
+  fork test, not(marked)
+    hold
+      write-atomic(marker, layout-file-text())
+  save index, layout-join(node-path, dir, <index.json>)
+  save indexed, path-exists(index)
+  fork test, not(indexed)
+    hold
+      write-atomic(index, layout-index-bytes(layout-empty-index()))
+
+# the open file read whole after its size is checked against the limit, and verified: the answer, or the failure
+task read-open-blob
+  take handle, like dynamic
+  take digest, like text
+  take limit, like number
+  like layout-try
+  mark private
+
+  fork
+    mark unsafe
+    save size, wait layout-handle-size(handle)
+    fork test, is-above(size, limit)
+      hold
+        halt oci-failure
+          bind thing, <blob {digest} is {size} bytes, over the {limit} byte limit>
+    save bytes, wait layout-handle-read(handle)
+    verify-digest(digest, bytes, <stored blob {digest}>)
+    back make(layout-try, bind(failed, false), bind(problem, layout-nothing()), bind(answer, bytes))
+  halt take
+    take problem
+    back make(layout-try, bind(failed, true), bind(problem, problem), bind(answer, layout-nothing()))
+
+task try-open
+  take file, like text
+  like layout-try
+  mark private
+
+  fork
+    mark unsafe
+    save handle, wait layout-open(fs-promise, file, <r>)
+    back make(layout-try, bind(failed, false), bind(problem, layout-nothing()), bind(answer, handle))
+  halt take
+    take problem
+    back make(layout-try, bind(failed, true), bind(problem, problem), bind(answer, layout-nothing()))
+
+# a stored blob read and verified, or none when it is not there
+task read-blob-file
+  take dir, like text
+  take digest, like dynamic
+  take limit, like number
+  like dynamic
+  mark private
+
+  save file, blob-path(dir, digest)
+  save opened, try-open(file)
+  fork test, opened/failed
+    hold
+      back layout-nothing()
+  save handle, opened/answer
+  save read, read-open-blob(handle, digest, limit)
+  wait layout-close(handle)
+  fork test, read/failed
+    hold
+      layout-raise-again(read/problem)
+  back read/answer
+
+task write-blob-file
+  take dir, like text
+  take digest, like dynamic
+  take bytes, like dynamic
+  like boolean
+  mark private
+
+  verify-digest(digest, bytes, <blob {digest}>)
+  save file, blob-path(dir, digest)
+  save held, path-exists(file)
+  fork test, held
+    hold
+      back false
+  wait layout-mkdir(fs-promise, layout-dirname(node-path, file))
+  write-atomic(file, bytes)
+  back true
+
+task try-lock
+  take lock, like text
+  like layout-try
+  mark private
+
+  fork
+    mark unsafe
+    save handle, wait layout-open(fs-promise, lock, <wx>)
+    wait layout-close(handle)
+    back make(layout-try, bind(failed, false), bind(problem, layout-nothing()), bind(answer, layout-nothing()))
+  halt take
+    take problem
+    back make(layout-try, bind(failed, true), bind(problem, problem), bind(answer, layout-nothing()))
+
+task run-work
+  take work, like dynamic
+  like layout-try
+  mark private
+
+  fork
+    mark unsafe
+    save answer, wait layout-run(work)
+    back make(layout-try, bind(failed, false), bind(problem, layout-nothing()), bind(answer, answer))
+  halt take
+    take problem
+    back make(layout-try, bind(failed, true), bind(problem, problem), bind(answer, layout-nothing()))
+
+# a cross-process lock on the layout's index: an exclusive create of `index.json.lock`, retried, and broken when it is
+# older than any honest holder would be
+task with-file-lock
+  take dir, like text
+  take work, like dynamic
+  like dynamic
+  mark private
+
+  save lock, layout-join(node-path, dir, <index.json.lock>)
+  save started, layout-now()
+  save waiting, true
+  walk test
+    hook test, waiting
+    hook hold
+      save tried, try-lock(lock)
+      fork test, not(tried/failed)
+        hold
+          save waiting, false
+        miss
+          save problem, tried/problem
+          fork test, not(is-equal(layout-error-code(problem), <EEXIST>))
+            hold
+              layout-raise-again(problem)
+          save found, wait layout-stat-quietly(fs-promise, lock)
+          fork test, layout-is-stale(found)
+            hold
+              wait layout-unlink-quietly(fs-promise, lock)
+            miss
+              fork test, is-above(layout-since(started), 60000)
+                hold
+                  halt oci-failure
+                    bind thing, <timed out waiting for the lock on {lock}>
+              wait layout-pause(25)
+
+  save done, run-work(work)
+  wait layout-unlink-quietly(fs-promise, lock)
+  fork test, done/failed
+    hold
+      layout-raise-again(done/problem)
+  back done/answer
+
+task with-index-lock
+  take dir, like text
+  take work, like dynamic
+  like dynamic
+  mark private
+
+  save key, layout-resolve(node-path, dir)
+  save before, layout-resolved()
+  fork test, layout-map-has(queues, key)
+    hold
+      save before, layout-map-get(queues, key)
+  save locked
+    task
+      like dynamic
+      mark async
+      back with-file-lock(dir, work)
+  save run, layout-chain(before, locked)
+  layout-map-set(queues, key, run)
+  save done, await-guarded(run)
+  layout-release-queue(queues, key, run)
+  fork test, done/failed
+    hold
+      layout-raise-again(done/problem)
+  back done/answer
+
+# a promise waited on under a guard: its answer, or its failure
+task await-guarded
+  take promise, like dynamic
+  like layout-try
+  mark private
+
+  fork
+    mark unsafe
+    save answer, wait layout-promise(promise)
+    back make(layout-try, bind(failed, false), bind(problem, layout-nothing()), bind(answer, answer))
+  halt take
+    take problem
+    back make(layout-try, bind(failed, true), bind(problem, problem), bind(answer, layout-nothing()))
+
+task read-index
+  take dir, like text
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save text, wait layout-read-text(fs-promise, layout-join(node-path, dir, <index.json>))
+    back layout-read-index(text)
+  halt take
+    take problem
+    back layout-empty-index()
+
+task write-index
+  take dir, like text
+  take index, like dynamic
+  like void
+  mark private
+
+  write-atomic(layout-join(node-path, dir, <index.json>), layout-index-bytes(index))
+
+# --- the transport's methods, each taking the layout's state and the original's one record
+
+task layout-get-blob
+  take dir, like text
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save digest, layout-field(asked, <digest>)
+  save size, layout-field(asked, <size>)
+  save limit, layout-limit-of(layout-field(asked, <limit>), size)
+  save bytes, read-blob-file(dir, digest, limit)
+  fork test, not(layout-truthy(bytes))
+    hold
+      halt oci-failure
+        bind thing, <blob {digest} is not in {dir}>
+        bind status, 404
+  fork test, and(not(layout-is-absent(size)), not(is-equal(layout-length(bytes), size)))
+    hold
+      save length, layout-length(bytes)
+      halt oci-failure
+        bind thing, <blob {digest} is {length} bytes, its descriptor says {size}>
+  back bytes
+
+task layout-get-manifest
+  take dir, like text
+  take prefix, like text
+  take bare, like dynamic
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save repository, layout-field(asked, <repository>)
+  save reference, layout-field(asked, <reference>)
+  assert-repository(repository)
+  save digest, reference
+  fork test, not(is-digest(reference))
+    hold
+      assert-tag(reference)
+      save name, layout-ref-name(bare, prefix, repository, reference)
+      save index, read-index(dir)
+      save found, layout-found-digest(index, name)
+      fork test, layout-is-absent(found)
+        hold
+          back layout-nothing()
+      save digest, found
+
+  save bytes, read-blob-file(dir, digest, 4194304)
+  fork test, not(layout-truthy(bytes))
+    hold
+      back layout-nothing()
+  back layout-fetched(digest, layout-parse(bytes), bytes)
+
+task layout-put-manifest
+  take dir, like text
+  take prefix, like text
+  take bare, like dynamic
+  take held, like dynamic
+  take starter, like dynamic
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save repository, layout-field(asked, <repository>)
+  save reference, layout-field(asked, <reference>)
+  save bytes, layout-field(asked, <bytes>)
+  save kind, layout-field(asked, <mediaType>)
+  assert-repository(repository)
+  wait layout-ready(held, starter)
+  save digest, sha256-digest(bytes)
+  write-blob-file(dir, digest, bytes)
+  save parsed, layout-parse(bytes)
+  save size, layout-length(bytes)
+
+  # an untagged referrer is listed in the index without a ref name, which is how a layout keeps it findable
+  save by-digest, is-digest(reference)
+  fork test, by-digest
+    hold
+      fork test, layout-has-subject(parsed)
+        hold
+          save listing
+            task
+              like void
+              mark async
+              save index, read-index(dir)
+              fork test, layout-add-referrer(index, kind, digest, size, parsed)
+                hold
+                  write-index(dir, index)
+          with-index-lock(dir, listing)
+
+  fork test, not(by-digest)
+    hold
+      assert-tag(reference)
+      save name, layout-ref-name(bare, prefix, repository, reference)
+      save tagging
+        task
+          like void
+          mark async
+          save index, read-index(dir)
+          layout-retag(index, kind, digest, size, parsed, name)
+          write-index(dir, index)
+      with-index-lock(dir, tagging)
+
+  back layout-put-answer(digest)
+
+task layout-referrers
+  take dir, like text
+  take asked, like dynamic
+  like dynamic
+  mark private
+
+  save digest, layout-field(asked, <digest>)
+  save kind, layout-field(asked, <artifactType>)
+  assert-digest(digest)
+  save out, layout-list()
+  save index, read-index(dir)
+  walk layout-field(index, <manifests>)
+    take entry
+    save read, read-quietly(dir, layout-field(entry, <digest>))
+    fork test, layout-truthy(read)
+      hold
+        save manifest, layout-parse(read)
+        fork test, layout-refers-to(manifest, digest, kind)
+          hold
+            layout-push(out, layout-referrer(entry, manifest))
+  back out
+
+# a stored manifest, or none when it cannot be read for any reason
+task read-quietly
+  take dir, like text
+  take digest, like dynamic
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    back read-blob-file(dir, digest, 4194304)
+  halt take
+    take problem
+    back layout-nothing()
+
+# an OCI image layout as a registry. Repositories share one blob store, and tags are told apart by ref name
+task layout-transport
+  take dir, like text
+  take prefix-given, like dynamic
+  take bare, like dynamic
+  like dynamic
+
+  save prefix, layout-prefix(prefix-given)
+  save held, layout-held()
+  save starter
+    task
+      like dynamic
+      mark async
+      init-layout(dir)
+
+  save has-blob
+    task
+      take asked, like dynamic
+      like boolean
+      mark async
+      back path-exists(blob-path(dir, layout-field(asked, <digest>)))
+  save get-blob
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back layout-get-blob(dir, asked)
+  save put-blob
+    task
+      take asked, like dynamic
+      like text
+      mark async
+      wait layout-ready(held, starter)
+      save written, write-blob-file(dir, layout-field(asked, <digest>), layout-field(asked, <bytes>))
+      fork test, written
+        hold
+          back <uploaded>
+      back <present>
+  save get-manifest
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back layout-get-manifest(dir, prefix, bare, asked)
+  save put-manifest
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back layout-put-manifest(dir, prefix, bare, held, starter, asked)
+  save list-tags
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      save repository, layout-field(asked, <repository>)
+      assert-repository(repository)
+      save lead, layout-lead(bare, prefix, repository)
+      save index, read-index(dir)
+      back layout-tags(layout-field(index, <manifests>), lead)
+  # a layout keeps a referrer findable by listing it in `index.json` too (the image-layout spec's rule), so the
+  # referrers are the indexed manifests whose `subject` is the digest asked about
+  save referrers
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back layout-referrers(dir, asked)
+
+  back layout-transport-record(<layout:{dir}>, has-blob, get-blob, put-blob, get-manifest, put-manifest, list-tags, referrers)
+
+# Term's local object store, kept in an OCI layout's blob directory. An object id is its digest, so this is the same
+# `blobs/sha256/<hex>` file a registry transport over the layout reads. Every put is verified and atomic, and every
+# get is re-hashed, so a corrupted file on disk is refused rather than checked out
+task layout-object-store
+  take dir, like text
+  like dynamic
+
+  save held, layout-held()
+  save starter
+    task
+      like dynamic
+      mark async
+      init-layout(dir)
+
+  save has
+    task
+      take id, like dynamic
+      like boolean
+      mark async
+      back path-exists(blob-path(dir, id))
+  save get
+    task
+      take id, like dynamic
+      like dynamic
+      mark async
+      save bytes, read-blob-file(dir, id, 9007199254740991)
+      fork test, not(layout-truthy(bytes))
+        hold
+          halt oci-failure
+            bind thing, <object {id} is not in the store at {dir}>
+            bind status, 404
+      back bytes
+  save put
+    task
+      take asked, like dynamic
+      like void
+      mark async
+      wait layout-ready(held, starter)
+      write-blob-file(dir, layout-field(asked, <id>), layout-field(asked, <bytes>))
+  save missing
+    task
+      take ids, like dynamic
+      like dynamic
+      mark async
+      save out, layout-list()
+      save count, layout-length(ids)
+      save at, 0
+      walk test
+        hook test, is-below(at, count)
+        hook hold
+          save id, layout-at(ids, at)
+          save present, path-exists(blob-path(dir, id))
+          fork test, not(present)
+            hold
+              layout-push(out, id)
+          save at, add(at, 1)
+      back out
+
+  back layout-store-record(has, get, put, missing)

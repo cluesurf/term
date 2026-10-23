@@ -1,0 +1,436 @@
+# The registry: its server-side operations and the client-facing registry record over them. Ported from
+# deck/deck/code/object/registry.ts (term-cli-in-term-0086): objectMatches, acceptObject, acceptPack, resolveRef,
+# publishCommit, scopeOf, directRegistry.
+#
+# The server holds an object store (the global content store) and a ref store (branches and versions). It finds
+# which of a set of object ids are missing (the FindMissingBlobs handshake), accepts a verified object or a pack of
+# them, resolves a ref to a commit, publishes a commit (its closure complete and signed, then a version created or a
+# branch moved), and reads the flat manifest.
+#
+# A registry is what a client talks to: direct-registry wraps a server's stores into one for in-process use and
+# tests, and registry-client.tree is the same record over HTTP (note/term/registry/04 and 05).
+#
+# The decisions:
+#   - every task takes positional parameters where the original took one record
+#   - the stores, the ref, the publish target and the scope-key lookup are the caller's host values, each read and
+#     called as the original did (a ref store's tasks take the original's one record, `expected` passed as the target
+#     holds it, so undefined and null stay apart)
+#   - a refusal is a failure carrying the original's message (the original an Error)
+#   - a registry is registry-client.tree's record of eight async tasks, the original's Registry shape
+
+load @term/base/list
+  find list
+
+load ./object-address
+  find hash-object
+  find is-object-id
+
+load ./blob-packing
+  find open-pack
+
+load ./object-closure
+  find build-manifest
+
+load ./release-building
+  find reachable-from-commit
+
+load ./id-signing
+  find verify-id
+
+form direct-registry-record
+  link find-missing
+    like task
+      mark async
+      take ids, like list, like text
+      like list, like text
+  link put-object
+    like task
+      mark async
+      take item, like dynamic
+      like void
+  link put-pack
+    like task
+      mark async
+      take pack, like dynamic
+      like void
+  link get-object
+    like task
+      mark async
+      take id, like text
+      like dynamic
+  link has-object
+    like task
+      mark async
+      take id, like text
+      like boolean
+  link resolve
+    like task
+      mark async
+      take asked, like dynamic
+      like text
+  link publish-commit
+    like task
+      mark async
+      take asked, like dynamic
+      like dynamic
+  link manifest
+    like task
+      mark async
+      take asked, like dynamic
+      like dynamic
+
+bind operations-store-put
+  take shelf, like dynamic
+  take id, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$shelf.put({ id: $id, bytes: $bytes })>>
+
+bind operations-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind operations-store-has
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.has($id)>
+
+bind operations-store-missing
+  take shelf, like dynamic
+  take ids, like dynamic
+  like dynamic
+  case node
+    text <$shelf.missing($ids)>
+
+bind operations-set-list
+  take ids, like dynamic
+  like list, like text
+  case node
+    text <Array.from($ids)>
+
+bind operations-copy-bytes
+  take open, like dynamic
+  take site, like number
+  take size, like number
+  like dynamic
+  case node
+    text <Buffer.from($open.body.subarray($site, $site + $size))>
+
+bind operations-get-version
+  take refs, like dynamic
+  take name, like text
+  take version, like text
+  like dynamic
+  case node
+    text <<$refs.getVersion({ package: $name, version: $version })>>
+
+bind operations-get-branch
+  take refs, like dynamic
+  take name, like text
+  take branch, like text
+  like dynamic
+  case node
+    text <<$refs.getBranch({ package: $name, branch: $branch })>>
+
+bind operations-create-version
+  take refs, like dynamic
+  take name, like text
+  take version, like text
+  take commit, like text
+  like dynamic
+  case node
+    text <<$refs.createVersion({ package: $name, version: $version, commit: $commit })>>
+
+bind operations-set-branch
+  take refs, like dynamic
+  take name, like text
+  take target, like dynamic
+  take commit, like text
+  like dynamic
+  case node
+    text <<$refs.setBranch({ package: $name, branch: $target.branch, commit: $commit, expected: $target.expected })>>
+
+bind operations-falsy
+  take value, like dynamic
+  like boolean
+  case node
+    text <!$value>
+
+bind operations-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind operations-scope-keys
+  take lookup, like dynamic
+  take scope, like text
+  like dynamic
+  case node
+    text <$lookup($scope)>
+
+bind operations-includes
+  take allowed, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$allowed.includes($key)>
+
+bind operations-count
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind operations-scope-of
+  take name, like text
+  like text
+  case node
+    text <<((slash) => (slash > 0 ? $name.slice(0, slash) : $name))($name.indexOf("/"))>>
+
+bind operations-published
+  take ref, like text
+  like dynamic
+  case node
+    text <<({ ok: true, ref: $ref })>>
+
+bind operations-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# the kinds tried in turn to recover an object's kind from its bytes: domain separation lets at most one match an id
+task object-kinds
+  like list, like text
+  mark private
+
+  save kinds, make list
+  kinds/push(<chunk>)
+  kinds/push(<blob>)
+  kinds/push(<tree>)
+  kinds/push(<commit>)
+  back kinds
+
+# whether `bytes` hash to `id` under any object kind
+task object-matches
+  take id, like text
+  take bytes, like dynamic
+  like boolean
+
+  walk object-kinds()
+    take kind
+    fork test, is-equal(hash-object(kind, bytes), id)
+      hold
+        back true
+  back false
+
+# an object's bytes checked against its claimed id (under some kind, so the wire never carries the kind), then
+# stored: a mismatched object is refused outright
+task accept-object
+  take store, like dynamic
+  take id, like text
+  take bytes, like dynamic
+  like void
+
+  fork test, not(is-object-id(id))
+    hold
+      halt <malformed object id: {id}>
+  fork test, not(object-matches(id, bytes))
+    hold
+      halt <object hash mismatch for {id}>
+  wait operations-store-put(store, id, bytes)
+
+# a pack opened, and every object it holds checked against its own id and stored, as if each had been PUT alone (the
+# pack is only a container and cannot smuggle a wrong object): the count of objects
+task accept-pack
+  take store, like dynamic
+  take bytes, like dynamic
+  like number
+
+  save open, open-pack(bytes)
+  walk open/toc
+    take entry
+    accept-object(store, entry/id, operations-copy-bytes(open, entry/site, entry/size))
+  back open/toc/length
+
+# the commit a ref names
+task resolve-ref
+  take refs, like dynamic
+  take package-name, like text
+  take ref, like dynamic
+  like text
+
+  save kind, operations-text(ref/kind)
+  fork test, is-equal(kind, <commit>)
+    hold
+      back ref/commit
+
+  fork test, is-equal(kind, <version>)
+    hold
+      save version, ref/version
+      save found, wait operations-get-version(refs, package-name, version)
+      fork test, operations-falsy(found)
+        hold
+          halt <no such version {package-name}@{version}>
+      back found
+
+  save branch, ref/branch
+  save on-branch, wait operations-get-branch(refs, package-name, branch)
+  fork test, operations-falsy(on-branch)
+    hold
+      halt <no such branch {package-name}#{branch}>
+  back on-branch
+
+# a commit published: signed by a key the scope allows, its whole object closure in the store, then an immutable
+# version created (write-once) or a branch fast-forwarded. The atomic commit step (note/term/registry/04)
+task publish-commit
+  take store, like dynamic
+  take refs, like dynamic
+  take scope-keys, like dynamic
+  take package-name, like text
+  take target, like dynamic
+  take commit, like text
+  take sig, like text
+  take key, like text
+  like dynamic
+
+  # 1. the signature over the commit id, against a key authorized for the scope
+  save scope, scope-of(package-name)
+  save allowed, wait operations-scope-keys(scope-keys, scope)
+  fork test, not(operations-includes(allowed, key))
+    hold
+      halt <key not authorized for scope {scope}>
+  fork test, not(verify-id(commit, sig, key))
+    hold
+      halt <invalid signature for {commit}>
+
+  # 2. the commit's whole closure in the store
+  save closure, reachable-from-commit(commit, store)
+  save missing, wait operations-store-missing(store, operations-set-list(closure))
+  save missing-count, operations-count(missing)
+  fork test, is-above(missing-count, 0)
+    hold
+      halt <commit {commit} closure incomplete: {missing-count} objects missing>
+
+  # 3. the ref: a write-once version, or a fast-forwarded branch
+  fork test, is-equal(operations-text(target/kind), <version>)
+    hold
+      save version, target/version
+      save refused, wait operations-create-version(refs, package-name, version, commit)
+      fork test, operations-truthy(refused)
+        hold
+          halt <version {package-name}@{version} already published>
+      back operations-published(<version/{version}>)
+
+  save moved, wait operations-set-branch(refs, package-name, target, commit)
+  save branch, target/branch
+  fork test, operations-truthy(moved)
+    hold
+      halt <branch {package-name}#{branch} moved under you (fast-forward required)>
+  back operations-published(<branch/{branch}>)
+
+# the scope (`@term`) of a package name (`@term/bind`): the part before its first slash, or the whole name
+task scope-of
+  take package-name, like text
+  like text
+
+  back operations-scope-of(package-name)
+
+# the label a ref is read under in a manifest
+task ref-label
+  take ref, like dynamic
+  like text
+  mark private
+
+  save kind, operations-text(ref/kind)
+  fork test, is-equal(kind, <version>)
+    hold
+      back ref/version
+  fork test, is-equal(kind, <branch>)
+    hold
+      back ref/branch
+  back ref/commit
+
+# a server's stores wrapped into a registry, for in-process use and tests
+task direct-registry
+  take store, like dynamic
+  take refs, like dynamic
+  take scope-keys, like dynamic
+  like direct-registry-record
+
+  save find-missing-ids
+    task
+      take ids, like list, like text
+      like list, like text
+      mark async
+      back wait operations-store-missing(store, ids)
+
+  save put-one
+    task
+      take item, like dynamic
+      like void
+      mark async
+      accept-object(store, item/id, item/bytes)
+
+  save put-many
+    task
+      take pack, like dynamic
+      like void
+      mark async
+      accept-pack(store, pack/bytes)
+
+  save get-one
+    task
+      take id, like text
+      like dynamic
+      mark async
+      back wait operations-store-get(store, id)
+
+  save has-one
+    task
+      take id, like text
+      like boolean
+      mark async
+      back wait operations-store-has(store, id)
+
+  save resolve-one
+    task
+      take asked, like dynamic
+      like text
+      mark async
+      back resolve-ref(refs, asked/package, asked/ref)
+
+  save publish-one
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      back publish-commit(store, refs, scope-keys, asked/package, asked/target, asked/commit, asked/sig, asked/key)
+
+  save manifest-of
+    task
+      take asked, like dynamic
+      like dynamic
+      mark async
+      save ref, asked/ref
+      save package-name, asked/package
+      save commit, resolve-ref(refs, package-name, ref)
+      back build-manifest(commit, ref-label(ref), package-name, store)
+
+  back
+    make direct-registry-record
+      bind find-missing, find-missing-ids
+      bind put-object, put-one
+      bind put-pack, put-many
+      bind get-object, get-one
+      bind has-object, has-one
+      bind resolve, resolve-one
+      bind publish-commit, publish-one
+      bind manifest, manifest-of

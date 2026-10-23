@@ -1,5 +1,3 @@
-mark draft
-
 # `term hold --lean`: the second checker over a project's claims, ported from call/code/hold-lean.ts
 # (term-cli-in-term-0048; note/project/term/proof/lean-export/spec.md). After the gate every claim of the project (a
 # `rule` with no `show`) is exported with the terms Term's kernel kept, to ONE Lean 4 file under the project's home
@@ -118,27 +116,29 @@ bind exported-diagnostics
   case node
     text <$exported.kernel.diagnostics>
 
-# the exporter's reason for a claim it refused, the empty text for one it did not
+# the exporter's reason for a claim it refused, the empty text for one it did not: the LAST it gave for that name,
+# as the original's Map of name to reason kept. A bind's argument is spliced in as written, so a callback's parameter
+# here is named so no caller's expression (`one.name`) can capture it
 bind refused-reason
   take exported, like dynamic
   take name, like text
   like text
   case node
-    text <<($exported.refused.find(one => one.name === $name)?.reason ?? "")>>
+    text <<(new Map($exported.refused.map(refusal_ => [refusal_.name, refusal_.reason])).get($name) ?? "")>>
 
 bind was-refused
   take exported, like dynamic
   take name, like text
   like boolean
   case node
-    text <<$exported.refused.some(one => one.name === $name)>>
+    text <<$exported.refused.some(refusal_ => refusal_.name === $name)>>
 
 bind was-exported
   take exported, like dynamic
   take name, like text
   like boolean
   case node
-    text <<$exported.exported.some(entry => entry.claim && entry.name === $name)>>
+    text <<$exported.exported.some(entry_ => entry_.claim && entry_.name === $name)>>
 
 bind run-lean
   take running, like dynamic
@@ -163,7 +163,7 @@ bind verdict-of
   take name, like text
   like dynamic
   case node
-    text <<$run?.claims.find(one => one.name === $name)>>
+    text <<$run?.claims.find(verdict_ => verdict_.name === $name)>>
 
 bind verdict-word
   take verdict, like dynamic
@@ -542,7 +542,7 @@ task report-lean
           link version
           fork test, lean-truth(version)
             hold
-              save shown, < {version-text(version)}>
+              save shown, < {lean-version-text(version)}>
         case none
           save shown, shown
       save subject, <{of-verdict(result, <checked>)} of {result/claims/length} claims checked by Lean{shown}>
@@ -561,7 +561,7 @@ task report-lean
       save total, total
   report(total)
 
-bind version-text
+bind lean-version-text
   take version, like dynamic
   like text
   case node
