@@ -43,11 +43,18 @@ for (const [member, upper, plain] of [
   ['file-url-to-path', 'fileURLToPath', 'fileUrlToPath'],
 ] as const) {
   const result = compile({ file: 'main.tree', text: [...dock, ...task('one', member)].join('\n') }, { resolve: () => undefined })
-  const said = result.ok ? 'built' : result.diagnostics.map(d => `${d.name ?? ''} ${d.message}`).join(' | ')
+  const said = result.ok ? 'built' : result.diagnostics.map(d => `${d.name} ${d.code} ${d.message}`).join(' | ')
 
   ok(`host-module/${member} is refused`, !result.ok, said)
-  ok(`  as dock-member-spelling`, !result.ok && result.diagnostics.some(d => /dock-member-spelling/.test(String(d.name ?? d.code ?? '')) || /could be/.test(d.message)), said)
+  ok(`  as dock-member-spelling, an error`, !result.ok && result.diagnostics.some(d => d.name === 'dock-member-spelling' && d.code === 0x43 && d.severity === 'error'), said)
   ok(`  naming ${upper} and ${plain}`, !result.ok && result.diagnostics.some(d => d.message.includes(upper) && d.message.includes(plain)), said)
+}
+
+// the refusal is made before any backend: the same on rust, swift and kotlin
+for (const env of ['rust', 'swift', 'kotlin'] as const) {
+  const result = compile({ file: 'main.tree', text: [...dock, ...task('one', 'to-json-value')].join('\n') }, { resolve: () => undefined, env })
+
+  ok(`refused on ${env}`, !result.ok && result.diagnostics.some(d => d.name === 'dock-member-spelling'), result.ok ? 'built' : result.diagnostics[0]?.message)
 }
 
 // a lean call of the same member is refused too

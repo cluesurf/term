@@ -4,12 +4,16 @@
 // and native-runtime reader so both the `term test` CLI (project resolver) and the dev harness (stdlib tree) reuse
 // it. Pure logic, no process exit, no printing. See note/library/seed/test-dsl.md.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { hashText } from '@term/make/code/term/hash'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { buildSync, transformSync, version as esbuildVersion } from 'esbuild'
+import { dirname, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { build, version as esbuildVersion } from 'esbuild'
+import type { Plugin } from 'esbuild'
+import { findProjectRoot } from '@term/make/code/resolve'
+import { nodeBanner } from '@term/call/code/boot-plan'
+import { projectCacheDir } from '@term/call/code/cache-store'
 import { compileSeparate } from '@term/make/code/compile/separate'
 import type { UnitMemo } from '@term/make/code/compile/separate'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -135,56 +139,326 @@ function compileUnits(
   }
 }
 
+// ---- a program's docks, resolved as the project's own build resolves them (decision 009) ----
+//
+// `term test` and `term boot` bundle a program INSIDE its project and resolve every bare dock by one rule: a specifier
+// the project's nearest tsconfig.json `paths` maps is inlined from source, as make:line inlines a port that docks
+// `@term/make/code/...`, and every other bare one stays external and resolves from the project at run time (its own
+// node_modules, then the install's linked beside the module). A module in os.tmpdir() found neither.
+
+// the nearest tsconfig.json at or above `root`, none when no folder up to the disk's root holds one
+export function nearestTsconfig(root: string): string | undefined {
+  let dir = root
+
+  for (;;) {
+    const file = join(dir, 'tsconfig.json')
+
+    if (existsSync(file)) {
+      return file
+    }
+
+    const up = dirname(dir)
+
+    if (up === dir) {
+      return undefined
+    }
+
+    dir = up
+  }
+}
+
+// a tsconfig's text as JSON: its comments and trailing commas taken out, strings kept whole
+function tsconfigJson(text: string): Record<string, unknown> {
+  let out = ''
+  let at = 0
+
+  while (at < text.length) {
+    const char = text[at]!
+
+    if (char === '"') {
+      let end = at + 1
+
+      while (end < text.length && text[end] !== '"') {
+        end += text[end] === '\\' ? 2 : 1
+      }
+
+      out += text.slice(at, end + 1)
+      at = end + 1
+    } else if (char === '/' && text[at + 1] === '/') {
+      while (at < text.length && text[at] !== '\n') at++
+    } else if (char === '/' && text[at + 1] === '*') {
+      const end = text.indexOf('*/', at + 2)
+      at = end < 0 ? text.length : end + 2
+    } else {
+      out += char
+      at++
+    }
+  }
+
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')) as Record<string, unknown>
+}
+
+// the specifiers a tsconfig's `paths` maps, each key as written (`@term/make/*`), following a relative `extends` (eight
+// deep at most) when a file has no `paths`. Unreadable: none
+export function tsconfigPathKeys(tsconfig: string): string[] {
+  let file = tsconfig
+
+  try {
+    for (let depth = 0; depth < 8; depth++) {
+      const json = tsconfigJson(readFileSync(file, 'utf8'))
+      const options = (json.compilerOptions ?? {}) as { paths?: Record<string, unknown> }
+
+      if (options.paths !== undefined) {
+        return Object.keys(options.paths)
+      }
+
+      const base = typeof json.extends === 'string' && json.extends.startsWith('.') ? json.extends : ''
+
+      if (base === '') {
+        return []
+      }
+
+      file = resolvePath(dirname(file), base.endsWith('.json') ? base : `${base}.json`)
+
+      if (!existsSync(file)) {
+        return []
+      }
+    }
+  } catch {
+    // unreadable: none
+  }
+
+  return []
+}
+
+// whether a `paths` key maps a specifier: `x/*` every specifier under `x/`, a key with no star that one alone
+export function pathKeyMaps(key: string, specifier: string): boolean {
+  const star = key.indexOf('*')
+
+  if (star < 0) {
+    return specifier === key
+  }
+
+  return specifier.length >= key.length - 1 && specifier.startsWith(key.slice(0, star)) && specifier.endsWith(key.slice(star + 1))
+}
+
+// the esbuild options of a bundle that resolves its docks by the rule: the tsconfig, and a plugin that leaves a mapped
+// specifier to esbuild (which applies the tsconfig's paths) and marks every other bare one external. esbuild's own
+// `packages: 'external'` is not used: it decides by the specifier's look, before any tsconfig
+export function dockOptions(root: string): { tsconfig?: string; plugins: Plugin[] } {
+  const tsconfig = nearestTsconfig(root)
+  const keys = tsconfig ? tsconfigPathKeys(tsconfig) : []
+  const plugin: Plugin = {
+    name: 'term-docks',
+    setup(on) {
+      // a bare specifier: neither relative nor absolute
+      on.onResolve({ filter: /^[^./]/ }, args => {
+        if (isAbsolute(args.path) || keys.some(key => pathKeyMaps(key, args.path))) {
+          return undefined
+        }
+
+        return { path: args.path, external: true }
+      })
+    },
+  }
+
+  return { ...(tsconfig ? { tsconfig } : {}), plugins: [plugin] }
+}
+
+// the `require` a node bundle is given, anchored at the project and not the bundle (boot-plan.tree `node-banner`)
+export function projectBanner(root: string): string {
+  return nodeBanner(JSON.stringify(join(root, 'index.js')))
+}
+
+// one source a bundle inlined, and its content's hash
+export type InlinedSource = { path: string; hash: string }
+
+// the content hash of each file read this process, by path, size and time, so a warm run reads a file it inlined once
+const HASHES = new Map<string, { size: number; time: number; hash: string }>()
+
+// a file's content hash, the empty text when it cannot be read
+export function sourceHash(file: string): string {
+  try {
+    const stat = statSync(file)
+    const known = HASHES.get(file)
+
+    if (known && known.size === stat.size && known.time === stat.mtimeMs) {
+      return known.hash
+    }
+
+    const hash = createHash('sha256').update(readFileSync(file)).digest('hex')
+    HASHES.set(file, { size: stat.size, time: stat.mtimeMs, hash })
+
+    return hash
+  } catch {
+    return ''
+  }
+}
+
+// a program bundled by the rule: its text, and every source outside `own` (the folder its entry was written in) that it
+// inlined, with each one's hash, which a kept bundle is checked against
+export async function bundleDocks(input: {
+  root: string
+  entry: string
+  own: string
+  banner?: string
+  platform?: 'node' | 'browser'
+}): Promise<{ text: string; inlined: InlinedSource[] }> {
+  const bundled = await build({
+    entryPoints: [input.entry],
+    absWorkingDir: input.root,
+    bundle: true,
+    format: 'esm',
+    platform: input.platform ?? 'node',
+    write: false,
+    metafile: true,
+    ...dockOptions(input.root),
+    ...(input.banner ? { banner: { js: input.banner } } : {}),
+  })
+  const inlined: InlinedSource[] = []
+
+  for (const key of Object.keys(bundled.metafile!.inputs).sort()) {
+    const file = resolvePath(input.root, key)
+    const inside = relative(input.own, file)
+
+    // the program's own modules are named by the key it is kept under; a namespaced input is no file
+    if ((!inside.startsWith('..') && !isAbsolute(inside)) || key.includes(':')) {
+      continue
+    }
+
+    const hash = sourceHash(file)
+
+    if (hash !== '') {
+      inlined.push({ path: file, hash })
+    }
+  }
+
+  return { text: bundled.outputFiles![0]!.text, inlined }
+}
+
+// whether every source a kept bundle inlined still holds what it held
+export function inlinedHold(inlined: InlinedSource[]): boolean {
+  return inlined.every(one => sourceHash(one.path) === one.hash)
+}
+
+// the node_modules of the toolchain running this, linked beside a module so a dock the project does not carry resolves
+// through the install (call/code/boot.ts does the same beside a boot bundle)
+export function linkInstallModules(dir: string): void {
+  const install = installModules()
+  const beside = join(dir, 'node_modules')
+
+  if (install === undefined || existsSync(beside)) {
+    return
+  }
+
+  try {
+    symlinkSync(install, beside, 'dir')
+  } catch {
+    // a link made meanwhile, or none allowed: the project's own node_modules still resolve
+  }
+}
+
+// the nearest node_modules above this module: the install's, or the checkout's
+function installModules(): string | undefined {
+  let dir = dirname(fileURLToPath(import.meta.url))
+
+  for (;;) {
+    const at = join(dir, 'node_modules')
+
+    if (existsSync(at)) {
+      return at
+    }
+
+    const up = dirname(dir)
+
+    if (up === dir) {
+      return undefined
+    }
+
+    dir = up
+  }
+}
+
+// a text written whole or not at all, so a reader never meets half a file
+function writeWhole(file: string, text: string): void {
+  const part = `${file}.${process.pid}.part`
+  writeFileSync(part, text)
+  renameSync(part, file)
+}
+
 // every module of a unit build written beside one another, and bundled from the test file's own into one module with
 // the native prelude in front of it, which every module's shims are then in scope of. A bundle is decided by the test
-// file's closure and its prelude, so it is kept under the project's cache by both and reused while neither moves,
-// which leaves a warm run nothing to do for a file but run it
-function bundleUnits(built: Extract<UnitsBuilt, { ok: true }>, prelude: string, dir: string, units: TestUnits): string {
+// file's closure, its prelude and every source it inlined, so it is kept under the project's cache by all three and
+// reused while none moves, which leaves a warm run nothing to do for a file but run it. Answers the file to import
+async function bundleUnits(built: Extract<UnitsBuilt, { ok: true }>, prelude: string, root: string, units: TestUnits): Promise<string> {
   // the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
   const kept = units.bundles
-  const at = join(
-    kept,
-    `${hashText(`${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`)}.mjs`,
-  )
+  const key = hashText(`${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`)
+  const at = join(kept, `${key}.mjs`)
+  const listed = join(kept, `${key}.inputs.json`)
 
-  if (existsSync(at)) {
-    return readFileSync(at, 'utf8')
+  if (existsSync(at) && existsSync(listed)) {
+    try {
+      if (inlinedHold(JSON.parse(readFileSync(listed, 'utf8')) as InlinedSource[])) {
+        linkInstallModules(kept)
+
+        return at
+      }
+    } catch {
+      // an unreadable list is a bundle built again
+    }
   }
 
   // the prelude is a module of the bundle, and the entry re-exports the closure's public tasks (call/code/unit-bundle.ts)
-  const bundled = buildSync({
-    entryPoints: [
-      writeUnitBundle({
-        dir,
-        entry: built.entry,
-        modules: [...built.modules],
-        slug: built.names,
-        exports: built.exports,
-        prelude,
-      }),
-    ],
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    packages: 'external',
-    write: false,
+  const dir = runFolder(root, key)
+  const bundled = await bundleDocks({
+    root,
+    own: dir,
+    banner: projectBanner(root),
+    entry: writeUnitBundle({
+      dir,
+      entry: built.entry,
+      modules: [...built.modules],
+      slug: built.names,
+      exports: built.exports,
+      prelude,
+    }),
   })
-
-  const text = bundled.outputFiles[0]!.text
 
   try {
     mkdirSync(kept, { recursive: true })
-    writeFileSync(at, text)
-  } catch {
-    // a bundle not kept is built again next run, never a failed test
-  }
+    // the list first: a bundle on disk always has its list beside it
+    writeWhole(listed, JSON.stringify(bundled.inlined))
+    writeWhole(at, bundled.text)
+    linkInstallModules(kept)
 
-  return text
+    return at
+  } catch {
+    // a bundle not kept is built again next run, never a failed test: it runs from its own folder
+    const out = join(dir, 'module.mjs')
+    writeFileSync(out, bundled.text)
+    linkInstallModules(dir)
+
+    return out
+  }
+}
+
+// a folder of its own for one build of a test module, inside the project's cache (`<cache>/test/run/<key>-*`), so a
+// bare dock in it resolves from the project, never from os.tmpdir()
+function runFolder(root: string, key: string): string {
+  const runs = join(projectCacheDir(root), 'test', 'run')
+  mkdirSync(runs, { recursive: true })
+
+  return mkdtempSync(join(runs, `${key.slice(0, 16)}-`))
 }
 
 // moved when the bundling itself changes, so a kept bundle from before is never run
 // 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
-const BUNDLE_EPOCH = 'test-bundle-3'
+// 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
+const BUNDLE_EPOCH = 'test-bundle-4'
+
+// each import of a test module is a new instance of it, as each run's own folder made it before
+let imports = 0
 
 // a test file's tests in source order, each with its label and the line its `test` stands on as written, and the
 // file as `term test` rewrites it (`term test --case`, `term test --env`)
@@ -307,16 +581,25 @@ export async function runTestFile(input: {
     input.readRuntime,
   )
 
-  const dir = mkdtempSync(join(tmpdir(), 'seed-test-'))
-  const out = join(dir, 'module.mjs')
+  // the module is built and imported inside the project (decision 009): the units' project, else the nearest folder
+  // above the file holding a `link/` or a `deck.tree`, else the file's own folder
+  const root = input.units?.root ?? findProjectRoot(input.file) ?? dirname(input.file)
+  let out: string
 
   if ('closureKey' in result) {
-    writeFileSync(out, bundleUnits(result, prelude, dir, input.units!))
+    out = await bundleUnits(result, prelude, root, input.units!)
   } else {
-    writeFileSync(out, transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code)
+    // the merged program goes through the same bundle step as the units, from an entry written in its own folder
+    const dir = runFolder(root, 'merged')
+    const entry = join(dir, 'module.ts')
+    writeFileSync(entry, `${prelude}\n${result.typescript}`)
+    out = join(dir, 'module.mjs')
+    writeFileSync(out, (await bundleDocks({ root, entry, own: dir, banner: projectBanner(root) })).text)
+    linkInstallModules(dir)
   }
 
-  const mod = (await import(pathToFileURL(out).href)) as Record<
+  imports++
+  const mod = (await import(`${pathToFileURL(out).href}?run=${imports}`)) as Record<
     string,
     (() => Promise<boolean> | boolean) | undefined
   >

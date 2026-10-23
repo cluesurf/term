@@ -1,0 +1,196 @@
+# One file checked end to end, the heart of `term hold`, with the module resolver handed in (so the verifier never
+# depends on @term/call, which owns `projectResolver`): the file compiled and every checker diagnostic turned into a
+# gap report, then, when asked, the cross-backend differential (every backend must agree the program is well formed).
+# Pure: the caller renders the report and decides the exit code.
+#
+# Ported from deck/test/code/prove-file.ts (term-cli-in-term-0113): proveFile and renderReport. The ask keeps the
+# original's object (`file`, `resolve`, `cross`, and `text`, the text the build compiles when that is not the file as
+# written), read as the host value it is, since an absent `text` means "read the file". The report keeps the
+# original's shape; `backends` is a host object keyed by backend name in emit order.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+
+load ./diagnostic-gap
+  find gaps-from-diagnostics
+
+load ./checker-report
+  find checker-gap
+  find show-gap
+
+load ./cross-emission
+  find cross-emit
+
+dock load
+  load <@term/make/code/compile/compile>, name proof-compiling
+  load <node:fs>, name proof-fs
+
+form proof-source
+  link file, like text
+  link text, like text
+
+form proof-options
+  link resolve, like dynamic
+
+form file-report
+  link file, like text
+  link compiles, like boolean
+  link gaps, like list, like checker-gap
+  # backend name to whether it emitted, a host object (empty when the differential did not run)
+  link backends, like dynamic
+  link ok, like boolean
+
+bind proof-ask-file
+  take ask, like dynamic
+  like text
+  case node
+    text <$ask.file>
+
+bind proof-ask-resolve
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.resolve>
+
+bind proof-ask-cross
+  take ask, like dynamic
+  like boolean
+  case node
+    text <Boolean($ask.cross)>
+
+# `input.text ?? undefined`: whether the caller handed the text the build compiles
+bind proof-ask-has-text
+  take ask, like dynamic
+  like boolean
+  case node
+    text <($ask.text !== undefined && $ask.text !== null)>
+
+bind proof-ask-text
+  take ask, like dynamic
+  like text
+  case node
+    text <$ask.text>
+
+bind proof-compiled-ok
+  take compiled, like dynamic
+  like boolean
+  case node
+    text <$compiled.ok>
+
+# diagnostics live on the failure branch, warnings on success: both surface as gaps
+bind proof-diagnostics
+  take compiled, like dynamic
+  like dynamic
+  case node
+    text <($compiled.ok ? $compiled.warnings : $compiled.diagnostics)>
+
+bind proof-no-backends
+  take seed, like number
+  like dynamic
+  case node
+    text <(new Object())>
+
+# each backend's emit verdict, from cross-emit's `emits`
+bind proof-backends-of
+  take emits, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries(Object.entries($emits).map((entry_) =\> [entry_[0], entry_[1].ok]))>
+
+bind proof-backends-ok
+  take table, like dynamic
+  like boolean
+  case node
+    text <Object.values($table).every(Boolean)>
+
+bind proof-backend-count
+  take table, like dynamic
+  like number
+  case node
+    text <Object.keys($table).length>
+
+bind proof-backend-summary
+  take table, like dynamic
+  like text
+  case node
+    text <Object.entries($table).map((entry_) =\> entry_[0] + (entry_[1] ? "" : ":DIVERGED")).join(" ")>
+
+# compile one file, collect its gaps, and run the cross-backend differential when asked
+task prove-file
+  take ask, like dynamic
+  like file-report
+
+  host file, proof-ask-file(ask)
+  host resolve, proof-ask-resolve(ask)
+  save source, <>
+  fork test, proof-ask-has-text(ask)
+    hold
+      save source, proof-ask-text(ask)
+    miss
+      save source, proof-fs/read-file-sync(file, <utf8>)
+
+  host compiled, proof-compiling/compile(make(proof-source, bind(file, file), bind(text, source)), make(proof-options, bind(resolve, resolve)))
+  host compiles, proof-compiled-ok(compiled)
+  host gaps, gaps-from-diagnostics(source, proof-diagnostics(compiled))
+
+  save backends, proof-no-backends(0)
+  fork test, and(proof-ask-cross(ask), compiles)
+    hold
+      host result, cross-emit(source, resolve)
+      save backends, proof-backends-of(result/emits)
+
+  # a warning is reported and does not fail the file
+  save only-warnings, true
+  walk gaps
+    take gap
+    fork test, not(is-equal(gap/severity, <warning>))
+      hold
+        save only-warnings, false
+
+  host ok, and(compiles, and(only-warnings, proof-backends-ok(backends)))
+
+  back
+    make file-report
+      bind file, file
+      bind compiles, compiles
+      bind gaps, gaps
+      bind backends, backends
+      bind ok, ok
+
+# a report as the terminal prints it
+task render-report
+  take report, like file-report
+  like text
+
+  host lines, make list
+  lines/push(<=== term hold: {report/file} ===>)
+
+  fork test, and(is-equal(report/gaps/length, 0), report/compiles)
+    hold
+      lines/push(<  PROVED - compiles with no open obligations>)
+    miss
+      walk report/gaps
+        take gap
+        host shown, make list
+        walk split(show-gap(gap), <\n>)
+          take line
+          shown/push(<  {line}>)
+        lines/push(join(shown, <\n>))
+      fork test, and(not(report/compiles), is-equal(report/gaps/length, 0))
+        hold
+          lines/push(<  OPEN - did not compile>)
+
+  fork test, is-above(proof-backend-count(report/backends), 0)
+    hold
+      lines/push(<  backends: [{proof-backend-summary(report/backends)}]>)
+
+  fork test, report/ok
+    hold
+      lines/push(<  =\> OK>)
+    miss
+      lines/push(<  =\> FAILED>)
+
+  back join(lines, <\n>)

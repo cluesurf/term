@@ -1388,6 +1388,11 @@ form dock-route
   link page
     like boolean
     need false
+  # `mark pass` on a command: every word after its path goes to its one list slot untouched, for another console
+  # (decision term/cli-in-term/008 part 2)
+  link passes
+    like boolean
+    need false
   link directives, like list, like dock-send
   link sends, like list, like dock-send
   link hooks, like list, like dock-hook

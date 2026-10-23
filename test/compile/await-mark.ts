@@ -677,15 +677,18 @@ task said
   send back, text <n>
 
 task run-all
-  take all, like list, like asker
+  take who, like asker
   like text
   save out, text <>
-  walk all
-    take who
-    save got
-      call who/ask
-        code 1
-    save out, text <{out}{got}>
+  save turns, code 0
+  walk test
+    hook test, is-below(turns, 1)
+    hook hold
+      save got
+        call who/ask
+          code 1
+      save out, text <{out}{got}>
+      save turns, add(turns, 1)
   send back, read out
 
 task run
@@ -694,20 +697,16 @@ task run
   save one
     make asker
       bind ask, read said
-  save all, make list
-  call push
-    read all
-    read one
   send back
     call run-all
-      read all
+      read one
 `
   const dir = mkdtempSync(join(tmpdir(), 'term-await-local-'))
 
   for (const backend of BACKENDS) {
     for (const [label, program, expected] of [
       ['7. a call through a local holding an async task (a field read, a task named) is awaited', LOCAL_ASYNC, 'late late'],
-      ['8. a call through an async field of a walked record is awaited', FIELD_IN_WALK, 'n'],
+      ['8. a call written who/ask through an async field, in a loop, is awaited', FIELD_IN_WALK, 'n'],
     ] as const) {
       const ran = runOn({ backend, program, resolve: env => projectResolver(process.cwd(), env), dir, name: label.slice(0, 1) === '7' ? 'local-async' : 'field-walk' })
 

@@ -1,0 +1,35 @@
+note <the cross-backend differential: a program that compiles is emitted to every backend, and each writes code>
+
+# The compiler is docked (<@term/make/code/compile/compile>, ../code/cross-emission.tree): `term test` builds the module
+# inside the project with its tsconfig, which maps the dock to the compiler's source (decision 009, term-cli-in-term-0174).
+
+# The checks of deck/test/code/demo-cross.ts (decision 004, term-cli-in-term-0114): three programs, arithmetic, nested
+# arithmetic and control flow, each emitted by TypeScript, Rust, Kotlin and Swift. The demo wrote its numbers as
+# `mark 3`, retired since; here they are `code 3`.
+
+load ../code/cross-emission
+  find cross-emit
+  find no-resolver
+
+host triple, <task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 3\n>
+
+host affine, <task affine\n  take n, like number\n  like number\n  send back\n    call add\n      call multiply\n        read n\n        code 3\n      code 1\n>
+
+host pick, <task pick\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read a\n        read b\n    hook hold\n      send back, read a\n    hook miss\n      send back, read b\n>
+
+test <arithmetic: every backend emits>
+  host found, cross-emit(triple, no-resolver())
+  want hold, and(found/compiled, found/ok)
+
+test <nested arithmetic: every backend emits>
+  host found, cross-emit(affine, no-resolver())
+  want hold, and(found/compiled, found/ok)
+
+test <control flow: every backend emits>
+  host found, cross-emit(pick, no-resolver())
+  want hold, and(found/compiled, found/ok)
+
+test <a program that does not compile emits on no backend>
+  host found, cross-emit(<task broken\n  like number\n  send back, read nowhere\n>, no-resolver())
+  want miss, found/compiled
+  want miss, found/ok

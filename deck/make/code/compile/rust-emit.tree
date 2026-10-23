@@ -3238,9 +3238,12 @@ task emit-await
                   back <{inner}.await{raise-suffix(st, frames-of(await-expr))}>
             miss
               save nothing, 0
-          # `wait true` on a call whose callee is checked synchronous: the await is dropped
+          # `wait true` on a call whose callee is checked synchronous: the await is dropped. A task's name used as a
+          # value carries the type of the local it was saved in, which does not say async (`save named, read later`
+          # then `call named`, folded to a call of `later`): a callee naming an async task keeps its await
+          # (term-compiler-0062)
           save callee-type, expression-type(call-callee)
-          fork test, and(is-equal(kind-of(callee-type), <function>), not(function-async(callee-type)))
+          fork test, and(and(is-equal(kind-of(callee-type), <function>), not(function-async(callee-type))), not(is-async-call(call-callee, facts)))
             hold
               back emit-expr(await-expr, st, facts)
         miss

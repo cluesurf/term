@@ -14,7 +14,8 @@
 # short `-t`, `take ride, name watch` and each `name <word>` line under it its long aliases, `bind <value>` a default,
 # and one `pick <value>` per allowed value its enum. `need true` makes either required. The `#` comment above a hook,
 # a slot or a take is its `--help` text. `task <name>` names the implementation, which receives its own hook's slots
-# and takes, never the program's.
+# and takes, never the program's. A command whose task reads the program's `back` declares a `take back` of its own,
+# the same as the program's: help shows it once, at the program's place (work/help.tree).
 #
 # ONE CONSTRAINT NOTHING CHECKS. Arguments reach the implementation IN `take` ORDER, so every hook must list its
 # takes in the same order as the task it binds. Reorder one without the other and the arguments arrive shifted,
@@ -199,7 +200,7 @@ hook term
   # Animate the spinner (--no-motion holds it still)
   take motion
     like boolean
-    bind true
+    bind code true
   # Accept every default instead of asking
   take yes
     like boolean
@@ -346,7 +347,7 @@ hook term
         bind <main>
       task base-tag
 
-  # Scaffold a new Seed project
+  # Scaffold a new Term project
   hook wake
     # Project name (a new directory); omit for current directory
     slot name
@@ -417,13 +418,13 @@ hook term
     # Dry run (no upload)
     take dry
       like boolean
-    # The oci:// registry to publish to, in place of the scope's own
+    # The oci:// registry to publish to, in place of the scope default
     take registry
       like text
-    # Add this public key to the scope's key set instead of publishing
+    # Add this public key to the scope key set instead of publishing
     take trust
       like text
-    # Remove this public key from the scope's key set instead of publishing
+    # Remove this public key from the scope key set instead of publishing
     take untrust
       like text
     # Announce the already-published version to the package index instead of publishing
@@ -508,7 +509,7 @@ hook term
       task self-back
     # Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md
     hook skill
-      # Response format, the program's option, which this command's task reads too
+      # Response format
       take back
         like text
         code b
@@ -600,10 +601,11 @@ hook term
     # The .tree file to check
     slot file
       like text
+      need true
     # Write the sure fixes into the file and scan again. A guess is offered, never written
     take fix
       like boolean
-    # Response format, the program's option, which this command's task reads too
+    # Response format
     take back
       like text
       code b
@@ -635,7 +637,7 @@ hook term
     # Forget the fact with this name
     take forget
       like text
-    # Response format, the program's option, which this command's task reads too
+    # Response format
     take back
       like text
       code b
@@ -706,6 +708,7 @@ hook term
 
   # Compare emitted code with hand-written code per target (time: time-* tasks)
   hook mark
+    mark pass
     # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
     slot rest
       like list, like text
@@ -779,20 +782,23 @@ hook term
     # Target env
     take env
       like text
-    # Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it
+    # Develop a native app: a cask (its page on a dev server with hot swaps, the app pointed at it), or `compose` /
+    # `compose-android` (rebuilt and relaunched on each edit, on the screen it was on)
     take target
       like text
     # The page entry of the cask app (default face/base.tree)
     take page
       like text
-    # The cask entry of the app (default cask.tree)
+    # The entry of the app (default cask.tree; for a Compose or UIKit target, the file the boot line of deck.tree
+    # names, else app.tree)
     take entry
       like text
     task work
 
   # Clean build artifacts
   hook wash
-    # What to clean (deck, tail)
+    # What to clean: deck, the build output (the default); tail, the logs; boot, what boot and cast write; base, the
+    # machine-wide module cache
     slot target
       like text
     task wash
@@ -803,10 +809,11 @@ hook term
 
   # Version management
   hook move
-    # What to move (code)
+    # What to move (mark, the version; code is the old spelling)
     slot target
       like text
-    # Bump level: 1=major, 2=minor, 3=patch
+      need true
+    # Bump level: 1=major, 2=minor, 3=patch, or a word (rc, beta) for a pre-release
     slot level
       like text
     task bump-code
@@ -831,9 +838,9 @@ hook term
       like boolean
     task form
 
-  # Inspect what a module exposes (forms + tasks), following its load/bear graph
+  # Inspect what a module offers (forms + tasks): its own and what it passes on with bear
   hook look
-    # A package path (@cluesurf/bind/code/browser/dom) or a .tree file
+    # A package path (@term/bind/code/browser/dom) or a .tree file
     slot target
       like text
     # Output JSON
@@ -874,7 +881,7 @@ hook term
     # or a git ref. A task that gained a native module is a warning, so --strict makes it a gate
     take diff
       like text
-    # Response format, the program's option, which this command's task reads too
+    # Response format
     take back
       like text
       code b
@@ -928,7 +935,7 @@ hook term
     # Print the query manifest instead
     take find
       like boolean
-    # Response format, the program's option, which this command's task reads too
+    # Response format
     take back
       like text
       code b
@@ -957,13 +964,14 @@ hook term
     # Also run the cross-backend differential
     take cross
       like boolean
+      bind code false
     # Rewrite hold.json to the obligations not proven today, and print how many that added
     take commit
       like boolean
     # Skip files unchanged since they last held
     take cache
       like boolean
-      bind true
+      bind code true
     # Re-check everything, ignoring the cache
     take force
       like boolean
@@ -1015,7 +1023,7 @@ hook term
     # With `name`: the most tokens the answer may take, roughly four characters each (default 4000)
     take budget
       like number
-    # Response format, the program's option, which this command's task reads too
+    # Response format
     take back
       like text
       code b
@@ -1027,6 +1035,7 @@ hook term
 
   # Secrets and environment: run a command with a zone's values, and manage them
   hook zone
+    mark pass
     # The zone verb and its arguments
     slot rest
       like list, like text

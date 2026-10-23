@@ -21,11 +21,19 @@ load @term/call/test-run-words
   find taken-of
   find case-matches, name words-case-matches
 
+load @term/call/boot-plan
+  find node-banner
+
+load ../need/running-install
+  find find-install-root
+
 dock load
   load <node:fs>, name node-file
-  load <node:os>, name node-os
   load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
   load <esbuild>, name esbuild-module
+  load <@term/make/code/resolve>, name resolving-module
+  load <@term/call/code/cache-store>, name cache-store-module
   load <@term/make/code/parser/tree>, name tree-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
   load <@term/make/code/compile/mill>, name mill-module
@@ -39,10 +47,11 @@ dock load
 
 # moved when the bundling itself changes, so a kept bundle from before is never run
 # 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
+# 4: built inside the project with its tsconfig's paths inlined (decision 009), kept beside the list of what it inlined
 task bundle-epoch
   like text
 
-  back <test-bundle-3>
+  back <test-bundle-4>
 
 # ---- what the runner answers ----
 
@@ -124,10 +133,6 @@ form bundle-ask
   link slug, like dynamic
   link exports, like dynamic
   link prelude, like text
-
-form transform-ask
-  link loader, like text
-  link format, like text
 
 form folder-make
   link recursive, like boolean
@@ -212,20 +217,14 @@ bind unproven-of
   case node
     text <($warnings ?? []).filter((d) =\> d.name === "unchecked-hold")>
 
-# esbuild's bundle of one entry, its text
-bind bundle-text
-  take esbuild, like dynamic
-  take entry, like text
-  like text
-  case node
-    text <$esbuild.buildSync(\{ entryPoints: [$entry], bundle: true, format: "esm", platform: "node", packages: "external", write: false \}).outputFiles[0].text>
-
-# the module at a file, imported
+# the module at a file, imported as an instance of its own: the run's count in its address, as each run's own folder
+# made it before
 bind import-file
   take file, like text
+  take count, like number
   like dynamic
   case node
-    text <(await import(process.getBuiltinModule("node:url").pathToFileURL($file).href))>
+    text <(await import(process.getBuiltinModule("node:url").pathToFileURL($file).href + "?run=" + $count))>
 
 # a test task of the module called and its answer awaited, read as a boolean
 bind call-test-task
@@ -344,36 +343,409 @@ task compile-units
       back result
   back make(units-built, bind(ok, true), bind(program, result/natives), bind(warnings, result/warnings), bind(modules, result/modules), bind(names, names), bind(entry, source/file), bind(closure-key, host-text(result/closure-key)), bind(exports, result/exports))
 
+# ---- a program's docks, resolved as the project's own build resolves them (decision 009) ----
+#
+# `term test` and `term boot` bundle a program INSIDE its project and resolve every bare dock by one rule: a specifier
+# the project's nearest tsconfig.json `paths` maps is inlined from source, as make:line inlines a port that docks
+# `@term/make/code/...`, and every other bare one stays external and resolves from the project at run time (its own
+# node_modules, then the install's linked beside the module). A module in os.tmpdir() found neither.
+
+# the nearest tsconfig.json at or above `root`, the empty text when no folder up to the disk's root holds one
+task nearest-tsconfig
+  take root, like text
+  like text
+
+  save dir, root
+  walk test
+    hook test, true
+    hook hold
+      save file, node-path/join(dir, <tsconfig.json>)
+      fork test, node-file/exists-sync(file)
+        hold
+          back file
+      save up, node-path/dirname(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back <>
+      save dir, up
+  back <>
+
+# a tsconfig's text as JSON: its comments and trailing commas taken out, strings kept whole
+bind tsconfig-json
+  take raw, like text
+  like dynamic
+  case node
+    text <<((j_text) => { let j_out = ""; let j_at = 0; while (j_at < j_text.length) { const j_char = j_text[j_at]; if (j_char === '"') { let j_end = j_at + 1; while (j_end < j_text.length && j_text[j_end] !== '"') j_end += j_text[j_end] === "\\" ? 2 : 1; j_out += j_text.slice(j_at, j_end + 1); j_at = j_end + 1 } else if (j_char === "/" && j_text[j_at + 1] === "/") { while (j_at < j_text.length && j_text[j_at] !== "\n") j_at++ } else if (j_char === "/" && j_text[j_at + 1] === "*") { const j_close = j_text.indexOf("*/", j_at + 2); j_at = j_close < 0 ? j_text.length : j_close + 2 } else { j_out += j_char; j_at++ } } return JSON.parse(j_out.replace(/,(\s*[}\]])/g, (j_all, j_rest) => j_rest)) })($raw)>>
+
+# the keys of a tsconfig's `compilerOptions.paths`, the empty list when it has none
+bind paths-keys-of
+  take json, like dynamic
+  like list, like text
+  case node
+    text <<Object.keys($json?.compilerOptions?.paths ?? {})>>
+
+# whether a tsconfig names `compilerOptions.paths`
+bind has-paths
+  take json, like dynamic
+  like boolean
+  case node
+    text <<($json?.compilerOptions?.paths !== undefined)>>
+
+# a tsconfig's `extends` when it is a relative path, the empty text otherwise
+bind relative-extends
+  take json, like dynamic
+  like text
+  case node
+    text <<(typeof $json?.extends === "string" && $json.extends.startsWith(".") ? $json.extends : "")>>
+
+# the specifiers a tsconfig's `paths` maps, each key as written (`@term/make/*`), following a relative `extends` (eight
+# deep at most) when a file has no `paths`. Unreadable: none
+task tsconfig-path-keys
+  take tsconfig, like text
+  like list, like text
+
+  save file, tsconfig
+  save depth, 0
+  fork
+    mark unsafe
+    walk test
+      hook test, is-below(depth, 8)
+      hook hold
+        save json, tsconfig-json(host-text(node-file/read-file-sync(file, <utf8>)))
+        fork test, has-paths(json)
+          hold
+            back paths-keys-of(json)
+        save base, relative-extends(json)
+        fork test, is-equal(base, <>)
+          hold
+            back make list
+        save named, base
+        fork test, not(base/ends-with(<.json>))
+          hold
+            save named, <{base}.json>
+        save file, node-path/resolve(node-path/dirname(file), named)
+        fork test, not(node-file/exists-sync(file))
+          hold
+            back make list
+        save depth, add(depth, 1)
+  halt take
+    take problem
+    # unreadable: none
+    save unread, true
+  back make list
+
+# whether a `paths` key maps a specifier: `x/*` every specifier under `x/`, a key with no star that one alone
+task path-key-maps
+  take key, like text
+  take specifier, like text
+  like boolean
+
+  save star, key/index-of(<*>)
+  fork test, is-below(star, 0)
+    hold
+      back is-equal(specifier, key)
+  save head, substring(key, 0, star)
+  save tail, substring(key, add(star, 1), key/length)
+  back and(is-minimum(specifier/length, subtract(key/length, 1)), and(specifier/starts-with(head), specifier/ends-with(tail)))
+
+# the esbuild options of a bundle that resolves its docks by the rule: the tsconfig when there is one, and a plugin
+# that leaves a mapped specifier to esbuild (which applies the tsconfig's paths) and marks every other bare one external
+bind dock-options-of
+  take tsconfig, like text
+  take mapped, like dynamic
+  like dynamic
+  case node
+    text <<((d_tsconfig, d_mapped) => ({ ...(d_tsconfig ? { tsconfig: d_tsconfig } : {}), plugins: [{ name: "term-docks", setup(d_on) { d_on.onResolve({ filter: /^[^./]/ }, (d_args) => (process.getBuiltinModule("node:path").isAbsolute(d_args.path) || d_mapped(d_args.path) ? undefined : { path: d_args.path, external: true })) } }] }))($tsconfig, $mapped)>>
+
+# esbuild's own `packages: 'external'` is not used: it decides by the specifier's look, before any tsconfig
+task dock-options
+  take root, like text
+  like dynamic
+
+  save tsconfig, nearest-tsconfig(root)
+  save keys, make list
+  fork test, not(is-equal(tsconfig, <>))
+    hold
+      save keys, tsconfig-path-keys(tsconfig)
+  save mapped
+    task
+      take specifier, like text
+      like boolean
+      save maps, false
+      walk keys
+        take key, like text
+        fork test, path-key-maps(key, specifier)
+          hold
+            save maps, true
+      back maps
+  back dock-options-of(tsconfig, mapped)
+
+# the `require` a node bundle is given, anchored at the project and not the bundle (boot-plan.tree `node-banner`)
+task project-banner
+  take root, like text
+  like text
+
+  back node-banner(json-text(node-path/join(root, <index.js>)))
+
+bind json-text
+  take value, like text
+  like text
+  case node
+    text <<JSON.stringify($value)>>
+
+# one source a bundle inlined, and its content's hash
+form inlined-source
+  link path, like text
+  link hash, like text
+
+# the content hash of a file read this process, by its size and time, so a warm run reads a file it inlined once
+form known-hash
+  link size, like number
+  link time, like number
+  link hash, like text
+
+host source-hashes, new-hash-memo()
+
+bind new-hash-memo
+  like dynamic
+  case node
+    text <new Map()>
+
+bind memo-known
+  take memo, like dynamic
+  take file, like text
+  take size, like number
+  take time, like number
+  like text
+  case node
+    text <<((k_one) => (k_one && k_one.size === $size && k_one.time === $time ? k_one.hash : ""))($memo.get($file))>>
+
+bind memo-keep
+  take memo, like dynamic
+  take file, like text
+  take known, like known-hash
+  like dynamic
+  case node
+    text <<$memo.set($file, $known)>>
+
+bind stat-size
+  take stat, like dynamic
+  like number
+  case node
+    text <<$stat.size>>
+
+bind stat-time
+  take stat, like dynamic
+  like number
+  case node
+    text <<$stat.mtimeMs>>
+
+bind sha-of
+  take crypto, like dynamic
+  take bytes, like dynamic
+  like text
+  case node
+    text <<$crypto.createHash("sha256").update($bytes).digest("hex")>>
+
+# a file's content hash, the empty text when it cannot be read
+task source-hash
+  take file, like text
+  like text
+
+  fork
+    mark unsafe
+    save stat, node-file/stat-sync(file)
+    save size, stat-size(stat)
+    save time, stat-time(stat)
+    save known, memo-known(source-hashes, file, size, time)
+    fork test, not(is-equal(known, <>))
+      hold
+        back known
+    save hash, sha-of(node-crypto, node-file/read-file-sync(file))
+    memo-keep(source-hashes, file, make(known-hash, bind(size, size), bind(time, time), bind(hash, hash)))
+    back hash
+  halt take
+    take problem
+    back <>
+  back <>
+
+# the options of one bundle by the rule
+bind bundle-options
+  take entry, like text
+  take root, like text
+  take platform, like text
+  take banner, like text
+  take docks, like dynamic
+  like dynamic
+  case node
+    text <<((o_banner) => ({ entryPoints: [$entry], absWorkingDir: $root, bundle: true, format: "esm", platform: $platform, write: false, metafile: true, ...$docks, ...(o_banner ? { banner: { js: o_banner } } : {}) }))($banner)>>
+
+bind input-keys-of
+  take bundled, like dynamic
+  like list, like text
+  case node
+    text <<Object.keys($bundled.metafile.inputs).sort()>>
+
+bind output-text-of
+  take bundled, like dynamic
+  like text
+  case node
+    text <<$bundled.outputFiles[0].text>>
+
+# whether a path relative to a folder stays inside it
+bind is-inside
+  take rel, like text
+  like boolean
+  case node
+    text <<(!$rel.startsWith("..") && !process.getBuiltinModule("node:path").isAbsolute($rel))>>
+
+# a program bundled by the rule
+form docks-bundled
+  link text, like text
+  link inlined, like list, like inlined-source
+
+# A program bundled by the rule: its text, and every source outside `own` (the folder its entry was written in) that it
+# inlined, with each one's hash, which a kept bundle is checked against. `banner` the empty text for none, `platform`
+# node or browser
+task bundle-docks
+  take root, like text
+  take entry, like text
+  take own, like text
+  take banner, like text
+  take platform, like text
+  like docks-bundled
+  mark async
+
+  save bundled, wait esbuild-module/build(bundle-options(entry, root, platform, banner, dock-options(root)))
+  save inlined, make list
+  walk input-keys-of(bundled)
+    take key, like text
+    save file, node-path/resolve(root, key)
+    # the program's own modules are named by the key it is kept under; a namespaced input is no file
+    fork test, not(or(is-inside(host-text(node-path/relative(own, file))), key/includes(<:>)))
+      hold
+        save hash, source-hash(file)
+        fork test, not(is-equal(hash, <>))
+          hold
+            inlined/push(make(inlined-source, bind(path, file), bind(hash, hash)))
+  back make(docks-bundled, bind(text, output-text-of(bundled)), bind(inlined, inlined))
+
+# whether every source a kept bundle inlined still holds what it held
+task inlined-hold
+  take inlined, like list, like inlined-source
+  like boolean
+
+  walk inlined
+    take one, like inlined-source
+    fork test, not(is-equal(source-hash(one/path), one/hash))
+      hold
+        back false
+  back true
+
+# the node_modules of the toolchain running this, linked beside a module so a dock the project does not carry resolves
+# through the install (call/code/boot.ts does the same beside a boot bundle)
+task link-install-modules
+  take dir, like text
+
+  save install, node-path/join(find-install-root(), <node_modules>)
+  save beside, node-path/join(dir, <node_modules>)
+  fork test, or(is-equal(find-install-root(), <>), or(not(node-file/exists-sync(install)), node-file/exists-sync(beside)))
+    hold
+      back
+  fork
+    mark unsafe
+    node-file/symlink-sync(install, beside, <dir>)
+  halt take
+    take problem
+    # a link made meanwhile, or none allowed: the project's own node_modules still resolve
+    save unlinked, true
+
+# a text written whole or not at all, so a reader never meets half a file
+task write-whole
+  take file, like text
+  take text, like text
+
+  save part, <{file}.{process-id()}.part>
+  node-file/write-file-sync(part, text)
+  node-file/rename-sync(part, file)
+
+bind process-id
+  like number
+  case node
+    text <process.pid>
+
+bind inlined-of
+  take raw, like text
+  like list, like inlined-source
+  case node
+    text <<JSON.parse($raw)>>
+
+bind json-of-inlined
+  take inlined, like list, like inlined-source
+  like text
+  case node
+    text <<JSON.stringify($inlined)>>
+
+# a folder of its own for one build of a test module, inside the project's cache (`<cache>/test/run/<key>-*`), so a
+# bare dock in it resolves from the project, never from os.tmpdir()
+task run-folder
+  take root, like text
+  take key, like text
+  like text
+
+  save runs, node-path/join(host-text(cache-store-module/project-cache-dir(root)), <test>, <run>)
+  node-file/mkdir-sync(runs, make(folder-make, bind(recursive, true)))
+  back host-text(node-file/mkdtemp-sync(node-path/join(runs, <{substring(key, 0, 16)}->)))
+
 # Every module of a unit build written beside one another, and bundled from the test file's own into one module with
-# the native prelude in front of it. A bundle is decided by the test file's closure and its prelude, so it is kept
-# under the project's cache by both and reused while neither moves
+# the native prelude in front of it. A bundle is decided by the test file's closure, its prelude and every source it
+# inlined, so it is kept under the project's cache by all three and reused while none moves. Answers the file to import
 task bundle-units
   take built, like units-built
   take prelude, like text
-  take dir, like text
+  take root, like text
   take units, like dynamic
   like text
+  mark async
 
   # the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
   save kept, host-text(units/bundles)
   save version, host-text(units/cache/version-of(<unit>))
   save key, hash-text(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{built/closure-key}\n{prelude}>)
   save at, node-path/join(kept, <{key}.mjs>)
-  fork test, node-file/exists-sync(at)
+  save listed, node-path/join(kept, <{key}.inputs.json>)
+  fork test, and(node-file/exists-sync(at), node-file/exists-sync(listed))
     hold
-      back host-text(node-file/read-file-sync(at, <utf8>))
+      fork
+        mark unsafe
+        fork test, inlined-hold(inlined-of(host-text(node-file/read-file-sync(listed, <utf8>))))
+          hold
+            link-install-modules(kept)
+            back at
+      halt take
+        take problem
+        # an unreadable list is a bundle built again
+        save unread, true
   # the prelude is a module of the bundle, and the entry re-exports the closure's public tasks (call/code/unit-bundle.ts)
+  save dir, run-folder(root, key)
   save entry, bundle-module/write-unit-bundle(make(bundle-ask, bind(dir, dir), bind(entry, built/entry), bind(modules, entries-of(built/modules)), bind(slug, built/names), bind(exports, built/exports), bind(prelude, prelude)))
-  save bundled, bundle-text(esbuild-module, entry)
+  save bundled, bundle-docks(root, host-text(entry), dir, project-banner(root), <node>)
   fork
     mark unsafe
     node-file/mkdir-sync(kept, make(folder-make, bind(recursive, true)))
-    node-file/write-file-sync(at, bundled)
+    # the list first: a bundle on disk always has its list beside it
+    write-whole(listed, json-of-inlined(bundled/inlined))
+    write-whole(at, bundled/text)
+    link-install-modules(kept)
+    back at
   halt take
     take problem
-    # a bundle not kept is built again next run, never a failed test
-    save unkept, true
-  back bundled
+    # a bundle not kept is built again next run, never a failed test: it runs from its own folder
+    save out, node-path/join(dir, <module.mjs>)
+    node-file/write-file-sync(out, bundled/text)
+    link-install-modules(dir)
+    back out
+  back at
 
 # `[...map]`
 bind entries-of
@@ -390,6 +762,29 @@ bind is-unit-build
     text <("closureKey" in $result)>
 
 # ---- running ----
+
+# how many test modules this process imported: each import is a new instance of its module
+form import-count
+  mark shared
+  link imports, like number
+
+host run-count, make(import-count, bind(imports, 0))
+
+# the project a test file is built in: the units' own, else the nearest folder above the file holding a `link/` or a
+# `deck.tree`, else the file's own folder
+task project-root-of
+  take units, like dynamic
+  take file, like text
+  like text
+
+  fork test, is-truthy(units)
+    hold
+      back host-text(units/root)
+  save found, resolving-module/find-project-root(file)
+  fork test, is-nothing(found)
+    hold
+      back node-path/dirname(file)
+  back host-text(found)
 
 # a run that failed before any test ran
 task failed-run
@@ -454,15 +849,24 @@ task run-test-file
     hold
       back make(test-run, bind(ok, true), bind(results, make list))
   save prelude, host-text(native-module/native-prelude(result/program, input/env, input/read-runtime))
-  save dir, host-text(node-file/mkdtemp-sync(node-path/join(node-os/tmpdir(), <seed-test->)))
-  save out, node-path/join(dir, <module.mjs>)
+  # the module is built and imported inside the project (decision 009): the units' project, else the nearest folder
+  # above the file holding a `link/` or a `deck.tree`, else the file's own folder
+  save root, project-root-of(input/units, file)
+  save out, <>
   fork test, is-unit-build(result)
     hold
-      node-file/write-file-sync(out, bundle-units(result, prelude, dir, input/units))
+      save out, bundle-units(result, prelude, root, input/units)
     miss
-      save transformed, esbuild-module/transform-sync(<{prelude}\n{host-text(result/typescript)}>, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))
-      node-file/write-file-sync(out, transformed/code)
-  save loaded, import-file(out)
+      # the merged program goes through the same bundle step as the units, from an entry written in its own folder
+      save dir, run-folder(root, <merged>)
+      save merged-entry, node-path/join(dir, <module.ts>)
+      node-file/write-file-sync(merged-entry, <{prelude}\n{host-text(result/typescript)}>)
+      save out, node-path/join(dir, <module.mjs>)
+      save bundled, bundle-docks(root, merged-entry, dir, project-banner(root), <node>)
+      node-file/write-file-sync(out, bundled/text)
+      link-install-modules(dir)
+  save run-count/imports, add(run-count/imports, 1)
+  save loaded, import-file(out, run-count/imports)
   save results, make list
   walk names
     take name

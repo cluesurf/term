@@ -1,0 +1,203 @@
+# Where verdicts are kept between runs of `term hold`: the obligation cache the verifier talks to, by the key
+# obligation-key.tree makes. Two stores: one held in memory (tests, the browser), and one on disk, the whole map one JSON
+# file under `.base/@term/code/hold`, read once when the store is made and written on `save`, atomically (a temporary
+# file named for the process, then renamed). A missing or corrupt file is an empty store, and a write that fails is
+# dropped: a cache never fails the verifier.
+#
+# Ported from deck/test/code/obligation-cache.ts (term-cli-in-term-0113): memoryObligationCache and
+# diskObligationCache. Its obligationKey is obligation-key.tree's `obligation-key(source, deps, version)`, loaded by
+# whoever keys. A store keeps the original's ObligationCache shape, a record of four tasks (`get`, `set`, `save`,
+# `size`), so a caller takes it unchanged; a verdict is the host value the caller recorded, handed back as it was.
+
+load @term/base/list
+  find list
+
+dock load
+  load <node:fs>, name obligation-fs
+  load <node:path>, name obligation-path
+  load <global:process>, name obligation-process
+
+form obligation-cache
+  link get
+    like task
+      take key, like text
+      like dynamic
+  link set
+    like task
+      take key, like text
+      take verdict, like dynamic
+      like void
+  link save
+    like task
+      like void
+  link size
+    like task
+      like number
+
+form obligation-folder-ask
+  link recursive, like boolean
+
+# `map.get(key)`: undefined for a key never set
+bind obligation-absent
+  take seed, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind obligation-parsed-entries
+  take json, like text
+  like list, like dynamic
+  case node
+    text <Object.entries(JSON.parse($json))>
+
+bind obligation-entry-key
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry[0]>
+
+bind obligation-entry-value
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <$entry[1]>
+
+bind obligation-count
+  take kept, like hash, like text, like dynamic
+  like number
+  case node
+    text <$kept.size>
+
+bind obligation-json-of
+  take kept, like hash, like text, like dynamic
+  like text
+  case node
+    text <JSON.stringify(Object.fromEntries($kept), null, 0)>
+
+bind obligation-temp-name
+  take file, like text
+  take pid, like number
+  like text
+  case node
+    text <`$\{$file\}.$\{$pid\}.tmp`>
+
+task obligation-lookup
+  take kept, like hash, like text, like dynamic
+  take key, like text
+  like dynamic
+  mark private
+
+  fork test, kept/has(key)
+    hold
+      back kept/get(key)
+
+  back obligation-absent(0)
+
+# a store held in memory: nothing is persisted, `save` does nothing
+task memory-obligation-cache
+  like obligation-cache
+
+  host kept, make hash
+  save lookup
+    task
+      take key, like text
+      like dynamic
+      back obligation-lookup(kept, key)
+
+  save record
+    task
+      take key, like text
+      take verdict, like dynamic
+      like void
+      save kept/{key}, verdict
+
+  save persist
+    task
+      like void
+      back
+
+  save count
+    task
+      like number
+      back obligation-count(kept)
+
+  back
+    make obligation-cache
+      bind get, lookup
+      bind set, record
+      bind save, persist
+      bind size, count
+
+# the entries of the store's file into `kept`; a missing or corrupt file leaves it empty
+task obligation-load
+  take file, like text
+  take kept, like hash, like text, like dynamic
+  like void
+  mark private
+
+  fork
+    mark unsafe
+    host text, obligation-fs/read-file-sync(file, <utf8>)
+    walk obligation-parsed-entries(text)
+      take entry
+      host entry-key, obligation-entry-key(entry)
+      save kept/{entry-key}, obligation-entry-value(entry)
+  halt take
+    take problem
+    back
+
+# a store on disk under `folder` (`<project>/.base/@term/code/hold`), in `obligations.json`
+task disk-obligation-cache
+  take folder, like text
+  like obligation-cache
+
+  host file, obligation-path/join(folder, <obligations.json>)
+  host kept, make hash
+  # `dirty` as the one entry of a second hash, so the closures below share it
+  host changes, make hash
+  host dirty, <dirty>
+  save changes/{dirty}, false
+  obligation-load(file, kept)
+
+  save lookup
+    task
+      take key, like text
+      like dynamic
+      back obligation-lookup(kept, key)
+
+  save record
+    task
+      take key, like text
+      take verdict, like dynamic
+      like void
+      save kept/{key}, verdict
+      save changes/{dirty}, true
+
+  save count
+    task
+      like number
+      back obligation-count(kept)
+
+  save persist
+    task
+      like void
+      fork test, not(changes/get(dirty))
+        hold
+          back
+      fork
+        mark unsafe
+        obligation-fs/mkdir-sync(folder, make(obligation-folder-ask, bind(recursive, true)))
+        host temp, obligation-temp-name(file, obligation-process/pid)
+        obligation-fs/write-file-sync(temp, obligation-json-of(kept))
+        obligation-fs/rename-sync(temp, file)
+        save changes/{dirty}, false
+      halt take
+        take problem
+        back
+
+  back
+    make obligation-cache
+      bind get, lookup
+      bind set, record
+      bind save, persist
+      bind size, count

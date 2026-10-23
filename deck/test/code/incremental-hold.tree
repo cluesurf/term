@@ -1,0 +1,229 @@
+# Incremental `term hold`: verify many files, skipping each whose text (and the text of every module it loads, and the
+# toolchain version) is unchanged since it last held. The first run checks everything; later runs check only what
+# moved. The key of a file folds in every loaded module's text, so an edit to a dependency drops its dependents'
+# verdicts; a hit skips the type check and the four backend emits of the differential.
+#
+# Ported from deck/test/code/hold-incremental.ts (term-cli-in-term-0113). The ask keeps the original's object
+# (`files`, `resolve`, `cache`, `version`, and the optional `cross`, `force`, `read`), read as the host value it is,
+# since an absent `cross` means true and an absent `read` means "read the file". The cache is any store with the
+# ObligationCache shape (obligation-store.tree's, or a caller's own), called as the original called it. The module
+# collector is docked (compile/load.ts is TypeScript, decision 004).
+
+load @term/base/list
+  find list
+
+load ./file-proof
+  find prove-file
+  find file-report
+
+load ./obligation-key
+  find obligation-key
+
+dock load
+  load <@term/make/code/compile/load>, name hold-loading
+  load <node:fs>, name hold-fs
+
+# one file's outcome: `checked` this run, or `cached` (a prior verdict reused)
+form hold-outcome
+  link file, like text
+  link ok, like boolean
+  link source, like text
+  link report
+    like file-report
+    need false
+  link backends
+    like dynamic
+    need false
+
+form incremental-result
+  link outcomes, like list, like hold-outcome
+  link checked, like number
+  link cached, like number
+  link ok, like boolean
+
+# what the cache keeps for a file: whether it held, which file, the backends of its differential
+form hold-verdict
+  link ok, like boolean
+  link label, like text
+  link backends, like dynamic
+
+# the ask prove-file reads
+form hold-proof-ask
+  link file, like text
+  link resolve, like dynamic
+  link cross, like boolean
+  link text, like text
+
+form hold-module-source
+  link file, like text
+  link text, like text
+
+bind hold-ask-files
+  take ask, like dynamic
+  like list, like text
+  case node
+    text <$ask.files>
+
+bind hold-ask-resolve
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.resolve>
+
+bind hold-ask-cache
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.cache>
+
+bind hold-ask-version
+  take ask, like dynamic
+  like text
+  case node
+    text <$ask.version>
+
+# `input.cross ?? true`
+bind hold-ask-cross
+  take ask, like dynamic
+  like boolean
+  case node
+    text <($ask.cross ?? true)>
+
+bind hold-ask-force
+  take ask, like dynamic
+  like boolean
+  case node
+    text <Boolean($ask.force)>
+
+bind hold-ask-reads
+  take ask, like dynamic
+  like boolean
+  case node
+    text <Boolean($ask.read)>
+
+bind hold-ask-read
+  take ask, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$ask.read($file)>
+
+bind hold-module-texts
+  take collected, like dynamic
+  like list, like text
+  case node
+    text <$collected.sources.map((module_) =\> module_.text)>
+
+bind hold-cache-get
+  take store, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$store.get($key)>
+
+bind hold-cache-set
+  take store, like dynamic
+  take key, like text
+  take verdict, like hold-verdict
+  like void
+  case node
+    text <$store.set($key, $verdict)>
+
+bind hold-cache-save
+  take store, like dynamic
+  like void
+  case node
+    text <$store.save()>
+
+bind hold-is-hit
+  take hit, like dynamic
+  like boolean
+  case node
+    text <Boolean($hit)>
+
+bind hold-hit-ok
+  take hit, like dynamic
+  like boolean
+  case node
+    text <$hit.ok>
+
+bind hold-hit-backends
+  take hit, like dynamic
+  like dynamic
+  case node
+    text <$hit.backends>
+
+# every loaded module's text, so a dependency edit drops this file's verdict; the file's own text when the walk throws
+task hold-dependencies
+  take file, like text
+  take source, like text
+  take resolve, like dynamic
+  like list, like text
+  mark private
+
+  fork
+    mark unsafe
+    host collected, hold-loading/collect-modules(make(hold-module-source, bind(file, file), bind(text, source)), resolve)
+    back hold-module-texts(collected)
+  halt take
+    take problem
+    back make list(source)
+
+# verify the files, the cache skipping each one unchanged since it last held
+task hold-incremental
+  take ask, like dynamic
+  like incremental-result
+
+  host resolve, hold-ask-resolve(ask)
+  host store, hold-ask-cache(ask)
+  host version, hold-ask-version(ask)
+  host cross, hold-ask-cross(ask)
+  host force, hold-ask-force(ask)
+
+  host outcomes, make list
+  save checked, 0
+  save cached, 0
+
+  walk hold-ask-files(ask)
+    take file
+    save source, <>
+    fork test, hold-ask-reads(ask)
+      hold
+        save source, hold-ask-read(ask, file)
+      miss
+        save source, hold-fs/read-file-sync(file, <utf8>)
+
+    host key, obligation-key(source, hold-dependencies(file, source, resolve), version)
+
+    save reused, false
+    fork test, not(force)
+      hold
+        host hit, hold-cache-get(store, key)
+        fork test, hold-is-hit(hit)
+          hold
+            save cached, add(cached, 1)
+            outcomes/push(make(hold-outcome, bind(file, file), bind(ok, hold-hit-ok(hit)), bind(source, <cached>), bind(backends, hold-hit-backends(hit))))
+            save reused, true
+
+    fork test, not(reused)
+      hold
+        host report, prove-file(make(hold-proof-ask, bind(file, file), bind(resolve, resolve), bind(cross, cross), bind(text, source)))
+        hold-cache-set(store, key, make(hold-verdict, bind(ok, report/ok), bind(label, file), bind(backends, report/backends)))
+        save checked, add(checked, 1)
+        outcomes/push(make(hold-outcome, bind(file, file), bind(ok, report/ok), bind(source, <checked>), bind(report, report), bind(backends, report/backends)))
+
+  hold-cache-save(store)
+
+  save all-ok, true
+  walk outcomes
+    take outcome
+    fork test, not(outcome/ok)
+      hold
+        save all-ok, false
+
+  back
+    make incremental-result
+      bind outcomes, outcomes
+      bind checked, checked
+      bind cached, cached
+      bind ok, all-ok

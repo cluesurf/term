@@ -3126,6 +3126,9 @@ task json-of-dock-route
   fork test, and(enters(skip-keys, <page>), subject/page)
     hold
       push(members, <"page":{flag-json(subject/page)}>)
+  fork test, and(enters(skip-keys, <passes>), subject/passes)
+    hold
+      push(members, <"passes":{flag-json(subject/passes)}>)
   fork test, enters(skip-keys, <directives>)
     hold
       push(members, <"directives":{json-of-dock-send-list(skip-keys, subject/directives)}>)

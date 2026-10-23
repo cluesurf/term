@@ -1,0 +1,60 @@
+note <proofs one after another on one solver: a refutation between two proofs changes neither>
+
+# The first three checks of deck/test/code/demo-perf.ts (decision 004, term-cli-in-term-0114), over smt-proof.tree.
+# The demo proved through one warm solver session (push and pop); smt-proof.tree sends one self-contained script per
+# query, so "the session stays correct after a push/pop cycle" is held as "a proof after a refutation is still a
+# proof". Its parallel checks are concurrent-proof.tree's. Needs the solver, so node only.
+
+load ../code/smt-proof
+  find prove-expr
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find related
+  find either
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+
+load @term/base/list
+  find list
+
+# out >= a, out >= b, and out is one of them
+task max-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  host parts, make list(related(<\>=>, output, a), related(<\>=>, output, b), either(related(<=>, output, a), related(<=>, output, b)))
+
+  back
+    make all-of
+      bind items, parts
+
+task max-body
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+test <max is proven for all integers>
+  host found, prove-expr(2, max-body(), max-formula)
+  want hold, found/proven
+
+test <return a is refuted, with an input>
+  host found, prove-expr(2, variable-at(0), max-formula)
+  want miss, found/proven
+  want hold, is-equal(found/counterexample/length, 2)
+
+test <max is proven again after a refutation>
+  host first, prove-expr(2, max-body(), max-formula)
+  host second, prove-expr(2, variable-at(0), max-formula)
+  host third, prove-expr(2, max-body(), max-formula)
+  want hold, and(first/proven, third/proven)
+  want miss, second/proven

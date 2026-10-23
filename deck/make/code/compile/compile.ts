@@ -28,6 +28,7 @@ import { checkMissingWaits } from '@term/make/code/check/missing-wait'
 import { pendingValues } from '@term/make/code/check/pending'
 import { asyncSlots } from '@term/make/code/check/async-slots'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
+import { checkDockMemberSpelling } from '@term/make/code/check/dock-member-spelling'
 import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import {
   disambiguateOverloads,
@@ -1628,7 +1629,7 @@ export function compileProgram(
 
   // a kebab member of a docked module with an acronym word reads two ways (toJSONValue, toJsonValue): refused once
   // here, before any backend (check/dock-member-spelling.tree, term/compiler decision 010)
-  const dockSpelling = ([] as ReturnType<typeof checkDockShadow>).map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
+  const dockSpelling = checkDockMemberSpelling(program).map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
 
   if (dockSpelling.length) {
     return { ok: false, diagnostics: dockSpelling }

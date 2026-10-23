@@ -2500,7 +2500,8 @@ task value-type
           link known
           fork test, is-unequal(known, <>)
             hold
-              back make(some, one-line(<like {known}>))
+              save made, one-line(<like {known}>)
+              back make(some, made)
         case none
           save nothing, 0
   # a bare `read <name>` value carries the named capture's own type
@@ -2532,7 +2533,8 @@ task value-type
                 save nothing, 0
         fork test, matches
           hold
-            back make(some, capture-type-of(rule, ops, grammar, seen))
+            save captured, capture-type-of(rule, ops, grammar, seen)
+            back make(some, captured)
   back make none
 
 # the last rule of a sequence that binds: a nested list binds, so it is a candidate too
@@ -3520,14 +3522,16 @@ task part-as-text
           fork test, is-equal(wrappers/length, 0)
             hold
               back make none
-          back make(some, text-of-shape(<read({part})>, wrappers, state, helpers))
+          save converted, text-of-shape(<read({part})>, wrappers, state, helpers)
+          back make(some, converted)
         case none
           save nothing, 0
   save conversion, text-conversion(type-words(scope, part))
   fork test, is-equal(conversion, <>)
     hold
       back make none
-  back make(some, <call {conversion}(read({part}), text \<\>)>)
+  save one-level, <call {conversion}(read({part}), text \<\>)>
+  back make(some, one-level)
 
 task compile-any-helper
   take name, like text

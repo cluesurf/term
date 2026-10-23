@@ -1,0 +1,79 @@
+mark draft
+
+note <proofs run one after another and many at once: the same verdicts, in input order>
+
+# The parallel checks of deck/test/code/demo-perf.ts (decision 004, term-cli-in-term-0114), over smt-proof.tree and
+# concurrency.tree: twelve obligations (max proven, `return a` refuted, in turn) run serially and eight at a time, and
+# both must answer the same verdicts in input order. Needs the solver, so node only. Its first three checks are
+# proof-sequence.tree's.
+#
+# SHELVED (term-cli-in-term-0114): the parallel run fails "you can't execute multiple async functions at the same
+# time". runtime/smt-text.ts hands every query to z3-solver's async_call on one shared context, and z3-solver refuses a
+# second async call while one is out. The fix is a queue in smt-text.ts (each evaluate waits for the one before), which
+# passes this file (2 of 2, tried and reverted: smt-text.ts is outside 0114's writes). Bring the file in with that fix.
+
+load ../code/smt-proof
+  find prove-expr
+
+load ../code/concurrency
+  find map-concurrent
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find related
+  find either
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+
+load @term/base/list
+  find list
+
+task max-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  host parts, make list(related(<\>=>, output, a), related(<\>=>, output, b), either(related(<=>, output, a), related(<=>, output, b)))
+
+  back
+    make all-of
+      bind items, parts
+
+task max-body
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+# job `index`: max on an even index (proven), `return a` on an odd one (refuted)
+task prove-job
+  mark async
+  take item, like unknown
+  take index, like number
+  like unknown
+
+  save body, variable-at(0)
+  # an even index: halving and doubling it gives it back (an integer divide truncates)
+  fork test, is-equal(multiply(divide(index, 2), 2), index)
+    hold
+      save body, max-body()
+  host found, prove-expr(2, body, max-formula)
+  back found/proven
+
+test <twelve proofs at most eight at once answer in input order, as one after another does>
+  host jobs, make list(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+  host serial, make list
+  walk jobs
+    take job
+    serial/push(prove-job(job, job))
+  host concurrent, map-concurrent(jobs, prove-job, 8)
+  host expected, make list(true, false, true, false, true, false, true, false, true, false, true, false)
+  want hold, is-equal(<{concurrent}>, <{expected}>)
+  want hold, is-equal(<{serial}>, <{concurrent}>)

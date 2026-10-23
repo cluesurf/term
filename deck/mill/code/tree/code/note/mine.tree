@@ -51,6 +51,10 @@ mine mark-note
         site text
       mine term, term roam
         site text
+      # `mark pass` under a command hook: every word after its path is another console's (decision
+      # term/cli-in-term/008 part 2). Read only there, by compile/mint-bridge.ts routeOf, and refused anywhere else
+      mine term, term pass
+        site text
 
 # `mark unsafe` OVER STATEMENTS: the guarded block, the same as `note-guard` below. A rule of its own because
 # `mine mark-note` takes nothing under the word, which is what keeps a knob's `like` out of it

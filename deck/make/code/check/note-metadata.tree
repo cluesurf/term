@@ -69,7 +69,7 @@ task is-metadata-word
   like boolean
   mark private
 
-  walk split(<async native unsafe draft stable unstable deprecated keep open roam feature platform shared private>, < >)
+  walk split(<async native unsafe draft stable unstable deprecated keep open roam pass feature platform shared private>, < >)
     take one
     fork test, is-equal(one, word)
       hold

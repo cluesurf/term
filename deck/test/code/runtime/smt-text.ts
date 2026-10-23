@@ -17,6 +17,12 @@
 //
 // An answer whose first line is an error is never handed on as an answer: the context is dropped and the query asked
 // once more on a fresh one. A second error goes back as it is, and smt-query.tree's `check-sat` raises on it.
+//
+// One call runs at a time. z3-solver runs its async calls on one worker and refuses a second while one is out ("you
+// can't execute multiple async functions at the same time"), so callers that ask at once (concurrency.tree's
+// map-concurrent over proofs, demo-perf's parallel checks) each wait for the call before theirs. The queue holds the
+// whole of a call, the retry and the swap of a dropped context included, so no query ever runs on a context being
+// replaced (term-cli-in-term-0173, test/smt-text-queue.tree).
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -36,6 +42,8 @@ type Solver = {
 
 let smtSolver: Promise<Solver> | undefined
 let smtContext: number | undefined
+// the tail of the queue: settles when the last call asked so far has, whether it answered or raised
+let smtTail: Promise<unknown> = Promise.resolve()
 
 const encoder = new TextEncoder()
 
@@ -62,26 +70,35 @@ function isErrorAnswer(answer: string): boolean {
   return answer.trimStart().startsWith('(error')
 }
 
+async function evaluateNow(text: string): Promise<string> {
+  smtSolver ??= (async () => {
+    const found = createRequire(join(process.cwd(), 'noop.js')).resolve('z3-solver')
+    const { init } = (await import(pathToFileURL(found).href)) as { init: () => Promise<Solver> }
+
+    return init()
+  })()
+
+  const solver = await smtSolver
+
+  smtContext ??= freshContext(solver.Z3)
+
+  const answer = await evaluateOn(solver, smtContext, text)
+
+  if (!isErrorAnswer(answer)) return answer
+
+  solver.Z3.del_context!(smtContext)
+  smtContext = freshContext(solver.Z3)
+
+  return evaluateOn(solver, smtContext, text)
+}
+
 const smtText = {
-  evaluate: async (text: string): Promise<string> => {
-    smtSolver ??= (async () => {
-      const found = createRequire(join(process.cwd(), 'noop.js')).resolve('z3-solver')
-      const { init } = (await import(pathToFileURL(found).href)) as { init: () => Promise<Solver> }
+  evaluate: (text: string): Promise<string> => {
+    const answer = smtTail.then(() => evaluateNow(text))
 
-      return init()
-    })()
+    // a raise goes to the caller, and the queue only waits for it to settle
+    smtTail = answer.catch(() => undefined)
 
-    const solver = await smtSolver
-
-    smtContext ??= freshContext(solver.Z3)
-
-    const answer = await evaluateOn(solver, smtContext, text)
-
-    if (!isErrorAnswer(answer)) return answer
-
-    solver.Z3.del_context!(smtContext)
-    smtContext = freshContext(solver.Z3)
-
-    return evaluateOn(solver, smtContext, text)
+    return answer
   },
 }

@@ -1,0 +1,106 @@
+# The whole automated loop in one call: from a contract (a spec, perhaps for a hole in a program) to verified Term
+# source that compiles. The repair loop writes a body (the given proposers first, an AI among them, synthesis as the
+# net), the bounded prover checks it again on its own, the source emitter writes it as a task, and the live compiler
+# compiles that task. A wrong proposal, even an AI's, is refused by the proof, so the output is always verified.
+#
+# Ported from deck/test/code/pipeline.ts (term-cli-in-term-0113): autocomplete and isSound. The ask is positional, as
+# contract-check.tree's tasks are (the contract as its data, `bound` 8 and `max-size` 6 where the original defaulted
+# them). A completion is one record: `reason` is `<>` when one was found, and `expr`, `source` and `proposer` hold
+# nothing useful when none was. The compiler is docked (compile/compile.ts is TypeScript, decision 004).
+
+load @term/base/list
+  find list
+
+load ./contract-form
+  find contract
+
+load ./contract-check
+  find verify-contract
+  find synthesize-contract
+
+load ./expression-grammar
+  find expression
+
+load ./repair-loop
+  find proposer
+
+load ./source-emit
+  find seed-task
+  find emit-seed
+
+dock load
+  load <@term/make/code/compile/compile>, name completion-compiling
+
+form completion-source
+  link file, like text
+  link text, like text
+
+form completion-options
+  link resolve, like dynamic
+
+form completion
+  link ok, like boolean
+  link task-name, like text
+  link expr, like expression
+  link source, like text
+  link proposer, like text
+  link verified, like boolean
+  link compiles, like boolean
+  link reason, like text
+
+bind completion-compiled-ok
+  take compiled, like dynamic
+  like boolean
+  case node
+    text <$compiled.ok>
+
+# a task body completed from its contract: synthesized, proven over the bound, emitted, and compiled
+task autocomplete
+  take task-name, like text
+  take terms, like contract
+  take resolve, like dynamic
+  take proposers, like list, like proposer
+  take bound, like number
+  take max-size, like number
+  like completion
+
+  host synth, synthesize-contract(terms, bound, max-size, proposers)
+  fork test, not(synth/ok)
+    hold
+      back
+        make completion
+          bind ok, false
+          bind task-name, task-name
+          bind expr, synth/expr
+          bind source, <>
+          bind proposer, <>
+          bind verified, false
+          bind compiles, false
+          bind reason, synth/reason
+
+  host verified, verify-contract(synth/expr, terms, bound)/ok
+  host written
+    make seed-task
+      bind name, task-name
+      bind params, terms/names
+      bind body, synth/expr
+  host source, emit-seed(written)
+  host compiled, completion-compiling/compile(make(completion-source, bind(file, <{task-name}.tree>), bind(text, source)), make(completion-options, bind(resolve, resolve)))
+
+  back
+    make completion
+      bind ok, true
+      bind task-name, task-name
+      bind expr, synth/expr
+      bind source, source
+      bind proposer, synth/proposer
+      bind verified, verified
+      bind compiles, completion-compiled-ok(compiled)
+      bind reason, <>
+
+# whether a completion is sound end to end: synthesized, proven, and compiles
+task is-sound
+  take found, like completion
+  like boolean
+
+  back and(found/ok, and(found/verified, found/compiles))

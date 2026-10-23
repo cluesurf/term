@@ -52,11 +52,14 @@ load @term/base/console
   find log
 
 # THE RUN (term-cli-in-term-0012), below the dispatcher: what `deck/call/code/line.ts`'s `main()` did around yargs,
-# for the console bundled as `host/term-line.js`. The parsing of a command's own flags, its help text and the call of
-# its task are still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes), and the
+# for the console bundled as `host/term-line.js`. The parsing of a command's own flags and the call of its task are
+# still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes), and the
 # output library, the homes and the banner are their TypeScript modules: each dock below is one thing to port.
+# the help a `--help` prints, in Term (term-cli-in-term-0141)
+load @term/call/work/help
+  find help-text
+
 dock load
-  load <@term/call/code/hook-dispatch>, name hook-module
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output-module
   load <@term/call/code/show>, name show-module
@@ -351,12 +354,13 @@ task has-take
         back true
   back false
 
-# `zone` and `mark` hand every word after them to another console untouched: yargs read them with `help(false)` and
-# unknown options as arguments, so neither `--help` nor a global flag after the verb is this console's
+# A hook marked `mark pass` (`zone`, `mark`) hands every word after its path to another console untouched: yargs read
+# them with `help(false)` and unknown options as arguments, so neither `--help` nor a global flag after the verb is
+# this console's. The route says it (`passes`, decision cli-in-term/008 part 2), never a table of paths here
 task is-passing
   take route, like dock-route
   like boolean
-  back or(is-equal(route/path, <zone>), is-equal(route/path, <mark>))
+  back route/passes
 
 # does the flag word name the program's take of this name (`hint` is yargs' help, `version` its version), by its
 # name, an alias or its letter?
@@ -469,33 +473,19 @@ task usage-failure
   save code, output-module/closeRun(make usage-close, verdict(<The command line was not understood>), next(next), failure(<usage>))
   back code
 
-# `--help`: the help of the deepest command the bare words name, or the list of commands
+# `--help`: the help of the deepest command the bare words name, or the program's own, laid out as yargs laid it out
+# for line.ts (work/help.tree, term-cli-in-term-0141)
 task show-help
   take routes, like list, like dock-route
   take bare, like list, like text
   like void
-  save level, routes
-  save parents, make list
-  save current, make none
-  walk bare
-    take token
-    sift route-named(level, token)
-      case some
-        sift current
-          case some
-            link above
-            parents/push above/path
-          case none
-            save nothing, 0
-        save level, value/children
-        save current, make(some, value)
-      case none
-        halt
-  sift current
-    case some
-      log hook-module/renderHelp(value, <term>, parents)
-    case none
-      log hook-module/renderUsage(<term>, routes)
+  save name, <term>
+  save usage, <>
+  fork test, is-program(routes)
+    hold
+      save name, routes/0/path
+      save usage, routes/0/note
+  log help-text(name, usage, globals-of(routes), commands-of(routes), bare)
 
 # Start a run: the words after `node line.js`, read the way line.ts read them around yargs
 task start-line
@@ -633,7 +623,7 @@ task start-line
 
   fork test, help
     hold
-      show-help(commands, bare)
+      show-help(routes, bare)
       back done-with(0)
   fork test, asked-version
     hold

@@ -6,6 +6,7 @@ import {
   commandRoutes,
   dispatch,
   programOf,
+  runCommandLine,
 } from '@term/call/code/hook-dispatch'
 
 let pass = 0
@@ -101,7 +102,7 @@ hook gather
   task gather
 `
 
-function main(): void {
+function main(): Promise<void> {
   const r = compile({ file: 'cli.tree', text: SRC }, {})
 
   if (!r.ok) {
@@ -265,9 +266,65 @@ hook tool
   const badGlobal = dispatch(program, ['build', '--color', 'red'])
   expect('a global\'s choices are checked', badGlobal.ok, false)
 
-  console.log(`\nhook: ${pass} pass, ${fail} fail`)
+  // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
+  // verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's
+  const PASSING = `task hand
+  take rest, like list, like text
+  send back
+    code 0
 
-  if (fail) {process.exit(1)}
+hook tool
+  take quiet
+    like boolean
+    code q
+  hook zone
+    mark pass
+    slot rest, like list, like text
+    task hand
+`
+  const passBuilt = compile({ file: 'passing.tree', text: PASSING }, {})
+
+  if (!passBuilt.ok) {
+    console.log('FAIL compile passing', JSON.stringify(passBuilt.diagnostics.slice(0, 3)))
+    process.exit(1)
+  }
+
+  const passing = commandRoutes(passBuilt.program)
+  const helped = dispatch(passing, ['zone', '--help'])
+  expect('a passing route gets --help', helped.ok && helped.args.rest, ['--help'])
+  const listed = dispatch(passing, ['zone', 'list', '--quiet'])
+  expect('a passing route gets its words and flags in order', listed.ok && listed.args.rest, ['list', '--quiet'])
+  expect('a global after a passing command is not the console\'s', listed.ok && listed.globals, {})
+  const raw = dispatch(passing, ['zone', '-h', '--', '--typo', 'x'])
+  expect('-h, -- and an unknown flag pass verbatim', raw.ok && raw.args.rest, ['-h', '--', '--typo', 'x'])
+
+  const seen: unknown[] = []
+  const shown: string[] = []
+  const runPassing = (argv: string[]): Promise<number> =>
+    runCommandLine({
+      name: 'tool',
+      routes: passing,
+      argv,
+      resolve: () => (rest: unknown) => {
+        seen.push(rest)
+        return 0
+      },
+      out: line => shown.push(line),
+      err: line => shown.push(line),
+    })
+
+  return runPassing(['zone', '--help'])
+    .then(code => {
+      expect('runCommandLine hands --help after a passing command to it', [code, seen[0]], [0, ['--help']])
+      shown.length = 0
+      return runPassing(['--help', 'zone'])
+    })
+    .then(code => {
+      expect('--help before a passing command is the console\'s help of it', [code, seen.length, shown[0]?.startsWith('tool zone')], [0, 1, true])
+      console.log(`\nhook: ${pass} pass, ${fail} fail`)
+
+      if (fail) {process.exit(1)}
+    })
 }
 
 main()

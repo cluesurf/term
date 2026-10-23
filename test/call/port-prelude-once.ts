@@ -67,9 +67,11 @@ task probe
   },
 ]
 
+let passed = 0
 let failed = 0
 const ok = (name: string, holds: boolean, detail = ''): void => {
   console.log(`${holds ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`)
+  passed += holds ? 1 : 0
   failed += holds ? 0 : 1
 }
 
@@ -98,5 +100,8 @@ for (const one of CASES) {
   ok(`${one.name}: esbuild takes it`, refusal === '', refusal)
 }
 
+// the summary line `pnpm term:test` counts (task/term/test.ts `summary`): without it the gate read a clean exit as
+// `ok, 0 pass`, so a run that checked nothing could not be told from one that checked everything
+console.log(`port-prelude-once: ${passed} pass, ${failed} fail`)
 console.log(failed === 0 ? 'status: PASS' : `status: FAIL (${failed})`)
 process.exitCode = failed === 0 ? 0 : 1

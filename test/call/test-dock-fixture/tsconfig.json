@@ -1,0 +1,11 @@
+{
+  // the project's own build maps this dock to its source, so `term test` inlines it (decision 009)
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@probe/shared/*": ["./shared/*"],
+    },
+  },
+}

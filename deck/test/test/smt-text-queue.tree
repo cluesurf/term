@@ -1,0 +1,38 @@
+note <many solver queries at once on one context: each answers its own query>
+
+# runtime/smt-text.ts runs every query on one Z3 context, and z3-solver refuses a second async call while one is out
+# ("you can't execute multiple async functions at the same time"). smt-text.ts queues the calls, one after another
+# (term-cli-in-term-0173). Forty queries at once, each `a = index`, must each answer sat with its own index, so a
+# query answered with another's model fails too. Needs the solver, so node only.
+
+load ../code/smt-query
+  find value-term
+  find name-term
+  find related
+  find check-sat
+
+load ../code/concurrency
+  find map-concurrent
+
+load @term/base/list
+  find list
+
+# job `index`: is `a = index` satisfiable, and does its model give `a` that index
+task ask-own
+  mark async
+  take item, like unknown
+  take index, like number
+  like unknown
+
+  host names, make list(<a>)
+  host found, check-sat(names, related(<=>, name-term(<a>), value-term(index)))
+  back and(is-equal(found/status, <sat>), is-equal(get(found/values, 0), index))
+
+test <forty queries at once on one context each answer their own query>
+  host jobs, make list(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39)
+  host answers, map-concurrent(jobs, ask-own, 40)
+  host expected, make list
+  walk jobs
+    take job
+    expected/push(true)
+  want hold, is-equal(<{answers}>, <{expected}>)

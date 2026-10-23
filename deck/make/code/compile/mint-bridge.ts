@@ -4761,10 +4761,22 @@ function routeOf(
     const choices = at(take, 'pick')
       .map(textOf)
       .filter((value): value is string => value !== undefined)
-    const fallbackValue = firstAt(
-      formsAt(take, 'bind')[0],
-      'seed',
-    )
+    const fallbackBind = formsAt(take, 'bind')[0]
+    const fallbackValue = firstAt(fallbackBind, 'seed')
+    // `bind true` READS AS A NAME: the bind rule takes a lone word with nothing under it as `bind <name>, <value>`'s
+    // name (bind/mine.tree), so the default had no seed and the take lost it in silence (the program's `motion`,
+    // hold's `cache`, term-compiler-0065). `true` and `false` are the flag they spell; any other lone word is no
+    // literal at all and is refused, never dropped
+    const loneWord = fallbackBind && !fallbackValue ? wordAt(fallbackBind, 'name') : undefined
+
+    if (loneWord !== undefined && loneWord !== 'true' && loneWord !== 'false') {
+      refuse(
+        bridge,
+        fallbackBind,
+        `a take's default is a literal, and \`${loneWord}\` alone is not one: write \`bind <${loneWord}>\` for a text, \`bind code 3\` for a number, \`bind true\` or \`bind false\` for a flag`,
+      )
+    }
+
     const literal = fallbackValue
       ? (expressionOf(bridge, fallbackValue) ?? undefined)
       : undefined
@@ -4775,7 +4787,9 @@ function routeOf(
           ? { form: 'text', value: literal.value }
           : literal?.form === 'boolean'
             ? { form: 'flag', value: literal.value }
-            : undefined
+            : loneWord === 'true' || loneWord === 'false'
+              ? { form: 'flag', value: loneWord === 'true' }
+              : undefined
 
     return {
       name: wordAt(take, 'name') ?? '',
@@ -4829,9 +4843,55 @@ function routeOf(
   // statement IS a hook has no way to carry a header without it becoming that command's help, and
   // `deck/call/code/line/base.tree` is exactly that file. Nothing in the tree sets both, so this cannot change
   // any existing help text.
+  //
+  // A `mark <word>` under a hook arrives in the same `note` site, holding a WORD (note/mine.tree `mark-note`), where
+  // help is a text literal, so the help is the first note that is not a word. `mark pass` on a command is the one mark
+  // a hook reads (decision term/cli-in-term/008 part 2); any other word, and `pass` on a URL route, is refused, since
+  // it would be read by nothing
+  const markWords = formsAt(value, 'note').flatMap(note => {
+    const word = firstAt(note, 'text')
+
+    return word?.kind === 'word' ? [{ at: note, word: word.value as string }] : []
+  })
+  const passes = !isRoute && markWords.some(mark => mark.word === 'pass')
+
+  for (const mark of markWords) {
+    if (isRoute ? mark.word === 'pass' : mark.word !== 'pass') {
+      refuse(
+        bridge,
+        mark.at,
+        mark.word === 'pass'
+          ? '`mark pass` is read only under a command hook: a URL route has no command line to hand on'
+          : `\`mark ${mark.word}\` is not read under a command: \`mark pass\` is the one mark a command hook takes`,
+      )
+    }
+  }
+
+  // A PASSING HOOK HAS EXACTLY ONE SLOT, `like list, like text`, and no take and no nested hook: every word after its
+  // path goes to that slot, so a flag, a second slot or a subcommand could never be reached
+  if (passes) {
+    const only = takes.length === 1 ? takes[0] : undefined
+    const element = only?.type?.kind === 'array' ? only.type.element : undefined
+    const listOfText =
+      only?.positional === true &&
+      element !== undefined &&
+      JSON.stringify(element) === JSON.stringify(typeOfWord('text'))
+
+    if (!listOfText || formsAt(value, 'hook').length > 0) {
+      refuse(
+        bridge,
+        value,
+        '`mark pass` makes a hook hand its words to another console: it has exactly one slot, `like list, like text`, and no take and no nested hook',
+      )
+    }
+  }
+
   const help = isRoute
     ? undefined
-    : (wordAt(firstAt(value, 'note'), 'text') ?? leadingNote(value))
+    : (wordAt(
+        formsAt(value, 'note').find(note => firstAt(note, 'text')?.kind !== 'word'),
+        'text',
+      ) ?? leadingNote(value))
 
   // the implementation, in either spelling: `task <impl>` names the handler and passes the takes in order,
   // `call <impl>` names it with its arguments written out
@@ -4940,6 +5000,7 @@ function routeOf(
     // `page` says the same as a flag a reader can test without asking whether a key exists, which is what check/routes
     // asked, and which a Term port cannot (check/routes.tree)
     ...(isRoute ? { component, page: true } : {}),
+    ...(passes ? { passes: true } : {}),
     // a route's `seed <name>, <value>` lines are its directives: `title`, `layout`, `proxy`, a meta tag. They arrive
     // in the flow, and were dropped here until 2026-10-03, so `seed title` set no title in any build on this path while
     // the legacy mill read it (native-navigation-0002)

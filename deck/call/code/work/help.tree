@@ -1,0 +1,669 @@
+# The console's help, in Term: `--help` laid out byte for byte as yargs 17 printed it for line.ts.
+#
+# The routes are the data (decision term/003): the program hook's note is the usage line, a command's usage line is
+# its path chain and its slots, its Options are every ancestor's takes, the program's first, then its own, and its
+# Positionals are its slots. What this file adds is the LAYOUT, and the layout is cliui's (yargs 17.7.2,
+# node_modules/.pnpm/yargs@17.7.2/node_modules/cliui/build/lib/index.js), rule for rule:
+#
+# - a row is columns; a column with no width takes an even share of the room the set widths leave, at least its
+#   padding and one
+# - a column's text is wrapped HARD at its room, every room-th character, mid-word (cliui's ESM `wrap`, which is the
+#   one line.ts bundled), and padded to its room with spaces
+# - a right-aligned column (the `[boolean]` tags) is trimmed and set against its room's right edge
+# - a row that follows a SPAN row (an option's switch and note) is written onto the span's last line when its leading
+#   spaces reach past that line's text, which is how a tag joins its note, or vanishes into it when it is empty
+# - every line loses its trailing spaces, and the whole loses its trailing whitespace
+#
+# And yargs' usage.js decides the rows: the width is 80, or the terminal's when it is narrower; the switch column is
+# the widest switch plus four, at most half the width; a long-only switch is indented four when any switch has a
+# short letter; the tags are type, required, choices, default.
+#
+# term-cli-in-term-0141. `work/dispatch.tree` `show-help` calls `help-text`.
+
+load @term/base/text
+  find char-count
+  find substring
+  find pad-right
+  find trim
+  find trim-start
+  find trim-end
+
+load @term/make/compile/node
+  find dock-route
+  find dock-take
+  find type
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
+# one column of a row, as cliui holds it: its text, its width (0 when the room left decides), its left and right
+# padding, the empty lines above it, and whether its text is set against the right edge
+form help-column
+  link text, like text
+  link width, like number
+  link left, like number
+  link right, like number
+  link top, like number
+  link align, like boolean
+
+# a row of columns. A span row lets the next row's text join its last line when it fits (cliui `span`)
+form help-row
+  link columns, like list, like help-column
+  link span, like boolean
+
+# a choice as yargs wrote it, through JSON
+bind help-quoted
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# yargs' width: 80, or the terminal's columns when stdout is a narrower terminal (usage.js windowWidth)
+bind help-width
+  take most, like number
+  like number
+  case node
+    text <(process.stdout.columns ? Math.min($most, process.stdout.columns) : $most)>
+
+# ---- cliui ----
+
+# `count` spaces, and none for a count below one
+task repeat-space
+  take count, like number
+  like text
+  back pad-right(<>, count, < >)
+
+task count-leading
+  take value, like text
+  like number
+  back subtract(char-count(value), char-count(trim-start(value)))
+
+task count-trailing
+  take value, like text
+  like number
+  back subtract(char-count(value), char-count(trim-end(value)))
+
+# a column given as a bare text: cliui measures its padding off the text's own leading and trailing spaces
+task measured-column
+  take text, like text
+  like help-column
+  back make help-column, text(text), width(0), left(count-leading(text)), right(count-trailing(text)), top(0), align(false)
+
+# a column given whole, with its width and padding
+task set-column
+  take text, like text
+  take width, like number
+  take left, like number
+  take right, like number
+  like help-column
+  back make help-column, text(text), width(width), left(left), right(right), top(0), align(false)
+
+# the tags column: padded two on the left, set against the right edge
+task right-column
+  take text, like text
+  like help-column
+  back make help-column, text(text), width(0), left(2), right(0), top(0), align(true)
+
+# a command's description: one empty line above it
+task lowered-column
+  take text, like text
+  like help-column
+  back make help-column, text(text), width(0), left(0), right(0), top(1), align(false)
+
+# `ui.div()`: one empty column, which joins the span line before it or prints an empty line
+task blank-row
+  like help-row
+  save columns, make list
+  columns/push measured-column(<>)
+  back make help-row, columns(columns), span(false)
+
+task one-row
+  take column, like help-column
+  like help-row
+  save columns, make list
+  columns/push column
+  back make help-row, columns(columns), span(false)
+
+task span-row
+  take first, like help-column
+  take second, like help-column
+  like help-row
+  save columns, make list
+  columns/push first
+  columns/push second
+  back make help-row, columns(columns), span(true)
+
+# the text broken every `room` characters, mid-word, and at each line break it holds (cliui's ESM `wrap`)
+task wrap-hard
+  take value, like text
+  take room, like number
+  like list, like text
+  save pieces, make list
+  save piece, <>
+  save count, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save one, substring(value, at, add(at, 1))
+      fork test, and(is-above(at, 0), is-equal(modulo(at, room), 0))
+        hold
+          pieces/push piece
+          save piece, <>
+      fork test, is-equal(one, <\n>)
+        hold
+          pieces/push piece
+          save piece, <>
+        miss
+          save piece, <{piece}{one}>
+      save at, add(at, 1)
+  pieces/push piece
+  back pieces
+
+# each column's width: its own, else an even share of what the set widths leave, at least its padding and one
+task column-widths
+  take columns, like list, like help-column
+  take width, like number
+  like list, like number
+  save unset, columns/length
+  save left-over, width
+  walk columns
+    take column
+    fork test, is-above(column/width, 0)
+      hold
+        save unset, subtract(unset, 1)
+        save left-over, subtract(left-over, column/width)
+  save share, 0
+  fork test, is-above(unset, 0)
+    hold
+      save share, divide(left-over, unset)
+  save widths, make list
+  walk columns
+    take column
+    fork test, is-above(column/width, 0)
+      hold
+        widths/push column/width
+      miss
+        save least, add(add(1, column/left), column/right)
+        fork test, is-above(least, share)
+          hold
+            widths/push least
+          miss
+            widths/push share
+  back widths
+
+# a column's lines: its empty lines above, then its text wrapped at its room
+task column-pieces
+  take column, like help-column
+  take room, like number
+  like list, like text
+  save pieces, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, column/top)
+    hook hold
+      pieces/push <>
+      save at, add(at, 1)
+  walk wrap-hard(column/text, room)
+    take piece
+    pieces/push piece
+  back pieces
+
+# the text trimmed and set against the right edge of its room
+task align-right
+  take value, like text
+  take room, like number
+  like text
+  save trimmed, trim(value)
+  save count, char-count(trimmed)
+  fork test, is-below(count, room)
+    hold
+      back <{repeat-space(subtract(room, count))}{trimmed}>
+  back trimmed
+
+# the rows as text, cliui's `toString`, with yargs' trailing whitespace taken off
+task lay-out
+  take rows, like list, like help-row
+  take width, like number
+  like text
+  save out, make list
+  # the last line written, held back because the next row may join it (cliui `renderInline` hides it then)
+  save pending, <>
+  save pending-span, false
+  save has-pending, false
+  walk rows
+    take row
+    save columns, row/columns
+    save widths, column-widths(columns, width)
+    save rooms, make list
+    save stacks, make list
+    save height, 0
+    walk columns
+      take column
+      take c
+      save room, subtract(subtract(widths/{c}, column/left), column/right)
+      rooms/push room
+      save pieces, column-pieces(column, room)
+      stacks/push pieces
+      fork test, is-above(pieces/length, height)
+        hold
+          save height, pieces/length
+    save r, 0
+    walk test
+      hook test, is-below(r, height)
+      hook hold
+        # a line runs to the last column that has a piece on it; the columns before it with none are empty
+        save last, subtract(0, 1)
+        walk stacks
+          take pieces
+          take c
+          fork test, is-below(r, pieces/length)
+            hold
+              save last, c
+        save line, <>
+        save hide, false
+        walk columns
+          take column
+          take c
+          fork test, is-maximum(c, last)
+            hold
+              save cell, <>
+              save pieces, stacks/{c}
+              fork test, is-below(r, pieces/length)
+                hold
+                  save cell, pieces/{r}
+              save room, rooms/{c}
+              save size, char-count(cell)
+              fork test, is-above(room, size)
+                hold
+                  save cell, <{cell}{repeat-space(subtract(room, size))}>
+              fork test, column/align
+                hold
+                  save cell, align-right(cell, room)
+              save line, <{line}{repeat-space(column/left)}{cell}{repeat-space(column/right)}>
+              # the first line of a row joins the span line before it when its leading spaces reach past that
+              # line's text
+              fork test, and(is-equal(r, 0), and(has-pending, pending-span))
+                hold
+                  save lead, count-leading(line)
+                  save target, char-count(trim-end(pending))
+                  fork test, is-minimum(lead, target)
+                    hold
+                      save hide, true
+                      save line, <{trim-end(pending)}{repeat-space(subtract(lead, target))}{trim-start(line)}>
+        fork test, and(has-pending, not(hide))
+          hold
+            out/push pending
+        save pending, trim-end(line)
+        save pending-span, row/span
+        save has-pending, true
+        save r, add(r, 1)
+  fork test, has-pending
+    hold
+      out/push pending
+  save text, <>
+  walk out
+    take line
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        save text, line
+      miss
+        save text, <{text}\n{line}>
+  back trim-end(text)
+
+# ---- yargs' help ----
+
+# the command of this name among these
+task command-named
+  take routes, like list, like dock-route
+  take token, like text
+  like maybe, like dock-route
+  walk routes
+    take one
+    fork test, is-equal(one/path, token)
+      hold
+        back make(some, one)
+  back make none
+
+# a slot as a usage line writes it: `<file>` when required, `[file]` when not, `[paths..]` for the rest of the words
+task slot-word
+  take one, like dock-take
+  like text
+  save word, one/name
+  fork test, one/variadic
+    hold
+      save word, <{word}..>
+  fork test, one/required
+    hold
+      back <\<{word}\>>
+  back <[{word}]>
+
+# a command as its usage line and the Commands list write it: its path, then its slots
+task command-words
+  take route, like dock-route
+  like text
+  save words, route/path
+  walk route/takes
+    take one
+    fork test, one/positional
+      hold
+        save words, <{words} {slot-word(one)}>
+  back words
+
+# a take's flag column: its short letter, its name, then its long aliases (yargs puts the one-letter switch first)
+task switch-words
+  take one, like dock-take
+  like text
+  save words, <>
+  fork test, is-unequal(one/short, <>)
+    hold
+      save words, <-{one/short}>
+  fork test, is-equal(words, <>)
+    hold
+      save words, <--{one/name}>
+    miss
+      save words, <{words}, --{one/name}>
+  walk one/aliases
+    take alias
+    save words, <{words}, --{alias}>
+  back words
+
+# a plain type as yargs tagged it
+task plain-tag
+  take given, like type
+  like text
+  sift given
+    case boolean
+      back <[boolean]>
+    case string
+      back <[string]>
+    case number
+      back <[number]>
+    case float
+      back <[number]>
+    case array
+      back <[array]>
+    miss
+      back <>
+
+# a take's type as yargs tagged it; a maybe take by its item (decision cli-in-term/008: `--runs` is `[number]`)
+task type-tag
+  take given, like type
+  like text
+  sift given
+    case named
+      fork test, and(is-equal(name, <maybe>), is-above(args/length, 0))
+        hold
+          back plain-tag(args/0)
+      back <>
+    miss
+      back plain-tag(given)
+
+# yargs' tags: the type, required, the choices, the default
+task tag-words
+  take one, like dock-take
+  like text
+  save tags, make list
+  save tag, <>
+  sift one/type
+    case some
+      save tag, type-tag(value)
+    case none
+      save tag, <>
+  fork test, is-unequal(tag, <>)
+    hold
+      tags/push tag
+  fork test, one/required
+    hold
+      tags/push <[required]>
+  save choices, one/choices
+  fork test, is-above(choices/length, 0)
+    hold
+      save listed, <>
+      walk choices
+        take choice
+        take at
+        fork test, is-equal(at, 0)
+          hold
+            save listed, help-quoted(choice)
+          miss
+            save listed, <{listed}, {help-quoted(choice)}>
+      tags/push <[choices: {listed}]>
+  sift one/fallback
+    case some
+      sift value
+        case text
+          link given
+          tags/push <[default: "{given}"]>
+        case number
+          link amount
+          tags/push <[default: {amount}]>
+        case flag
+          link on
+          tags/push <[default: {on}]>
+    case none
+      # yargs gives the rest of the words (`[paths..]`) the empty list for a default, and says so
+      fork test, one/variadic
+        hold
+          tags/push <[default: []]>
+  save words, <>
+  walk tags
+    take tag
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        save words, tag
+      miss
+        save words, <{words} {tag}>
+  back words
+
+# a group of takes (Positionals: or Options:): the group's name, then a span row per take, its switch and its note,
+# and its tags set right on the row after, then an empty row
+task push-group
+  take rows, like list, like help-row
+  take title, like text
+  take takes, like list, like dock-take
+  take positional, like boolean
+  take width, like number
+  like list, like help-row
+  save switches, make list
+  save indents, make list
+  save shorts, false
+  walk takes
+    take one
+    fork test, positional
+      hold
+        switches/push one/name
+      miss
+        switches/push switch-words(one)
+        fork test, is-unequal(one/short, <>)
+          hold
+            save shorts, true
+  # a long-only switch is indented by `-x, ` when any switch of the options has a short letter
+  save widest, 0
+  walk takes
+    take one
+    take at
+    save indent, 0
+    fork test, and(shorts, is-equal(one/short, <>))
+      hold
+        save indent, 4
+    indents/push indent
+    save size, add(char-count(switches/{at}), indent)
+    fork test, is-above(size, widest)
+      hold
+        save widest, size
+  save half, divide(width, 2)
+  fork test, is-above(widest, half)
+    hold
+      save widest, half
+  rows/push one-row(measured-column(title))
+  walk takes
+    take one
+    take at
+    save indent, indents/{at}
+    rows/push span-row(set-column(switches/{at}, add(widest, 4), add(2, indent), 2), measured-column(one/note))
+    save tags, tag-words(one)
+    fork test, is-equal(tags, <>)
+      hold
+        rows/push blank-row()
+      miss
+        rows/push one-row(right-column(tags))
+  rows/push blank-row()
+  back rows
+
+# the Commands section: each command under its full path, its note beside it, then an empty row
+task push-commands
+  take rows, like list, like help-row
+  take prefix, like text
+  take commands, like list, like dock-route
+  take width, like number
+  like list, like help-row
+  save texts, make list
+  save widest, 0
+  walk commands
+    take one
+    save shown, <{prefix}{command-words(one)}>
+    texts/push shown
+    save size, char-count(shown)
+    fork test, is-above(size, widest)
+      hold
+        save widest, size
+  save half, divide(width, 2)
+  fork test, is-above(widest, half)
+    hold
+      save widest, half
+  rows/push one-row(measured-column(<Commands:>))
+  walk commands
+    take one
+    take at
+    rows/push span-row(set-column(texts/{at}, add(widest, 4), 2, 2), set-column(one/note, 0, 0, 0))
+    rows/push blank-row()
+  rows/push blank-row()
+  back rows
+
+# is a take of this name in the list already?
+task has-named
+  take takes, like list, like dock-take
+  take name, like text
+  like boolean
+  walk takes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
+
+# the last take of this name; the list holds one
+task last-named
+  take takes, like list, like dock-take
+  take name, like text
+  like dock-take
+  save found, takes/0
+  walk takes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one
+  back found
+
+# The help `--help` prints for the bare words of a command line: the deepest command they name, or the program's
+# own. `name` is the program (`term`), `usage` its usage line, `globals` its takes and `commands` its nested hooks.
+task help-text
+  take name, like text
+  take usage, like text
+  take globals, like list, like dock-take
+  take commands, like list, like dock-route
+  take bare, like list, like text
+  like text
+  save width, help-width(80)
+
+  # the commands the bare words name, from the program down
+  save chain, make list
+  save level, commands
+  walk bare
+    take token
+    sift command-named(level, token)
+      case some
+        chain/push value
+        save level, value/children
+      case none
+        halt
+
+  save rows, make list
+  save options, make list
+  walk globals
+    take one
+    options/push one
+  save positionals, make list
+  save children, commands
+  save prefix, <{name} >
+
+  fork test, is-equal(chain/length, 0)
+    hold
+      fork test, is-unequal(usage, <>)
+        hold
+          rows/push one-row(set-column(usage, 0, 0, 0))
+          rows/push blank-row()
+        miss
+          rows/push one-row(set-column(<{name} [command]>, 0, 0, 0))
+          rows/push blank-row()
+    miss
+      save last, subtract(chain/length, 1)
+      save current, chain/{last}
+      save line, name
+      walk chain
+        take one
+        take at
+        fork test, is-below(at, last)
+          hold
+            save line, <{line} {one/path}>
+            save prefix, <{prefix}{one/path} >
+      save prefix, <{prefix}{current/path} >
+      rows/push one-row(set-column(<{line} {command-words(current)}>, 0, 0, 0))
+      fork test, is-unequal(current/note, <>)
+        hold
+          rows/push one-row(lowered-column(current/note))
+      rows/push blank-row()
+      save children, current/children
+      # a command's options: every ancestor's takes, then its own. A name given twice keeps the place it was first
+      # given and shows what it was given last, as yargs kept one description per key (`term look --all`)
+      save given, make list
+      walk globals
+        take one
+        given/push one
+      walk chain
+        take one
+        take at
+        walk one/takes
+          take own
+          fork test, own/positional
+            hold
+              fork test, is-equal(at, last)
+                hold
+                  positionals/push own
+            miss
+              given/push own
+              fork test, not(has-named(options, own/name))
+                hold
+                  options/push own
+      save placed, options
+      save options, make list
+      walk placed
+        take one
+        options/push last-named(given, one/name)
+
+  fork test, is-above(children/length, 0)
+    hold
+      save rows, push-commands(rows, prefix, children, width)
+  fork test, is-above(positionals/length, 0)
+    hold
+      save rows, push-group(rows, <Positionals:>, positionals, true, width)
+  fork test, is-above(options/length, 0)
+    hold
+      save rows, push-group(rows, <Options:>, options, false, width)
+
+  back lay-out(rows, width)

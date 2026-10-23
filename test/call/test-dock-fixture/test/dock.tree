@@ -1,0 +1,11 @@
+note <a test docks an npm package of the project and a module its tsconfig paths maps, and both resolve>
+
+dock load
+  load <probe-dock-package>, name dock-package
+  load <@probe/shared/greeting>, name greeting-module
+
+test <a package in the project's node_modules resolves>
+  want hold, is-equal dock-package/shout(<hi>), <HI>
+
+test <a module the project's tsconfig paths maps resolves>
+  want hold, is-equal greeting-module/greet(<ada>), <hello ada>

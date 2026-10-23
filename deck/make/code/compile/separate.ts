@@ -139,6 +139,48 @@ export function units(
   return unitsOf(files, edges)
 }
 
+// A ROUTE NAMES ITS TASK AS THE TASK'S UNIT EXPORTS IT. The import binding binds a hook's `task bank` like a call
+// (term-compiler-0034), so where two files of the unit's program define the name (zone: the task `bank` in
+// work/code.tree, the form `bank` in base.tree, which another file imports) the route carries `bank__in0_0`, a name
+// of this unit's checked program only. A unit's module exports its written name, and the run looks the route's name
+// up among the bundle's exports (boot-plan.tree `cli-run-text`) and keeps only the names routes give (boot-running
+// `route-calls`), so the task was shaken out and the command failed, `task "bank__in0_0" is not exported`
+// (term-compiler-0064). Each call a route makes to another unit's task takes that task's exported name back.
+// What is left: two units that both export a task of the name meet in the entry's export surface, which keeps the
+// last, so a route bound to the other one would still reach the wrong task (no console does this today)
+function exportedRouteCalls(docks: Statement[], program: Program, own: Set<string>): Statement[] {
+  const exported = new Map<string, string>()
+
+  for (const s of program) {
+    if (s.form !== 'function' || own.has(s.span.file ?? '')) {
+      continue
+    }
+
+    const written = s.name.replace(/__in\d+_\d+$/, '')
+
+    if (written !== s.name) {
+      exported.set(s.name, s.stubExport ?? written)
+    }
+  }
+
+  if (exported.size === 0) {
+    return docks
+  }
+
+  type Route = Extract<Statement, { form: 'dock' }>['route']
+  type Call = Route['calls'][number]
+  const call = (one: Call): Call => (exported.has(one.name) ? { ...one, name: exported.get(one.name)! } : one)
+  const route = (one: Route): Route => ({
+    ...one,
+    calls: one.calls.map(call),
+    ...(one.methods ? { methods: one.methods.map(method => ({ ...method, calls: method.calls.map(call) })) } : {}),
+    ...(one.hooks ? { hooks: one.hooks.map(hook => ({ ...hook, calls: hook.calls.map(call) })) } : {}),
+    children: (one.children ?? []).map(route),
+  })
+
+  return docks.map(s => (s.form === 'dock' ? { ...s, route: route(s.route) } : s))
+}
+
 export function compileSeparate(
   source: { file: string; text: string },
   options: {
@@ -565,7 +607,11 @@ export function compileSeparate(
         stubs: stubbed,
         interfaceHash: surfaceHash(surface, portable.out),
         defs: nameDefs(surface, portable.out),
-        docks: (result.program ?? []).filter(s => s.form === 'dock' && own.has(s.span.file ?? '')),
+        docks: exportedRouteCalls(
+          (result.program ?? []).filter(s => s.form === 'dock' && own.has(s.span.file ?? '')),
+          result.program ?? [],
+          own,
+        ),
         ...(result.roll ? { roll: result.roll } : {}),
         warnings: result.warnings,
         // what the file states and owes, which compile() reports when it is the entry

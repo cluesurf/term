@@ -1,0 +1,158 @@
+# The server side of the proof protocol: the `proof/*` requests a language server answers to drive a proof view (the
+# InfoView of theorem-proving-lsp.md). `proof-state` answers `proof/state`, a document's goals and where each stands;
+# `proof-hammer` answers `proof/hammer`, an attempt to close one goal (proved with its witness, refuted with the input
+# that breaks it, or open); `render-info-view` draws the panel as text, what the webview would draw.
+#
+# Ported from deck/test/code/proof-lsp.ts (term-cli-in-term-0113). A goal and a proof state are proof-hammer.tree's
+# records. `proofHammer` took a Z3 session; proof-hammer.tree sends one self-contained script per query and has none,
+# so `proof-hammer` takes the document and the goal's name. A goal view keeps the original's shape: `detail` only on a
+# proved or open goal, `counterexample` only on a refuted one.
+
+load @term/base/list
+  find list
+
+load ./proof-hammer
+  find proof-goal
+  find proof-state
+  find state-of
+  find hammer
+
+form proof-document
+  link uri, like text
+  link goals, like list, like proof-goal
+
+# one goal as the view shows it: `open`, `proved` or `refuted`
+form goal-view
+  link name, like text
+  link status, like text
+  link detail
+    like text
+    need false
+  link counterexample
+    like list, like number
+    need false
+
+form proof-state-view
+  link uri, like text
+  link goals, like list, like goal-view
+  link solved, like number
+  link total, like number
+  link done, like boolean
+
+# a view's optional fields, read as the host values they are (an absent one is not the empty text)
+bind goal-view-has-detail
+  take shown, like dynamic
+  like boolean
+  case node
+    text <Boolean($shown.detail)>
+
+bind goal-view-detail
+  take shown, like dynamic
+  like text
+  case node
+    text <$shown.detail>
+
+bind goal-view-has-counterexample
+  take shown, like dynamic
+  like boolean
+  case node
+    text <Boolean($shown.counterexample)>
+
+bind goal-view-counterexample
+  take shown, like dynamic
+  like text
+  case node
+    text <JSON.stringify($shown.counterexample)>
+
+# a proof result as a goal view; no result is an open goal with no detail
+task view-of
+  take name, like text
+  take results, like hash, like text, like proof-state
+  like goal-view
+  mark private
+
+  fork test, not(results/has(name))
+    hold
+      back make(goal-view, bind(name, name), bind(status, <open>))
+
+  host found, results/get(name)
+  fork test, is-equal(found/status, <proved>)
+    hold
+      back make(goal-view, bind(name, name), bind(status, <proved>), bind(detail, found/detail))
+  fork test, is-equal(found/status, <refuted>)
+    hold
+      back make(goal-view, bind(name, name), bind(status, <refuted>), bind(counterexample, found/counterexample))
+
+  back make(goal-view, bind(name, name), bind(status, <open>), bind(detail, found/reason))
+
+# `proof/state`: the goals of a document and their status, given the results so far
+task proof-state
+  take doc, like proof-document
+  take results, like hash, like text, like proof-state
+  like proof-state-view
+
+  host goals, make list
+  save solved, 0
+  walk doc/goals
+    take goal
+    host shown, view-of(goal/name, results)
+    goals/push(shown)
+    fork test, is-equal(shown/status, <proved>)
+      hold
+        save solved, add(solved, 1)
+
+  back
+    make proof-state-view
+      bind uri, doc/uri
+      bind goals, goals
+      bind solved, solved
+      bind total, goals/length
+      bind done, is-equal(solved, goals/length)
+
+# `proof/hammer`: try to close one goal automatically, answering its new proof state
+task proof-hammer
+  take doc, like proof-document
+  take goal-name, like text
+  like proof-state
+
+  host none, make list
+  walk doc/goals
+    take goal
+    fork test, is-equal(goal/name, goal-name)
+      hold
+        back hammer(goal)
+
+  back state-of(<open>, goal-name, <>, <>, none, <no such goal in document>)
+
+# the panel as text
+task render-info-view
+  take view, like proof-state-view
+  like text
+
+  host lines, make list
+  save done, <>
+  fork test, view/done
+    hold
+      save done, <, done>
+  lines/push(<# {view/uri}  ({view/solved}/{view/total}{done})>)
+
+  walk view/goals
+    take goal
+    save badge, <...>
+    fork test, is-equal(goal/status, <proved>)
+      hold
+        save badge, <OK >
+    fork test, is-equal(goal/status, <refuted>)
+      hold
+        save badge, <BAD>
+    save line, <  [{badge}] {goal/name}>
+    fork test, and(is-equal(goal/status, <refuted>), goal-view-has-counterexample(goal))
+      hold
+        save line, <{line}  fails at {goal-view-counterexample(goal)}>
+      miss
+        fork test, goal-view-has-detail(goal)
+          hold
+            save line, <{line}  {goal-view-detail(goal)}>
+    lines/push(line)
+
+  back join(lines, <\n>)

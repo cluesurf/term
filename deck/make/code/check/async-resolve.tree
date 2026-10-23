@@ -474,6 +474,46 @@ task lets-of
         turn next
   back found
 
+# every `let` a body binds to the bare name of an async task in `scope`, in order, so a local saved from such a local
+# counts too; never inside a closure
+task aliases-of
+  take body, like list, like statement
+  take scope, like list, like text
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  save found, out
+  walk body
+    take one
+    sift one
+      case let
+        sift init
+          case variable
+            link source
+            fork test, or(has-text(scope, source), has-text(found, source))
+              hold
+                save found, add-text(found, name)
+          miss
+            save nothing, 0
+      case while
+        save found, aliases-of(body, scope, found)
+      case for-each
+        save found, aliases-of(body, scope, found)
+      case if
+        walk branches
+          take branch
+          save found, aliases-of(branch/body, scope, found)
+        sift otherwise
+          case some
+            link other
+            save found, aliases-of(other, scope, found)
+          case none
+            save nothing, 0
+      miss
+        turn next
+  back found
+
 # the async names a body can reach. A parameter or a local of the same name SHADOWS the global task, so a call to it is
 # a call to the value, never the task. A parameter typed as an async task is async itself
 task in-scope
@@ -510,6 +550,11 @@ task in-scope
     fork test, is-async-task(get(types, at))
       hold
         push(awaited, name)
+  # a local saved from an async task's name (`save work, read later`) calls that task: its type, a task's, does not
+  # say async, and an inferred async task's never could (term-compiler-0062)
+  walk aliases-of(body, scope, make list)
+    take name
+    push(awaited, name)
   fork test, is-equal(awaited/length, 0)
     hold
       back scope

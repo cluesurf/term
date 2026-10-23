@@ -135,6 +135,22 @@ export function dispatch(
     }
   }
 
+  // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2) hands every word after its path to another
+  // console untouched: its one list slot takes them verbatim, `--help`, `--` and unknown flags included, and nothing
+  // is parsed here
+  if (current.passes) {
+    const slot = current.takes[0]
+
+    return {
+      ok: true,
+      command,
+      task: current.calls[0]?.name,
+      args: slot ? { [slot.name]: argv.slice(i) } : {},
+      globals: {},
+      route: current,
+    }
+  }
+
   // every take a flag may name here: the command's own first, so one shadows an ancestor's of the same name
   const own = current.takes
   const reachable = [...own, ...above]
@@ -456,18 +472,53 @@ function shownName(name: string): string {
   return process.env.TERM_LINE_NAME || name
 }
 
+// Where the console's own words end: just past the path of a passing command (`mark pass`), or the whole line when
+// the bare words reach none. The descent skips flag words, as the help walk does, so `--help zone` still names zone
+function passingCut(commands: DockRoute[], argv: string[]): number {
+  let level = commands
+
+  for (let at = 0; at < argv.length; at++) {
+    const token = argv[at]!
+
+    if (token.startsWith('-')) {
+      continue
+    }
+
+    const next = level.find(r => r.path === token)
+
+    if (!next) {
+      break
+    }
+
+    if (next.passes) {
+      return at + 1
+    }
+
+    level = next.children
+  }
+
+  return argv.length
+}
+
 export async function runCommandLine(input: RunInput): Promise<number> {
   const { name: given, routes, argv, resolve } = input
   const name = shownName(given)
   const out = input.out ?? ((line: string) => console.log(line))
   const err = input.err ?? ((line: string) => console.error(line))
 
-  // strip help flags anywhere in the line, remembering that help was
-  // asked for. `view code save --help` renders the save command's help.
-  const wantHelp = argv.some(a => a === '--help' || a === '-h')
-  const bare = argv.filter(a => a !== '--help' && a !== '-h')
   // the commands are the program's nested hooks, when the console is one program hook
   const { commands } = programOf(routes)
+  // strip help flags anywhere in the line, remembering that help was
+  // asked for. `view code save --help` renders the save command's help.
+  // Only BEFORE a passing command's path: every word after it is another
+  // console's (`term zone --help` is zone's help, decision cli-in-term/008)
+  // A literal `--` ends the console's words the same way, as it ends option parsing (`term boot x.tree -- --help`
+  // hands `--help` to the booted program, as yargs did)
+  const dashes = argv.indexOf('--')
+  const cut = Math.min(passingCut(commands, argv), dashes === -1 ? argv.length : dashes)
+  const head = argv.slice(0, cut)
+  const wantHelp = head.some(a => a === '--help' || a === '-h')
+  const bare = [...head.filter(a => a !== '--help' && a !== '-h'), ...argv.slice(cut)]
 
   if (bare.length === 0) {
     out(renderUsage(name, commands))
