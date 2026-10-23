@@ -82,10 +82,14 @@ task read-battery
         call page-read-battery
   send back, read reply
 
-# not carried (parameter handler is function): it runs in the page, on the browser host
+# watched by the cask, each answer pushed back over the bridge; on the browser host where the cask has no device host
 task follow-battery
-  take handler, like unknown
-  like unknown
+  take handler
+    like task
+      take value, like text
+  like task
   send back
-    call page-follow-battery
+    call bridge/watch
+      text <battery_watch_battery>
       read handler
+      read page-follow-battery

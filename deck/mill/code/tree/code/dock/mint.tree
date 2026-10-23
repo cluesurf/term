@@ -147,8 +147,21 @@ mint dock-bind-line
     site name
   case note
     site note
+  case find, mint dock-bind-find
+    site find
   hook make
     make dock-bind-line
       bind path, read path
+      bind name, read name
+      bind note, read note
+      bind find, read find
+
+mint dock-bind-find
+  case name
+    site name
+  case note
+    site note
+  hook make
+    make dock-bind-find
       bind name, read name
       bind note, read note

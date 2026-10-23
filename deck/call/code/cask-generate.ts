@@ -51,7 +51,7 @@ const CROSS_ANYWAY = new Set(['file', 'environment', 'process'])
 // subset of each (no torch, no haptics, no battery in WKWebView), and the cask's process reaches the platform's own API
 // through the toolkit host. Matched with their package and folder, so another package's `open` or `network` is not
 // caught. A task of one that cannot cross (a watcher, which takes a handler) stays in the page, on the browser host
-const DEVICE = new Set(['permission', 'camera', 'microphone', 'audio', 'download', 'files', 'contacts', 'calendar', 'photos', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
+export const DEVICE_MODULES: ReadonlySet<string> = new Set(['permission', 'camera', 'microphone', 'audio', 'download', 'files', 'contacts', 'calendar', 'photos', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
 
 // the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
 // javascript-wide impls serve every javascript env
@@ -92,6 +92,28 @@ type Signature = {
 
 // a public task the bridge cannot carry yet, with the reason
 type Refused = { module: string; task: string; native: string; params: { name: string }[]; reason: string }
+
+// a device watcher (term-device-layer-0002): `watch-x(handler)`, the handler taking one text and the task answering
+// the drop. The handler does not cross; the page keeps it under a watch id, the cask runs the platform's watcher for
+// that id and pushes each answer back as the event `term-watch/<id>`, and `cask_unwatch` ends it
+type Watcher = { module: string; task: string; native: string }
+
+// the shape a watcher has: one parameter, a task of one text answering nothing, and a task of nothing as the answer
+function isWatcherShape(params: { type?: Type }[], result: Type | undefined): boolean {
+  const handler = params.length === 1 ? params[0]!.type : undefined
+
+  return (
+    handler?.kind === 'function' &&
+    handler.params.length === 1 &&
+    handler.params[0]!.kind === 'string' &&
+    result?.kind === 'function' &&
+    result.params.length === 0
+  )
+}
+
+// the command a page sends to start a watcher, and the cask's task that starts it for one window
+const watchCommandOf = (watcher: Watcher): string => `${watcher.module}_${watcher.task}`.replaceAll('-', '_')
+const watchStarterOf = (watcher: Watcher): string => `start-${watcher.module}-${watcher.task}`
 
 // a module with a native half, found through the page's closure
 type Module = {
@@ -282,7 +304,7 @@ function callIn(node: Statement | Expression): string | undefined {
 
 // every task the bridge carries for a module, split from what it refuses. The public module's tasks when it has
 // them, else the abstract module's, whose task names are the native names too
-function signaturesOf(module: Module, term: string): { carried: Signature[]; refused: Refused[] } {
+function signaturesOf(module: Module, term: string): { carried: Signature[]; refused: Refused[]; watched: Watcher[] } {
   const publicProgram = programOf(module.publicFile, term)
   const abstractProgram = module.abstractFile ? programOf(module.abstractFile, term) : []
   const forms: Forms = { declared: new Map(), from: new Map() }
@@ -318,11 +340,18 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
 
   const carried: Signature[] = []
   const refused: Refused[] = []
+  const watched: Watcher[] = []
 
   for (const statement of source) {
     const native = forwards ? forwardedTo(statement.body) : statement.name
 
     if (!native) {
+      continue
+    }
+
+    // a device module's watcher crosses as a watch: the handler stays in the page
+    if (module.pageEnv && forwards && isWatcherShape(statement.params, statement.result)) {
+      watched.push({ module: module.name, task: statement.name, native })
       continue
     }
 
@@ -376,7 +405,7 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
     carried.push({ module: module.name, task: statement.name, native, params, result, async: Boolean(statement.async) })
   }
 
-  return { carried, refused }
+  return { carried, refused, watched }
 }
 
 // a generated shim for a module that no longer crosses (the rule moved, or the module grew a page-side impl). The
@@ -430,7 +459,7 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
     // a module with no native at all but an abstract module beside the env directories (`native/local.tree`) is
     // Term all the way down: every cask env resolves to it, so the cask serves it too
     const caskServes = CASK_ENVS.some(has) || existsSync(join(codeDir!, 'native', `${name}.tree`))
-    const device = packageName === 'site' && under === 'view' && DEVICE.has(name!)
+    const device = packageName === 'site' && under === 'view' && DEVICE_MODULES.has(name!)
 
     if (!caskServes || (pageServes && !CROSS_ANYWAY.has(name!) && !device)) {
       const served = PAGE_ENVS.find(env => env !== 'webview' && has(env))
@@ -862,7 +891,7 @@ function isRelease(signature: Signature): boolean {
   )
 }
 
-function shimText(module: Module, carried: Signature[], refused: Refused[], term: string): string {
+function shimText(module: Module, carried: Signature[], refused: Refused[], watched: Watcher[], term: string): string {
   temporaries = 0
   const lines: string[] = [
     '',
@@ -976,8 +1005,31 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
   // where the page has the module too: a task that cannot cross runs there, and a text answer the cask has none for is
   // asked of it, each through that env's own task
   const asked = module.pageEnv
-    ? [...carried.filter(one => !isRelease(one) && one.result.kind === 'text').map(one => one.native), ...refused.map(one => one.native)]
+    ? [
+        ...carried.filter(one => !isRelease(one) && one.result.kind === 'text').map(one => one.native),
+        ...refused.map(one => one.native),
+        ...watched.map(one => one.native),
+      ]
     : []
+
+  // a watcher: the cask watches for the page under an id and pushes each answer back, or answers `unhosted` and the
+  // page watches on its own host (bridge.ts `watch`)
+  for (const one of watched) {
+    lines.push(
+      `# watched by the cask, each answer pushed back over the bridge; on the ${module.pageEnv} host where the cask has no device host`,
+      `task ${one.native}`,
+      '  take handler',
+      '    like task',
+      '      take value, like text',
+      '  like task',
+      '  send back',
+      '    call bridge/watch',
+      `      text <${watchCommandOf(one)}>`,
+      '      read handler',
+      `      read page-${one.native}`,
+      '',
+    )
+  }
 
   if (asked.length > 0) {
     lines.splice(
@@ -1048,12 +1100,36 @@ function releaseLines(forms: string[]): string[] {
 
 // `drop-window`'s body: every handle in every table kept under the window's key, deleted. The keys are listed first,
 // so the deletes do not change what is being walked
-function dropLines(forms: string[]): string[] {
-  if (forms.length === 0) {
+function dropLines(forms: string[], watching = false): string[] {
+  if (forms.length === 0 && !watching) {
     return ['  save skip, code 0']
   }
 
   const lines = ['  save prefix, text <{{owner}}/>']
+
+  // every watch the window's page held, ended, and the window forgotten
+  if (watching) {
+    lines.push(
+      '  save watch-keys',
+      '    like list',
+      '      like text',
+      '    call watch-drops/keys',
+      '  walk list',
+      '    read watch-keys',
+      '    hook next',
+      '      take site, name held',
+      '      fork test',
+      '        hook test',
+      '          call starts-with',
+      '            read held',
+      '            read prefix',
+      '        hook hold',
+      '          call stop-watch',
+      '            read held',
+      '  call cask-windows/delete',
+      '    read owner',
+    )
+  }
 
   for (const form of forms) {
     // the keys into a local first: a walk straight over the call's result is not a list Swift can iterate
@@ -1081,8 +1157,9 @@ function dropLines(forms: string[]): string[] {
   return lines
 }
 
-function dispatchText(page: string, modules: Module[], all: Signature[], term: string, scope: Scope, name: string): string {
+function dispatchText(page: string, modules: Module[], all: Signature[], watched: Watcher[], term: string, scope: Scope, name: string): string {
   temporaries = 0
+  const watching = watched.length > 0
   // a release crosses as `cask_release`, never as a command of its own
   const signatures = all.filter(signature => !isRelease(signature))
   const scoped = scopedCommands(signatures, modules)
@@ -1115,6 +1192,8 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  find quit',
     '  find bundle-path',
     '  find data-path',
+    // a watcher's answers are pushed into its window's page
+    ...(watching ? ['  find emit'] : []),
     // the gate's own: `home-path` whenever there is a gate, used or not, so a scope that adds `$home` later changes only
     // the gate's body
     ...(gated ? ['  find home-path', '', 'load @term/cask/scope', '  find in-scope'] : []),
@@ -1129,8 +1208,9 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
 
   for (const module of modules) {
     const own = signatures.filter(s => s.module === module.name)
+    const ownWatched = watched.filter(one => one.module === module.name)
 
-    if (own.length === 0) {
+    if (own.length === 0 && ownWatched.length === 0) {
       continue
     }
 
@@ -1142,6 +1222,10 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
 
     for (const signature of own) {
       lines.push(`  find ${signature.task}, name ${module.name}-${signature.task}`)
+    }
+
+    for (const one of ownWatched) {
+      lines.push(`  find ${one.task}, name ${module.name}-${one.task}`)
     }
 
     for (const form of handleForms(own)) {
@@ -1201,8 +1285,91 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
   }
 
 
+  if (watching) {
+    lines.push(
+      "# the window each page is served in, by the key `serve` gave it: a watcher's answers are pushed into it",
+      'host cask-windows',
+      '  make hash',
+      '  like hash',
+      '    like text',
+      '    like window',
+      '',
+      "# what ends each watch a page holds, by `<key>/<watch>`: the device module's own drop",
+      'host watch-drops',
+      '  make hash',
+      '  like hash',
+      '    like text',
+      '    like task',
+      '',
+    )
+  }
+
   itemsOf = 'items-of'
   lines.push(...itemsOfText(itemsOf))
+
+  for (const one of watched) {
+    lines.push(
+      `# ${one.module}'s ${one.task} for the page of the window under \`owner\`: each answer the platform's watcher hears is`,
+      '# pushed to that page as the event `term-watch/<watch>`, until `cask_unwatch` names it. `unhosted` where this build',
+      '# has no device host, or where the window is not known (an app answering through `dispatch`, not `serve`): the',
+      '# page then watches on its own host',
+      `task ${watchStarterOf(one)}`,
+      '  take owner, like text',
+      '  take watch, like text',
+      '  like text',
+      '  save answer, text <unhosted>',
+      '  fork test',
+      '    hook test',
+      '      call has-device-host',
+      '    hook hold',
+      '      save found',
+      '        call get',
+      '          read cask-windows',
+      '          read owner',
+      '      fork case, read found',
+      '        case some',
+      '          link place',
+      '          save drop',
+      `            call ${one.module}-${one.task}`,
+      '              task heard',
+      '                take value, like text',
+      '                call emit',
+      '                  read place',
+      '                  text <term-watch/{{watch}}>',
+      '                  read value',
+      '          call set',
+      '            read watch-drops',
+      '            text <{{owner}}/{{watch}}>',
+      '            read drop',
+      '          save answer, text <watching>',
+      '        case none',
+      '          save skip, code 0',
+      '  send back, read answer',
+      '',
+    )
+  }
+
+  if (watching) {
+    lines.push(
+      '# a watch the page let go: its drop called (the last one ends the platform subscription) and forgotten',
+      'task stop-watch',
+      '  take key, like text',
+      '  like void',
+      '  save found',
+      '    call get',
+      '      read watch-drops',
+      '      read key',
+      '  fork case, read found',
+      '    case some',
+      '      link drop',
+      '      call drop',
+      '      call watch-drops/delete',
+      '        read key',
+      '    case none',
+      '      save skip, code 0',
+      '',
+    )
+  }
 
   // a cask with no device host (built for bare rust) answers a device module with its `unavailable` fallback, which
   // is not the platform's answer: the page is told `unhosted` instead, and asks its WebView (device-layer-0013)
@@ -1233,7 +1400,9 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
 
   lines.push('# the commands this app allows: what its page docks, and nothing else', 'task is-allowed', '  take command, like text', '  like boolean', '  fork test')
 
-  for (const command of [...signatures.map(commandOf), ...CASK_COMMANDS]) {
+  const watchCommands = watching ? [...watched.map(watchCommandOf), 'cask_unwatch'] : []
+
+  for (const command of [...signatures.map(commandOf), ...watchCommands, ...CASK_COMMANDS]) {
     lines.push('    hook test', '      call is-equal', '        read command', `        text <${command}>`, '    hook hold', '      send back, true')
   }
 
@@ -1284,6 +1453,42 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
       const json = caskToJson(signature.result, 'answer', '      ')
       lines.push(...json.lines, `      send back, read ${json.local}`)
     }
+  }
+
+  // a watcher started for this window under the page's watch id, and one let go
+  for (const one of watched) {
+    lines.push(
+      '    hook test',
+      '      call is-equal',
+      '        read command',
+      `        text <${watchCommandOf(one)}>`,
+      '    hook hold',
+      '      send back',
+      '        call from-text',
+      `          call ${watchStarterOf(one)}`,
+      '            read owner',
+      '            call field-text',
+      '              read arguments',
+      '              text <watch>',
+    )
+  }
+
+  if (watching) {
+    lines.push(
+      '    hook test',
+      '      call is-equal',
+      '        read command',
+      '        text <cask_unwatch>',
+      '    hook hold',
+      '      save unwatched',
+      '        call field-text',
+      '          read arguments',
+      '          text <watch>',
+      '      call stop-watch',
+      '        text <{{owner}}/{{unwatched}}>',
+      '      send back',
+      '        call make-null',
+    )
   }
 
   lines.push(
@@ -1465,7 +1670,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     'task drop-window',
     '  take owner, like text',
     '  like void',
-    ...dropLines(handleForms(signatures)),
+    ...dropLines(handleForms(signatures), watching),
     '',
     "# serve one window: its page's messages answered under a key of its own, so a handle that window's page holds is",
     "# unknown to every other window's, and every one of them is let go when the window closes. Answers the key",
@@ -1474,6 +1679,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  like text',
     '  save key',
     '    call version4',
+    ...(watching ? ['  call set', '    read cask-windows', '    read key', '    read place'] : []),
     '  call on-message',
     '    read place',
     '    task reply',
@@ -1627,21 +1833,23 @@ export function generateBridge({ page, out, commit, root: app = out }: { page: s
   const outputs: { file: string; text: string }[] = orphans.map(orphan => ({ file: orphan.shimFile, text: orphanText(orphan) }))
   const all: Signature[] = []
   const refusedAll: { module: string; task: string; reason: string }[] = []
+  const watchedAll: Watcher[] = []
 
   for (const module of modules) {
-    const { carried, refused } = signaturesOf(module, term)
+    const { carried, refused, watched } = signaturesOf(module, term)
 
-    if (carried.length === 0 && refused.length === 0) {
+    if (carried.length === 0 && refused.length === 0 && watched.length === 0) {
       continue
     }
 
     all.push(...carried)
+    watchedAll.push(...watched)
     refusedAll.push(...refused.map(one => ({ module: module.name, task: one.task, reason: one.reason })))
-    outputs.push({ file: module.shimFile, text: shimText(module, carried, refused, term) })
+    outputs.push({ file: module.shimFile, text: shimText(module, carried, refused, watched, term) })
   }
 
   const { scope } = readScope(app)
-  outputs.push({ file: join(out, 'dispatch.tree'), text: dispatchText(page, modules, all, term, scope, appIdentity(app).name) })
+  outputs.push({ file: join(out, 'dispatch.tree'), text: dispatchText(page, modules, all, watchedAll, term, scope, appIdentity(app).name) })
 
   const drift: { file: string; written: boolean }[] = []
 

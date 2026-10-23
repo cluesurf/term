@@ -5,6 +5,7 @@
 // where an absent alias is `undefined` rather than `none`. Browser-safe: file reading is delegated to a resolver.
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import type { ParseResult } from '@term/make/code/parser/tree'
 import * as port from '@term/make/code/compile/loading'
@@ -132,6 +133,41 @@ export function importPathsOf(source: Source, parsed: ParseMemo): string[] {
 // line is: the scan the dependency walk reads, so the language server's workspace references cannot disagree with it
 export function importFindsOf(source: Source, parsed: ParseMemo): ImportScan['finds'] {
   return fromPortScan(port.scanParsed(parsed(source))).finds
+}
+
+// The `{platform}` loads of a closure that the build's env answers with no file: a module this env has no native for
+// (`network/server` or `file/directory` in a page). Each is refused AT THE LOAD, naming the module and the env, where
+// until 2026-10-22 it was left to the checker and met further on as names nothing defines (term-stdlib-parity-0006).
+// A module whose text has no `{platform}` is not scanned again
+export function platformRefusals(sources: Source[], resolve: Resolver, env: string, parsed: ParseMemo): Diagnostic[] {
+  const out: Diagnostic[] = []
+
+  for (const source of sources) {
+    if (!source.text.includes('{platform}')) {
+      continue
+    }
+
+    for (const find of importFindsOf(source, parsed)) {
+      if (!find.path.includes('{platform}') || find.base !== undefined || resolve(find.path, source.file)) {
+        continue
+      }
+
+      const module = find.path.replace(/^.*\/native\/\{platform\}\//, '')
+      const span = find.at ?? find.spans[0]
+
+      if (span) {
+        out.push(
+          diagnose('unresolved-load', {
+            file: source.file,
+            span,
+            message: `${module} has no ${env} native: ${find.path} names no file a ${env} build can load`,
+          }),
+        )
+      }
+    }
+  }
+
+  return out
 }
 
 // how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root

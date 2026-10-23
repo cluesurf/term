@@ -100,6 +100,8 @@ function rustType(type: Type | undefined): string {
 export type WakeGroup = {
   deck: string
   entries: Record<string, unknown>[]
+  // the deck's static exception, tell and dock entries, for `hive_wake_typed` (compile.ts `wakeGroups`)
+  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 // what one emission pass cloned (item 0029): the forms named in any cloned type, and whether any clone was of a type
@@ -923,11 +925,46 @@ function emitRustPass(
       return `HiveEntry { host: ${JSON.stringify(String(own.host ?? ''))}.to_string(), kind: ${JSON.stringify(String(own.kind ?? ''))}.to_string(), name: ${JSON.stringify(String(own.name ?? ''))}.to_string(), site: ${JSON.stringify(String(own.site ?? ''))}.to_string(), base: ${boxed} }`
     }
 
+    // THE TYPED WAKE (seam spec §3.3), as typescript.ts and kotlin.ts write it: a deck's static exceptions, tells and
+    // routes leave `hive_wake` and go to `hive_wake_typed` as `HiveEntry` records whose `base` is a struct of the
+    // payload form, never a boxed JSON text, so a reader gets the record
+    const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
+    const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
+    const textOf = (value: unknown): string =>
+      `${JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))}.to_string()`
+    const listOf = (items: string[]): string => `std::rc::Rc::new(std::cell::RefCell::new(vec![${items.join(', ')}]))`
+    // a list FIELD of a struct is a plain Vec; only a parameter is the shared list
+    const textsOf = (value: unknown): string => `vec![${(Array.isArray(value) ? value : []).map(textOf).join(', ')}]`
+    const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>
+    const typedEntry = (form: string, entry: Record<string, unknown>, base: string): string =>
+      `HiveEntry::<${form}> { host: ${textOf(entry.host)}, kind: ${textOf(entry.kind)}, name: ${textOf(entry.name)}, site: ${textOf(entry.site)}, base: ${base} }`
+    const typedCall = (group: WakeGroup): string => {
+      const typed = group.typed ?? { exceptions: [], tells: [], docks: [] }
+      const exceptions = typed.exceptions.map(entry => {
+        const roll = rollOf(entry)
+        const link = Object.entries((roll.link ?? {}) as Record<string, unknown>).map(
+          ([field, type]) => `Pair { first: ${textOf(field)}, second: ${textOf(type)} }`,
+        )
+
+        return typedEntry('ExceptionRoll', entry, `ExceptionRoll { like: ${textOf(roll.like)}, chain: ${textsOf(roll.chain)}, note: ${textOf(roll.note)}, link: vec![${link.join(', ')}] }`)
+      })
+      const tells = typed.tells.map(entry => {
+        const roll = rollOf(entry)
+
+        return typedEntry('TellRoll', entry, `TellRoll { note: ${textOf(roll.note)}, hint: ${textOf(roll.hint)}, link: ${textsOf(roll.link)}, alias: ${textOf(roll.alias)} }`)
+      })
+      const docks = typed.docks.map(entry => typedEntry('DockRoll', entry, `DockRoll { halt: ${textsOf(rollOf(entry).halt)} }`))
+
+      return `    hive_wake_typed(${JSON.stringify(group.deck)}.to_string(), ${listOf(exceptions)}, ${listOf(tells)}, ${listOf(docks)});`
+    }
+
     const calls = options.wake
-      .map(
-        group =>
-          `    hive_wake(${JSON.stringify(group.deck)}.to_string(), std::rc::Rc::new(std::cell::RefCell::new(vec![${group.entries.map(entryText).join(', ')}])));`,
-      )
+      .map(group => {
+        const entries = group.entries.filter(entry => !typedWake || !TYPED_KINDS.has(String(entry.kind)))
+        const woken = `    hive_wake(${JSON.stringify(group.deck)}.to_string(), std::rc::Rc::new(std::cell::RefCell::new(vec![${entries.map(entryText).join(', ')}])));`
+
+        return typedWake ? `${woken}\n${typedCall(group)}` : woken
+      })
       .join('\n')
 
     wake.push(`pub fn wake_hive() {\n${calls}\n}`)

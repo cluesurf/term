@@ -2806,10 +2806,19 @@ enum nativeView {
     }
 
     // run an ASYNC body once the app is running and its window exists: a page's `boot` awaits its data before it mounts
-    static func launch(_ body: @escaping () async -> Void) {
+    // An async Term task is `async throws` on Swift (a raise in it reaches whoever waits on it), so the body is taken as
+    // one. A raise nothing in the body handled ends the program, as one out of `main` does, saying what it was
+    static func launch(_ body: @escaping () async throws -> Void) {
         onMain {
             afterLaunch {
-                Task { @MainActor in await body() }
+                Task { @MainActor in
+                    do {
+                        try await body()
+                    } catch {
+                        FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
+                        exit(1)
+                    }
+                }
             }
         }
     }

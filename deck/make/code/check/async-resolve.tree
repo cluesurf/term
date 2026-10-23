@@ -15,6 +15,10 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
+load @term/base/text
+  find substring
+  find index-of
+
 load ../parser/diagnostic
   find diagnostic
   find diagnose
@@ -55,7 +59,8 @@ task add-text
   back values
 
 # The `dock load` modules marked `mark async`: every function of one returns a promise, so a call into it is awaited
-# with no `wait` written, and makes its caller async, the same as a call to an async task
+# with no `wait` written, and makes its caller async, the same as a call to an async task. A function marked on its own
+# (`find read-file` / `mark async` under the load line) is listed as `<alias>/<name>`
 task async-docks-of
   take program, like list, like statement
   like list, like text
@@ -68,6 +73,10 @@ task async-docks-of
         fork test, async
           hold
             save out, add-text(out, alias)
+        # `find read-file` / `mark async` under the load line: that one function, as `<alias>/<name>` (decision 004)
+        walk async-tasks
+          take task
+          save out, add-text(out, <{alias}/{task}>)
       miss
         turn next
   back out
@@ -344,9 +353,35 @@ task calls-async
       fork test, and(is-unequal(root, <>), and(has-text(docks, root), has-text(set, root)))
         hold
           back true
+      # one function of the module marked `mark async` on its own (`find read-file` under the load line)
+      sift callee
+        case member
+          save field, name
+          sift target
+            case variable
+              fork test, and(has-text(set, name), has-text(docks, <{name}/{field}>))
+                hold
+                  back true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
       back is-async-task(expression-type(callee))
     miss
       back false
+
+# the alias an async dock entry names: itself, or the part before `/` of one function's entry (`fs/read-file`), so a
+# local of the alias's name shadows the module either way
+task dock-root
+  take dock, like text
+  like text
+  mark private
+
+  save slash, index-of(dock, </>)
+  fork test, is-below(slash, 0)
+    hold
+      back dock
+  back substring(dock, 0, slash)
 
 task root-of
   take one, like expression
@@ -528,7 +563,7 @@ task async-set-of
   save set, make list
   walk docks
     take dock
-    save set, add-text(set, dock)
+    save set, add-text(set, dock-root(dock))
   save indices, task-indices(program)
   walk indices
     take at

@@ -3,8 +3,9 @@
 # that refuses a read nobody clicked for. The page puts the line the driver wrote in <bundle>/smoke.txt on the clipboard
 # and reads it back: it leaves with 0 when the line came back, 1 when it did not. Before that it writes every other
 # answer, one per line, to device.txt in the app's data folder, for the driver to judge against the platform: the
-# battery against `pmset`, the vibration, the network, the torch, a grant. The network watcher is the one call that
-# stays in the page (a handler does not cross), so its first answer is the WebView's own.
+# battery against `pmset`, the vibration, the network, the torch, a grant. The network and battery watchers are watched
+# by the cask's process, their handlers kept in the page under watch ids and each answer pushed back across the bridge
+# (term-device-layer-0002), and the page counts the answers the cask pushed.
 
 load @term/cask/cask
   find bundle-path
@@ -35,6 +36,7 @@ load @term/site/view/clipboard
 
 load @term/site/view/battery
   find battery-status
+  find watch-battery
 
 load @term/site/view/network
   find network-status
@@ -54,6 +56,10 @@ load @term/site/view/secret
   find read-secret
   find remove-secret
 
+# the page's bridge, asked only how many watcher answers the cask pushed (term-device-layer-0002)
+dock load
+  load <global:bridge>, name bridge
+
 task boot
   mark async
   like void
@@ -67,6 +73,18 @@ task boot
         take value, like text
         call write-signal
           bind self, read watched
+          bind value, read value
+  # the battery watched by the cask's process (term-device-layer-0002): WKWebView has no getBattery, so a level heard
+  # here is an event the platform's own watcher pushed back across the bridge
+  save battery-watched
+    call make-signal
+      bind value, text <none>
+  save drop-battery
+    call watch-battery
+      task heard-battery
+        take value, like text
+        call write-signal
+          bind self, read battery-watched
           bind value, read value
   save bundle
     call bundle-path
@@ -114,7 +132,15 @@ task boot
   save heard
     call read-signal
       bind self, read watched
+  # the answers the cask's process pushed for the two watchers: none when the page watched on its own host
+  save pushed
+    call bridge/pushes
+      text <term-watch>
   call drop
+  save heard-level
+    call read-signal
+      bind self, read battery-watched
+  call drop-battery
   # the name the app's scope reads `$data` with (appIdentity, from the app's folder), or the write is refused
   save directory
     call data-path
@@ -130,7 +156,7 @@ task boot
         text <{directory}/line.bin>
   call write
     text <{directory}/device.txt>
-    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|microphone {microphone}|contacts {contacts}|calendar {calendar}|watch-network {heard}|bytes {carried}|secret {kept} {fetched} {dropped}>
+    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|microphone {microphone}|contacts {contacts}|calendar {calendar}|watch-network {heard}|watch-battery {heard-level}|watch-pushes {pushed}|bytes {carried}|secret {kept} {fetched} {dropped}>
   fork test
     hook test
       call is-equal

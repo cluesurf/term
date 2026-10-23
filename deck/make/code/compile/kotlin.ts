@@ -507,6 +507,8 @@ export function hoistKotlinImports(source: string): string {
 export type WakeGroup = {
   deck: string
   entries: Record<string, unknown>[]
+  // the deck's static exception, tell and dock entries, for `hiveWakeTyped` (compile.ts `wakeGroups`)
+  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 // The reflective count of nodes in a task's body (every object with a `form`, past `type` and `span`), as the original
@@ -1002,11 +1004,44 @@ export function emitKotlin(
       return `HiveEntry(host = ${JSON.stringify(String(own.host ?? ''))}, kind = ${JSON.stringify(String(own.kind ?? ''))}, name = ${JSON.stringify(String(own.name ?? ''))}, site = ${JSON.stringify(String(own.site ?? ''))}, base = ${boxedBase})`
     }
 
+    // THE TYPED WAKE (seam spec §3.3), as typescript.ts writes it: a deck's static exceptions, tells and routes go to
+    // `hiveWakeTyped` as `HiveEntry` records whose `base` is the payload form's own class, every field present
+    const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
+    const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
+    const textOf = (value: unknown): string => JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))
+    const textsOf = (value: unknown): string =>
+      `mutableListOf<String>(${(Array.isArray(value) ? value : []).map(item => textOf(item)).join(', ')})`
+    const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>
+    const typedEntry = (entry: Record<string, unknown>, base: string): string =>
+      `HiveEntry(host = ${textOf(entry.host)}, kind = ${textOf(entry.kind)}, name = ${textOf(entry.name)}, site = ${textOf(entry.site)}, base = ${base})`
+    const typedList = (form: string, entries: string[]): string => `mutableListOf<HiveEntry<${form}>>(${entries.join(', ')})`
+    const typedCall = (group: WakeGroup): string => {
+      const typed = group.typed ?? { exceptions: [], tells: [], docks: [] }
+      const exceptions = typed.exceptions.map(entry => {
+        const roll = rollOf(entry)
+        const link = Object.entries((roll.link ?? {}) as Record<string, unknown>)
+          .map(([field, type]) => `Pair(first = ${JSON.stringify(field)}, second = ${textOf(type)})`)
+          .join(', ')
+
+        return typedEntry(entry, `ExceptionRoll(like = ${textOf(roll.like)}, chain = ${textsOf(roll.chain)}, note = ${textOf(roll.note)}, link = mutableListOf<Pair<String, String>>(${link}))`)
+      })
+      const tells = typed.tells.map(entry => {
+        const roll = rollOf(entry)
+
+        return typedEntry(entry, `TellRoll(note = ${textOf(roll.note)}, hint = ${textOf(roll.hint)}, link = ${textsOf(roll.link)}, alias = ${textOf(roll.alias)})`)
+      })
+      const docks = typed.docks.map(entry => typedEntry(entry, `DockRoll(halt = ${textsOf(rollOf(entry).halt)})`))
+
+      return `    hiveWakeTyped(${JSON.stringify(group.deck)}, ${typedList('ExceptionRoll', exceptions)}, ${typedList('TellRoll', tells)}, ${typedList('DockRoll', docks)})`
+    }
+
     const calls = options.wake
-      .map(
-        group =>
-          `    hiveWake(${JSON.stringify(group.deck)}, mutableListOf(${group.entries.map(entryText).join(', ')}))`,
-      )
+      .map(group => {
+        const entries = group.entries.filter(entry => !typedWake || !TYPED_KINDS.has(String(entry.kind)))
+        const woken = `    hiveWake(${JSON.stringify(group.deck)}, mutableListOf(${entries.map(entryText).join(', ')}))`
+
+        return typedWake ? `${woken}\n${typedCall(group)}` : woken
+      })
       .join('\n')
 
     wake.push(`fun wakeHive(): Unit {\n${calls}\n}`)

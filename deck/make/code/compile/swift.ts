@@ -706,6 +706,8 @@ function pascal(name: string): string {
 export type WakeGroup = {
   deck: string
   entries: Record<string, unknown>[]
+  // the deck's static exception, tell and dock entries, for `hiveWakeTyped` (compile.ts `wakeGroups`)
+  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 export function emitSwift(
@@ -1578,11 +1580,44 @@ export function emitSwift(
       return `HiveEntry(host: ${JSON.stringify(String(own.host ?? ''))}, kind: ${JSON.stringify(String(own.kind ?? ''))}, name: ${JSON.stringify(String(own.name ?? ''))}, site: ${JSON.stringify(String(own.site ?? ''))}, base: ${boxed})`
     }
 
+    // THE TYPED WAKE (seam spec §3.3), as typescript.ts and kotlin.ts write it: a deck's static exceptions, tells and
+    // routes go to `hiveWakeTyped` as `HiveEntry` records whose `base` is the payload form's own struct
+    const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
+    const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
+    const textOf = (value: unknown): string => JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))
+    // a list FIELD of a struct is a Swift array; only a parameter is a SeedList
+    const textsOf = (value: unknown): string => `[${(Array.isArray(value) ? value : []).map(textOf).join(', ')}] as [String]`
+    const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>
+    const typedEntry = (form: string, entry: Record<string, unknown>, base: string): string =>
+      `HiveEntry<${form}>(host: ${textOf(entry.host)}, kind: ${textOf(entry.kind)}, name: ${textOf(entry.name)}, site: ${textOf(entry.site)}, base: ${base})`
+    const typedCall = (group: WakeGroup): string => {
+      const typed = group.typed ?? { exceptions: [], tells: [], docks: [] }
+      const exceptions = typed.exceptions.map(entry => {
+        const roll = rollOf(entry)
+        const link = Object.entries((roll.link ?? {}) as Record<string, unknown>)
+          .map(([field, type]) => `Pair<String, String>(first: ${textOf(field)}, second: ${textOf(type)})`)
+          .join(', ')
+
+        return typedEntry('ExceptionRoll', entry, `ExceptionRoll(like: ${textOf(roll.like)}, chain: ${textsOf(roll.chain)}, note: ${textOf(roll.note)}, link: [${link}] as [Pair<String, String>])`)
+      })
+      const tells = typed.tells.map(entry => {
+        const roll = rollOf(entry)
+
+        return typedEntry('TellRoll', entry, `TellRoll(note: ${textOf(roll.note)}, hint: ${textOf(roll.hint)}, link: ${textsOf(roll.link)}, alias: ${textOf(roll.alias)})`)
+      })
+      const docks = typed.docks.map(entry => typedEntry('DockRoll', entry, `DockRoll(halt: ${textsOf(rollOf(entry).halt)})`))
+      const list = (form: string, items: string[]): string => `SeedList<HiveEntry<${form}>>([${items.join(', ')}])`
+
+      return `  hiveWakeTyped(name: ${JSON.stringify(group.deck)}, exceptions: ${list('ExceptionRoll', exceptions)}, tells: ${list('TellRoll', tells)}, docks: ${list('DockRoll', docks)})`
+    }
+
     const calls = options.wake
-      .map(
-        group =>
-          `  hiveWake(name: ${JSON.stringify(group.deck)}, roll: SeedList<HiveEntry>([${group.entries.map(entryText).join(', ')}]))`,
-      )
+      .map(group => {
+        const entries = group.entries.filter(entry => !typedWake || !TYPED_KINDS.has(String(entry.kind)))
+        const woken = `  hiveWake(name: ${JSON.stringify(group.deck)}, roll: SeedList<HiveEntry>([${entries.map(entryText).join(', ')}]))`
+
+        return typedWake ? `${woken}\n${typedCall(group)}` : woken
+      })
       .join('\n')
 
     wake.push(`func wakeHive() -> Void {\n${calls}\n}`)

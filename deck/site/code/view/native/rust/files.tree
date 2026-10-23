@@ -1,0 +1,13 @@
+# picking a file for a Rust program (term-device-layer-0001): zenity or kdialog on Linux, an OpenFileDialog from
+# PowerShell on Windows, osascript's choose file on a Mac, the choice copied into a folder of the app's own. Conforms
+# to ../files. The runtime is runtime/native-files.rs.
+
+dock load
+  load <global:native-files>, name native-files
+
+task choose-file
+  take kind, like text
+  like text
+  send back
+    call native-files/pick
+      read kind

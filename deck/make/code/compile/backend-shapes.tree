@@ -516,6 +516,11 @@ form form-kind
     link item, like form-kind
   case form
     link spec, like form-spec
+  # a `need false` field typed `maybe T`, which carries presence: absent or void fills none, present fills some, and
+  # melt writes some whatever it holds (term/stdlib-parity decision 001). Not `case maybe`: a case so named takes the
+  # stdlib's name and boxes every optional field in the module (self-host/traps.md T038)
+  case optional
+    link item, like form-kind
 
 # one field of a record as a `fill` reads it
 form record-field
@@ -548,16 +553,45 @@ task form-spec-of
     hold
       walk records/get(name)
         take field
+        save kind, form-kind-of(make(some, field/type), records, inner)
+        fork test, field/optional
+          hold
+            sift maybe-item(field/type)
+              case some
+                link item
+                save kind
+                  make form-kind/optional
+                    bind item, form-kind-of(make(some, item), records, inner)
+              case none
+                save nothing, 0
         save made
           make spec-field
             bind name, field/name
             bind optional, field/optional
-            bind kind, form-kind-of(make(some, field/type), records, inner)
+            bind kind, kind
         push(out, made)
   back
     make form-spec
       bind form, name
       bind fields, out
+
+# the T of a `maybe T`, none for any other type
+task maybe-item
+  take given, like type
+  like maybe, like type
+  mark private
+
+  sift given
+    case named
+      link named-name
+      fork test, is-equal(named-name, <maybe>)
+        hold
+          walk args
+            take one
+            back make(some, one)
+    miss
+      save nothing, 0
+  back make none
 
 task one-of-names
   take name, like text
@@ -671,6 +705,8 @@ task spec-forms-kind
       spec-forms-into(spec, out, seen)
     case list
       spec-forms-kind(item, out, seen)
+    case optional
+      spec-forms-kind(item, out, seen)
     miss
       save nothing, 0
 
@@ -705,6 +741,8 @@ task refused-kind
       back make(some, message)
     case list
       back refused-kind(item, <an item of {at}>, backend)
+    case optional
+      back refused-kind(item, at, backend)
     case form
       walk spec/fields
         take field

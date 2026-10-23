@@ -24,6 +24,7 @@ load @term/cask/cask
   find quit
   find bundle-path
   find data-path
+  find emit
   find home-path
 
 load @term/cask/scope
@@ -53,6 +54,7 @@ load @term/site/view/hosted
 
 load @term/site/view/battery
   find battery-status, name battery-battery-status
+  find watch-battery, name battery-watch-battery
 
 load @term/site/view/clipboard
   find read-clipboard, name clipboard-read-clipboard
@@ -60,6 +62,7 @@ load @term/site/view/clipboard
 
 load @term/site/view/network
   find network-status, name network-network-status
+  find watch-network, name network-watch-network
 
 load @term/site/view/permission
   find permission-status, name permission-permission-status
@@ -132,6 +135,20 @@ load @term/host/text
   find data-from-text
   find data-to-text
 
+# the window each page is served in, by the key `serve` gave it: a watcher's answers are pushed into it
+host cask-windows
+  make hash
+  like hash
+    like text
+    like window
+
+# what ends each watch a page holds, by `<key>/<watch>`: the device module's own drop
+host watch-drops
+  make hash
+  like hash
+    like text
+    like task
+
 # the items of a json array, as a list whose element the checker knows
 task items-of
   take array, like dynamic
@@ -156,6 +173,97 @@ task items-of
         bind list, read items
         bind item, read item
   send back, read items
+
+# battery's watch-battery for the page of the window under `owner`: each answer the platform's watcher hears is
+# pushed to that page as the event `term-watch/<watch>`, until `cask_unwatch` names it. `unhosted` where this build
+# has no device host, or where the window is not known (an app answering through `dispatch`, not `serve`): the
+# page then watches on its own host
+task start-battery-watch-battery
+  take owner, like text
+  take watch, like text
+  like text
+  save answer, text <unhosted>
+  fork test
+    hook test
+      call has-device-host
+    hook hold
+      save found
+        call get
+          read cask-windows
+          read owner
+      fork case, read found
+        case some
+          link place
+          save drop
+            call battery-watch-battery
+              task heard
+                take value, like text
+                call emit
+                  read place
+                  text <term-watch/{{watch}}>
+                  read value
+          call set
+            read watch-drops
+            text <{{owner}}/{{watch}}>
+            read drop
+          save answer, text <watching>
+        case none
+          save skip, code 0
+  send back, read answer
+
+# network's watch-network for the page of the window under `owner`: each answer the platform's watcher hears is
+# pushed to that page as the event `term-watch/<watch>`, until `cask_unwatch` names it. `unhosted` where this build
+# has no device host, or where the window is not known (an app answering through `dispatch`, not `serve`): the
+# page then watches on its own host
+task start-network-watch-network
+  take owner, like text
+  take watch, like text
+  like text
+  save answer, text <unhosted>
+  fork test
+    hook test
+      call has-device-host
+    hook hold
+      save found
+        call get
+          read cask-windows
+          read owner
+      fork case, read found
+        case some
+          link place
+          save drop
+            call network-watch-network
+              task heard
+                take value, like text
+                call emit
+                  read place
+                  text <term-watch/{{watch}}>
+                  read value
+          call set
+            read watch-drops
+            text <{{owner}}/{{watch}}>
+            read drop
+          save answer, text <watching>
+        case none
+          save skip, code 0
+  send back, read answer
+
+# a watch the page let go: its drop called (the last one ends the platform subscription) and forgotten
+task stop-watch
+  take key, like text
+  like void
+  save found
+    call get
+      read watch-drops
+      read key
+  fork case, read found
+    case some
+      link drop
+      call drop
+      call watch-drops/delete
+        read key
+    case none
+      save skip, code 0
 
 # a device answer, or `unhosted` where this build has no device host and so only the fallback answered
 task device-answer
@@ -318,6 +426,24 @@ task is-allowed
       call is-equal
         read command
         text <vibration_vibrate>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <battery_watch_battery>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <network_watch_network>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <cask_unwatch>
     hook hold
       send back, true
     hook test
@@ -849,6 +975,43 @@ task run-command
         call from-text
           read answer
       send back, read json-109
+    hook test
+      call is-equal
+        read command
+        text <battery_watch_battery>
+    hook hold
+      send back
+        call from-text
+          call start-battery-watch-battery
+            read owner
+            call field-text
+              read arguments
+              text <watch>
+    hook test
+      call is-equal
+        read command
+        text <network_watch_network>
+    hook hold
+      send back
+        call from-text
+          call start-network-watch-network
+            read owner
+            call field-text
+              read arguments
+              text <watch>
+    hook test
+      call is-equal
+        read command
+        text <cask_unwatch>
+    hook hold
+      save unwatched
+        call field-text
+          read arguments
+          text <watch>
+      call stop-watch
+        text <{{owner}}/{{unwatched}}>
+      send back
+        call make-null
     hook test
       call is-equal
         read command
@@ -1402,7 +1565,25 @@ task dispatch
 task drop-window
   take owner, like text
   like void
-  save skip, code 0
+  save prefix, text <{{owner}}/>
+  save watch-keys
+    like list
+      like text
+    call watch-drops/keys
+  walk list
+    read watch-keys
+    hook next
+      take site, name held
+      fork test
+        hook test
+          call starts-with
+            read held
+            read prefix
+        hook hold
+          call stop-watch
+            read held
+  call cask-windows/delete
+    read owner
 
 # serve one window: its page's messages answered under a key of its own, so a handle that window's page holds is
 # unknown to every other window's, and every one of them is let go when the window closes. Answers the key
@@ -1411,6 +1592,10 @@ task serve
   like text
   save key
     call version4
+  call set
+    read cask-windows
+    read key
+    read place
   call on-message
     read place
     task reply

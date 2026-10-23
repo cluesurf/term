@@ -61,8 +61,10 @@ ok('a call into an async dock is awaited with no wait written', /^\d+$/.test(awa
 ok('the call is written awaited', awaited.emitted.includes('await fsPromise.readFile(path, "utf8")'), awaited.emitted.slice(0, 600))
 ok('its caller becomes async, and the caller of that', /async function readLength/.test(awaited.emitted) && /async function run/.test(awaited.emitted), awaited.emitted.slice(0, 600))
 
+// a `.../promises` module answers a promise from every function, so without the mark and without `wait` the call is
+// refused, where it used to hand the promise on and print `undefined` (term/compiler decision 004)
 const plain = run(docked.replace('\n    mark async', ''))
-ok('without the mark the promise is handed on, as before', plain.output === 'undefined', plain.output)
+ok('without the mark the call is refused as missing-wait, not handed on', /answers a promise, and nothing waits for it/.test(plain.output), plain.output)
 
 const ticked = run(`dock load
   load <node:fs/promises>, name fs-promise
@@ -107,6 +109,27 @@ task run
 }).lint()
 const redundant = lint.filter(f => f.code === 'L054').map(f => f.message).join(' | ')
 ok('L054 reports a wait true the mark makes redundant', /"fs-promise" is docked `mark async`/.test(redundant), redundant || JSON.stringify(lint.map(f => f.code)))
+
+// one function marked on its own (`find read-file` / `mark async`, decision 004): its `wait true` is redundant too
+const one = analyze({
+  file: 'w.tree',
+  text: `dock load
+  load <node:fs/promises>, name fs-promise
+    find read-file
+      mark async
+
+task run
+  like text
+  save body
+    call fs-promise/read-file
+      text <deck.tree>
+      text <utf8>
+      wait true
+  back body
+`,
+}).lint()
+const redundantOne = one.filter(f => f.code === 'L054').map(f => f.message).join(' | ')
+ok('L054 reports a wait true on a function marked async on its own', /"fs-promise\/read-file" is docked `mark async`/.test(redundantOne), redundantOne || JSON.stringify(one.map(f => f.code)))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

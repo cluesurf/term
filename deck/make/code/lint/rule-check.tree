@@ -2087,7 +2087,8 @@ task redundant-wait
     fork test, is-minimum(slash, 0)
       hold
         save module, substring(callee, 0, slash)
-    save docked, and(is-unequal(module, <>), and(has-name(docks, module), not(has-name(bound, module))))
+    # the whole module, or this one function of it (`find read-file` / `mark async` under the load line)
+    save docked, and(is-unequal(module, <>), and(or(has-name(docks, module), has-name(docks, callee)), not(has-name(bound, module))))
     fork test, and(not(docked), or(not(has-name(known, callee)), has-name(bound, callee)))
       hold
         turn next
@@ -2095,6 +2096,9 @@ task redundant-wait
     fork test, docked
       hold
         save message, <`wait true` is redundant: "{module}" is docked `mark async`, so the call is awaited with nothing written>
+        fork test, not(has-name(docks, module))
+          hold
+            save message, <`wait true` is redundant: "{callee}" is docked `mark async`, so the call is awaited with nothing written>
     save fix
       make put
         bind span, site/remove

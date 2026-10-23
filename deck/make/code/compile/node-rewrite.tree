@@ -1285,16 +1285,37 @@ task trait-call
       save target, callee
       save called, <>
       save callee-span, span
+      # `x/size` written as a method call on the value: the same call as `size(x)`, its receiver the first argument.
+      # Left a member call, it reached a `size` the value does not carry (`x.size is not a function`,
+      # term-compiler-0018)
+      save values, args
       sift target
         case variable
           save called, name
           save callee-span, span
+        case member
+          sift index
+            case some
+              back given
+            case none
+              save nothing, 0
+          # named arguments line up one name per argument, and a receiver put in front would shift them
+          fork test, is-above(names/length, 0)
+            hold
+              back given
+          save called, name
+          save callee-span, span
+          save values, make list
+          push(values, target)
+          walk args
+            take one
+            push(values, one)
         miss
           back given
-      fork test, is-equal(args/length, 0)
+      fork test, is-equal(values/length, 0)
         hold
           back given
-      save receiver, expression-type(get(args, 0))
+      save receiver, expression-type(get(values, 0))
       save generic, <>
       sift receiver
         case some
@@ -1330,6 +1351,7 @@ task trait-call
           bind name, called
           bind span, callee-span
       save given/callee, through
+      save given/args, values
       back given
     miss
       back given

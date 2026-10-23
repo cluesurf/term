@@ -33,6 +33,7 @@ const APP = `load @term/base/code/exception
   find excess
 
 load @term/site/code/http/tell
+  find routes-of
   find expose
   find status-of
   find case-of
@@ -74,6 +75,13 @@ task key-of
   send back
     call note-key
       read host
+      read form
+
+task routes-for
+  take form, like text
+  like list, like text
+  send back
+    call routes-of
       read form
 
 tell @probe/tell/upload-excess
@@ -124,6 +132,8 @@ async function main(): Promise<void> {
     keyOf: (h: string, f: string) => string
     errorsPage: () => { status: number; body: string }
     errorPage: (c: string) => { status: number; body: string }
+    routesFor: (form: string) => string[]
+    hiveWakeTyped: (name: string, exceptions: unknown[], tells: unknown[], docks: unknown[]) => void
   }
 
   M.wakeHive()
@@ -170,6 +180,16 @@ async function main(): Promise<void> {
   const page = M.errorPage('too-large')
   ok('/errors/<case> shows note, hint, props and status', page.status === 200 && page.body.includes('Files may be up to 5 MB') && page.body.includes('<code>limit</code>') && page.body.includes('status 413'), page.body)
   ok('/errors/<unknown> is an absence', M.errorPage('nothing').status === 404)
+
+  // routes-of reads the typed dock roll (seam-0006): a route woken through hive-wake-typed, as the compiler's wake tells
+  // a roll dock entry, is answered for the exception its halt names, and only for that one. (A `hook /path` route reaches
+  // no roll dock entry today, seam log 2026-10-22, so the entry is woken here by hand)
+  M.hiveWakeTyped('@probe/tell', [], [], [{ host: '@probe/tell', kind: 'dock', name: 'post /upload', site: 'app.tree', base: { halt: ['upload-excess'] } }])
+  const routes = M.routesFor('upload-excess')
+  ok('routes-of answers the route that can raise the exception', routes.length === 1 && routes[0]!.includes('/upload'), JSON.stringify(routes))
+  console.log(`      routes-of upload-excess: ${JSON.stringify(routes)}`)
+  ok('routes-of answers nothing for an exception no route raises', M.routesFor('quota-excess').length === 0, JSON.stringify(M.routesFor('quota-excess')))
+
 
   // the URL's `case` is the reader's input: it reaches the 404 body as text, never as markup
   const hostile = M.errorPage('<script>alert("x")</script>&\'')

@@ -6,8 +6,11 @@
 # note/project/term/hive/06-tell.md.
 
 load @term/base/hive
-  find hive-roll
+  find hive-exceptions
+  find hive-tells
+  find hive-docks
   find hive-entry
+  find tell-roll
 
 load @term/base/list
   find push
@@ -221,15 +224,14 @@ task hint-key
           read form
       text </hint>
 
-# Which of the seventeen an exception is, from its roll entry (`like` on the exception entry). An exception the roll
-# does not know (raised by a deck that never woke) is a failure.
+# Which of the seventeen an exception is, from its declaration in the hive's typed roll (`like` on the exception
+# entry). An exception the roll does not know (raised by a deck that never woke) is a failure.
 task like-of
   take host, like text
   take form, like text
   like text
   walk list
-    call hive-roll
-      text <exception>
+    call hive-exceptions
       read host
     hook next
       take site, name entry
@@ -247,6 +249,7 @@ task tell-of
   take host, like text
   take form, like text
   like maybe
+    like hive-entry tell-roll
   save full
     call concat
       call concat
@@ -254,8 +257,7 @@ task tell-of
         text </>
       read form
   walk list
-    call hive-roll
-      text <tell>
+    call hive-tells
     hook next
       take site, name entry
       fork test
@@ -304,7 +306,10 @@ task expose
       link entry
       save case, call case-of(read e/form)
       fork test
-        hook test, read entry/base/alias
+        hook test
+          call is-unequal
+            read entry/base/alias
+            text <>
         hook hold
           save case, call case-of(read entry/base/alias)
       save
@@ -348,8 +353,7 @@ task routes-of
   save out
     make list
   walk list
-    call hive-roll
-      text <dock>
+    call hive-docks
     hook next
       take site, name entry
       walk list
@@ -369,12 +373,15 @@ task routes-of
 
 # One row of the errors index: the case, its note and its status, linking to its page.
 task error-row
-  take entry, like hive-entry
+  take entry, like hive-entry tell-roll
   like text
   save form, call bare-of(read entry/name)
   save case, call case-of(read form)
   fork test
-    hook test, read entry/base/alias
+    hook test
+      call is-unequal
+        read entry/base/alias
+        text <>
     hook hold
       save case, call case-of(read entry/base/alias)
   save path, call escape-html(call case-path(read case))
@@ -400,8 +407,7 @@ task errors-page
   like response
   save rows, text <>
   walk list
-    call hive-roll
-      text <tell>
+    call hive-tells
     hook next
       take site, name entry
       save rows
@@ -431,13 +437,15 @@ task error-page
       text <->
       text <_>
   walk list
-    call hive-roll
-      text <tell>
+    call hive-tells
     hook next
       take site, name entry
       save own, call case-of(call bare-of(read entry/name))
       fork test
-        hook test, read entry/base/alias
+        hook test
+          call is-unequal
+            read entry/base/alias
+            text <>
         hook hold
           save own, call case-of(read entry/base/alias)
       fork test
@@ -461,7 +469,7 @@ task error-page
           text <\</code\> is not an error this build tells.\</p\>\</body\>\</html\>>
 
 task render-error
-  take entry, like hive-entry
+  take entry, like hive-entry tell-roll
   take case, like text
   like response
   save form, call bare-of(read entry/name)
@@ -476,7 +484,10 @@ task render-error
   save note, call escape-html(read entry/base/note)
   save hint, text <>
   fork test
-    hook test, read entry/base/hint
+    hook test
+      call is-unequal
+        read entry/base/hint
+        text <>
     hook hold
       save hint
         call concat

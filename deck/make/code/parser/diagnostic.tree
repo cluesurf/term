@@ -765,6 +765,7 @@ form diagnostic-name
   case hidden-make, text <hidden-make>
   case empty-site, text <empty-site>
   case stray-save, text <stray-save>
+  case missing-wait, text <missing-wait>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -969,6 +970,10 @@ task entry-of
     # the meant one as it was (check/unused.tree, term/compiler decision 003, guides: language/variables)
     case stray-save
       back error-entry(0x40, <this save is never read, and its name is one letter from a variable that is>, <correct the name to the variable it was meant for, or remove the save>)
+    # a call into a host module whose functions answer promises, with no `wait`, `tick` or `mark async`: the promise was
+    # handed on as the answer (check/missing-wait.ts, term/compiler decision 004, guides: language/async, language/native)
+    case missing-wait
+      back error-entry(0x41, <this call into a host module answers a promise, and nothing waits for it>, <write `wait` before the call, `tick` to start it without waiting, or `mark async` under the module's load line>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1040,3 +1045,4 @@ task diagnostic-names
       make hidden-make
       make empty-site
       make stray-save
+      make missing-wait

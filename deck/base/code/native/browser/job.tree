@@ -1,0 +1,101 @@
+# browser structured-concurrency implementation, line for line node's. Forwards to the linked job runtime shim
+# (runtime/job.ts here, which has no AsyncLocalStorage, so a cancelled job runs on with its outcome discarded), which
+# reports a job's state and keeps its outcome. What each state means is decided in code/task.tree. A result crosses as `unknown`, so one shim
+# serves every result type. Declares the opaque handle type a job holds (the runtime job object). Internal: reached
+# only through the public task API.
+
+dock type
+  load <any>, name job-handle
+
+dock load
+  load <global:job>, name job
+
+task job-spawn
+  take work
+    like task
+      mark async
+      like unknown
+  like job-handle
+  send back
+    call job/spawn
+      read work
+
+# wait until the job is no longer running: settled, or cancelled
+task job-settle
+  mark async
+  take dock, like job-handle
+  like void
+  call job/settle
+    read dock
+    wait true
+
+# the same, giving up after `milliseconds`: true when it stopped running in time
+task job-settle-within
+  mark async
+  take dock, like job-handle
+  take milliseconds, like number
+  like boolean
+  send back
+    call job/settle-within
+      read dock
+      read milliseconds
+      wait true
+
+# wait until every job has stopped running, or until the first one fails or is cancelled
+task job-settle-group
+  mark async
+  take docks
+    like list
+      like job-handle
+  like void
+  call job/settle-group
+    read docks
+    wait true
+
+# wait until any one job has stopped running, for any reason
+task job-settle-any
+  mark async
+  take docks
+    like list
+      like job-handle
+  like void
+  call job/settle-any
+    read docks
+    wait true
+
+# `running`, `done`, `failed` or `cancelled`
+task job-state
+  take dock, like job-handle
+  like text
+  send back
+    call job/state
+      read dock
+
+# the result of a job whose state is `done`
+task job-result
+  take dock, like job-handle
+  like unknown
+  send back
+    call job/result
+      read dock
+
+# raise what a `failed` job raised, unchanged, so a typed exception reaches the waiter as itself
+task job-rethrow
+  take dock, like job-handle
+  like unknown
+  send back
+    call job/rethrow
+      read dock
+
+task job-cancel
+  take dock, like job-handle
+  like void
+  call job/cancel
+    read dock
+
+task job-alive
+  take dock, like job-handle
+  like boolean
+  send back
+    call job/alive
+      read dock

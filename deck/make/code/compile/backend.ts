@@ -172,6 +172,8 @@ export type FormKind =
   | { kind: 'text' | 'number' | 'decimal' | 'flag' | 'data' | 'any' }
   | { kind: 'list'; item: FormKind }
   | { kind: 'form'; spec: FormSpec }
+  // a `need false` field typed `maybe T`: present or not (term/stdlib-parity decision 001)
+  | { kind: 'optional'; item: FormKind }
 
 export type FormSpec = { form: string; fields: { name: string; optional: boolean; kind: FormKind }[] }
 

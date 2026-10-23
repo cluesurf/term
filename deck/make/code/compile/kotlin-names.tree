@@ -425,6 +425,10 @@ task fill-of
     case form
       link spec
       back <__fill{kotlin-pascal(spec/form)}(__termData({value}, {path}, {optional}), {path})>
+    # absent or void is none, anything else some of the value filled as the item (term/stdlib-parity decision 001)
+    case optional
+      link item
+      back <(({value}).let \{ d -\> if (d == null || d is DataBlank) MaybeNone else MaybeSome(value = {fill-of(item, <d>, path, false)}) \})>
     miss
       back <0L>
 
@@ -451,6 +455,10 @@ task melt-of
     case form
       link spec
       back <__melt{kotlin-pascal(spec/form)}({value})>
+    # a maybe held anywhere but a field is none as void (a field's own is left out when none, in the walker)
+    case optional
+      link item
+      back <(({value}).let \{ m -\> if (m is MaybeSome) {melt-of(item, <m.value>)} else DataBlank \})>
     miss
       back <DataBlank>
 
@@ -464,6 +472,12 @@ task empty-test
   sift kind
     case text
       back <({value}).isEmpty()>
+    case number
+      back <(({value}) == 0L)>
+    case decimal
+      back <(({value}) == 0.0)>
+    case flag
+      back <(({value}) == false)>
     case list
       back <({value}).isEmpty()>
     case data
@@ -500,11 +514,23 @@ task kotlin-form-walkers
       fork test, field/optional
         hold
           save empty, empty-test(field/kind, value)
-      fork test, is-unequal(empty, <>)
-        hold
-          push(lines, <    if (!{empty}) \{ {entry} \}>)
+      save present, make none
+      sift field/kind
+        case optional
+          link item
+          save present, make(some, item)
         miss
-          push(lines, <    {entry}>)
+          save nothing, 0
+      sift present
+        case some
+          link item
+          push(lines, <    ({value}).let \{ m -\> if (m is MaybeSome) \{ list.add(DataEntry(name = {json-quote(field/name)}, base = {melt-of(item, <m.value>)})) \} \}>)
+        case none
+          fork test, is-unequal(empty, <>)
+            hold
+              push(lines, <    if (!{empty}) \{ {entry} \}>)
+            miss
+              push(lines, <    {entry}>)
     save form-name, kotlin-pascal(spec/form)
     push(out, <fun __melt{form-name}(value: {form-name}): Data \{\n    val list = mutableListOf\<DataEntry\>()\n{join-texts(lines, <\n>)}\n    return DataHash(list = list)\n\}>)
   back out

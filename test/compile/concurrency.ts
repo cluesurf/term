@@ -323,6 +323,7 @@ const bounded = (bound: string) => `load @term/base/code/task
 load @term/base/code/exception
   find conflict
   find outage
+  find failure
 
 task run
   note async
@@ -344,7 +345,9 @@ ${bound}  like text
 `
 
 const BOUND_WITHOUT = '  halt outage\n'
-const BOUND_WITH = '  halt outage\n  halt conflict\n'
+// `failure` too: `gather` reaches the `job-spawn` runtime shim, a native call, and a native call raises `failure` in
+// every program that holds the form, shaken or not (note/project/term/compiler/decision/001)
+const BOUND_WITH = '  halt outage\n  halt conflict\n  halt failure\n'
 
 // the build's refusal, or undefined when it builds
 function refusal(source: string): string | undefined {

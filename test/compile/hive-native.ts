@@ -78,6 +78,8 @@ load @term/base/code/hive
   find hive-roll
   find hive-size
   find hive-entry
+  find hive-exceptions
+  find hive-tells
 
 load @term/base/code/list
   find size
@@ -130,6 +132,30 @@ task hive-size-of
   like number
   send back
     call hive-size
+
+# the static exception the typed wake put in hive-exceptions: its like and note, read off the record (seam-0003)
+task static-roll
+  like text
+  save all
+    call hive-exceptions
+  walk list
+    read all
+    hook next
+      take site, name entry
+      send back, text <{entry/base/like}: {entry/base/note}>
+  send back, text <none>
+
+# the static tell the typed wake put in hive-tells: its note and the first field it shows
+task static-tell
+  like text
+  save all
+    call hive-tells
+  walk list
+    read all
+    hook next
+      take site, name entry
+      send back, text <{entry/base/note} ({entry/base/link/0})>
+  send back, text <none>
 `
 
 // what the roll would carry for this build: one deck, its one exception declaration
@@ -139,6 +165,28 @@ const WAKE: WakeGroup[] = [
     entries: [
       { host: '@probe/hive', kind: 'exception', name: 'user-absence', site: 'main.tree', base: { like: 'absence' } },
     ],
+    // the same declaration as the roll gives it to the typed wake (compile.ts `wakeGroups`)
+    typed: {
+      exceptions: [
+        {
+          host: '@probe/hive',
+          kind: 'exception',
+          name: 'user-absence',
+          site: 'main.tree',
+          base: { kind: 'exception', name: 'user-absence', site: 'main.tree', like: 'absence', chain: ['absence'], note: 'No such user', link: { key: 'text' } },
+        },
+      ],
+      tells: [
+        {
+          host: '@probe/hive',
+          kind: 'tell',
+          name: 'user-absence',
+          site: 'main.tree',
+          base: { kind: 'tell', name: 'user-absence', site: 'main.tree', note: 'Who is that?', link: ['key'] },
+        },
+      ],
+      docks: [],
+    },
   },
 ]
 
@@ -175,7 +223,7 @@ function frontEnd(env: Env): Program {
   resolveAsync(program)
 
   // the hive's entry points ride along the way compile.ts keeps them: the wake chain calls them
-  return simplify(program, new Set(['check-hive', 'hive-size-of', 'hive-wake', 'hive-tell', 'hive-roll']))
+  return simplify(program, new Set(['check-hive', 'hive-size-of', 'static-roll', 'static-tell', 'hive-wake', 'hive-wake-typed', 'hive-tell', 'hive-roll']))
 }
 
 const dir = runDir('term-hive-native-')
@@ -184,12 +232,30 @@ const only = process.env.HV_ONLY ?? ''
 // one deck woken; the static entry before the raise; the raise appended with the exception's form as its name
 const WANT = 'decks=1 before=1 after=2 last=user-absence'
 
+// the backends whose wake writes the typed rolls, and what the static exception reads back as there
+const TYPED: Env[] = ['rust', 'swift', 'kotlin']
+const STATIC = 'absence: No such user'
+const TOLD = 'Who is that? (key)'
+
 function judge(env: Env, run: { status: number | null; stdout: string; stderr: string }): void {
   ok(
     `${env}: the wake chain fills the roll and a native raise tells the hive`,
-    run.status === 0 && run.stdout.trim() === WANT,
+    run.status === 0 && run.stdout.trim().split('\n')[0] === WANT,
     `exit ${run.status}: ${(run.stdout + run.stderr).slice(0, 300)}`,
   )
+
+  if (TYPED.includes(env)) {
+    ok(
+      `${env}: a static exception reads back through hive-exceptions with its like and note`,
+      run.stdout.trim().split('\n')[1] === STATIC,
+      JSON.stringify(run.stdout),
+    )
+    ok(
+      `${env}: a static tell reads back through hive-tells with its note and fields`,
+      run.stdout.trim().split('\n')[2] === TOLD,
+      JSON.stringify(run.stdout),
+    )
+  }
 }
 
 const CARGO_TOML = `[package]
@@ -223,7 +289,7 @@ function runRust(): void {
   writeFileSync(join(proj, 'Cargo.toml'), CARGO_TOML)
   writeFileSync(
     join(proj, 'src', 'main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program, { wake: WAKE })}\nfn main() { wake_hive(); println!("{}", check_hive()); }\n`,
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program, { wake: WAKE })}\nfn main() { wake_hive(); println!("{}", check_hive()); println!("{}", static_roll()); println!("{}", static_tell()); }\n`,
   )
   const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
 
@@ -248,7 +314,7 @@ function runSwift(): void {
   const main = join(dir, 'main.swift')
   writeFileSync(
     main,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program, { wake: WAKE })}\nwakeHive()\nprint(checkHive())\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program, { wake: WAKE })}\nwakeHive()\nprint(checkHive())\nprint(staticRoll())\nprint(staticTell())\n`,
   )
 
   try {
@@ -273,7 +339,7 @@ function runKotlin(): void {
   writeFileSync(
     file,
     hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program, { wake: WAKE })}\nfun main() { wakeHive(); println(checkHive()) }\n`,
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program, { wake: WAKE })}\nfun main() { wakeHive(); println(checkHive()); println(staticRoll()); println(staticTell()) }\n`,
     ),
   )
   const jar = join(dir, 'main.jar')

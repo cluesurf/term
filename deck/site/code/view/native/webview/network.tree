@@ -82,10 +82,14 @@ task read-network
         call page-read-network
   send back, read reply
 
-# not carried (parameter handler is function): it runs in the page, on the browser host
+# watched by the cask, each answer pushed back over the bridge; on the browser host where the cask has no device host
 task follow-network
-  take handler, like unknown
-  like unknown
+  take handler
+    like task
+      take value, like text
+  like task
   send back
-    call page-follow-network
+    call bridge/watch
+      text <network_watch_network>
       read handler
+      read page-follow-network

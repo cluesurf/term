@@ -814,7 +814,8 @@ task host-value-prelude
   save lines, make list
   push(lines, <function __termHost\<T\>(value: unknown, kind: "string" | "number" | "boolean", name: string): T \{>)
   push(lines, <  if (typeof value === kind) return value as T>)
-  push(lines, <  const found = value === null ? "null" : Array.isArray(value) ? "a list" : typeof value === "object" ? "an object" : typeof value === "string" ? "a text" : typeof value>)
+  # a promise here is a host call no `wait` awaited (term/compiler decision 004): say so, not "an object"
+  push(lines, <  const found = value instanceof Promise ? "a promise (nothing waits for the call)" : value === null ? "null" : Array.isArray(value) ? "a list" : typeof value === "object" ? "an object" : typeof value === "string" ? "a text" : typeof value>)
   push(lines, <  const wanted = kind === "string" ? "a text" : kind === "number" ? "a number" : "a boolean">)
   push(lines, <  throw new TermException(\{ host: "@term/host", form: "data-mismatch", code: "", time: Date.now(), note: "Data does not fit the shape", link: \{ thing: "host value", path: name, reason: "is " + found + " where " + wanted + " belongs" \} \} as never)>)
   push(lines, <\}>)
@@ -892,8 +893,21 @@ task form-walk-prelude
   push(lines, <  return \{ form: "hash", list: spec.fields.flatMap((field: any) =\> \{>)
   push(lines, <    const held = value == null ? undefined : value[field.member]>)
   push(lines, <    if (held === undefined || held === null) return field.optional ? [] : [\{ name: field.name, base: \{ form: "blank" \} \}]>)
+  push(lines, <    if (field.optional && __termMeltEmpty(held, field.kind)) return []>)
   push(lines, <    return [\{ name: field.name, base: __termMeltKind(held, field.kind) \}]>)
   push(lines, <  \}) \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  # a plain `need false` field has no absent state, so its empty value is left out as absence is (term/stdlib-parity
+  # decision 001); a `maybe` field's kind is `any` here and is written whenever it is present
+  push(lines, <function __termMeltEmpty(value: any, kind: any): boolean \{>)
+  push(lines, <  switch (kind.kind) \{>)
+  push(lines, <    case "text": return value === "">)
+  push(lines, <    case "number": case "decimal": return value === 0>)
+  push(lines, <    case "flag": return value === false>)
+  push(lines, <    case "list": return Array.isArray(value) && value.length === 0>)
+  push(lines, <    default: return false>)
+  push(lines, <  \}>)
   push(lines, <\}>)
   push(lines, <>)
   push(lines, <function __termMeltKind(value: any, kind: any): any \{>)

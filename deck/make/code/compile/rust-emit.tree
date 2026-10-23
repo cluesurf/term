@@ -3891,7 +3891,8 @@ task emit-call
               fork test, is-equal(callee-name, <fill-form>)
                 hold
                   back <__fill_{snake(spec/form)}({emit-expr(first-arg(call-args), st, facts)}, String::new()){raise-suffix(st)}>
-              back <__melt_{snake(spec/form)}({emit-expr(first-arg(call-args), st, facts)})>
+              # lent, so the value is still there after its melt
+              back <__melt_{snake(spec/form)}(&({emit-expr(first-arg(call-args), st, facts)}))>
             case none
               save nothing, 0
 
@@ -4730,7 +4731,10 @@ task host-check
   save found, <let __found = if __host.is::\<String\>() \{ "a text" \} else if __host.is::\<i64\>() || __host.is::\<f64\>() \{ "a number" \} else if __host.is::\<bool\>() \{ "a boolean" \} else \{ "an object" \};>
   save link, <let __link: std::collections::HashMap\<String, String\> = [("thing".to_string(), "host value".to_string()), ("path".to_string(), "{name}".to_string()), ("reason".to_string(), format!("is \{\} where {wanted} belongs", __found))].into_iter().collect();>
   save raised, <let __raised = TermException(Box::new(TermRaised \{ host: "@term/host".to_string(), form: "data-mismatch".to_string(), note: "Data does not fit the shape".to_string(), code: String::new(), time: 0, link: std::rc::Rc::new(__link), base: std::rc::Rc::new(()) \}));>
-  back <\{ let __host: std::rc::Rc\<dyn std::any::Any\> = {value}; match __host.downcast_ref::\<{spelled}\>() \{ Some(__v) =\> __v.clone(), None =\> \{ {found} {link} {raised} {raise} \} \} \}>
+  # the value as the host gave it: boxed (`Rc<dyn Any>`) or, from a module Rust types, already concrete, so both are
+  # read through `&dyn Any`
+  save opened, <let __held = {value}; let __any: &dyn std::any::Any = &__held; let __host: &dyn std::any::Any = match __any.downcast_ref::\<std::rc::Rc\<dyn std::any::Any\>\>() \{ Some(__boxed) =\> &**__boxed, None =\> __any \};>
+  back <\{ {opened} match __host.downcast_ref::\<{spelled}\>() \{ Some(__v) =\> __v.clone(), None =\> \{ {found} {link} {raised} {raise} \} \} \}>
 
 task emit-let
   take node, like statement

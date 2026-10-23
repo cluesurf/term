@@ -155,6 +155,11 @@ task check-traits
           fork test, and(is-unequal(generic/need, <>), is-below(mask-at(mask-names, generic/need), 0))
             hold
               push(out, refusal(make(unknown-name), file, span, <the trait bound "{generic/need}" on "{generic/name}" is not a defined trait>, suggestion(generic/need, known)))
+          # `head t, like sizer` reads as a value index of type `sizer` and bounds nothing, so a call through the mask
+          # built and failed at run time (`x.size is not a function`, term-compiler-0018). A mask is a bound
+          fork test, and(is-unequal(generic/index, <>), is-minimum(mask-at(mask-names, generic/index), 0))
+            hold
+              push(out, refusal(make(type-mismatch), file, span, <"{generic/index}" is a mask, not a type: `head {generic/name}, like {generic/index}` bounds nothing. Write `head {generic/name}, need {generic/index}`>, make none))
       miss
         turn next
   back out

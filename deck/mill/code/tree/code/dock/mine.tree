@@ -57,6 +57,22 @@ mine dock-bind-line
           site note
         mine form, like note
           site note
+    # `find read-file` with `mark async` under it: that one function returns a promise, for a module that mixes async
+    # and plain functions (term/compiler decision 004)
+    mine list
+      mine form, like dock-bind-find
+        site find
+
+mine dock-bind-find
+  mine term, term find
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
 
 # RETIRED, and matched so the reader can say so. `dock` was a routing form as well as the native FFI binding,
 # and a URL route is `hook </path>` now. Its path is a text literal, which is what a route path needs.

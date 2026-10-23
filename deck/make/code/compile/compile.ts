@@ -23,6 +23,7 @@ import { resolve } from '@term/make/code/check/resolve'
 import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
+import { checkMissingWaits } from '@term/make/code/check/missing-wait'
 import { pendingValues } from '@term/make/code/check/pending'
 import { asyncSlots } from '@term/make/code/check/async-slots'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
@@ -256,7 +257,7 @@ import {
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
-import { collectModules, makeParseMemo, scopeList } from '@term/make/code/compile/load'
+import { collectModules, makeParseMemo, platformRefusals, scopeList } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Source, WalkMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/term/hash'
@@ -502,6 +503,11 @@ export function compile(
 
   // a load the build cannot answer and the checker would only meet as an unknown name: refused with its own cause
   const loadErrors = (collected?.diagnostics ?? []).filter(d => d.severity !== 'warning')
+
+  // and a module the build's env has no native for, refused at its `{platform}` load by name
+  if (loadErrors.length === 0 && collected && options?.resolve && options.env) {
+    loadErrors.push(...platformRefusals(collected.sources, options.resolve, options.env, parsed))
+  }
 
   if (loadErrors.length > 0) {
     return { ok: false, diagnostics: loadErrors }
@@ -1124,7 +1130,7 @@ export function compileProgram(
     }
 
     // the hive's entry points are called by the generated wake chain, which nothing in the source references
-    for (const name of ['hive-wake', 'hive-tell']) {
+    for (const name of ['hive-wake', 'hive-wake-typed', 'hive-tell']) {
       if (program.some(s => s.form === 'function' && s.name === name)) {
         roots.add(name)
       }
@@ -1241,6 +1247,14 @@ export function compileProgram(
   // takes (check/async-slots.ts)
   program = asyncSlots(program)
   program = resolveAsync(program)
+
+  // a call into a host module that answers promises (`<node:fs/promises>`), awaited by nothing: the promise was handed
+  // on as the answer (check/missing-wait.ts, term/compiler decision 004)
+  const missingWaits = checkMissingWaits(program, file)
+
+  if (missingWaits.length) {
+    return { ok: false, diagnostics: missingWaits }
+  }
 
   // the roll alone, for an entry already known to build: everything below only refuses or warns
   if (wantRoll === 'fast') {
@@ -1639,14 +1653,40 @@ export function compileProgram(
   return result as typeof result & { typescript: string }
 }
 
-// the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small
+type WakeEntry = Record<string, unknown>
+
+type WakeGroup = {
+  deck: string
+  entries: WakeEntry[]
+  typed: { exceptions: WakeEntry[]; tells: WakeEntry[]; docks: WakeEntry[] }
+}
+
+// the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small.
+// `typed` holds the same deck's static `exception`, `tell` and `dock` entries apart, for `hiveWakeTyped`, which a
+// backend writes as records of `exception-roll`, `tell-roll` and `dock-roll` (seam spec §3.3). A backend that writes
+// the typed call leaves those three kinds out of `entries`; one that does not writes `entries` as before
 function wakeGroups(
   roll: Roll,
-): { deck: string; entries: Record<string, unknown>[] }[] {
+): WakeGroup[] {
   const groups = new Map<string, Record<string, unknown>[]>()
+  const typed = new Map<string, WakeGroup['typed']>()
+  const typedOf = (deck: string): WakeGroup['typed'] => {
+    const held = typed.get(deck) ?? { exceptions: [], tells: [], docks: [] }
+    typed.set(deck, held)
+
+    return held
+  }
 
   for (const deck of roll.deck) {
     groups.set(deck.name, [])
+    typedOf(deck.name)
+  }
+
+  for (const [kind, key] of [['exception', 'exceptions'], ['tell', 'tells'], ['dock', 'docks']] as const) {
+    for (const entry of roll[kind] ?? []) {
+      const { host, ...rest } = entry
+      typedOf(host)[key].push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest })
+    }
   }
 
   // the built-in kinds carry their declaration as `base`; a declared kind's entry carries a `ref`, the constant the
@@ -1662,5 +1702,5 @@ function wakeGroups(
     }
   }
 
-  return [...groups].map(([deck, entries]) => ({ deck, entries }))
+  return [...groups].map(([deck, entries]) => ({ deck, entries, typed: typedOf(deck) }))
 }

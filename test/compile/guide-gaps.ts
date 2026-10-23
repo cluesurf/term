@@ -1898,6 +1898,94 @@ task read-or-why
     ok('a never-read save named like nothing the task reads builds, with a warning', spare.ok, spare.messages)
   }
 
+  // ---- language/async, language/native: a missing `wait` on a host call that answers a promise (gaps 56, 151, 177,
+  // term/compiler decision 004) ----
+  {
+    const dock = 'load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n'
+    const missing = build(`${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
+    ok(
+      'a call into <node:fs/promises> with no wait is refused as missing-wait, naming the call',
+      !missing.ok && missing.names.includes('missing-wait') && /"fs-promise\/read-file" answers a promise/.test(missing.messages),
+      missing.ok ? 'it built' : missing.messages,
+    )
+
+    const waited = build(`${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, wait fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
+    ok('the same call under `wait` builds', waited.ok, waited.messages)
+
+    const handed = build(`${dock}\ntask read-text\n  mark async\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`, undefined, true)
+    ok('the call given `back` whole from a `mark async` task builds (its promise is the task\'s own)', handed.ok, handed.messages)
+
+    const handedPlain = build(`${dock}\ntask read-text\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`, undefined, true)
+    ok(
+      'the call given `back` from a task that is not async is refused',
+      !handedPlain.ok && handedPlain.names.includes('missing-wait'),
+      handedPlain.ok ? 'it built' : handedPlain.messages,
+    )
+
+    const started = build(`${dock}\ntask start\n  take path, like text\n  tick fs-promise/read-file(path, <utf8>)\n`, undefined, true)
+    ok('the call started with `tick` builds', started.ok, started.messages)
+
+    const marked = build(`load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
+    ok('the module marked `mark async` builds with no wait', marked.ok, marked.messages)
+
+    // gap 177: one function of a module marked on its own, so a mixed module needs no `wait` per call
+    const one = `load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    find read-file\n      mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n\ntask boot\n  save size, read-length(<${join(TERM, 'deck.tree')}>)\n  log <{size}>\n`
+    const each = build(one, undefined, true)
+    ok(
+      '`find read-file` / `mark async` under the load line awaits that function and makes its caller async',
+      each.ok && /await fsPromise\.readFile\(/.test(each.typescript) && /async function readLength/.test(each.typescript),
+      each.ok ? each.typescript.split('\n').filter(l => /readFile|readLength/.test(l)).join(' | ') : each.messages,
+    )
+
+    const other = build(`load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    find read-file\n      mark async\n\ntask size-of\n  mark async\n  take path, like text\n  like number\n  save info, fs-promise/stat(path)\n  back info/size\n`, undefined, true)
+    ok(
+      'a function of the same module not marked on its own still needs wait',
+      !other.ok && /"fs-promise\/stat" answers a promise/.test(other.messages),
+      other.ok ? 'it built' : other.messages,
+    )
+
+    const stray = build(`dock load\n  load <node:path>, name path\n    find join\n\ntask joined\n  like text\n  back path/join(<a>, <b>)\n`)
+    ok(
+      '`find` under a load line with no `mark async` is refused',
+      !stray.ok && /takes one `mark async` under it/.test(stray.messages),
+      stray.ok ? 'it built' : stray.messages,
+    )
+  }
+
+  // ---- types/masks: a mask written as a type parameter's `like` bound nothing, built, and threw `x.size is not a
+  // function` on node (term-compiler-0018, the chunk 0 repro g110/same) ----
+  {
+    const sizer = (bound: string): string => `load @term/base/console\n  find log\n\nform shape\n  link sides, like number\n\nmask sizer\n  task size\n    take self\n    like number\n\nsuit shape\n  wear sizer\n    task size\n      take self\n      like number\n      send back, read self/sides\n\ntask describe\n  head t\n    ${bound}\n  take x, like t\n  like number\n  send back, call x/size\n\ntask main\n  save s\n    make shape\n      bind sides, 3\n  log <{describe(s)}>\n`
+    const asType = build(sizer('like sizer'), undefined, true)
+    ok(
+      '`head t, like sizer` is refused, naming `need sizer`',
+      !asType.ok && /"sizer" is a mask, not a type: `head t, like sizer` bounds nothing\. Write `head t, need sizer`/.test(asType.messages),
+      asType.ok ? 'it built' : asType.messages,
+    )
+
+    const asBound = build(sizer('need sizer'), undefined, true)
+    let answer = ''
+
+    if (asBound.ok) {
+      const module = await load(asBound.typescript)
+      const logged: string[] = []
+      const log = console.log
+      console.log = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '))
+
+      try {
+        await module.main!()
+      } catch (error) {
+        logged.push(String(error))
+      } finally {
+        console.log = log
+      }
+
+      answer = logged.join(' | ')
+    }
+
+    ok('`head t, need sizer` builds and the call through the mask answers 3', asBound.ok && answer === '3', asBound.ok ? `answered ${answer}` : asBound.messages)
+  }
+
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

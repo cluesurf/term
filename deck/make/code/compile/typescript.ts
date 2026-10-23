@@ -329,7 +329,11 @@ export function emitTypeScript(
     exceptions?: Set<string>
     // the roll to wake the hive with, one group per deck, when the program loads the stdlib hive. The emitter
     // appends a `wakeHive()` that calls `hiveWake` per deck and hooks raised exceptions into `hiveTell`
-    wake?: { deck: string; entries: Record<string, unknown>[] }[]
+    wake?: {
+      deck: string
+      entries: Record<string, unknown>[]
+      typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
+    }[]
     // export each top-level constant too: per-module emit (compile/modules.ts), where another module reads it
     exportConstants?: boolean
     // THE WHOLE PROGRAM, read and never emitted: per-module emit hands this emitter one module, and a `case` on a form
@@ -407,12 +411,49 @@ export function emitTypeScript(
 
     return `{ ...${JSON.stringify(own)}, base: ${toCamel(ref)} }`
   }
+
+  // THE TYPED WAKE (seam spec §3.3): when the program has `hive-wake-typed`, a deck's static exceptions, tells and
+  // routes leave `hiveWake` and go to it as `hive-entry` records whose `base` is a record of `exception-roll`,
+  // `tell-roll` or `dock-roll` with every field present, a missing one as its empty value
+  const typedWake = lowered.some(node => node.form === 'function' && node.name === 'hive-wake-typed')
+  const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
+  const textOf = (value: unknown): string => JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))
+  const textsOf = (value: unknown): string => JSON.stringify(Array.isArray(value) ? value.map(item => (typeof item === 'string' ? item : String(item))) : [])
+  const typedEntry = (entry: Record<string, unknown>, base: string): string =>
+    `{ host: ${textOf(entry.host)}, kind: ${textOf(entry.kind)}, name: ${textOf(entry.name)}, site: ${textOf(entry.site)}, base: ${base} }`
+  const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>
+  // an exception's `link` is the roll's object of field name to type text, each a `pair` of the two
+  const fieldPairs = (link: unknown): string =>
+    `[${Object.entries((link ?? {}) as Record<string, unknown>)
+      .map(([field, type]) => `{ first: ${JSON.stringify(field)}, second: ${textOf(type)} }`)
+      .join(', ')}]`
+  const typedText = (typed: NonNullable<NonNullable<typeof options>['wake']>[number]['typed']): string => {
+    const exceptions = (typed?.exceptions ?? []).map(entry => {
+      const roll = rollOf(entry)
+
+      return typedEntry(entry, `{ like: ${textOf(roll.like)}, chain: ${textsOf(roll.chain)}, note: ${textOf(roll.note)}, link: ${fieldPairs(roll.link)} }`)
+    })
+    const tells = (typed?.tells ?? []).map(entry => {
+      const roll = rollOf(entry)
+
+      return typedEntry(entry, `{ note: ${textOf(roll.note)}, hint: ${textOf(roll.hint)}, link: ${textsOf(roll.link)}, alias: ${textOf(roll.alias)} }`)
+    })
+    const docks = (typed?.docks ?? []).map(entry => typedEntry(entry, `{ halt: ${textsOf(rollOf(entry).halt)} }`))
+
+    return `[${exceptions.join(', ')}], [${tells.join(', ')}], [${docks.join(', ')}]`
+  }
+
   return tsAssemble.assembleTypeScript(
     tables,
     env,
     options?.exportConstants === true,
     Boolean(options?.wake?.length),
-    () => (options?.wake ?? []).map(group => ({ deck: group.deck, entries: group.entries.map(entryText) })),
+    () =>
+      (options?.wake ?? []).map(group => ({
+        deck: group.deck,
+        entries: group.entries.filter(entry => !typedWake || !TYPED_KINDS.has(String(entry.kind))).map(entryText),
+        typed: typedText(group.typed),
+      })),
     node => emitter.statement(node as unknown as Statement, 0),
     (node, name) => emitter.unchecked({ ...(node as unknown as Statement), name } as Statement),
     node => emitter.reusingCopy(node as unknown as Extract<Statement, { form: 'function' }>),

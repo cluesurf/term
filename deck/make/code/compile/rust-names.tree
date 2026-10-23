@@ -2704,6 +2704,10 @@ task fill-of
     case form
       link spec
       back <__fill_{snake(spec/form)}(__term_data({value}, {path}.clone(), {optional})?, {path})?>
+    # absent or void is none, anything else some of the value filled as the item (term/stdlib-parity decision 001)
+    case optional
+      link item
+      back <match {value} \{ None | Some(Data::Blank) =\> Maybe::None, Some(d) =\> Maybe::Some \{ value: {fill-of(item, <Some(d)>, path, false)} \} \}>
     miss
       back <0>
 
@@ -2730,7 +2734,11 @@ task melt-of
       back <Data::Array \{ list: std::rc::Rc::new(std::cell::RefCell::new(({value}).borrow().iter().map(|x| {melt-of(item, <x.clone()>)}).collect::\<Vec\<Data\>\>())) \}>
     case form
       link spec
-      back <__melt_{snake(spec/form)}({value})>
+      back <__melt_{snake(spec/form)}(&({value}))>
+    # a maybe held anywhere but a field is none as void (a field's own is left out when none, in the walker)
+    case optional
+      link item
+      back <match {value} \{ Maybe::Some \{ value: m \} =\> {melt-of(item, <m>)}, Maybe::None =\> Data::Blank \}>
     miss
       back <Data::Blank>
 
@@ -2744,6 +2752,15 @@ task empty-test
   sift kind
     case text
       save test, <({value}).is_empty()>
+      back make(some, test)
+    case number
+      save test, <({value}) == 0>
+      back make(some, test)
+    case decimal
+      save test, <({value}) == 0.0>
+      back make(some, test)
+    case flag
+      save test, <(({value}) == false)>
       back make(some, test)
     case list
       save test, <({value}).borrow().is_empty()>
@@ -2790,13 +2807,26 @@ task rust-form-walk
       fork test, field/optional
         hold
           save kept, empty-test(field/kind, value)
-      sift kept
+      save present, make none
+      sift field/kind
+        case optional
+          link item
+          save present, make(some, item)
+        miss
+          save nothing, 0
+      sift present
         case some
-          link empty
-          push(lines, <    if !{empty} \{ {entry} \}>)
+          link item
+          save held, <list.push(DataEntry \{ name: {json-text(field/name)}.to_string(), base: {melt-of(item, <m>)} \});>
+          push(lines, <    if let Maybe::Some \{ value: m \} = {value} \{ {held} \}>)
         case none
-          push(lines, <    {entry}>)
-    push(out, <fn __melt_{snake(spec/form)}(value: {pascal(spec/form)}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-texts(lines, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
+          sift kept
+            case some
+              link empty
+              push(lines, <    if !{empty} \{ {entry} \}>)
+            case none
+              push(lines, <    {entry}>)
+    push(out, <fn __melt_{snake(spec/form)}(value: &{pascal(spec/form)}) -\> Data \{\n    let mut list: Vec\<DataEntry\> = Vec::new();\n{join-texts(lines, <\n>)}\n    Data::Hash \{ list: std::rc::Rc::new(std::cell::RefCell::new(list)) \}\n\}>)
 
   back out
 

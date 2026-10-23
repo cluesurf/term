@@ -83,10 +83,13 @@ form ts-tables
   link function-params, like hash, like text, like list, like function-param
   link binds, like hash, like text, like statement
 
-# the wake chain's entries of one deck, each already its text
+# the wake chain's entries of one deck, each already its text. `typed` is the arguments of the deck's `hiveWakeTyped`
+# after its name (its exception, tell and dock records, each list already its text), written when the program has
+# that task
 form wake-group
   link deck, like text
   link entries, like list, like text
+  link typed, like text
 
 # what the emitter raised while it wrote the module: the preludes its code needs, the field-less constants by case, and
 # the identity guards by case
@@ -700,12 +703,21 @@ task assemble-type-script
       save has-hive, true
     case none
       save has-hive, false
+  save has-typed, false
+  sift task-named(program, <hive-wake-typed>)
+    case some
+      save has-typed, true
+    case none
+      save has-typed, false
   fork test, and(wake-given, has-hive)
     hold
       save groups, make list
       walk wake-of()
         take group
         push(groups, <  hiveWake({json-quote(group/deck)}, [{join(group/entries, <, >)}])>)
+        fork test, has-typed
+          hold
+            push(groups, <  hiveWakeTyped({json-quote(group/deck)}, {group/typed})>)
       push(woken, <export function wakeHive(): void \{\n{join(groups, <\n>)}\n  ;(globalThis as \{ __termRaise?: (e: unknown) =\> void \}).__termRaise = (e) =\> \{\n    const x = e as \{ host: string; form: string; note: string \}\n    hiveTell(\{ host: x.host, kind: "exception", name: x.form, site: "", base: x \})\n  \}\n\}>)
 
   # a module that raises through the class without declaring an exception form of its own brings the class too

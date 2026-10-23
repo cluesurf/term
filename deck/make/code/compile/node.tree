@@ -511,6 +511,11 @@ form generic-param
   link need
     like text
     need false
+  # `head t, like <type>` on a task: the type a value index is written at. A task reads nothing else of it, and
+  # check/traits.tree refuses one that names a mask, which is a bound written as a type (`need` is the bound)
+  link index
+    like text
+    need false
 
 form universal
   link name, like text
@@ -977,6 +982,10 @@ form statement
     # `mark async` under the load line: every function of the module returns a promise
     link async
       like boolean
+      need false
+    # `find <name>` / `mark async` under the load line: the functions of the module, one by one, that return a promise
+    link async-tasks
+      like list, like text
       need false
     link span, like span
     link file

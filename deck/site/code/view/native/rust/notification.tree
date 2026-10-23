@@ -1,0 +1,15 @@
+# A local notification for a Rust program (term-device-layer-0001): notify-send on Linux, a PowerShell toast on
+# Windows, osascript's display notification on a Mac. A desktop asks no grant for it, so there is no not-determined.
+# Conforms to ../notification. The runtime is runtime/native-notification.rs.
+
+dock load
+  load <global:native-notification>, name native-notification
+
+task post-notification
+  take title, like text
+  take body, like text
+  like text
+  send back
+    call native-notification/post
+      read title
+      read body

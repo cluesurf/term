@@ -3548,10 +3548,13 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
       // `head t, need comparison`: the trait the type parameter is bound by. The `need` site holds the whole
       // matched rule, so the trait's name is inside it, not on the head.
       const need = wordAt(firstAt(head, 'need'), 'name')
+      // `head t, like sizer`: a value index, which the checker refuses when its type is a mask (check/traits.tree)
+      const index = wordAt(firstAt(head, 'like'), 'name')
 
       return {
         name: wordAt(head, 'name') ?? '',
         ...(need !== undefined ? { need } : {}),
+        ...(index !== undefined ? { index } : {}),
       }
     }),
   ]
@@ -5021,6 +5024,31 @@ function nativeOf(bridge: Bridge, value: Form): Statement[] {
       )
     }
 
+    // `find <name>` with `mark async` under it: that one function of the module returns a promise, so a module that mixes
+    // async and plain functions needs no `wait` per call (term/compiler decision 004)
+    const asyncTasks: string[] = []
+
+    for (const find of formsAt(line, 'find')) {
+      const name = wordAt(find, 'name')
+      const notes = at(find, 'note')
+      const words = notes.map(note => textOf(note) ?? wordAt(note, 'text') ?? '')
+
+      if (name !== undefined && kind !== 'type' && words.length === 1 && words[0] === 'async') {
+        asyncTasks.push(name)
+        continue
+      }
+
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(find),
+          message: kind === 'type'
+            ? `\`find ${name ?? ''}\` under a \`dock type\` line is read by nothing: a handle type has no functions. Remove the line`
+            : `\`find ${name ?? ''}\` under a \`dock load\` line takes one \`mark async\` under it, which says that function returns a promise`,
+        }),
+      )
+    }
+
     return [
       {
         form: 'native' as const,
@@ -5028,6 +5056,7 @@ function nativeOf(bridge: Bridge, value: Form): Statement[] {
         module,
         kind: kind === 'type' ? ('type' as const) : ('module' as const),
         ...(async ? { async: true } : {}),
+        ...(asyncTasks.length ? { asyncTasks } : {}),
         // the span is the LOAD line, not the whole dock block: each line is its own statement
         span: spanOf(line),
         file: bridge.file,

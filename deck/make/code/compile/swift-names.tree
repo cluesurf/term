@@ -685,6 +685,10 @@ task fill-of
     case form
       link spec
       back <try __fill{pascal(spec/form)}(try __termData({value}, {path}, {optional}), {path})>
+    # absent or void is none, anything else some of the value filled as the item (term/stdlib-parity decision 001)
+    case optional
+      link item
+      back <try ({value}).flatMap \{ __termIsBlank($0) ? nil : $0 \}.map \{ d in Maybe.`some`(value: {fill-of(item, <d>, path, false)}) \} ?? Maybe.none>
     miss
       back <0>
 
@@ -711,6 +715,10 @@ task melt-of
     case form
       link spec
       back <__melt{pascal(spec/form)}({value})>
+    # a maybe held anywhere but a field is none as void (a field's own is left out when none, in the walker)
+    case optional
+      link item
+      back <\{ () -\> DataForm in if case .`some`(value: let m) = {value} \{ return {melt-of(item, <m>)} \}; return .blank \}()>
     miss
       back <.blank>
 
@@ -723,6 +731,12 @@ task empty-test
   sift kind
     case text
       back <({value}).isEmpty>
+    case number
+      back <(({value}) == 0)>
+    case decimal
+      back <(({value}) == 0.0)>
+    case flag
+      back <(({value}) == false)>
     case list
       back <({value}).data.isEmpty>
     case data
@@ -764,11 +778,23 @@ task swift-form-walk
       fork test, field/optional
         hold
           save empty, empty-test(field/kind, value)
-      fork test, is-unequal(empty, <>)
-        hold
-          push(lines, <  if !{empty} \{ {entry} \}>)
+      save present, make none
+      sift field/kind
+        case optional
+          link item
+          save present, make(some, item)
         miss
-          push(lines, <  {entry}>)
+          save nothing, 0
+      sift present
+        case some
+          link item
+          push(lines, <  if case .`some`(value: let m) = {value} \{ list.append(DataEntry(name: {json-quote(field/name)}, base: {melt-of(item, <m>)})) \}>)
+        case none
+          fork test, is-unequal(empty, <>)
+            hold
+              push(lines, <  if !{empty} \{ {entry} \}>)
+            miss
+              push(lines, <  {entry}>)
     save name, pascal(spec/form)
     push(out, <func __melt{name}(_ value: {name}) -\> DataForm \{\n  var list: [DataEntry] = []\n{join-texts(lines, <\n>)}\n  return .hash(list: SeedList(list))\n\}>)
   back out

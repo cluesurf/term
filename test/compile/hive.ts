@@ -188,6 +188,25 @@ task exception-note
       text <typed-deck>
   send back, read all/0/base/note
 
+# a static exception the WAKE put in the typed list (seam-0003): its \`like\` and \`note\`, read off the record
+task static-exception
+  take name, like text
+  like text
+  save all
+    call hive-exceptions
+  walk list
+    read all
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/name
+            read name
+        hook hold
+          send back, text <{entry/base/like}: {entry/base/note}>
+  send back, text <none>
+
 task clear-tells
   call hive-clear
     text <tell>
@@ -258,6 +277,13 @@ async function main(): Promise<void> {
   const metrics = mod.metrics() as { name: string; kind: string; base: { name: string; unit: string } }[]
   ok('a declared kind wakes into the hive', metrics.length === 1 && metrics[0]!.kind === 'metric' && metrics[0]!.name === 'request-count', JSON.stringify(metrics))
   ok('its entry is the constant\'s value, typed', metrics[0]?.base.name === 'requests' && metrics[0]?.base.unit === 'count', JSON.stringify(metrics[0]?.base))
+
+  // THE COMPILER'S TYPED WAKE (seam-0003): `wakeHive` hands each deck's static exceptions to `hiveWakeTyped` as
+  // `exception-roll` records, so a declared exception's `like` and `note` read back as text
+  ok('the chain wakes the typed rolls', ts.includes('hiveWakeTyped("@term/base"'))
+  ok('a static exception reads back through hive-exceptions with its like and note', mod.staticException('user-absence') === 'absence: No such user', String(mod.staticException('user-absence')))
+  console.log(`      hive-exceptions user-absence: ${mod.staticException('user-absence')}`)
+  ok('a stdlib exception is in the typed list too', mod.staticException('absence') !== 'none', String(mod.staticException('absence')))
 
   // the typed wake: the three static kinds are kept in typed lists AND told, so the roster still sees them
   type Entry = { name: string; kind: string; base: Record<string, unknown> }

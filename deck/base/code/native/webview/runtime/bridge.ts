@@ -33,7 +33,14 @@ const pending = new Map<string, Pending>()
 // what the page listens for, by event name. The cask pushes through `window.term.push(name, text)`
 const listeners = new Map<string, ((text: string) => void)[]>()
 
+// how many events the cask has pushed, by the first part of their name (`term-watch`), so a test can tell an answer the
+// cask pushed from one the page's own host gave
+const counts = new Map<string, number>()
+
 function pushed(name: string, text: string): void {
+  const kind = name.split('/')[0]!
+  counts.set(kind, (counts.get(kind) ?? 0) + 1)
+
   for (const handler of listeners.get(name) ?? []) {
     handler(text)
   }
@@ -171,10 +178,67 @@ export const bridge = {
     return bridge.invoke('cask_release', { form, handle })
   },
 
+  // how many events the cask has pushed whose name begins `<kind>/`, or is `kind`
+  pushes(kind: string): number {
+    return counts.get(kind) ?? 0
+  },
+
   // receive every event the cask pushes under `name`
   listen(name: string, handler: (text: string) => void): void {
     install()
     listeners.set(name, [...(listeners.get(name) ?? []), handler])
+  },
+
+  // a device watcher answered by the cask's process (term-device-layer-0002). The handler is a function, which does
+  // not cross, so it stays here under a watch id, and the cask is asked to watch for that id: it calls the platform's
+  // own watcher and pushes each answer back as the event `term-watch/<id>`. A cask that cannot (no device host, as
+  // on Linux and Windows, or a window it does not know) answers `unhosted`, and the page watches on its own host
+  // through `fallback`, which is the browser's watcher. Answers the drop: it stops the events at once, then lets the
+  // cask's watch go (or the page's own). A drop that comes before the cask's reply is sent again once it arrives,
+  // since the cask answers each message in a task of its own and may start the watch after it heard the drop
+  watch(command: string, handler: (value: string) => unknown, fallback: (handler: (value: string) => unknown) => () => unknown): () => void {
+    const id = `w${nextId()}`
+    const name = `term-watch/${id}`
+    let dropped = false
+    let local: (() => unknown) | undefined
+    const heard = (text: string): void => {
+      if (!dropped) {
+        handler(text)
+      }
+    }
+
+    bridge.listen(name, heard)
+
+    const page = (): void => {
+      if (!dropped && !local) {
+        listeners.delete(name)
+        local = fallback(handler)
+      }
+    }
+
+    bridge.invoke(command, { watch: id }).then(
+      reply => {
+        if (reply === 'unhosted') {
+          page()
+        } else if (dropped) {
+          bridge.invoke('cask_unwatch', { watch: id }).catch(() => undefined)
+        }
+      },
+      page,
+    )
+
+    return () => {
+      if (dropped) {
+        return
+      }
+      dropped = true
+      listeners.delete(name)
+      if (local) {
+        local()
+      } else {
+        bridge.invoke('cask_unwatch', { watch: id }).catch(() => undefined)
+      }
+    }
   },
 
   // send a command to the cask and wait for its reply. Rejects with the cask's exception carrier when the command
