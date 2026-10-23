@@ -1,8 +1,8 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/read.ts had, with
-// their shapes, answered by deck/deck/code/package/tree-reading.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/tree-reading.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import * as port from '@term/deck/code/package/tree-reading'
-
 
 export type Form = { head: string; terms: string[]; value?: string; values: string[]; forms: Form[] }
 

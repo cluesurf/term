@@ -345,9 +345,11 @@ task calls-async
       fork test, background
         hold
           back false
+      # a name: an async task in scope, or a local whose type is an async task (`save work, read one/work` then
+      # `call work`), which was handed back unawaited, a boxed future where Rust wanted a String (term-compiler-0062)
       sift callee
         case variable
-          back has-text(set, name)
+          back or(has-text(set, name), is-async-task(expression-type(callee)))
         miss
           save nothing, 0
       save root, root-of(callee)

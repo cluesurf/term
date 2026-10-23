@@ -206,7 +206,7 @@ bind sentence-shown
   take sentence, like dynamic
   like text
   case node
-    text <($sentence.text ?? `(not rendered: ${$sentence.refused})`)>
+    text <($sentence.text ?? `(not rendered: $\{$sentence.refused\})`)>
 
 bind sentence-kind
   take sentence, like dynamic

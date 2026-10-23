@@ -1,9 +1,9 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/role.ts had, with
-// their shapes, answered by deck/deck/code/package/role-reading.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/role-reading.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { RoleConfig, RoleRule } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/role-reading'
 import { GRAMMARS, refusedNow } from './grammars'
-
 
 const nullable = <T>(value: { form: string; value?: T }): T | null => (value.form === 'some' ? (value.value as T) : null)
 

@@ -22,6 +22,7 @@ load @term/base/text
   find starts-with
   find trim-start
   find trim-end
+  find index-of
 
 load ./ts-names
   find is-primary
@@ -326,6 +327,11 @@ task splice-holes
   # names a local the text declares is bound outside it too, or the text's own `const manifest` reads for the caller's
   # `manifest` (term-compiler-0054)
   save declared, declared-names(text)
+  # and so is one that names a callback parameter the text introduces: `one => one.name === $x` given `one/name`
+  # read one.name === one.name, always true (term-compiler-0060)
+  walk parameter-names(text)
+    take bound
+    push(declared, bound)
   save fills, make list
   save temps, make list
   save temp-values, make list
@@ -448,6 +454,140 @@ task declared-names
             save next, get(words, add(at, 2))
         push(out, next)
   back out
+
+# the names a host text binds as a callback's parameters: `x =>` and `(a, b) =>` (JavaScript), `{ a, b ->` (Kotlin),
+# `{ a in` (Swift) and `|a, b|` (Rust). A type written beside a parameter is read as a name too, which only binds an
+# argument naming it outside the text, never wrongly
+task parameter-names
+  take text, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save size, char-count(text)
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(text, at)
+      save two, substring(text, at, add(at, 2))
+      fork test, is-equal(two, <=\>>)
+        hold
+          push-words(out, arrow-head(text, at))
+      fork test, is-equal(two, <-\>>)
+        hold
+          push-words(out, brace-head(text, at))
+      fork test, is-equal(substring(text, at, add(at, 4)), < in >)
+        hold
+          push-words(out, brace-head(text, at))
+      fork test, and(is-equal(one, <|>), is-unequal(two, <||>))
+        hold
+          save close, index-of(substring(text, add(at, 1)), <|>)
+          fork test, is-minimum(close, 0)
+            hold
+              save inside, substring(text, add(at, 1), add(add(at, 1), close))
+              fork test, and(is-binder-list(inside), is-unequal(trim-end(trim-start(inside)), <>))
+                hold
+                  push-words(out, inside)
+                  save at, add(at, add(close, 1))
+      save at, add(at, 1)
+  back out
+
+task push-words
+  take out, like list, like text
+  take segment, like text
+  mark private
+
+  walk words-of(segment)
+    take word
+    push(out, word)
+
+# what stands before the `=>` at `at`: the parenthesized list, or the one name
+task arrow-head
+  take text, like text
+  take at, like number
+  like text
+  mark private
+
+  save end, subtract(at, 1)
+  walk test
+    hook test, is-minimum(end, 0)
+    hook hold
+      fork test, is-unequal(char-at(text, end), < >)
+        hold
+          halt
+      save end, subtract(end, 1)
+  fork test, is-below(end, 0)
+    hold
+      back <>
+  fork test, is-equal(char-at(text, end), <)>)
+    hold
+      save depth, 0
+      save start, end
+      walk test
+        hook test, is-minimum(start, 0)
+        hook hold
+          save c, char-at(text, start)
+          fork test, is-equal(c, <)>)
+            hold
+              save depth, add(depth, 1)
+          fork test, is-equal(c, <(>)
+            hold
+              save depth, subtract(depth, 1)
+              fork test, is-equal(depth, 0)
+                hold
+                  back substring(text, add(start, 1), end)
+          save start, subtract(start, 1)
+      back <>
+  save start, end
+  walk test
+    hook test, is-minimum(start, 0)
+    hook hold
+      fork test, not(is-name-code(char-code-at(text, start)))
+        hold
+          halt
+      save start, subtract(start, 1)
+  back substring(text, add(start, 1), add(end, 1))
+
+# what stands between the nearest `{` before `at` and `at`, when it is a list of parameters (Kotlin's `{ a, b ->`,
+# Swift's `{ (a: Int) in`), else nothing
+task brace-head
+  take text, like text
+  take at, like number
+  like text
+  mark private
+
+  save start, subtract(at, 1)
+  walk test
+    hook test, is-minimum(start, 0)
+    hook hold
+      fork test, is-equal(char-at(text, start), <\{>)
+        hold
+          save inside, substring(text, add(start, 1), at)
+          fork test, is-binder-list(inside)
+            hold
+              back inside
+          back <>
+      save start, subtract(start, 1)
+  back <>
+
+# names, spaces, commas, colons, parentheses and `&`: what a parameter list holds
+task is-binder-list
+  take text, like text
+  like boolean
+  mark private
+
+  save at, 0
+  save size, char-count(text)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(or(is-name-code(code), or(is-equal(code, 32), or(is-equal(code, 44), or(is-equal(code, 58), or(is-equal(code, 40), or(is-equal(code, 41), is-equal(code, 38))))))))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
 
 task one-of-words
   take word, like text

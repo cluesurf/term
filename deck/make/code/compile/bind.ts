@@ -176,8 +176,6 @@ export function referencedBinds(
   return out
 }
 
-// render a bind's native expression for one environment: substitute each `$param` placeholder with the already-emitted
-// argument string. Returns undefined when the bind declares no target for this environment (the backend emits a gap).
 // the case a bind emits for an env: the env's own, or the env it borrows from when it has none. The `webview` env is
 // a browser page whose natives go over the cask bridge, so a bind with a `browser` case and no `webview` case is
 // right for it, the way `withNativeEnv` borrows the browser natives for it. Without this every inline bind (float's
@@ -204,25 +202,6 @@ export function bindTargetOf(one: Statement, env: string): Maybe<Target> {
   }
 
   return { form: 'none' }
-}
-
-export function renderBind(
-  one: Statement,
-  env: string,
-  args: string[],
-): Maybe<string> {
-  const target = bindTargetOf(one, env)
-
-  if (target.form === 'none' || one.form !== 'bind') {
-    return { form: 'none' }
-  }
-
-  let out = target.value.expression
-  one.params.forEach((param, index) => {
-    out = out.split(`$${param.name}`).join(args[index] ?? '')
-  })
-
-  return { form: 'some', value: out }
 }
 
 // the distinct imports every bind in the program needs for one environment, in first-seen order. A backend emits these

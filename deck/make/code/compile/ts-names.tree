@@ -94,7 +94,6 @@ task reserved-words
 # the acronyms the host APIs spell in all caps; `id` is deliberately not one (host convention is `Id`)
 task acronyms
   like list, like text
-  mark private
 
   back split-words(<uuid url uri http https html xml json css api sql ascii utf8 jwt>)
 

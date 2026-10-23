@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/resolve.ts had, with
-// their shapes, answered by deck/deck/code/package/resolution.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/resolution.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { DeckManifest, FetchConfig, Lockfile, ResolutionMap, ResolvedDeck } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/resolution'
 import { refused } from './grammars'
 import { code, portManifest } from './manifest'
-
 
 type AnyCode = { major: number; minor: number; patch: number; prerelease?: string; build?: string }
 const portCode = (value: AnyCode) => ({ major: value.major, minor: value.minor, patch: value.patch, prerelease: value.prerelease ?? '', build: value.build ?? '' })

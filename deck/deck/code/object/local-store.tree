@@ -126,7 +126,7 @@ task write-object
     hold
       back
   fs-promise/mkdir(node-path/dirname(file), make(folder-ask, bind(recursive, true)))
-  save temp, <{file}.tmp-{node-crypto/random-uuid()}>
+  save temp, <{file}.tmp-{node-crypto/randomUUID()}>
   fs-promise/write-file(temp, bytes)
   fs-promise/rename(temp, file)
 

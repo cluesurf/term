@@ -35,7 +35,7 @@ task load-url
   take self, like window
   take url, like text
   like void
-  call cask/load-url
+  call cask/load_url
     read self
     read url
 

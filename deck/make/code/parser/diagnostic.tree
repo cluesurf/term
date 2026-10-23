@@ -767,6 +767,7 @@ form diagnostic-name
   case stray-save, text <stray-save>
   case missing-wait, text <missing-wait>
   case inspect-generic, text <inspect-generic>
+  case dock-member-spelling, text <dock-member-spelling>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -979,6 +980,11 @@ task entry-of
     # only shape a native value has (term/base-v1 decision 001)
     case inspect-generic
       back error-entry(0x42, <inspect needs a concrete type, and this value's type is a type parameter>, <call inspect where the type is known, such as in the caller that names it, or inspect a field of a known type>)
+    # a kebab member of a `dock load` module with an acronym word after its first segment, which reads two ways
+    # (`toJSONValue` or `toJsonValue`): the build cannot see the host's exports, so it never guesses
+    # (check/dock-member-spelling.tree, term/compiler decision 010)
+    case dock-member-spelling
+      back error-entry(0x43, <this member of a docked module could be spelled two ways>, <write the export's own name, with no `-`: `crypto/randomUUID`, `host/toJsonValue`>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1052,3 +1058,4 @@ task diagnostic-names
       make stray-save
       make missing-wait
       make inspect-generic
+      make dock-member-spelling

@@ -203,7 +203,7 @@ bind outcome-subject
   take paths, like dynamic
   like text
   case node
-    text <($outcome.report.compiles ? "The backends disagree" : `${$paths.relative($root, $outcome.file)} does not compile`)>
+    text <($outcome.report.compiles ? "The backends disagree" : `$\{$paths.relative($root, $outcome.file)\} does not compile`)>
 
 # the differential's own report, its paths relative to the project
 bind outcome-quote

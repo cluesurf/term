@@ -2,21 +2,32 @@
 # `seek` run, one item per missing or outdated package, one Problem item per security finding, and a closing verdict.
 # `--format json` and `--format sarif` are DATA on stdout.
 #
-# Ported from deck/call/code/seek.ts (term-cli-in-term-0059). The install check (@cluesurf/deck.tree), the scan deck
-# (scan, report, sarif, fix: all TypeScript) and the output library are docked. `callSeek(input)` takes the original's
-# record. A finding's item, which carries a different set of fields for a dependency and for a code finding, is made
-# by a bind field for field as the original wrote it.
+# Ported from deck/call/code/seek.ts (term-cli-in-term-0059). The install check (@cluesurf/deck.tree) and the output
+# library are docked; the scan deck is its Term ports (scan-running, scan-reporting, sarif-writing, upgrade-fixing,
+# loaded since term-cli-in-term-0116, positional). `callSeek(input)` takes the original's record. A finding's item,
+# which carries a different set of fields for a dependency and for a code finding, is made by a bind field for field
+# as the original wrote it.
 
 load @term/base/list
   find list
 
+load @term/scan/scan-running
+  find run-scan
+  find fails-threshold
+
+load @term/scan/scan-reporting
+  find to-json
+
+load @term/scan/sarif-writing
+  find to-sarif-json
+
+load @term/scan/upgrade-fixing
+  find plan-upgrades
+  find apply-upgrades, name apply-manifest-upgrades
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/scan/code/scan>, name scan-module
-  load <@term/scan/code/report>, name report-module
-  load <@term/scan/code/sarif>, name sarif-module
-  load <@term/scan/code/fix>, name upgrade-module
   load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
@@ -41,29 +52,31 @@ bind seek-root-ask
   case node
     text <<({ root: $root })>>
 
-bind seek-scan-ask
-  take root, like text
+bind seek-code-given
   take code, like dynamic
+  like boolean
+  case node
+    text <($code ?? false)>
+
+# a switch left out: run-scan reads it as the original's ?? did (the built-in sources and rules, all dependencies)
+bind seek-left-out
   like dynamic
   case node
-    text <<({ root: $root, deps: true, code: $code ?? false })>>
+    text <undefined>
 
-# report.ts `toJson(result)` and sarif.ts `toSarifJson(result, options)`, by their exact names: a dock call spelled
-# to-json is emitted toJSON (traps.md)
-bind seek-json
-  take report, like dynamic
-  take result, like dynamic
-  like text
-  case node
-    text <$report.toJson($result)>
-
-bind seek-sarif
-  take sarif, like dynamic
-  take result, like dynamic
+bind seek-sarif-options
   take root, like text
-  like text
+  like dynamic
   case node
-    text <<$sarif.toSarifJson($result, { root: $root })>>
+    text <<({ root: $root })>>
+
+# the result with one finding, which the `low` threshold is asked of
+bind seek-one-finding
+  take result, like dynamic
+  take finding, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$result, findings: [$finding] })>>
 
 bind seek-length
   take list, like dynamic
@@ -77,13 +90,6 @@ bind seek-dependency-findings
   case node
     text <<$result.findings.filter((f) => f.kind === "dependency")>>
 
-bind seek-upgrade-ask
-  take root, like text
-  take upgrades, like dynamic
-  like dynamic
-  case node
-    text <<({ root: $root, upgrades: $upgrades, write: true })>>
-
 bind seek-upgrade-facts
   take upgrade, like dynamic
   like list, like text
@@ -93,13 +99,13 @@ bind seek-upgrade-facts
 # a finding's Problem item: a vulnerable dependency under `audit`, a code finding under `check` with its place. Its
 # glyph is ✗ when the finding alone fails the `low` threshold, else ▲
 bind seek-finding-item
-  take scan, like dynamic
+  take fails, like boolean
   take output, like dynamic
   take result, like dynamic
   take finding, like dynamic
   like dynamic
   case node
-    text <<((result, finding) => { const glyph = $scan.failsThreshold({ ...result, findings: [finding] }, "low") ? "failed" : "warning"; if (finding.kind === "dependency") { const fields = [$output.field("package", `${finding.node.name} ${finding.node.version}`)]; if (finding.node.path.length > 1) fields.push($output.field("via", finding.node.path.join(" › "))); fields.push($output.field("link", finding.advisory.url)); fields.push(finding.fixVersion ? $output.field("fix", `upgrade to ${finding.fixVersion}`) : $output.field("why", "no known safe upgrade")); return { glyph, kind: "problem", verb: "audit", subject: finding.advisory.title, facts: [finding.severity, finding.advisory.id], fields } } return { glyph, kind: "problem", verb: "check", subject: finding.message.charAt(0).toUpperCase() + finding.message.slice(1), facts: [finding.severity, finding.ruleId], fields: [$output.location(`${finding.at.file}:${finding.at.line}:${finding.at.column}`), ...(finding.trace ?? []).map((step) => ({ ...$output.field(step.label, `${step.file}:${step.line}:${step.column}`), location: true }))], place: { path: finding.at.file, line: finding.at.line, column: finding.at.column } } })($result, $finding)>>
+    text <<((result, finding) => { const glyph = $fails ? "failed" : "warning"; if (finding.kind === "dependency") { const fields = [$output.field("package", `${finding.node.name} ${finding.node.version}`)]; if (finding.node.path.length > 1) fields.push($output.field("via", finding.node.path.join(" › "))); fields.push($output.field("link", finding.advisory.url)); fields.push(finding.fixVersion ? $output.field("fix", `upgrade to ${finding.fixVersion}`) : $output.field("why", "no known safe upgrade")); return { glyph, kind: "problem", verb: "audit", subject: finding.advisory.title, facts: [finding.severity, finding.advisory.id], fields } } return { glyph, kind: "problem", verb: "check", subject: finding.message.charAt(0).toUpperCase() + finding.message.slice(1), facts: [finding.severity, finding.ruleId], fields: [$output.location(`${finding.at.file}:${finding.at.line}:${finding.at.column}`), ...(finding.trace ?? []).map((step) => ({ ...$output.field(step.label, `${step.file}:${step.line}:${step.column}`), location: true }))], place: { path: finding.at.file, line: finding.at.line, column: finding.at.column } } })($result, $finding)>>
 
 form seek-open
   link verb, like text
@@ -216,12 +222,12 @@ task run-audit
 
   fork
     mark unsafe
-    save result, wait scan-module/run-scan(seek-scan-ask(root, input/code))
+    save result, run-scan(root, true, seek-code-given(input/code), seek-left-out(), seek-left-out(), seek-left-out())
 
     # a SARIF file for GitHub code scanning when asked, whatever the console format
     fork test, seek-given(input/sarif)
       hold
-        fs-promise/write-file(input/sarif, seek-sarif(sarif-module, result, root), <utf-8>)
+        fs-promise/write-file(input/sarif, to-sarif-json(result, seek-sarif-options(root)), <utf-8>)
         save written-facts, make list
         written-facts/push(<SARIF 2.1.0>)
         output/report(make(seek-fact-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, input/sarif), bind(facts, written-facts)))
@@ -229,11 +235,11 @@ task run-audit
     # the report the user asked for, on stdout; the human view stays on stderr
     fork test, is-equal(format, <json>)
       hold
-        output/print-data(<{seek-json(report-module, result)}\n>)
+        output/print-data(<{to-json(result)}\n>)
       miss
         fork test, is-equal(format, <sarif>)
           hold
-            output/print-data(<{seek-sarif(sarif-module, result, root)}\n>)
+            output/print-data(<{to-sarif-json(result, seek-sarif-options(root))}\n>)
           miss
             report-findings(result)
 
@@ -274,7 +280,8 @@ task report-findings
   save findings, result/findings
   walk findings
     take finding, like dynamic
-    output/report(seek-finding-item(scan-module, output, result, finding))
+    save fails, fails-threshold(seek-one-finding(result, finding), <low>)
+    output/report(seek-finding-item(fails, output, result, finding))
 
 task apply-upgrades
   take root, like text
@@ -282,12 +289,12 @@ task apply-upgrades
   like void
   mark private
 
-  save upgrades, upgrade-module/plan-upgrades(seek-dependency-findings(result))
+  save upgrades, plan-upgrades(seek-dependency-findings(result))
   fork test, is-equal(seek-length(upgrades), 0)
     hold
       output/report(make(seek-plain, bind(glyph, <info>), bind(verb, <fix>), bind(subject, <No dependency upgrade to apply>)))
       back
-  save done, wait upgrade-module/apply-upgrades(seek-upgrade-ask(root, upgrades))
+  save done, apply-manifest-upgrades(root, upgrades, true)
   save applied, done/applied
   fork test, is-equal(applied/length, 0)
     hold

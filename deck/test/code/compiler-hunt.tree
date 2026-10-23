@@ -1,0 +1,758 @@
+# The Term-compiler instantiation of the bug hunt: the compiler's oracles (round-trip, determinism, backend-emit,
+# tolerant, crash) and the `.tree` mutator in one orchestrated hunt, with hang-safe fuzzing (a child-process watchdog
+# catches inputs that never finish). The `term hunt` verb and the standalone audit script both call
+# `hunt-seed-compiler`, so there is one engine.
+#
+# The resolver is injected (it lives in @term/call), keeping this package free of a call-to-test cycle.
+#
+# FAIL CLOSED. A hunt is `ok` only when every check RAN on at least one input and found nothing. Zero files read, a
+# fuzz child that exited non-zero or wrote no report, or zero fuzz runs executed is recorded in `unrun` and fails the
+# hunt, because a check that did not run reads exactly like a check that passed. Both shapes shipped: the default
+# corpus path pointed at a directory that no longer existed, and the built CLI spawned a fuzz campaign at a path that
+# only exists in source.
+#
+# Ported from deck/test/code/seed-hunt.ts (term-cli-in-term-0110). The decisions:
+#   - an ask is the original's object, every field but `root` and `resolve` optional, read through binds, so a
+#     TypeScript caller passes what it passed before; `files` absent and `files` empty stay two cases
+#   - the oracles are oracle-audit.tree's and the crash signature compiler-fuzzing.tree's, loaded
+#   - from SOURCE the campaign is the sibling of this module as it runs: the original's was fuzz-campaign.ts beside
+#     seed-hunt.ts, this one's is fuzz-entry.ts beside the emitted port (deck/test/host/port/code/), whose tsconfig is
+#     five folders up. Inside a bundle neither sibling exists, and the caller passes `fuzzEntry`, as before
+#   - a child's outcome, a report read back and the result's crash entries are read and built in binds, the original's
+#     own expressions, so an absent `from` stays absent
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/make/parser/tree
+  find parse-tolerant
+
+load ./oracle-audit
+  find audit-corpus
+  find audit-ask
+  find corpus-audit
+  find emit-backends
+
+load ./compiler-fuzzing
+  find signature-of
+
+dock load
+  load <node:fs>, name hunt-fs
+  load <node:os>, name hunt-os
+  load <node:path>, name hunt-path
+
+form hunt-fuzz
+  # seeds whose campaign finished and wrote a report
+  link seeds-run, like number
+  link seeds-asked, like number
+  # mutated inputs actually compiled, summed over the reports
+  link runs, like number
+  # extra seed programs taken from the hunted files
+  link corpus-added, like number
+
+form hunt-crashes
+  link total, like number
+  # one per distinct signature, with the smallest program that raises it, and `from` the mutated program the fuzzer
+  # hit when the shrink got smaller
+  link found, like list, like dynamic
+
+form hunt-hang
+  link input, like text
+
+form hunt-result
+  link corpus, like corpus-audit
+  # the backends the backend-emit oracle drove (emit only, nothing built or run)
+  link backends, like list, like text
+  link fuzz, like hunt-fuzz
+  link crashes, like hunt-crashes
+  link hangs, like list, like hunt-hang
+  # fuzzed inputs whose compile took longer than the budget, the slowest first
+  link slow, like list, like dynamic
+  # what did not run, in plain words. Non-empty fails the hunt
+  link unrun, like list, like text
+  link findings, like number
+  link ok, like boolean
+
+bind hunt-field
+  take ask, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$ask[$key]>
+
+bind hunt-number-or
+  take value, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($value ?? $fallback)>
+
+bind hunt-is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind hunt-is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind hunt-text-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind hunt-list-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+bind hunt-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# the text the build compiles for a file: the caller's `read` when it gave one, else the file as written
+bind hunt-read-as
+  take ask, like dynamic
+  take full, like text
+  like text
+  case node
+    text <($ask.read ? $ask.read($full) : process.getBuiltinModule("node:fs").readFileSync($full, "utf8"))>
+
+bind hunt-relative
+  take root, like text
+  take file, like text
+  like text
+  case node
+    text <(process.getBuiltinModule("node:path").isAbsolute($file) ? process.getBuiltinModule("node:path").relative($root, $file) : $file)>
+
+bind hunt-is-directory
+  take full, like text
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($full).isDirectory()>
+
+bind hunt-skipped-entry
+  take entry, like text
+  like boolean
+  case node
+    text <($entry === "node_modules" || $entry === "host" || $entry.startsWith("."))>
+
+bind hunt-is-tree
+  take entry, like text
+  like boolean
+  case node
+    text <$entry.endsWith(".tree")>
+
+# the folder of this module as it runs, or undefined when it has none (the original's try around fileURLToPath)
+bind hunt-module-folder
+  take unused, like number
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return process.getBuiltinModule("node:path").dirname(process.getBuiltinModule("node:url").fileURLToPath(import.meta.url)) \} catch \{ return undefined \} \})()>
+
+bind hunt-tsx-entry
+  take tsconfig, like text
+  take campaign, like text
+  like dynamic
+  case node
+    text <(\{ command: "npx", args: ["tsx", "--tsconfig", $tsconfig, $campaign] \})>
+
+bind hunt-nothing
+  take unused, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind hunt-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# one campaign as a child, under the watchdog: the entry's own args, then the campaign's
+bind hunt-spawn
+  take entry, like dynamic
+  take report-out, like text
+  take probe-file, like text
+  take runs, like number
+  take seed, like number
+  take corpus-file, like text
+  take budget, like number
+  take timeout-sec, like number
+  take root, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule("node:child_process").spawnSync($entry.command, [...$entry.args, $report-out, $probe-file, String($runs), String($seed), $corpus-file, String($budget)], \{ timeout: $timeout-sec * 1000, encoding: "utf8", cwd: $root \})>
+
+bind hunt-hung
+  take child, like dynamic
+  like boolean
+  case node
+    text <($child.error !== undefined && $child.error.code === "ETIMEDOUT")>
+
+bind hunt-errored
+  take child, like dynamic
+  like boolean
+  case node
+    text <($child.error !== undefined)>
+
+bind hunt-error-message
+  take child, like dynamic
+  like text
+  case node
+    text <$child.error.message>
+
+bind hunt-command-of
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.command>
+
+bind hunt-failed
+  take child, like dynamic
+  like boolean
+  case node
+    text <($child.status !== 0)>
+
+# why a child failed, with its error line (not the last line: node ends a crash with its own version banner)
+bind hunt-failure-text
+  take child, like dynamic
+  like text
+  case node
+    text <(() =\> \{ const huntWhy = $child.status === null ? "was killed by " + $child.signal : "exited " + $child.status; const huntLines = ($child.stderr ?? "").split(String.fromCharCode(10)).map((huntLine) =\> huntLine.trim()).filter((huntLine) =\> huntLine.length \> 0); const huntTail = (huntLines.find((huntLine) =\> /error/i.test(huntLine)) ?? huntLines.slice(-1)[0] ?? "").slice(0, 300); return huntWhy + (huntTail ? ": " + huntTail : ""); \})()>
+
+# a report read back: `{ report }`, or `{ problem }` with what JSON.parse said
+bind hunt-parse-report
+  take file, like text
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return \{ report: JSON.parse(process.getBuiltinModule("node:fs").readFileSync($file, "utf8")) \} \} catch (huntProblem) \{ return \{ problem: huntProblem instanceof Error ? huntProblem.message : String(huntProblem) \} \} \})()>
+
+bind hunt-parsed-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <("report" in $parsed)>
+
+# the hang path's `if (written)`: a report that parsed to something truthy
+bind hunt-written-ok
+  take parsed, like dynamic
+  like boolean
+  case node
+    text <("report" in $parsed && Boolean($parsed.report))>
+
+bind hunt-runs-of
+  take report, like dynamic
+  like number
+  case node
+    text <$report.runs>
+
+bind hunt-crash-count
+  take report, like dynamic
+  like number
+  case node
+    text <$report.crashes.length>
+
+bind hunt-shrunk-of
+  take report, like dynamic
+  like list, like dynamic
+  case node
+    text <($report.shrunk ?? [])>
+
+bind hunt-push-slow
+  take slow, like list, like dynamic
+  take report, like dynamic
+  like void
+  case node
+    text <$slow.push(...($report.slow ?? []))>
+
+bind hunt-known-length
+  take found, like dynamic
+  take signature, like text
+  like number
+  case node
+    text <$found.get($signature).input.length>
+
+bind hunt-found-set
+  take found, like dynamic
+  take signature, like text
+  take entry, like dynamic
+  like void
+  case node
+    text <$found.set($signature, $entry)>
+
+bind hunt-found-has
+  take found, like dynamic
+  take signature, like text
+  like boolean
+  case node
+    text <$found.has($signature)>
+
+bind hunt-found-size
+  take found, like dynamic
+  like number
+  case node
+    text <$found.size>
+
+bind hunt-new-map
+  take unused, like number
+  like dynamic
+  case node
+    text <new Map()>
+
+bind hunt-input-entry
+  take input, like dynamic
+  like dynamic
+  case node
+    text <(\{ input: $input \})>
+
+bind hunt-shrunk-entry
+  take one, like dynamic
+  like dynamic
+  case node
+    text <($one.input === $one.from ? \{ input: $one.input \} : \{ input: $one.input, from: $one.from \})>
+
+bind hunt-found-list
+  take found, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$found].map(([huntSignature, huntOne]) =\> (\{ signature: huntSignature, ...huntOne \}))>
+
+bind hunt-slowest-first
+  take slow, like list, like dynamic
+  like list, like dynamic
+  case node
+    text <$slow.sort((huntA, huntB) =\> huntB.ms - huntA.ms)>
+
+bind hunt-first
+  take items, like list, like dynamic
+  take count, like number
+  like list, like dynamic
+  case node
+    text <$items.slice(0, $count)>
+
+bind hunt-quoted
+  take text, like text
+  like text
+  case node
+    text <$text.split(String.fromCharCode(10)).map((huntLine) =\> "      | " + huntLine).join(String.fromCharCode(10))>
+
+bind hunt-line-count
+  take text, like text
+  like number
+  case node
+    text <$text.split(String.fromCharCode(10)).length>
+
+bind hunt-whole-ms
+  take ms, like dynamic
+  like text
+  case node
+    text <$ms.toFixed(0)>
+
+bind hunt-from-of
+  take crash, like dynamic
+  like dynamic
+  case node
+    text <$crash.from>
+
+bind hunt-joined
+  take items, like list, like text
+  take separator, like text
+  like text
+  case node
+    text <$items.join($separator)>
+
+# every `.tree` beneath a folder, or nothing when the folder is absent
+task tree-files-under
+  take dir, like text
+  take out, like list, like text
+  like list, like text
+
+  fork test, not(hunt-fs/exists-sync(dir))
+    hold
+      back out
+
+  walk hunt-fs/readdir-sync(dir)
+    take entry, like text
+    fork test, hunt-skipped-entry(entry)
+      hold
+        turn next
+    host full, hunt-path/join(dir, entry)
+    fork test, hunt-is-directory(full)
+      hold
+        tree-files-under(full, out)
+      miss
+        fork test, hunt-is-tree(entry)
+          hold
+            out/push(full)
+
+  back out
+
+# From SOURCE the campaign is the sibling port fuzz-entry.ts under tsx. Undefined when that file is not beside this
+# module, which is the case inside any bundle: a caller there passes `fuzzEntry` (the CLI forks itself)
+task source-fuzz-entry
+  like dynamic
+
+  host here, hunt-module-folder(0)
+  fork test, not(hunt-is-given(here))
+    hold
+      back hunt-nothing(0)
+
+  host campaign, hunt-path/join(hunt-text-of(here), <fuzz-entry.ts>)
+  # the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths
+  host tsconfig, hunt-path/resolve(hunt-text-of(here), <../../../../../tsconfig.json>)
+  fork test, hunt-fs/exists-sync(campaign)
+    hold
+      back hunt-tsx-entry(tsconfig, campaign)
+  back hunt-nothing(0)
+
+# the hunted files that make good fuzz seeds: small enough that a mutation is still near a real program
+task fuzz-seeds-from
+  take files, like list, like text
+  take ask, like dynamic
+  take root, like text
+  like list, like text
+
+  host out, make list
+  walk files
+    take file
+    fork test, is-minimum(out/length, 32)
+      hold
+        halt
+    fork
+      mark unsafe
+      host text, hunt-read-as(ask, hunt-path/resolve(root, file))
+      fork test, and(is-above(hunt-text-length(text), 0), is-maximum(hunt-text-length(text), 4000))
+        hold
+          out/push(text)
+    halt take
+      # unreadable files are reported by the corpus phase
+      take problem
+
+  back out
+
+task read-hunted
+  take ask, like dynamic
+  take root, like text
+  take file, like text
+  like text
+
+  back hunt-read-as(ask, hunt-path/resolve(root, file))
+
+task tolerant-parse-of
+  take source, like dynamic
+  like dynamic
+
+  back parse-tolerant(source)
+
+# one campaign's report into the totals: its crashes by signature, the shrunk program where it has one and the
+# smallest it hit where it does not, and its slow inputs. Answers how many crashes it held
+task collect-report
+  take report, like dynamic
+  take found, like dynamic
+  take slow, like list, like dynamic
+  like number
+
+  host count, hunt-crash-count(report)
+  walk hunt-list-of(hunt-field(report, <crashes>))
+    take one
+    host signature, signature-of(hunt-text-of(hunt-field(one, <error>)))
+    host input, hunt-field(one, <input>)
+    save better, true
+    fork test, hunt-found-has(found, signature)
+      hold
+        save better, is-below(hunt-text-length(input), hunt-known-length(found, signature))
+    fork test, better
+      hold
+        hunt-found-set(found, signature, hunt-input-entry(input))
+
+  walk hunt-shrunk-of(report)
+    take one
+    host signature, hunt-text-of(hunt-field(one, <signature>))
+    save better, true
+    fork test, hunt-found-has(found, signature)
+      hold
+        save better, is-below(hunt-text-length(hunt-field(one, <input>)), hunt-known-length(found, signature))
+    fork test, better
+      hold
+        hunt-found-set(found, signature, hunt-shrunk-entry(one))
+
+  hunt-push-slow(slow, report)
+  back count
+
+# Run the full compiler bug-hunt: corpus oracles, then watchdog fuzzing
+task hunt-seed-compiler
+  take ask, like dynamic
+  like hunt-result
+
+  host root, hunt-text-of(hunt-field(ask, <root>))
+  host resolve, hunt-field(ask, <resolve>)
+  host runs, hunt-number-or(hunt-field(ask, <runs>), 3000)
+  host seeds, hunt-number-or(hunt-field(ask, <seeds>), 4)
+  host timeout-sec, hunt-number-or(hunt-field(ask, <fuzzTimeoutSec>), 90)
+  # one compile's budget, held on the corpus and on every fuzzed input
+  host budget, hunt-number-or(hunt-field(ask, <perfBudgetMs>), 1000)
+  host given-files, hunt-field(ask, <files>)
+  host glob, hunt-field(ask, <glob>)
+  host unrun, make list
+
+  # ---- phase 1: corpus oracles ----
+  save listed, make list
+  fork test, hunt-is-given(given-files)
+    hold
+      save listed, hunt-list-of(given-files)
+    miss
+      fork test, hunt-is-truthy(glob)
+        hold
+          save listed, tree-files-under(hunt-path/resolve(root, hunt-text-of(glob)), make list)
+  host files, make list
+  walk listed
+    take file
+    files/push(hunt-relative(root, file))
+
+  save read-text
+    task
+      take path, like text
+      like text
+      back read-hunted(ask, root, path)
+  save tolerant
+    task
+      take source, like dynamic
+      like dynamic
+      back tolerant-parse-of(source)
+
+  host audit-ask-of
+    make audit-ask
+      bind files, files
+      bind read-file, read-text
+      bind resolve, resolve
+      bind parse-tolerant, tolerant
+      bind perf-budget-ms, budget
+  host corpus, audit-corpus(audit-ask-of)
+
+  fork test, is-equal(corpus/files, 0)
+    hold
+      fork test, and(not(hunt-is-given(given-files)), hunt-is-truthy(glob))
+        hold
+          unrun/push(<corpus oracles: no .tree files read under {hunt-text-of(glob)}>)
+        miss
+          unrun/push(<corpus oracles: no .tree files read>)
+  fork test, is-above(corpus/unreadable/length, 0)
+    hold
+      host named, hunt-joined(hunt-first(corpus/unreadable, 3), <, >)
+      unrun/push(<corpus oracles: {corpus/unreadable/length} file(s) could not be read ({named})>)
+  fork test, and(is-above(corpus/files, 0), is-equal(corpus/compiled, 0))
+    hold
+      unrun/push(<backend emit: none of the {corpus/files} file(s) compiled, so no backend emitted anything>)
+
+  # ---- phase 2: hang-safe fuzzing (child-process watchdog) ----
+  save entry, hunt-field(ask, <fuzzEntry>)
+  fork test, not(hunt-is-given(entry))
+    hold
+      save entry, source-fuzz-entry()
+  # per signature, the smallest program that raises it, and the mutated program it was shrunk from
+  host found, hunt-new-map(0)
+  host hangs, make list
+  host slow, make list
+  save total-crashes, 0
+  save seeds-run, 0
+  save fuzz-runs, 0
+  host extra-seeds, fuzz-seeds-from(files, ask, root)
+
+  fork test, not(hunt-is-given(entry))
+    hold
+      unrun/push(<fuzzing: no fuzz campaign entry (fuzz-campaign.ts is not beside this module and none was passed)>)
+    miss
+      fork test, or(is-below(seeds, 1), is-below(runs, 1))
+        hold
+          unrun/push(<fuzzing: asked for {seeds} seed(s) of {runs} run(s), so nothing was fuzzed>)
+        miss
+          host work, hunt-fs/mkdtemp-sync(hunt-path/join(hunt-os/tmpdir(), <term-hunt->))
+          host corpus-file, hunt-path/join(work, <corpus.json>)
+          hunt-fs/write-file-sync(corpus-file, hunt-json(extra-seeds))
+
+          save seed, 0
+          walk test
+            hook test, is-below(seed, seeds)
+            hook hold
+              save seed, add(seed, 1)
+              host report-out, hunt-path/join(work, <report-{seed}.json>)
+              host probe-file, hunt-path/join(work, <probe-{seed}.tree>)
+              host child, hunt-spawn(entry, report-out, probe-file, runs, seed, corpus-file, budget, timeout-sec, root)
+
+              fork test, hunt-hung(child)
+                hold
+                  # a hang is a finding only with the input that hung. With no probe the watchdog fired before the
+                  # campaign wrote its first input (startup, or a timeout too short to load the compiler), which is a
+                  # run that did not happen, not a compiler that looped
+                  fork test, hunt-fs/exists-sync(probe-file)
+                    hold
+                      hangs/push(make(hunt-hang, bind(input, hunt-text-of(hunt-fs/read-file-sync(probe-file, <utf8>)))))
+                    miss
+                      unrun/push(<fuzz seed {seed}: the {timeout-sec}s watchdog fired before the campaign wrote its first input>)
+                  # a campaign that finished fuzzing and hung while it SHRANK has written what it found first: keep
+                  # it, unshrunk
+                  fork test, hunt-fs/exists-sync(report-out)
+                    hold
+                      host written, hunt-parse-report(report-out)
+                      fork test, hunt-written-ok(written)
+                        hold
+                          host report, hunt-field(written, <report>)
+                          save seeds-run, add(seeds-run, 1)
+                          save fuzz-runs, add(fuzz-runs, hunt-runs-of(report))
+                          save total-crashes, add(total-crashes, collect-report(report, found, slow))
+                  turn next
+
+              fork test, hunt-errored(child)
+                hold
+                  unrun/push(<fuzz seed {seed}: could not start {hunt-command-of(entry)}: {hunt-error-message(child)}>)
+                  turn next
+
+              fork test, hunt-failed(child)
+                hold
+                  unrun/push(<fuzz seed {seed}: the campaign {hunt-failure-text(child)}>)
+                  turn next
+
+              fork test, not(hunt-fs/exists-sync(report-out))
+                hold
+                  unrun/push(<fuzz seed {seed}: the campaign exited 0 but wrote no report>)
+                  turn next
+
+              host parsed, hunt-parse-report(report-out)
+              fork test, not(hunt-parsed-ok(parsed))
+                hold
+                  unrun/push(<fuzz seed {seed}: unreadable report: {hunt-text-of(hunt-field(parsed, <problem>))}>)
+                  turn next
+
+              host report, hunt-field(parsed, <report>)
+              save seeds-run, add(seeds-run, 1)
+              save fuzz-runs, add(fuzz-runs, hunt-runs-of(report))
+              save total-crashes, add(total-crashes, collect-report(report, found, slow))
+
+          fork test, and(is-above(seeds-run, 0), is-equal(fuzz-runs, 0))
+            hold
+              unrun/push(<fuzzing: the campaigns finished but executed zero runs>)
+
+  host backends, make list
+  walk emit-backends()
+    take backend
+    backends/push(backend/name)
+
+  host findings, add(add(add(corpus/violations/length, hunt-found-size(found)), hangs/length), slow/length)
+  back
+    make hunt-result
+      bind corpus, corpus
+      bind backends, backends
+      bind fuzz, make(hunt-fuzz, bind(seeds-run, seeds-run), bind(seeds-asked, seeds), bind(runs, fuzz-runs), bind(corpus-added, extra-seeds/length))
+      bind crashes, make(hunt-crashes, bind(total, total-crashes), bind(found, hunt-found-list(found)))
+      bind hangs, hangs
+      bind slow, hunt-slowest-first(slow)
+      bind unrun, unrun
+      bind findings, findings
+      bind ok, and(is-equal(findings, 0), is-equal(unrun/length, 0))
+
+# a hunt result as a terminal report
+task render-hunt
+  take result, like hunt-result
+  like text
+
+  host out, make list
+  host c, result/corpus
+  out/push(<=== corpus oracles: {c/files} file(s) read, {c/compiled} compiled ===>)
+
+  # An EMPTY corpus is not a clean one, and saying so is the whole point. This reported `no oracle violations` over
+  # zero files for as long as the default glob pointed at the pre-rename `deck/base/code`: the oracles held vacuously,
+  # and the line read exactly like a real pass
+  fork test, is-equal(c/files, 0)
+    hold
+      out/push(<  NO FILES READ, so no oracle ran.>)
+    miss
+      fork test, is-equal(c/violations/length, 0)
+        hold
+          out/push(<  no oracle violations (round-trip, determinism, tolerant parse; backend emit on {c/compiled} compiled file(s))>)
+        miss
+          out/push(<  {c/violations/length} VIOLATION(S):>)
+          walk hunt-first(c/violations, 20)
+            take v
+            out/push(<    [{hunt-text-of(hunt-field(hunt-field(v, <violation>), <oracle>))}] {hunt-text-of(hunt-field(v, <file>))}: {hunt-text-of(hunt-field(hunt-field(v, <violation>), <detail>))}>)
+  out/push(<  backend emit: {hunt-joined(result/backends, <, >)}. Emit only: nothing is built, run or compared across backends.>)
+  fork test, is-above(c/slowest/length, 0)
+    hold
+      out/push(<  slowest files:>)
+      walk c/slowest
+        take s
+        out/push(<    {hunt-whole-ms(s/ms)}ms  {s/file}>)
+
+  out/push(<>)
+  host f, result/fuzz
+  out/push(<=== fuzzing: {f/runs} run(s) over {f/seeds-run} of {f/seeds-asked} seed(s), corpus {f/corpus-added} project file(s) + defaults ===>)
+  fork test, is-above(result/hangs/length, 0)
+    hold
+      out/push(<  {result/hangs/length} HANG(S):>)
+      walk result/hangs
+        take h
+        out/push(hunt-quoted(h/input))
+  host found, result/crashes/found
+  fork test, is-above(found/length, 0)
+    hold
+      out/push(<  {result/crashes/total} crashes, {found/length} distinct signature(s):>)
+      walk found
+        take crash
+        host input, hunt-text-of(hunt-field(crash, <input>))
+        host from, hunt-from-of(crash)
+        save shrunk, <>
+        fork test, hunt-is-given(from)
+          hold
+            save shrunk, <  (shrunk from {hunt-line-count(hunt-text-of(from))} lines to {hunt-line-count(input)})>
+        out/push(<    - {hunt-text-of(hunt-field(crash, <signature>))}{shrunk}>)
+        out/push(hunt-quoted(input))
+  fork test, is-above(result/slow/length, 0)
+    hold
+      out/push(<  {result/slow/length} SLOW INPUT(S), over the compile budget:>)
+      walk hunt-first(result/slow, 5)
+        take one
+        out/push(<    - {hunt-field(one, <ms>)}ms>)
+        out/push(hunt-quoted(hunt-text-of(hunt-field(one, <input>))))
+  fork test, and(and(is-equal(result/hangs/length, 0), is-equal(found/length, 0)), is-equal(result/slow/length, 0))
+    hold
+      fork test, is-above(f/runs, 0)
+        hold
+          out/push(<  no crashes, no hangs, none over the compile budget>)
+        miss
+          out/push(<  NOTHING FUZZED>)
+
+  fork test, is-above(result/unrun/length, 0)
+    hold
+      out/push(<>)
+      out/push(<=== did not run ===>)
+      walk result/unrun
+        take u
+        out/push(<  - {u}>)
+
+  out/push(<>)
+  save emitted, 0
+  fork test, is-above(c/compiled, 0)
+    hold
+      save emitted, result/backends/length
+  host counts, <{c/files} file(s) read, {f/runs} fuzz run(s), {emitted} backend(s) emitted>
+  fork test, result/ok
+    hold
+      out/push(<=== hunt CLEAN: {counts} ===>)
+    miss
+      fork test, is-above(result/findings, 0)
+        hold
+          out/push(<=== hunt FOUND {result/findings} issue(s): {counts} ===>)
+        miss
+          out/push(<=== hunt INCOMPLETE, {result/unrun/length} check(s) did not run: {counts} ===>)
+
+  back hunt-joined(out, <\n>)

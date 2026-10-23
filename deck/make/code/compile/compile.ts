@@ -1626,6 +1626,14 @@ export function compileProgram(
     return { ok: false, diagnostics: tellDiagnostics }
   }
 
+  // a kebab member of a docked module with an acronym word reads two ways (toJSONValue, toJsonValue): refused once
+  // here, before any backend (check/dock-member-spelling.tree, term/compiler decision 010)
+  const dockSpelling = ([] as ReturnType<typeof checkDockShadow>).map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
+
+  if (dockSpelling.length) {
+    return { ok: false, diagnostics: dockSpelling }
+  }
+
   // a task that bounds its raise set with `halt` lines on its signature is held to them
   const boundDiagnostics = checkRaiseBounds(program, file)
 

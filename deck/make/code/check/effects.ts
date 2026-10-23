@@ -15,6 +15,7 @@ import type {
   Expression,
   Program,
   Statement,
+  Type,
 } from '@term/make/code/compile/node'
 import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
 
@@ -439,8 +440,12 @@ export function checkEffects(
 
     lets(statement.body)
 
-    const isAsyncName = (name: string): boolean =>
-      (asyncFunctions.has(name) && !shadowed.has(name)) || asyncParams.has(name)
+    // a local holding an async task (`save work, read one/work`) is async by its type, as async resolution reads it
+    // (check/async-resolve.tree calls-async, term-compiler-0062)
+    const isAsyncName = (name: string, type?: Type): boolean =>
+      (asyncFunctions.has(name) && !shadowed.has(name)) ||
+      asyncParams.has(name) ||
+      (type?.kind === 'function' && type.effects?.includes('async') === true)
 
     const isKnownSyncName = (name: string): boolean =>
       (allFunctions.has(name) && !asyncFunctions.has(name)) ||
@@ -493,7 +498,7 @@ export function checkEffects(
             !inAsync &&
             !node.background &&
             node.callee.form === 'variable' &&
-            isAsyncName(node.callee.name)
+            isAsyncName(node.callee.name, node.callee.type)
           ) {
             diagnostics.push(asyncFromSync(file, node.span, node.callee.name))
           }

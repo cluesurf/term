@@ -1,4 +1,3 @@
-mark draft
 # The Term compiler benchmark suite: time the real compiler paths (tokenize, parse, compile, stream-split) across real
 # stdlib files and synthetic workloads that isolate one cost each (file length, line length, nesting depth,
 # import-closure size). It then analyzes the numbers, scaling exponents and ratios, into insights, the way the bug-hunt

@@ -620,6 +620,107 @@ task run
   }
 }
 
+// 7. A CALL THROUGH A LOCAL HOLDING AN ASYNC TASK IS AWAITED (term-compiler-0062): `save work, read one/work` then
+// `call work` was not, since async resolution counted a name as async only when it named an async task or an async
+// parameter. Rust handed back the boxed future where a String was wanted (E0308), Swift called an async closure without
+// await. 8. A call written `who/ask(n)` through a field typed as an async task, in a walk, is awaited
+// (term-compiler-0061, the scan lane's `source/gather(nodes)`)
+{
+  const LOCAL_ASYNC = `form job
+  link work
+    like task
+      mark async
+      like text
+
+task later
+  mark async
+  like text
+  send back, text <late>
+
+task run-job
+  take one, like job
+  like text
+  save work, read one/work
+  send back
+    call work
+
+task run-later
+  like text
+  save named, read later
+  send back
+    call named
+
+task run
+  mark async
+  like text
+  save one
+    make job
+      bind work, read later
+  save first
+    call run-job
+      read one
+  save second
+    call run-later
+  send back, text <{first} {second}>
+`
+  const FIELD_IN_WALK = `form asker
+  link ask
+    like task
+      mark async
+      take n, like number
+      like text
+
+task said
+  mark async
+  take n, like number
+  like text
+  send back, text <n>
+
+task run-all
+  take all, like list, like asker
+  like text
+  save out, text <>
+  walk all
+    take who
+    save got
+      call who/ask
+        code 1
+    save out, text <{out}{got}>
+  send back, read out
+
+task run
+  mark async
+  like text
+  save one
+    make asker
+      bind ask, read said
+  save all, make list
+  call push
+    read all
+    read one
+  send back
+    call run-all
+      read all
+`
+  const dir = mkdtempSync(join(tmpdir(), 'term-await-local-'))
+
+  for (const backend of BACKENDS) {
+    for (const [label, program, expected] of [
+      ['7. a call through a local holding an async task (a field read, a task named) is awaited', LOCAL_ASYNC, 'late late'],
+      ['8. a call through an async field of a walked record is awaited', FIELD_IN_WALK, 'n'],
+    ] as const) {
+      const ran = runOn({ backend, program, resolve: env => projectResolver(process.cwd(), env), dir, name: label.slice(0, 1) === '7' ? 'local-async' : 'field-walk' })
+
+      if (ran.form === 'skipped') {
+        console.log(`skip  ${backend}: ${ran.reason}`)
+        continue
+      }
+
+      ok(`${label}: ${backend}`, ran.form === 'ran' && ran.output.trim() === expected, ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason.slice(0, 600)}`)
+    }
+  }
+}
+
 console.log(`\nawait-mark: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

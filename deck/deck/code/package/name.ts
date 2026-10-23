@@ -1,7 +1,7 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/name.ts had, with
-// their shapes, answered by deck/deck/code/package/registry-naming.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/registry-naming.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import * as port from '@term/deck/code/package/registry-naming'
-
 
 export const TERM_REGISTRY: string = port.showTermRegistry()
 export const DEFAULT_OCI_HOST: string = port.showDefaultOciHost()

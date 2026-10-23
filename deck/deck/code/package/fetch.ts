@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/fetch.ts had, with
-// their shapes, answered by deck/deck/code/package/registry-fetching.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/registry-fetching.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { Code, FetchConfig, RegistryPackageMeta } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/registry-fetching'
 import { refused, refusedNow } from './grammars'
 import { code } from './manifest'
-
 
 // the routes as the port holds them: a hash, from the caller's object (or a Map a port handed on)
 function toPort(config: FetchConfig): unknown {

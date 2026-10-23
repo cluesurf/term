@@ -1,9 +1,9 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/link.ts had, with
-// their shapes, answered by deck/deck/code/package/linking.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/linking.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { FetchConfig, ResolutionMap } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/linking'
 import { GRAMMARS, refused } from './grammars'
-
 
 type AnyCode = { major: number; minor: number; patch: number; prerelease?: string; build?: string }
 const portCode = (value: AnyCode) => ({ major: value.major, minor: value.minor, patch: value.patch, prerelease: value.prerelease ?? '', build: value.build ?? '' })

@@ -441,6 +441,49 @@ task negated-compare
     miss
       back make none
 
+# an ordering, `<` `<=` `>` `>=`: its negation is the opposite ordering only when neither side is NaN
+task is-ordering
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift op
+    case below
+      back true
+    case at-most
+      back true
+    case above
+      back true
+    case at-least
+      back true
+    miss
+      back false
+
+# whether a value can never be NaN, on any backend: an integer literal, or a number with a width (`like u8`), which is
+# checked into its range. A plain `number` is not: on TypeScript a host hands one in as a JavaScript number, NaN
+# among them (deck/test/code/concurrency.tree read a NaN count), and a float is NaN by its own arithmetic
+task never-nan
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case integer
+      back true
+    miss
+      save nothing, 0
+  sift expression-type(e)
+    case some
+      link one
+      sift one
+        case number
+          link width
+          back is-unequal(width, <>)
+        miss
+          back false
+    case none
+      back false
+
 task is-comparison
   take op, like binary-op
   like boolean
@@ -2405,21 +2448,26 @@ task simplify-expression
                   back inner-operand
                 miss
                   save nothing, 0
-            # !(a == b) -> a != b, !(a < b) -> a >= b, ...
+            # !(a == b) -> a != b, and !(a < b) -> a >= b only when neither side can be NaN: NaN compares false every
+            # way, so !(NaN >= 1) is true and NaN < 1 is false (term-compiler-0059)
             case binary
               link inner-op
-              sift negated-compare(inner-op)
-                case some
-                  link flipped
-                  save negated, shallow-copy(operand)
-                  sift negated
-                    case binary
-                      save negated/op, flipped
-                    miss
+              link inner-left
+              link inner-right
+              fork test, or(not(is-ordering(inner-op)), and(never-nan(inner-left), never-nan(inner-right)))
+                hold
+                  sift negated-compare(inner-op)
+                    case some
+                      link flipped
+                      save negated, shallow-copy(operand)
+                      sift negated
+                        case binary
+                          save negated/op, flipped
+                        miss
+                          save nothing, 0
+                      back negated
+                    case none
                       save nothing, 0
-                  back negated
-                case none
-                  save nothing, 0
             miss
               save nothing, 0
         miss

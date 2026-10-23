@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/lock.ts had, with
-// their shapes, answered by deck/deck/code/package/lockfile-reading.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/lockfile-reading.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { Lockfile } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/lockfile-reading'
 import { GRAMMARS, refused, refusedNow } from './grammars'
 import { code } from './manifest'
-
 
 type AnyCode = { major: number; minor: number; patch: number; prerelease?: string; build?: string }
 type PortCode = { major: number; minor: number; patch: number; prerelease: string; build: string }

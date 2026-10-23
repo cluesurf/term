@@ -33,7 +33,12 @@ let count = 0
 
 // compile one longhand file and run its `run` task, answering the TypeScript and what run gave back
 async function build(text: string, ...args: unknown[]): Promise<{ typescript: string; answer?: unknown; failure?: string }> {
-  const result = compile({ file: join(folder, 'main.tree'), text }, { leanOf: () => false } as never)
+  return buildAs(false, text, ...args)
+}
+
+// the same, read as a lean file
+async function buildAs(lean: boolean, text: string, ...args: unknown[]): Promise<{ typescript: string; answer?: unknown; failure?: string }> {
+  const result = compile({ file: join(folder, 'main.tree'), text }, { leanOf: () => lean } as never)
 
   if (!result.ok) {
     return { typescript: '', failure: `did not compile: ${result.diagnostics.map(d => d.message.split('\n')[0]).join(' | ')}` }
@@ -223,6 +228,116 @@ task run
 `)
 
 ok('the text\'s own const manifest leaves the caller\'s manifest alone', capture.answer === '1.2.3', capture.failure ?? JSON.stringify(capture.answer))
+
+// 0045, decision 008: the escapes are a closed set. A pipe is not special, so `||` is written plainly, and a
+// backslash before any other character is kept with it (a regular expression's \s in an ordinary literal)
+const either = await build(`bind either
+  take a, like boolean
+  take b, like boolean
+  like boolean
+  case node
+    text <($a || $b)>
+
+task run
+  like boolean
+  send back
+    call either
+      false
+      true
+`)
+
+ok('a bind text <($a || $b)> emits (false || true)', /\(false \|\| true\)/.test(either.typescript), either.failure ?? either.typescript.split('\n').filter(l => /\|\|/.test(l)).join(' / '))
+ok('it runs to true', either.answer === true, either.failure ?? JSON.stringify(either.answer))
+
+const kept = await build(`bind squeezed
+  take s, like text
+  like text
+  case node
+    text <$s.replace(/\\s+/g, "")>
+
+task run
+  like text
+  send back
+    call squeezed
+      text < a b  c >
+`)
+
+ok('a stray \\s in a bind text is kept', /replace\(\/\\s\+\/g, ""\)/.test(kept.typescript), kept.failure ?? kept.typescript.split('\n').filter(l => /replace/.test(l)).join(' / '))
+ok('it runs and squeezes the spaces out', kept.answer === 'abc', kept.failure ?? JSON.stringify(kept.answer))
+
+const piped = await build(`task run
+  like text
+  send back, text <a\\|b>
+`)
+
+ok('an ordinary text <a\\|b> is the four characters a\\|b', piped.answer === 'a\\|b', piped.failure ?? JSON.stringify(piped.answer))
+
+// 0058: a brace in a bind's text opens an interpolation (a bind's text is an ordinary literal, decision 008), which
+// the bind dropped in silence: <Array.from({ length: $n }).length> emitted Array.from().length. Literal braces are
+// \{ and \}, and they reach the host; an unescaped one is refused, naming the escape
+const braced = await build(`bind lanes
+  take n, like number
+  like number
+  case node
+    text <Array.from(\\{ length: $n \\}).length>
+
+task run
+  take n, like number
+  like number
+  send back
+    call lanes
+      read n
+`, 3)
+
+ok('\\{ and \\} in a bind text reach the host as braces', /Array\.from\(\{ length: n \}\)\.length/.test(braced.typescript), braced.failure ?? braced.typescript.split('\n').filter(l => /Array/.test(l)).join(' / '))
+ok('it runs to 3', braced.answer === 3, braced.failure ?? JSON.stringify(braced.answer))
+
+const loose = await build(`bind lanes
+  take n, like number
+  like number
+  case node
+    text <Array.from({ length: $n }).length>
+
+task run
+  take n, like number
+  like number
+  send back
+    call lanes
+      read n
+`, 3)
+
+ok('an unescaped brace in a bind text is refused, naming \\{', loose.failure !== undefined && /\\\{/.test(loose.failure) && /bind/.test(loose.failure), loose.failure ?? loose.typescript.split('\n').filter(l => /Array/.test(l)).join(' / '))
+
+// 0060: a callback parameter the text introduces never captures an argument naming it. refused-reason(exported,
+// one/name) emitted find(one => one.name === one.name), always true, and every declined claim took the first reason
+const callback = await buildAs(true, `form claim
+  link name, like text
+
+bind first-named
+  take all, like list, like claim
+  take wanted, like text
+  like text
+  case node
+    text <$all.find(one =\\> one.name === $wanted).name>
+
+bind any-named
+  take all, like list, like claim
+  take wanted, like text
+  like boolean
+  case node
+    text <$all.some((one, at) =\\> at \\>= 0 && one.name === $wanted)>
+
+task run
+  take all, like list, like claim
+  take one, like claim
+  like text
+
+  save found, first-named(all, one/name)
+  save any, any-named(all, <c>)
+  back <{found} {any}>
+`, [{ name: 'a' }, { name: 'b' }], { name: 'b' })
+
+ok('an argument one.name is bound outside the text\'s one =>', callback.answer === 'b false', callback.failure ?? `${JSON.stringify(callback.answer)}: ${callback.typescript.split('\n').filter(l => /find|some/.test(l)).join(' / ')}`)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

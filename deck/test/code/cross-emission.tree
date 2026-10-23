@@ -1,0 +1,172 @@
+# Differential testing across Term's backends (`test cross`). One compiled program is emitted to every backend; a
+# backend that fails to emit (throws, or writes nothing) for a program the others accept is a backend defect. Running
+# the emitted Rust, Kotlin and Swift needs their toolchains, so this checks emit agreement: every backend writes code
+# for every program that compiles.
+#
+# Ported from deck/test/code/cross.ts (term-cli-in-term-0112). The compiler and the four emitters are docked
+# (compile/compile.ts and compile/<backend>.ts are TypeScript, decision 004). The answer keeps the original's shape:
+# `ok`, `compiled`, and `emits`, a host object keyed by backend name in emit order, each entry `ok` and `length`, and
+# `error` only when the emitter threw.
+
+load @term/base/list
+  find list
+
+dock load
+  load <@term/make/code/compile/compile>, name cross-compiling
+  load <@term/make/code/compile/typescript>, name cross-typescript
+  load <@term/make/code/compile/rust>, name cross-rust
+  load <@term/make/code/compile/kotlin>, name cross-kotlin
+  load <@term/make/code/compile/swift>, name cross-swift
+
+form cross-source
+  link file, like text
+  link text, like text
+
+form cross-options
+  link resolve, like dynamic
+
+# one backend's emit: whether it wrote code, how long, and the message when it threw
+form cross-emit
+  link ok, like boolean
+  link length, like number
+  link error
+    like text
+    need false
+
+form cross-result
+  link ok, like boolean
+  link compiled, like boolean
+  # backend name to its cross-emit, in emit order (a host object, as the original's record)
+  link emits, like dynamic
+
+bind cross-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind cross-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok>
+
+bind cross-program
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.program>
+
+bind cross-written
+  take out, like dynamic
+  like boolean
+  case node
+    text <(typeof $out === "string" && $out.length \> 0)>
+
+bind cross-length
+  take out, like dynamic
+  like number
+  case node
+    text <($out?.length ?? 0)>
+
+bind cross-no-emits
+  take seed, like number
+  like dynamic
+  case node
+    text <(new Object())>
+
+bind cross-put
+  take table, like dynamic
+  take backend, like text
+  take entry, like cross-emit
+  like dynamic
+  case node
+    text <(($table)[$backend] = $entry, $table)>
+
+bind cross-no-resolve
+  take seed, like number
+  like dynamic
+  case node
+    text <(() =\> undefined)>
+
+form cross-backend
+  link name, like text
+  link emit
+    like task
+      take program, like dynamic
+      like dynamic
+
+task cross-emit-type-script
+  take program, like dynamic
+  like dynamic
+  mark private
+
+  back cross-typescript/emit-type-script(program)
+
+task cross-emit-rust
+  take program, like dynamic
+  like dynamic
+  mark private
+
+  back cross-rust/emit-rust(program)
+
+task cross-emit-kotlin
+  take program, like dynamic
+  like dynamic
+  mark private
+
+  back cross-kotlin/emit-kotlin(program)
+
+task cross-emit-swift
+  take program, like dynamic
+  like dynamic
+  mark private
+
+  back cross-swift/emit-swift(program)
+
+# the backends, in the order the original emitted them
+task cross-backends
+  like list, like cross-backend
+
+  back
+    make list
+      make(cross-backend, bind(name, <typescript>), bind(emit, cross-emit-type-script))
+      make(cross-backend, bind(name, <rust>), bind(emit, cross-emit-rust))
+      make(cross-backend, bind(name, <kotlin>), bind(emit, cross-emit-kotlin))
+      make(cross-backend, bind(name, <swift>), bind(emit, cross-emit-swift))
+
+# the resolver a caller with none passes: every load resolves to nothing
+task no-resolver
+  like dynamic
+
+  back cross-no-resolve(0)
+
+# compile one program and emit it to every backend. `ok` when it compiles and every backend writes non-empty code
+task cross-emit
+  take source, like text
+  take resolve, like dynamic
+  like cross-result
+
+  host compiled, cross-compiling/compile(make(cross-source, bind(file, <cross.tree>), bind(text, source)), make(cross-options, bind(resolve, resolve)))
+  host emits, cross-no-emits(0)
+  save all-ok, cross-ok(compiled)
+
+  fork test, cross-ok(compiled)
+    hold
+      host program, cross-program(compiled)
+      walk cross-backends()
+        take backend
+        fork
+          mark unsafe
+          host out, call(backend/emit, program)
+          host written, cross-written(out)
+          cross-put(emits, backend/name, make(cross-emit, bind(ok, written), bind(length, cross-length(out))))
+          fork test, not(written)
+            hold
+              save all-ok, false
+        halt take
+          take problem
+          cross-put(emits, backend/name, make(cross-emit, bind(ok, false), bind(length, 0), bind(error, cross-message(problem))))
+          save all-ok, false
+
+  back make(cross-result, bind(ok, all-ok), bind(compiled, cross-ok(compiled)), bind(emits, emits))

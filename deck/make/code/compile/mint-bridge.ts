@@ -5020,6 +5020,21 @@ function bindOf(bridge: Bridge, value: Form): Statement[] {
     const loads = seeds.filter(
       seed => seed.form === 'seed-call-open' && wordAt(seed, 'name') === 'load',
     )
+    // A bind's text is an ordinary literal (decision 008), so a brace in it opens an interpolation, and the text a
+    // bind keeps is only its chunks: <Array.from({ length: $n })> was emitted Array.from(), the braces and all they held
+    // gone, and it compiled clean (term-compiler-0058). Host code has no Term value to fill in, so a brace there is
+    // always meant literally: refuse it, naming the escape
+    const literal = firstAt(written, 'value')
+
+    if (literal?.node?.kind === 'text' && partsOf(literal.node).some(part => part.kind === 'interpolation')) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(literal),
+          message: `a bind's text is host code, and a \`{\` in it would open an interpolation that the bind drops: write a literal brace as \`\\{\` and \`\\}\` (bind ${name})`,
+        }),
+      )
+    }
 
     return {
       env: wordAt(target, 'platform') ?? '',

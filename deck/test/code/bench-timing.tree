@@ -1,4 +1,3 @@
-mark draft
 # A generic micro-benchmark harness, target-agnostic so it can time any code path in any codebase (not just the Term
 # compiler). It runs a function many times with a warmup, collects per-iteration timings, and reports robust statistics
 # (min, median, p95, mean, operations per second) so a real change is distinguishable from noise. A companion to

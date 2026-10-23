@@ -1,0 +1,116 @@
+# The bridge from the live compiler to the property engine: the compiler's own type (a `Type` of compile/node, as
+# the checker hands it out) read as the shape the generator folds, so a property test runs over a real parsed and
+# checked Term type and not a hand-written one. A record (a `named` type) takes its fields from the record table the
+# checker builds.
+#
+# Ported from deck/test/code/ir-gen.ts (term-cli-in-term-0112). The compiler type arrives as the host value it is and
+# is read through binds. `genFromIR` answered a pair of closures; here it answers the shape, which property-check.tree's
+# `sample-of` and `shrink-of` fold, as type-shape.tree's `gen-for-type` does.
+
+load @term/base/list
+  find list
+
+load ./property-check
+  find shape
+
+load ./type-shape
+  find type-field
+  find t-whole
+  find t-int
+  find t-wave
+  find t-text
+  find t-list
+  find t-record
+  find gen-for-type
+
+bind compiler-type-kind
+  take type, like dynamic
+  like text
+  case node
+    text <String($type.kind)>
+
+bind compiler-type-element
+  take type, like dynamic
+  like dynamic
+  case node
+    text <$type.element>
+
+bind compiler-type-name
+  take type, like dynamic
+  like dynamic
+  case node
+    text <$type.name>
+
+# a record's fields from the table, or nothing when the name is no record
+bind record-fields-of
+  take table, like dynamic
+  take named, like dynamic
+  like dynamic
+  case node
+    text <$table.get($named)>
+
+bind is-no-fields
+  take found, like dynamic
+  like boolean
+  case node
+    text <(!$found)>
+
+bind compiler-field-list
+  take found, like dynamic
+  like list, like dynamic
+  case node
+    text <Array.from($found)>
+
+bind compiler-field-name
+  take field, like dynamic
+  like text
+  case node
+    text <$field.name>
+
+bind compiler-field-type
+  take field, like dynamic
+  like dynamic
+  case node
+    text <$field.type>
+
+# a compiler type as the shape the generator derives from. A float generates as an integer (the bounded engine is
+# integer valued); unit, unknown, dynamic, bytes, map, function and variable fall back to a whole, and so does a
+# named type that is no record (an enum, an abstract type)
+task ir-to-seed-type
+  take type, like dynamic
+  take records, like dynamic
+  like shape
+
+  host kind, compiler-type-kind(type)
+  fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+    hold
+      back t-int()
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back t-wave()
+  fork test, is-equal(kind, <string>)
+    hold
+      back t-text()
+  fork test, is-equal(kind, <array>)
+    hold
+      back t-list(ir-to-seed-type(compiler-type-element(type), records))
+  fork test, is-equal(kind, <named>)
+    hold
+      host found, record-fields-of(records, compiler-type-name(type))
+      fork test, not(is-no-fields(found))
+        hold
+          host fields, make list
+          walk compiler-field-list(found)
+            take field
+            fields/push(make(type-field, bind(name, compiler-field-name(field)), bind(type, ir-to-seed-type(compiler-field-type(field), records))))
+          back t-record(fields)
+
+  back t-whole()
+
+# the generator of a compiler type: its shape
+task gen-from-ir
+  take type, like dynamic
+  take records, like dynamic
+  like shape
+
+  back gen-for-type(ir-to-seed-type(type, records))

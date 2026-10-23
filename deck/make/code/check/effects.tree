@@ -45,6 +45,7 @@ load ../compile/node
   find dock-route
   find dock-send
   find expression
+  find expression-type
   find field-value
   find statement
   find statement-span
@@ -708,7 +709,23 @@ task effect-expression
       save call-at, span
       sift callee
         case variable
-          fork test, and(and(not(awaited), not(state/in-async)), and(not(ticked), is-async-name(state, name)))
+          # a local holding an async task is async by its type (check/async-resolve.tree calls-async, term-compiler-0062)
+          save typed-async, false
+          sift expression-type(callee)
+            case some
+              link callee-type
+              sift callee-type
+                case function
+                  walk effects
+                    take effect
+                    fork test, is-equal(effect, <async>)
+                      hold
+                        save typed-async, true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          fork test, and(and(not(awaited), not(state/in-async)), and(not(ticked), or(is-async-name(state, name), typed-async)))
             hold
               push(state/diagnostics, async-from-sync(state/file, call-at, name))
           # `tick` on a task that is not async starts nothing: the call runs to its end before the next line

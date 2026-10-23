@@ -1,7 +1,7 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/store.ts had, with
-// their shapes, answered by deck/deck/code/package/file-store.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/file-store.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import * as port from '@term/deck/code/package/file-store'
-
 
 export const getStoreRoot = (): string => port.getStoreRoot()
 export const getBaseDir = (): string => port.getBaseDir()

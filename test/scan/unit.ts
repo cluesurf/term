@@ -1,6 +1,10 @@
 // Unit tests for @cluesurf/scan: version comparison and range satisfaction, advisory matching + upgrade planning,
 // OSV import, the static rules (native-danger + taint), SARIF shape, and the manifest fixer. Pure, no filesystem.
 // Run: npx tsx test/scan/unit.ts
+//
+// On the Term ports of @term/scan since term-cli-in-term-0116 (deck/scan/code/*.tree, emitted to
+// deck/scan/host/port/code/). The ports take positional parameters and make each rule by a task (nativeDangerRule(),
+// taintRule()); their values are the scanner's host records, so the data model is typed here as the test reads it.
 
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
@@ -8,16 +12,29 @@ import {
   toCode,
   compareVersion,
   satisfies,
-} from '@term/scan/code/semver'
-import { isAffected, planUpgrade } from '@term/scan/code/match'
-import { fromOsv, fromOsvFeed } from '@term/scan/code/osv'
-import type { OsvRecord } from '@term/scan/code/osv'
-import type { Advisory, CodeFinding, ScanResult } from '@term/scan/code/form'
-import { runRules } from '@term/scan/code/rule'
-import { nativeDangerRule } from '@term/scan/code/rule/native-danger'
-import { taintRule } from '@term/scan/code/rule/taint'
-import { toSarif } from '@term/scan/code/sarif'
-import { applyUpgradesToManifest, planUpgrades } from '@term/scan/code/fix'
+} from '@term/scan/code/version-range'
+import { isAffected, planUpgrade } from '@term/scan/code/advisory-matching'
+import { fromOsv, fromOsvFeed } from '@term/scan/code/osv-reading'
+import { runRules } from '@term/scan/code/rule-running'
+import { nativeDangerRule } from '@term/scan/code/dangerous-import'
+import { taintRule } from '@term/scan/code/taint-tracking'
+import { toSarif } from '@term/scan/code/sarif-writing'
+import { applyUpgradesToManifest, planUpgrades } from '@term/scan/code/upgrade-fixing'
+
+type Advisory = {
+  id: string
+  packageName: string
+  severity: string
+  title: string
+  url: string
+  ranges: { introduced?: string; fixed?: string }[]
+  fixedVersions: string[]
+  versions?: string[]
+  rangeExpression?: string
+}
+type OsvRecord = Record<string, unknown>
+type CodeFinding = { ruleId: string; message: string }
+type ScanResult = { findings: Record<string, unknown>[] } & Record<string, unknown>
 
 let pass = 0
 let fail = 0
@@ -45,7 +62,7 @@ function milled(text: string): CodeFinding[] {
     throw new Error('mill failed')
   }
 
-  return runRules(m.program, 't.tree', [nativeDangerRule, taintRule])
+  return runRules(m.program, 't.tree', [nativeDangerRule(), taintRule()])
 }
 
 // ---- semver ----
@@ -243,9 +260,7 @@ ok(
 ok(Array.isArray(run.results[1]!.codeFlows), 'SARIF renders the taint trace as a code flow')
 
 // ---- fix ----
-const upgrades = planUpgrades([
-  result.findings[0] as Extract<(typeof result.findings)[number], { kind: 'dependency' }>,
-])
+const upgrades = planUpgrades([result.findings[0]!])
 ok(upgrades.length === 1 && upgrades[0]!.to === '1.3.0', 'planUpgrades collapses to one upgrade per package')
 const manifest = `deck app\n  mark <1.0.0>\n\n  link @term/left-pad, mark <^1.1.0>\n  link @term/other, mark <^2.0.0>\n`
 const patched = applyUpgradesToManifest(manifest, [

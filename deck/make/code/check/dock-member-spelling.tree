@@ -1,0 +1,223 @@
+# A member read off a `dock load` module reaches a name the host chose, which the build cannot see
+# (term/compiler decision 010). Written with no `-` it is the host's name as written (backend-names `host-spelled`).
+# Written kebab it is converted, and that is only allowed when the conversion has one reading: a segment after the
+# first that is an acronym word (compile/ts-names.tree `acronyms`) reads two ways, `to-json-value` as `toJSONValue`
+# (Node's `fileURLToPath`) or `toJsonValue` (the repo's own compile/host.ts). The upper-cased one was emitted, and
+# `host-module/to-json-value` was undefined at run time while the build was clean (term-compiler-0037,
+# term-cli-in-term-0052). Refused here, once, before any backend, naming both readings.
+#
+# Members off a dock TYPE handle and the fields of Term's own forms are untouched: only a member whose target is the
+# module's alias itself, in a file that docks it, and not hidden by a local of that name (check/dock-shadow).
+
+load @term/base/list
+  find list
+  find get
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+load ../compile/ts-names
+  find acronyms
+
+# the first character upper case, the rest as written
+task upper-first
+  take part, like text
+  like text
+  mark private
+
+  fork test, is-equal(char-count(part), 0)
+    hold
+      back <>
+  back <{to-upper-case(char-at(part, 0))}{substring(part, 1)}>
+
+task file-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the two spellings of a kebab member when a segment after the first is an acronym word, else none
+task readings-of
+  take name, like text
+  like list, like text
+  mark private
+
+  save parts, split(name, <->)
+  save known, acronyms()
+  save upper, get(parts, 0)
+  save plain, get(parts, 0)
+  save any, false
+  walk parts
+    take part
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        turn next
+    fork test, has-text(known, part)
+      hold
+        save any, true
+        save upper, <{upper}{to-upper-case(part)}>
+      miss
+        save upper, <{upper}{upper-first(part)}>
+    save plain, <{plain}{upper-first(part)}>
+  save out, make list
+  fork test, any
+    hold
+      push(out, upper)
+      push(out, plain)
+  back out
+
+task check-dock-member-spelling
+  take program, like list, like statement
+  like list, like diagnostic
+
+  # the docked module names of each file, side by side (a `dock type` handle is not a module)
+  save files, make list
+  save aliases, make list
+  walk program
+    take one
+    sift one
+      case native
+        save is-type, false
+        sift kind
+          case some
+            link given
+            sift given
+              case type
+                save is-type, true
+              case module
+                save is-type, false
+          case none
+            save is-type, false
+        fork test, not(is-type)
+          hold
+            save where, file
+            fork test, is-equal(where, <>)
+              hold
+                save where, file-of(span)
+            push(files, where)
+            push(aliases, alias)
+      miss
+        turn next
+
+  save out, make list
+  fork test, is-equal(aliases/length, 0)
+    hold
+      back out
+  walk program
+    take one
+    sift one
+      case function
+        save own-file, file-of(span)
+        save docked, make list
+        walk files
+          take where
+          take at
+          fork test, is-equal(where, own-file)
+            hold
+              push(docked, get(aliases, at))
+        fork test, is-equal(docked/length, 0)
+          hold
+            turn next
+
+        # a parameter or local named like a docked module hides it (check/dock-shadow warns), so a member of it is a
+        # field of the local
+        save hidden, make list
+        walk params
+          take param
+          push(hidden, param/name)
+        walk statements-in(body)
+          take inner
+          sift inner
+            case let
+              push(hidden, name)
+            case for-each
+              push(hidden, item)
+            miss
+              turn next
+        walk expressions-in(body)
+          take inner
+          sift inner
+            case closure
+              walk params
+                take param
+                push(hidden, param/name)
+            miss
+              turn next
+
+        walk expressions-in(body)
+          take inner
+          sift inner
+            case member
+              save member-name, name
+              save member-span, span
+              fork test, is-unequal(read(nick), <>)
+                hold
+                  turn next
+              sift target
+                case variable
+                  link root-name
+                  fork test, and(has-text(docked, root-name), not(has-text(hidden, root-name)))
+                    hold
+                      save readings, readings-of(member-name)
+                      fork test, is-above(readings/length, 0)
+                        hold
+                          save where, file-of(member-span)
+                          fork test, is-equal(where, <>)
+                            hold
+                              save where, own-file
+                          push(out, refusal(where, member-span, member-name, root-name, readings))
+                miss
+                  turn next
+            miss
+              turn next
+      miss
+        turn next
+  back out
+
+task refusal
+  take file, like text
+  take at, like span
+  take name, like text
+  take dock, like text
+  take readings, like list, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{name}" on dock "{dock}" could be {get(readings, 0)} or {get(readings, 1)}: write the export's own name (no "-")>)
+  save kind, make dock-member-spelling
+  back diagnose(kind, input)

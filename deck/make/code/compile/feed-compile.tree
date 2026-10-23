@@ -181,6 +181,9 @@ form feed-state
   link in-span, like number
   link helper-rule, like text
   link helper-count, like number
+  # the task turning each deeper text shape (`maybe list`, `list maybe`) into text, by the shape's wrappers joined with
+  # a space: one task per shape per grammar (mill decision 002, rule 6)
+  link conversions, like hash, like text, like text
 
 # the locals a sequence has bound so far, in order, with the type each one holds
 form feed-scope
@@ -201,6 +204,8 @@ form shared-value
 form maybe-built
   link lines, like list, like text
   link params, like list, like text
+  # the helper's declared type, `like maybe` over its payload's (mill decision 002)
+  link declared, like list, like text
 
 # a `check` as the maybe it is
 form maybe-shape
@@ -2191,6 +2196,7 @@ task fresh-feed-state
       bind in-span, 0
       bind helper-rule, <>
       bind helper-count, 0
+      bind conversions, make hash
 
 task compile-feed-mine
   take grammar, like hash, like text, like list, like feed-rule
@@ -2201,6 +2207,7 @@ task compile-feed-mine
   like text
 
   save ops, ops-of(substrate)
+  save state/conversions, make hash
   save lines, make list
   push(lines, <load {cursor-import-path}>)
   walk ops/imports
@@ -2343,16 +2350,11 @@ task capture-type-of
         hold
           back one-line(<like text>)
       back byte-block()
+    # a maybe of its payload's type, as its helper answers outside a span (mill decision 002)
     case check
-      save out, make list
-      push(out, <like maybe>)
-      push(out, <  like unknown>)
-      back out
+      back with-head(<like maybe>, indented(maybe-payload-type(children, false, ops, grammar, seen)))
     case optional
-      save out, make list
-      push(out, <like maybe>)
-      push(out, <  like unknown>)
-      back out
+      back with-head(<like maybe>, indented(maybe-payload-type(children, false, ops, grammar, seen)))
     case list
       save kids, capturing-rules(children)
       fork test, is-above(kids/length, 0)
@@ -2467,76 +2469,78 @@ task first-value
         save nothing, 0
   back make none
 
-task infer-return-type
+# the type a `value` expression carries among these rules: `make <form>` its form, a bare `read <name>` the named
+# capture's own type, none for anything else
+task value-type
+  take expr, like node
   take rules, like list, like feed-rule
   take ops, like feed-ops
   take grammar, like hash, like text, like list, like feed-rule
   take seen, like list, like text
-  like list, like text
+  like maybe, like list, like text
   mark private
 
-  save value-expr, first-value(rules)
-  sift value-expr
-    case some
-      link expr
-      save expr-kids, kids-in(expr)
-      fork test, maybe-is(word-in(kid-at(expr-kids, 0)), <make>)
-        hold
-          save form-name, make none
-          sift kid-at(expr-kids, 1)
-            case some
-              link form-node
-              sift form-node
-                case group
-                  link form-kids
-                  save form-name, word-in(kid-at(form-kids, 0))
-                miss
-                  save form-name, word-of(form-node)
-            case none
-              save nothing, 0
-          sift form-name
-            case some
-              link known
-              fork test, is-unequal(known, <>)
-                hold
-                  back one-line(<like {known}>)
-            case none
-              save nothing, 0
-      # a bare `read <name>` value carries the named capture's own type
-      fork test, and(maybe-is(word-in(kid-at(expr-kids, 0)), <read>), is-equal(expr-kids/length, 2))
-        hold
-          save captured-name, word-in(kid-at(expr-kids, 1))
-          walk rules
-            take rule
-            fork test, not(has-send-key(rule))
-              hold
-                turn next
-            save sent, send-of(rule)
-            save matches, false
-            sift sent
+  save expr-kids, kids-in(expr)
+  fork test, maybe-is(word-in(kid-at(expr-kids, 0)), <make>)
+    hold
+      save form-name, make none
+      sift kid-at(expr-kids, 1)
+        case some
+          link form-node
+          sift form-node
+            case group
+              link form-kids
+              save form-name, word-in(kid-at(form-kids, 0))
+            miss
+              save form-name, word-of(form-node)
+        case none
+          save nothing, 0
+      sift form-name
+        case some
+          link known
+          fork test, is-unequal(known, <>)
+            hold
+              back make(some, one-line(<like {known}>))
+        case none
+          save nothing, 0
+  # a bare `read <name>` value carries the named capture's own type
+  fork test, and(maybe-is(word-in(kid-at(expr-kids, 0)), <read>), is-equal(expr-kids/length, 2))
+    hold
+      save captured-name, word-in(kid-at(expr-kids, 1))
+      walk rules
+        take rule
+        fork test, not(has-send-key(rule))
+          hold
+            turn next
+        save sent, send-of(rule)
+        save matches, false
+        sift sent
+          case some
+            link known
+            sift captured-name
               case some
-                link known
-                sift captured-name
-                  case some
-                    link wanted
-                    save matches, is-equal(known, wanted)
-                  case none
-                    save nothing, 0
+                link wanted
+                save matches, is-equal(known, wanted)
               case none
-                sift captured-name
-                  case none
-                    save matches, true
-                  case some
-                    link wanted
-                    save nothing, 0
-            fork test, matches
-              hold
-                back capture-type-of(rule, ops, grammar, seen)
-      back one-line(<like number>)
-    case none
-      save nothing, 0
+                save nothing, 0
+          case none
+            sift captured-name
+              case none
+                save matches, true
+              case some
+                link wanted
+                save nothing, 0
+        fork test, matches
+          hold
+            back make(some, capture-type-of(rule, ops, grammar, seen))
+  back make none
 
-  # a nested list binds, so it is a candidate for the last capture here
+# the last rule of a sequence that binds: a nested list binds, so it is a candidate too
+task last-capture
+  take rules, like list, like feed-rule
+  like maybe, like feed-rule
+  mark private
+
   save last, make none
   walk rules
     take rule
@@ -2549,12 +2553,67 @@ task infer-return-type
         fork test, is-above(capturing-rules(solo)/length, 0)
           hold
             save last, make(some, rule)
-  sift last
+  back last
+
+task infer-return-type
+  take rules, like list, like feed-rule
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like list, like text
+  mark private
+
+  sift first-value(rules)
+    case some
+      link expr
+      sift value-type(expr, rules, ops, grammar, seen)
+        case some
+          link known
+          back known
+        case none
+          back one-line(<like number>)
+    case none
+      save nothing, 0
+
+  sift last-capture(rules)
     case some
       link known
       back capture-type-of(known, ops, grammar, seen)
     case none
       back one-line(<like number>)
+
+# the type of what a maybe helper over these children sends back (mill decision 002): what its `value` child carries,
+# text inside a span (`spanned`: in a span, with parts bound), else the last capture's type. Where nothing types it (a
+# value nothing infers, a sequence binding nothing) it is unknown, and a cycle cut by `seen` answers unknown as well
+task maybe-payload-type
+  take children, like list, like feed-rule
+  take spanned, like boolean
+  take ops, like feed-ops
+  take grammar, like hash, like text, like list, like feed-rule
+  take seen, like list, like text
+  like list, like text
+  mark private
+
+  sift first-value(children)
+    case some
+      link expr
+      sift value-type(expr, children, ops, grammar, seen)
+        case some
+          link known
+          back known
+        case none
+          back one-line(<like unknown>)
+    case none
+      save nothing, 0
+  fork test, spanned
+    hold
+      back one-line(<like text>)
+  sift last-capture(children)
+    case some
+      link known
+      back capture-type-of(known, ops, grammar, seen)
+    case none
+      back one-line(<like unknown>)
 
 task fresh-scope
   like feed-scope
@@ -2710,6 +2769,17 @@ task bind-capture
   save none-seen, make list
   save scope/types/{name}, capture-type-of(rule, ops, grammar, none-seen)
 
+# a local bound with the type its helper declares (an optional or a check, mill decision 002: inside a span its
+# payload is text, which `capture-type-of` never sees)
+task bind-typed
+  take scope, like feed-scope
+  take name, like text
+  take declared, like list, like text
+  mark private
+
+  push(scope/sends, name)
+  save scope/types/{name}, declared
+
 task compile-sequence
   take rules, like list, like feed-rule
   take indent, like number
@@ -2793,7 +2863,7 @@ task compile-expr
       link any-children
       link any-send
       save helper-name, next-helper(state)
-      push-all(helpers, compile-any-helper(helper-name, any-children, ops, grammar))
+      push-all(helpers, compile-any-helper(helper-name, any-children, ops, grammar, state))
       save local-name, text-or(any-send, <char-{nth}>)
       bind-capture(scope, local-name, rule, ops, grammar)
       push(out, <{p}save {local-name}>)
@@ -3000,11 +3070,11 @@ task compile-expr
       push(out, <{p}  make list>)
       walk bound
         take part
-        save conversion, text-conversion(type-words(scope, part))
-        fork test, is-unequal(conversion, <>)
-          hold
-            push(out, <{p}    call {conversion}(read({part}), text \<\>)>)
-          miss
+        sift part-as-text(part, scope, state, helpers)
+          case some
+            link converted
+            push(out, <{p}    {converted}>)
+          case none
             push(out, <{p}    read {part}>)
       push(out, <{p}save {span-send}>)
       push(out, <{p}  call join(read({span-send}-parts), text \<\>)>)
@@ -3047,7 +3117,7 @@ task compile-expr
       save helper-name, next-helper(state)
       save built, compile-maybe-helper(helper-name, as-maybe(check-op, check-base, check-head, check-children), ops, grammar, scope, state)
       push-all(helpers, built/lines)
-      bind-capture(scope, local-name, rule, ops, grammar)
+      bind-typed(scope, local-name, built/declared)
       push(out, <{p}save {local-name}>)
       push(out, <{p}  call {helper-name}({helper-args(built/params)})>)
 
@@ -3067,7 +3137,7 @@ task compile-expr
           bind children, optional-children
       save built, compile-maybe-helper(helper-name, shape, ops, grammar, scope, state)
       push-all(helpers, built/lines)
-      bind-capture(scope, local-name, rule, ops, grammar)
+      bind-typed(scope, local-name, built/declared)
       push(out, <{p}save {local-name}>)
       push(out, <{p}  call {helper-name}({helper-args(built/params)})>)
 
@@ -3310,9 +3380,9 @@ task span-test
         save chain, <call or({closed-argument(chain)}, {part})>
   back chain
 
-# how a captured value of these type words is turned into text, the way a span joins its parts: a maybe by `unwrap-or`,
-# a list by `join`, and `<>` for a value used as it is. Shared by `case span` and an any helper's branches (mill decision
-# 001)
+# how a captured value of these type words is turned into text one level deep: a maybe by `unwrap-or`, a list by
+# `join`, and `<>` for a value used as it is. Since mill decision 002 a type ending in text is converted structurally
+# (`text-shape`, `text-of-shape`), and this is only what a span does with a part whose type holds an unknown
 task text-conversion
   take kind, like text
   like text
@@ -3326,11 +3396,145 @@ task text-conversion
       back <join>
   back <>
 
+# the wrappers of a type that ends in text, outermost first (`maybe`, `list`), or none when it ends in anything else (a
+# number, a form, an unknown) or holds anything but maybes and lists over that text
+task text-shape
+  take lines, like list, like text
+  like maybe, like list, like text
+  mark private
+
+  save wrappers, make list
+  save at, 0
+  walk lines
+    take line
+    save word, trim(line)
+    save at, add(at, 1)
+    fork test, is-equal(at, lines/length)
+      hold
+        fork test, is-equal(word, <like text>)
+          hold
+            back make(some, wrappers)
+        back make none
+    fork test, is-equal(word, <like maybe>)
+      hold
+        push(wrappers, <maybe>)
+        turn next
+    fork test, is-equal(word, <like list>)
+      hold
+        push(wrappers, <list>)
+        turn next
+    back make none
+  back make none
+
+# `value`, a Term expression of a type ending in text, turned into text (mill decision 002, rule 6): as it is with no
+# wrapper, by `unwrap-or` or `join` one level deep, and deeper by the task generated once for its shape
+task text-of-shape
+  take value, like text
+  take wrappers, like list, like text
+  take state, like feed-state
+  take helpers, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(wrappers/length, 0)
+    hold
+      back value
+  fork test, is-equal(wrappers/length, 1)
+    hold
+      fork test, is-equal(get(wrappers, 0), <maybe>)
+        hold
+          back <call unwrap-or({value}, text \<\>)>
+      back <call join({value}, text \<\>)>
+  back <call {shape-converter(wrappers, state, helpers)}({value})>
+
+# the private task turning a value of this deeper shape into text, written into `helpers` the first time the grammar
+# meets the shape: a maybe is `<>` when none and its value converted when some, a list each item converted and joined
+task shape-converter
+  take wrappers, like list, like text
+  take state, like feed-state
+  take helpers, like list, like text
+  like text
+  mark private
+
+  save key, join(wrappers, < >)
+  fork test, state/conversions/has(key)
+    hold
+      back state/conversions/get(key)
+  save name, next-helper(state)
+  state/conversions/set(key, name)
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, wrappers/length)
+    hook hold
+      push(rest, get(wrappers, at))
+      save at, add(at, 1)
+  save lines, make list
+  push(lines, <task {name}>)
+  push(lines, <  take given>)
+  save depth, 2
+  walk wrappers
+    take one
+    push(lines, <{repeat(<  >, depth)}like {one}>)
+    save depth, add(depth, 1)
+  push(lines, <{repeat(<  >, depth)}like text>)
+  push(lines, <  like text>)
+  push(lines, <  mark private>)
+  fork test, is-equal(get(wrappers, 0), <maybe>)
+    hold
+      push(lines, <  fork case, read given>)
+      push(lines, <    case some>)
+      push(lines, <      link inner>)
+      push(lines, <      send back>)
+      push(lines, <        {text-of-shape(<read(inner)>, rest, state, helpers)}>)
+      push(lines, <    case none>)
+      push(lines, <      send back, text \<\>>)
+    miss
+      push(lines, <  save parts>)
+      push(lines, <    make list>)
+      push(lines, <  walk list>)
+      push(lines, <    read given>)
+      push(lines, <    hook next>)
+      push(lines, <      take site, name item>)
+      push(lines, <      call push(read(parts), {closed-argument(text-of-shape(<read(item)>, rest, state, helpers))})>)
+      push(lines, <  send back>)
+      push(lines, <    call join(read(parts), text \<\>)>)
+  push-all(helpers, lines)
+  back name
+
+# a local a span joins, turned into text: structurally when its type ends in text, else (an unknown inside) by the
+# one-level conversion its outer type names, none for a value used as it is
+task part-as-text
+  take part, like text
+  take scope, like feed-scope
+  take state, like feed-state
+  take helpers, like list, like text
+  like maybe, like text
+  mark private
+
+  fork test, scope/types/has(part)
+    hold
+      sift text-shape(scope/types/get(part))
+        case some
+          link wrappers
+          fork test, is-equal(wrappers/length, 0)
+            hold
+              back make none
+          back make(some, text-of-shape(<read({part})>, wrappers, state, helpers))
+        case none
+          save nothing, 0
+  save conversion, text-conversion(type-words(scope, part))
+  fork test, is-equal(conversion, <>)
+    hold
+      back make none
+  back make(some, <call {conversion}(read({part}), text \<\>)>)
+
 task compile-any-helper
   take name, like text
   take branches, like list, like feed-rule
   take ops, like feed-ops
   take grammar, like hash, like text, like list, like feed-rule
+  take state, like feed-state
   like list, like text
   mark private
 
@@ -3342,10 +3546,11 @@ task compile-any-helper
   # The helper is written with it, and with `like unknown` only where the branches differ (seam decision 002, group
   # D): it used to be unknown as soon as any branch was a form rule, so a rule returning what it matched as a text
   # returned an unknown
-  # On a text cursor a form branch answering a list of text or a maybe of text is turned into text where the helper
-  # calls it, by the conversion a span applies to its parts (mill decision 001), so the helper still answers text
+  # On a text cursor a form branch whose result ends in text (a list of text, a maybe of one, a maybe of a list, ...)
+  # is turned into text where the helper calls it, structurally (mill decisions 001 and 002), so the helper still
+  # answers text. Any other shape leaves the helper `like unknown`
   save shared, element
-  save converts, like hash, like text, like text
+  save converts, like hash, like text, like list, like text
     make hash
   save on-text, is-text-cursor(ops)
   save fresh, like list, like text
@@ -3355,20 +3560,23 @@ task compile-any-helper
     sift branch
       case form
         link branch-name
-        save own, join(return-type-of(branch-name, ops, grammar, fresh), <\n>)
-        save turned, <>
-        fork test, and(on-text, or(is-equal(own, <like list\n  like text>), is-equal(own, <like maybe\n  like text>)))
+        save own-lines, return-type-of(branch-name, ops, grammar, fresh)
+        fork test, is-equal(join(own-lines, <\n>), element)
           hold
-            save turned, text-conversion(own)
-        fork test, is-unequal(turned, <>)
+            turn next
+        fork test, not(on-text)
           hold
-            converts/set(branch-name, turned)
-          miss
-            fork test, not(is-equal(own, element))
-              hold
-                save shared, <like unknown>
+            save shared, <like unknown>
+            turn next
+        sift text-shape(own-lines)
+          case some
+            link wrappers
+            converts/set(branch-name, wrappers)
+          case none
+            save shared, <like unknown>
       miss
         save nothing, 0
+  save extra, make list
   save lines, make list
   push(lines, <task {name}>)
   push(lines, <  take cursor, like {ops/cursor-type}>)
@@ -3436,7 +3644,7 @@ task compile-any-helper
             link known
             fork test, and(is-equal(shared, element), converts/has(known))
               hold
-                push(lines, <        call {converts/get(known)}(call(read-{known}(read(cursor))), text \<\>)>)
+                push(lines, <        {text-of-shape(<call(read-{known}(read(cursor)))>, converts/get(known), state, extra)}>)
               miss
                 push(lines, <        call read-{known}(read(cursor))>)
           case none
@@ -3446,7 +3654,9 @@ task compile-any-helper
         save nothing, 0
 
   push(lines, <  {miss-text(ops, <a match for {name}>)}>)
-  back lines
+  # the shape tasks this helper's branches needed first, written beside it
+  push-all(extra, lines)
+  back extra
 
 # `mine until`: what comes before the terminator, the terminator consumed, end of input stopping it too
 task compile-until-helper
@@ -3606,30 +3816,30 @@ task compile-maybe-helper
     compile-expr(child, 3, ops, grammar, scope, state, body, helpers)
 
   # inside a span the payload is the text this maybe consumed, joined from every part it bound
+  save spanned, and(is-above(state/in-span, 0), is-above(scope/sends/length, 0))
   save payload, <>
   sift value-expr
     case some
       link expr
       save payload, print-node(expr, 0)
     case none
-      fork test, and(is-above(state/in-span, 0), is-above(scope/sends/length, 0))
+      fork test, spanned
         hold
           save joined, <>
           walk scope/sends
             take sent
-            save kind, type-words(scope, sent)
-            fork test, starts-with(kind, <like maybe>)
-              hold
-                save joined, <{joined}, call(unwrap-or(read({sent}), text \<\>))>
-              miss
-                fork test, starts-with(kind, <like list>)
-                  hold
-                    save joined, <{joined}, call(join(read({sent}), text \<\>))>
-                  miss
-                    save joined, <{joined}, read({sent})>
+            sift part-as-text(sent, scope, state, helpers)
+              case some
+                link converted
+                save joined, <{joined}, {closed-argument(converted)}>
+              case none
+                save joined, <{joined}, read({sent})>
           save payload, <call join(make(list{joined}), text \<\>)>
         miss
           save payload, <read {text-or(last-send(scope), <result>)}>
+  # the helper answers a maybe of its payload's type (mill decision 002)
+  save none-seen, make list
+  save declared, with-head(<like maybe>, indented(maybe-payload-type(shape/children, spanned, ops, grammar, none-seen)))
 
   # only the names the test reads from outside this helper, each typed as the enclosing capture is
   save candidates, make list
@@ -3669,8 +3879,7 @@ task compile-maybe-helper
       hook hold
         push(lines, <  {get(typed, at)}>)
         save at, add(at, 1)
-  push(lines, <  like maybe>)
-  push(lines, <    like unknown>)
+  push-all(lines, indented(declared))
   push(lines, <  fork test>)
   push(lines, <    hook test>)
   save test-line, <>
@@ -3697,3 +3906,4 @@ task compile-maybe-helper
     make maybe-built
       bind lines, lines
       bind params, params
+      bind declared, declared

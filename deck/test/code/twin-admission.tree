@@ -1,0 +1,1515 @@
+# Differential admission (note/project/term/optimize/admission.md, optimize-0010): does each twin AGREE with its task?
+#
+# A twin is another implementation of a task the compiler may choose in its place. Before the kernel can prove that
+# (optimize-0019), this is the evidence: the twin and its task run on the same inputs and must give the same answer
+# wherever the twin's conditions (`have`, `hook test`) hold. A twin that agrees is admitted as TESTED, with the count,
+# never as proven.
+#
+#   1. inputs are GENERATED from the task's signature, biased to what breaks code that counts and indexes: empty and
+#      one-item lists, duplicates, sorted runs, the integers 0 and -1, and every integer literal in the twin's
+#      conditions together with the ones either side of it (for `dense`, 65535, 65536 and 65537)
+#   2. the TypeScript build runs in a child process, so thousands of inputs cost seconds
+#   3. a disagreement is SHRUNK to the smallest input that still disagrees, and printed as a Term literal
+#   4. every run also builds MUTANTS of the twin (a literal off by one, a comparison flipped) and must catch them: a run
+#      that cannot tell a wrong twin from a right one is not evidence, and says so instead of admitting
+#   5. the same inputs replay on Rust, Swift and Kotlin with the real toolchains, so a twin that agrees in JavaScript
+#      and not in i64 arithmetic is caught (the verdict's `native`)
+#
+# A type with no generator (a form, a closure, a native handle) refuses admission with the type named, rather than
+# running a test that never reaches the twin.
+#
+# Ported from deck/test/code/twin-diff.ts (term-cli-in-term-0111). The decisions:
+#   - the compiled program is read as the compiler's host value, through binds by its fields (a twin's `body`, `have`,
+#     `test`; a type's `kind`, `element`, `name`, `args`); compile, the compile cache and the twin names stay docked
+#   - an input generator is the record `input-generator` and one task draws from it, where the original made a closure
+#     per type; the draws come in the original's order from the original's xorshift, so a seed makes the same inputs
+#   - a mutant is the record `mutant-site` (the path to a literal or a comparison, and which), applied to the twins of
+#     a fresh compile, where the original kept a closure per site
+#   - a verdict, a comparison and an outcome are plain objects built and changed in binds, in the original's key order,
+#     because the verdict is shared by the list it is reported in and the native replay that revises it
+#   - the module constants are tasks: `cache` is `compile-cache()` (the module's one cache) and `REPLAY_TASK`
+#     `replay-task()`
+#   - the comparison's child imports this module's own emitted port by its file, as the original imported itself, and
+#     runs from the Term package root, six folders above the port (four above the original)
+
+load @term/base/list
+  find list
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/cache>, name caching-module
+  load <@term/make/code/ir/twin>, name twin-naming
+  load <@term/make/code/check/twin>, name twin-checking
+  load <node:fs>, name admission-fs
+  load <node:path>, name admission-path
+
+# how to draw one input for a parameter: `kind` is number, float, boolean, string or array; `near` the integers a
+# number is drawn near; `element` an array's item (one generator, or none); `refusal` why there is none, `<>` for none
+form input-generator
+  link kind, like text
+  link near, like list, like number
+  link element, like list, like dynamic
+  link refusal, like text
+
+# one mutation of a twin: the path to its node from the twin's body, and whether it is an integer or a comparison
+form mutant-site
+  link path, like list, like dynamic
+  link kind, like text
+
+# a build with its twins exposed: the module written for a child to load, or why it did not build
+form admission-build
+  link built, like boolean
+  link problem, like text
+  link module, like text
+  link program, like dynamic
+  link twins, like list, like dynamic
+
+# what a call did: answered `value`, or raised `raise`
+form call-outcome
+  link raised, like boolean
+  link value, like dynamic
+  link raise, like text
+
+# the task, its twin and the twin's conditions, as the child compares them
+form compared-functions
+  link reference, like dynamic
+  link alternative, like dynamic
+  link guard, like dynamic
+
+# ---- the binds: JavaScript's arithmetic, the host value's fields, and the shared plain objects ----
+
+bind admission-new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind admission-seed-state
+  take seed, like number
+  like list, like number
+  case node
+    text <[($seed \>\>\> 0) || 1]>
+
+# the original's xorshift, its state the one number in the list
+bind admission-draw
+  take state, like list, like number
+  like float
+  case node
+    text <(() =\> \{ let admissionState = $state[0]; admissionState ^= admissionState \<\< 13; admissionState ^= admissionState \>\>\> 17; admissionState ^= admissionState \<\< 5; $state[0] = admissionState; return (admissionState \>\>\> 0) / 4294967296; \})()>
+
+bind admission-floor
+  take value, like float
+  like number
+  case node
+    text <Math.floor($value)>
+
+bind admission-trunc
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Math.trunc($value)>
+
+bind admission-sign
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Math.sign($value)>
+
+bind admission-negative-zero
+  take unused, like number
+  like dynamic
+  case node
+    text <-0>
+
+bind admission-letter
+  take place, like number
+  like text
+  case node
+    text <"abcxyz"[$place]>
+
+bind admission-is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind admission-is-record
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value && typeof $value === "object")>
+
+bind admission-is-number
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "number")>
+
+bind admission-is-map
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value instanceof Map)>
+
+bind admission-identical
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+  case node
+    text <($first === $second)>
+
+bind admission-same-number
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+  case node
+    text <(Object.is($first, $second) || $first === $second)>
+
+bind admission-items
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+bind admission-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind admission-item
+  take value, like dynamic
+  take place, like number
+  like dynamic
+  case node
+    text <$value[$place]>
+
+bind admission-member
+  take value, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$value[$key]>
+
+bind admission-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value)>
+
+# the keys a walk over a compiled node follows: all of them but its span and its type
+bind admission-walked-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value).filter((admissionKey) =\> admissionKey !== "span" && admissionKey !== "type")>
+
+bind admission-map-size
+  take value, like dynamic
+  like number
+  case node
+    text <$value.size>
+
+bind admission-map-entries
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$value]>
+
+bind admission-map-has
+  take value, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$value.has($key)>
+
+bind admission-map-get
+  take value, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$value.get($key)>
+
+bind admission-is-integer-node
+  take node, like dynamic
+  like boolean
+  case node
+    text <($node.form === "integer" && typeof $node.value === "number")>
+
+# a comparison or sum the mutants flip; `flips[op]` read as the original read it
+bind admission-is-flippable
+  take node, like dynamic
+  like boolean
+  case node
+    text <Boolean($node.form === "binary" && $node.op && (\{ "\<": "\<=", "\<=": "\<", "\>": "\>=", "\>=": "\>", "==": "!=", "!=": "==", "+": "-", "-": "+" \})[$node.op])>
+
+bind admission-includes
+  take values, like list, like dynamic
+  take value, like dynamic
+  like boolean
+  case node
+    text <$values.includes($value)>
+
+bind admission-path-with
+  take path, like list, like dynamic
+  take key, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$path, $key]>
+
+# one mutant applied to a twin of a fresh compile: the literal one more, or the comparison flipped
+bind admission-apply-site
+  take twin, like dynamic
+  take path, like list, like dynamic
+  take kind, like text
+  like void
+  case node
+    text <((admissionTarget) =\> $kind === "integer" ? (admissionTarget.value += 1) : (admissionTarget.op = (\{ "\<": "\<=", "\<=": "\<", "\>": "\>=", "\>=": "\>", "==": "!=", "!=": "==", "+": "-", "-": "+" \})[admissionTarget.op]))($path.reduce((admissionAt, admissionKey) =\> admissionAt[admissionKey], $twin.body))>
+
+bind admission-camel
+  take name, like text
+  like text
+  case node
+    text <$name.replace(/-([a-z0-9])/g, (admissionAll, admissionLetter) =\> admissionLetter.toUpperCase())>
+
+bind admission-compile
+  take module, like dynamic
+  take file, like text
+  take source, like text
+  take resolve, like dynamic
+  take shared, like dynamic
+  take adjust, like dynamic
+  like dynamic
+  case node
+    text <$module.compile(\{ file: $file, text: $source \}, \{ resolve: $resolve, cache: $shared, exposeTwins: true, ...($adjust ? \{ adjustTwins: $adjust \} : \{\}) \})>
+
+bind admission-built-ok
+  take built, like dynamic
+  like boolean
+  case node
+    text <Boolean($built.ok)>
+
+bind admission-diagnostics-text
+  take built, like dynamic
+  like text
+  case node
+    text <$built.diagnostics.map((admissionOne) =\> admissionOne.message).join(" | ")>
+
+bind admission-module-name
+  take unused, like number
+  like text
+  case node
+    text <`module-$\{Math.random().toString(36).slice(2)\}.ts`>
+
+bind admission-request-name
+  take unused, like number
+  like text
+  case node
+    text <`request-$\{Math.random().toString(36).slice(2)\}.json`>
+
+bind admission-twins-of
+  take built, like dynamic
+  like list, like dynamic
+  case node
+    text <($built.twins ?? [])>
+
+bind admission-nothing
+  take unused, like number
+  like dynamic
+  case node
+    text <undefined>
+
+bind admission-raise-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem.form ?? $problem.name ?? String($problem))>
+
+bind admission-call
+  take function, like dynamic
+  take args, like list, like dynamic
+  like dynamic
+  case node
+    text <$function(...structuredClone($args))>
+
+bind admission-shown-value
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value instanceof Map ? [...$value] : $value)>
+
+bind admission-import
+  take file, like text
+  like dynamic
+  case node
+    text <import(process.getBuiltinModule("node:url").pathToFileURL($file).href)>
+
+bind admission-compared
+  take compared, like number
+  like dynamic
+  case node
+    text <(\{ compared: $compared \})>
+
+bind admission-compared-first
+  take compared, like number
+  take first, like dynamic
+  like dynamic
+  case node
+    text <(\{ compared: $compared, first: $first \})>
+
+bind admission-compared-disagreement
+  take compared, like number
+  take first, like dynamic
+  take small, like dynamic
+  take reference, like text
+  take twin, like text
+  like dynamic
+  case node
+    text <(\{ compared: $compared, first: $first, disagreement: \{ input: $small, reference: $reference, twin: $twin \} \})>
+
+bind admission-own-file
+  take unused, like number
+  like text
+  case node
+    text <process.getBuiltinModule("node:url").fileURLToPath(import.meta.url)>
+
+bind admission-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind admission-request
+  take module, like text
+  take of, like text
+  take label, like text
+  take cases, like list, like dynamic
+  take shrink, like boolean
+  like dynamic
+  case node
+    text <(\{ module: $module, of: $of, label: $label, cases: $cases, shrink: $shrink \})>
+
+bind admission-spawn
+  take runner, like text
+  take request, like text
+  take seconds, like number
+  take folder, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule("node:child_process").spawnSync("npx", ["tsx", $runner, $request], \{ encoding: "utf8", timeout: $seconds * 1000, maxBuffer: 64 * 1024 * 1024, cwd: $folder \})>
+
+# a child's answer: `{ timedOut: true }`, the comparison it printed, or `{ failed }` with its error lines
+bind admission-child-answer
+  take ran, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ if ($ran.error && $ran.error.code === "ETIMEDOUT") return \{ timedOut: true \}; if ($ran.signal) return \{ timedOut: true \}; try \{ return JSON.parse($ran.stdout.trim().split(String.fromCharCode(10)).pop() ?? ""); \} catch \{ return \{ failed: ($ran.stderr || $ran.stdout).split(String.fromCharCode(10)).filter((admissionLine) =\> /Error|error/.test(admissionLine)).slice(0, 3).join(" | ").slice(0, 300) \}; \} \})()>
+
+bind admission-has-key
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <($key in $value)>
+
+bind admission-is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind admission-number-or
+  take value, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($value ?? $fallback)>
+
+bind admission-least
+  take first, like number
+  take second, like dynamic
+  like dynamic
+  case node
+    text <Math.min($first, $second)>
+
+bind admission-new-verdict
+  take task, like text
+  take twin, like text
+  like dynamic
+  case node
+    text <(\{ task: $task, twin: $twin, cases: 0, compared: 0, mutants: \{ built: 0, caught: 0 \}, native: \{\}, admitted: false, reason: "" \})>
+
+bind admission-set
+  take record, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <($record[$key] = $value)>
+
+bind admission-count-mutant
+  take verdict, like dynamic
+  take key, like text
+  like void
+  case node
+    text <$verdict.mutants[$key]++>
+
+bind admission-native-set
+  take verdict, like dynamic
+  take env, like text
+  take value, like text
+  like void
+  case node
+    text <($verdict.native[$env] = $value)>
+
+bind admission-empty
+  take unused, like number
+  like list, like dynamic
+  case node
+    text <[]>
+
+bind admission-scaled
+  take draw, like float
+  take count, like number
+  like number
+  case node
+    text <Math.floor($draw * $count)>
+
+bind admission-half
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Math.trunc($value / 2)>
+
+bind admission-enough
+  take count, like number
+  like dynamic
+  case node
+    text <Math.min(50, $count / 10)>
+
+bind admission-find-function
+  take program, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$program.find((admissionOne) =\> admissionOne.form === "function" && admissionOne.name === $name)>
+
+bind admission-params-of
+  take reference, like dynamic
+  like list, like dynamic
+  case node
+    text <$reference.params>
+
+bind admission-stderr
+  take line, like text
+  like void
+  case node
+    text <process.stderr.write($line)>
+
+bind admission-first-of
+  take items, like list, like dynamic
+  take count, like dynamic
+  like list, like dynamic
+  case node
+    text <$items.slice(0, $count)>
+
+bind admission-native-counts
+  take ran, like dynamic
+  like dynamic
+  case node
+    text <new Map($ran.ok ? [...$ran.out.matchAll(/d(\d+)=(\d+)/g)].map((admissionMatch) =\> [Number(admissionMatch[1]), Number(admissionMatch[2])]) : [])>
+
+bind admission-native-run
+  take run, like dynamic
+  take env, like text
+  take driver, like text
+  like dynamic
+  case node
+    text <$run($env, $driver)>
+
+bind admission-native-disagreement
+  take verdict, like dynamic
+  like dynamic
+  case node
+    text <Object.entries($verdict.native).find(([admissionEnv, admissionValue]) =\> admissionValue.startsWith("DISAGREED"))>
+
+bind admission-repeat
+  take piece, like text
+  take count, like number
+  like text
+  case node
+    text <$piece.repeat($count)>
+
+bind admission-joined
+  take items, like list, like text
+  take separator, like text
+  like text
+  case node
+    text <$items.join($separator)>
+
+bind admission-mkdir
+  take dir, like text
+  like void
+  case node
+    text <process.getBuiltinModule("node:fs").mkdirSync($dir, \{ recursive: true \})>
+
+bind admission-is-ok
+  take ran, like dynamic
+  like boolean
+  case node
+    text <Boolean($ran.ok)>
+
+# a parameter's kind for the native replay: number, list (of numbers), or <> for anything else
+bind admission-replay-kind
+  take param, like dynamic
+  like text
+  case node
+    text <($param.type?.kind === "number" ? "number" : ($param.type?.kind === "array" && $param.type.element.kind === "number") || ($param.type?.kind === "named" && $param.type.name === "list" && $param.type.args?.[0]?.kind === "number") ? "list" : "")>
+
+bind admission-type-kind
+  take type, like dynamic
+  like text
+  case node
+    text <($type?.kind ?? "")>
+
+bind admission-type-element
+  take type, like dynamic
+  like dynamic
+  case node
+    text <$type.element>
+
+bind admission-type-name
+  take type, like dynamic
+  like text
+  case node
+    text <$type.name>
+
+bind admission-type-argument
+  take type, like dynamic
+  like dynamic
+  case node
+    text <$type.args?.[0]>
+
+bind admission-sort-numbers
+  take items, like list, like dynamic
+  like void
+  case node
+    text <$items.sort((admissionA, admissionB) =\> admissionA - admissionB)>
+
+bind admission-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# the module's one compile cache: a mutant differs from the module only after milling, so every module of the stdlib
+# closure is read and milled once, not once per mutant (a 2026-10-02 run took fifteen minutes without it)
+host shared-cache, admission-new-cache(caching-module)
+
+# the cache, for a caller outside this module (a module constant is not exported)
+task compile-cache
+  like dynamic
+
+  back shared-cache
+
+# the task the native replay driver answers through
+task replay-task
+  like text
+
+  back <replay-compute>
+
+# ---- generated inputs ----
+
+# every integer literal in an expression, first seen first: the boundaries a condition draws
+task integers-in
+  take node, like dynamic
+  take into, like list, like dynamic
+  like list, like dynamic
+
+  fork test, admission-is-list(node)
+    hold
+      walk admission-items(node)
+        take one
+        integers-in(one, into)
+      back into
+  fork test, admission-is-record(node)
+    hold
+      fork test, admission-is-integer-node(node)
+        hold
+          host value, admission-member(node, <value>)
+          fork test, not(admission-includes(into, value))
+            hold
+              into/push(value)
+      walk admission-walked-keys(node)
+        take key
+        integers-in(admission-member(node, key), into)
+
+  back into
+
+task refused-generator
+  take refusal, like text
+  like input-generator
+
+  back make(input-generator, bind(kind, <>), bind(near, make list), bind(element, make list), bind(refusal, refusal))
+
+task plain-generator
+  take kind, like text
+  like input-generator
+
+  back make(input-generator, bind(kind, kind), bind(near, make list), bind(element, make list), bind(refusal, <>))
+
+# how inputs of a parameter's type are drawn, or why they cannot be
+task generator-for
+  take type, like dynamic
+  take boundaries, like list, like dynamic
+  like input-generator
+
+  host kind, admission-type-kind(type)
+  fork test, is-equal(kind, <number>)
+    hold
+      host near, make list(0, 1, -1, 2, 3)
+      walk boundaries
+        take boundary
+        near/push(subtract(boundary, 1))
+        near/push(boundary)
+        near/push(add(boundary, 1))
+      back make(input-generator, bind(kind, <number>), bind(near, near), bind(element, make list), bind(refusal, <>))
+  fork test, is-equal(kind, <float>)
+    hold
+      back plain-generator(<float>)
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back plain-generator(<boolean>)
+  fork test, is-equal(kind, <string>)
+    hold
+      back plain-generator(<string>)
+  fork test, is-equal(kind, <array>)
+    hold
+      host item, generator-for(admission-type-element(type), boundaries)
+      fork test, not(is-equal(item/refusal, <>))
+        hold
+          back item
+      back make(input-generator, bind(kind, <array>), bind(near, make list), bind(element, make list(item)), bind(refusal, <>))
+  fork test, is-equal(kind, <named>)
+    hold
+      host name, admission-type-name(type)
+      fork test, is-equal(name, <text>)
+        hold
+          back plain-generator(<string>)
+      fork test, is-equal(name, <boolean>)
+        hold
+          back plain-generator(<boolean>)
+      fork test, is-equal(name, <list>)
+        hold
+          host argument, admission-type-argument(type)
+          fork test, admission-is-truthy(argument)
+            hold
+              host item, generator-for(argument, boundaries)
+              fork test, not(is-equal(item/refusal, <>))
+                hold
+                  back item
+              back make(input-generator, bind(kind, <array>), bind(near, make list), bind(element, make list(item)), bind(refusal, <>))
+      back refused-generator(<no generator for `{name}`>)
+
+  save shown, kind
+  fork test, is-equal(kind, <>)
+    hold
+      save shown, <missing>
+  back refused-generator(<no generator for a {shown} type>)
+
+# one input, drawn in the original's order
+task draw-input
+  take generator, like input-generator
+  take state, like list, like number
+  like dynamic
+
+  host kind, generator/kind
+  fork test, is-equal(kind, <number>)
+    hold
+      host roll, admission-draw(state)
+      fork test, is-below(roll, 0.45)
+        hold
+          host near, generator/near
+          back get(near, admission-scaled(admission-draw(state), near/length))
+      fork test, is-below(roll, 0.9)
+        hold
+          back subtract(admission-floor(multiply(admission-draw(state), 12.0)), 2)
+      back subtract(admission-floor(multiply(admission-draw(state), 2000001.0)), 1000000)
+  fork test, is-equal(kind, <float>)
+    hold
+      host roll, admission-draw(state)
+      fork test, is-below(roll, 0.1)
+        hold
+          back 0
+      fork test, is-below(roll, 0.15)
+        hold
+          back admission-negative-zero(0)
+      fork test, is-below(roll, 0.2)
+        hold
+          back 0.5
+      back multiply(subtract(admission-draw(state), 0.5), 2000.0)
+  fork test, is-equal(kind, <boolean>)
+    hold
+      back is-below(admission-draw(state), 0.5)
+  fork test, is-equal(kind, <string>)
+    hold
+      host length, admission-floor(multiply(admission-draw(state), 5.0))
+      host letters, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, length)
+        hook hold
+          letters/push(admission-letter(admission-floor(multiply(admission-draw(state), 6.0))))
+          save at, add(at, 1)
+      back admission-joined(letters, <>)
+
+  # an array
+  host item, get(generator/element, 0)
+  host roll, admission-draw(state)
+  save length, 0
+  fork test, is-below(roll, 0.12)
+    hold
+      save length, 0
+    miss
+      fork test, is-below(roll, 0.25)
+        hold
+          save length, 1
+        miss
+          save length, admission-floor(multiply(admission-draw(state), 12.0))
+  host items, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, length)
+    hook hold
+      items/push(draw-input(item, state))
+      save at, add(at, 1)
+
+  # a run of duplicates, and a sorted list, are what break code that counts and searches
+  fork test, is-above(length, 2)
+    hold
+      fork test, is-below(admission-draw(state), 0.25)
+        hold
+          admission-set(items, <1>, get(items, 0))
+          admission-set(items, <{subtract(length, 1)}>, get(items, 0))
+  fork test, is-above(length, 1)
+    hold
+      fork test, is-below(admission-draw(state), 0.15)
+        hold
+          admission-sort-numbers(items)
+
+  back items
+
+# ---- comparison, in the child ----
+
+# structural equality as Term means it, with `Object.is` for a float: NaN is NaN, and -0 is not 0
+task same-value
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+
+  fork test, and(admission-is-number(first), admission-is-number(second))
+    hold
+      back admission-same-number(first, second)
+  fork test, admission-identical(first, second)
+    hold
+      back true
+  fork test, and(admission-is-list(first), admission-is-list(second))
+    hold
+      fork test, not(is-equal(admission-length(first), admission-length(second)))
+        hold
+          back false
+      save at, 0
+      walk admission-items(first)
+        take one
+        fork test, not(same-value(one, admission-item(second, at)))
+          hold
+            back false
+        save at, add(at, 1)
+      back true
+  fork test, and(admission-is-map(first), admission-is-map(second))
+    hold
+      fork test, not(is-equal(admission-map-size(first), admission-map-size(second)))
+        hold
+          back false
+      walk admission-map-entries(first)
+        take entry
+        host key, admission-item(entry, 0)
+        fork test, not(admission-map-has(second, key))
+          hold
+            back false
+        fork test, not(same-value(admission-item(entry, 1), admission-map-get(second, key)))
+          hold
+            back false
+      back true
+  fork test, and(admission-is-record(first), admission-is-record(second))
+    hold
+      host keys, admission-keys(first)
+      fork test, not(is-equal(keys/length, admission-keys(second)/length))
+        hold
+          back false
+      walk keys
+        take key
+        fork test, not(same-value(admission-member(first, key), admission-member(second, key)))
+          hold
+            back false
+      back true
+
+  back false
+
+# what calling `function` on a copy of `args` does
+task outcome-of
+  take function, like dynamic
+  take args, like list, like dynamic
+  like call-outcome
+
+  fork
+    mark unsafe
+    host value, admission-call(function, args)
+    back make(call-outcome, bind(raised, false), bind(value, value), bind(raise, <>))
+  halt take
+    take problem
+    back make(call-outcome, bind(raised, true), bind(value, admission-nothing(0)), bind(raise, admission-raise-of(problem)))
+
+task outcomes-agree
+  take first, like call-outcome
+  take second, like call-outcome
+  like boolean
+
+  fork test, and(not(first/raised), not(second/raised))
+    hold
+      back same-value(first/value, second/value)
+  fork test, and(first/raised, second/raised)
+    hold
+      back is-equal(first/raise, second/raise)
+  back false
+
+task shown-outcome
+  take outcome, like call-outcome
+  like text
+
+  fork test, outcome/raised
+    hold
+      back <raises {outcome/raise}>
+  back admission-shown-value(outcome/value)
+
+# whether the twin's conditions hold on `args`
+task conditions-hold
+  take functions, like compared-functions
+  take args, like list, like dynamic
+  like boolean
+
+  host admitted, outcome-of(functions/guard, args)
+  back and(not(admitted/raised), admission-identical(admitted/value, true))
+
+task disagrees-on
+  take functions, like compared-functions
+  take args, like list, like dynamic
+  like boolean
+
+  fork test, not(conditions-hold(functions, args))
+    hold
+      back false
+  back not(outcomes-agree(outcome-of(functions/reference, args), outcome-of(functions/alternative, args)))
+
+# smaller inputs first: drop a list item, then move a number toward zero, while the disagreement still holds
+task shrink-input
+  take input, like list, like dynamic
+  take functions, like compared-functions
+  like list, like dynamic
+
+  save best, input
+  save progress, true
+  walk test
+    hook test, progress
+    hook hold
+      save progress, false
+      save p, 0
+      walk test
+        hook test, and(is-below(p, best/length), not(progress))
+        hook hold
+          host value, get(best, p)
+          host candidates, admission-empty(0)
+          fork test, admission-is-list(value)
+            hold
+              host items, admission-items(value)
+              save i, 0
+              walk test
+                hook test, is-below(i, items/length)
+                hook hold
+                  host fewer, make list
+                  save j, 0
+                  walk items
+                    take one
+                    fork test, not(is-equal(j, i))
+                      hold
+                        fewer/push(one)
+                    save j, add(j, 1)
+                  candidates/push(fewer)
+                  save i, add(i, 1)
+              save i, 0
+              walk items
+                take one
+                fork test, and(admission-is-number(one), not(admission-identical(one, 0)))
+                  hold
+                    walk make list(0, admission-half(one), subtract(one, admission-sign(one)))
+                      take smaller
+                      host changed, make list
+                      save j, 0
+                      walk items
+                        take other
+                        fork test, is-equal(j, i)
+                          hold
+                            changed/push(smaller)
+                          miss
+                            changed/push(other)
+                        save j, add(j, 1)
+                      candidates/push(changed)
+                save i, add(i, 1)
+            miss
+              fork test, and(admission-is-number(value), not(admission-identical(value, 0)))
+                hold
+                  candidates/push(0)
+                  candidates/push(admission-half(value))
+                  candidates/push(subtract(value, admission-sign(value)))
+
+          walk candidates
+            take candidate
+            host next, make list
+            save k, 0
+            walk best
+              take one
+              fork test, is-equal(k, p)
+                hold
+                  next/push(candidate)
+                miss
+                  next/push(one)
+              save k, add(k, 1)
+            fork test, disagrees-on(functions, next)
+              hold
+                save best, next
+                save progress, true
+                halt
+          save p, add(p, 1)
+
+  back best
+
+# compare a built twin with its task on `cases`, wherever the twin's conditions hold, and shrink the first
+# disagreement when asked. Runs in the CHILD process (`compare-in-child`), never in the one that called admit
+task compare-module
+  take ask, like dynamic
+  like dynamic
+  mark async
+
+  host loaded, wait admission-import(admission-text-of(admission-member(ask, <module>)))
+  host of, admission-text-of(admission-member(ask, <of>))
+  host label, admission-text-of(admission-member(ask, <label>))
+  host functions
+    make compared-functions
+      bind reference, admission-member(loaded, admission-camel(of))
+      bind alternative, admission-member(loaded, admission-camel(twin-naming/twin-task(of, label)))
+      bind guard, admission-member(loaded, admission-camel(twin-naming/guard-task(of, label)))
+  save compared, 0
+
+  walk admission-items(admission-member(ask, <cases>))
+    take args
+    fork test, not(conditions-hold(functions, args))
+      hold
+        turn next
+    save compared, add(compared, 1)
+    fork test, disagrees-on(functions, args)
+      hold
+        fork test, not(admission-is-truthy(admission-member(ask, <shrink>)))
+          hold
+            back admission-compared-first(compared, args)
+        host small, shrink-input(args, functions)
+        host reference, shown-outcome(outcome-of(functions/reference, small))
+        host twin, shown-outcome(outcome-of(functions/alternative, small))
+        back admission-compared-disagreement(compared, args, small, reference, twin)
+
+  back admission-compared(compared)
+
+# run `compare-module` in a child process with a time limit. One that does not finish in time is reported as such: a
+# twin, or a mutant, that never returns where its task returns is a wrong answer, never a pass
+task compare-in-child
+  take dir, like text
+  take request, like dynamic
+  take seconds, like dynamic
+  like dynamic
+
+  # `.mts`: an ES module whatever the directory around it says, so its top-level `await` runs
+  host runner, admission-path/join(dir, <compare-runner.mts>)
+  host request-file, admission-path/join(dir, admission-request-name(0))
+  host own, admission-own-file(0)
+  admission-fs/write-file-sync(runner, <import \{ readFileSync \} from 'node:fs'\nimport \{ compareModule \} from {admission-json(own)}\nconst result = await compareModule(JSON.parse(readFileSync(process.argv[2]!, 'utf8')))\nprocess.stdout.write(JSON.stringify(result))\n>)
+  admission-fs/write-file-sync(request-file, admission-json(request))
+
+  host ran, admission-spawn(runner, request-file, seconds, admission-path/join(own, <../../../../../..>))
+  back admission-child-answer(ran)
+
+# build the module with its twins exposed, and write its TypeScript where a child process can load it
+task build-exposed
+  take source, like dynamic
+  take resolve, like dynamic
+  take dir, like text
+  take adjust, like dynamic
+  like admission-build
+
+  host built, admission-compile(compiling-module, admission-text-of(admission-member(source, <file>)), admission-text-of(admission-member(source, <text>)), resolve, shared-cache, adjust)
+  fork test, not(admission-built-ok(built))
+    hold
+      back make(admission-build, bind(built, false), bind(problem, admission-diagnostics-text(built)), bind(module, <>), bind(program, admission-nothing(0)), bind(twins, make list))
+
+  host module, admission-path/join(dir, admission-module-name(0))
+  admission-fs/write-file-sync(module, admission-member(built, <typescript>))
+  back make(admission-build, bind(built, true), bind(problem, <>), bind(module, module), bind(program, admission-member(built, <program>)), bind(twins, admission-twins-of(built)))
+
+# the mutants of a twin: each integer literal off by one, each comparison flipped, each `+` a `-`, at most 24. A
+# mutant that happens to mean the same thing is not caught, which is why admission asks for at least one caught
+task mutant-sites
+  take node, like dynamic
+  take path, like list, like dynamic
+  take sites, like list, like mutant-site
+  like list, like mutant-site
+
+  fork test, admission-is-list(node)
+    hold
+      save at, 0
+      walk admission-items(node)
+        take one
+        mutant-sites(one, admission-path-with(path, at), sites)
+        save at, add(at, 1)
+      back sites
+  fork test, not(admission-is-record(node))
+    hold
+      back sites
+
+  fork test, and(admission-is-integer-node(node), is-below(sites/length, 24))
+    hold
+      sites/push(make(mutant-site, bind(path, path), bind(kind, <integer>)))
+  fork test, and(admission-is-flippable(node), is-below(sites/length, 24))
+    hold
+      sites/push(make(mutant-site, bind(path, path), bind(kind, <binary>)))
+
+  walk admission-walked-keys(node)
+    take key
+    mutant-sites(admission-member(node, key), admission-path-with(path, key), sites)
+
+  back sites
+
+# the twins of a fresh compile, with one mutant applied to the twin it was made from
+task mutated-twins
+  take twins, like list, like dynamic
+  take of, like text
+  take name, like text
+  take site, like mutant-site
+  like list, like dynamic
+
+  walk twins
+    take one
+    fork test, and(admission-identical(admission-member(one, <of>), of), admission-identical(admission-member(one, <name>), name))
+      hold
+        admission-apply-site(one, site/path, site/kind)
+  back twins
+
+# A JavaScript value as the Term that builds it, for a disagreement a person pastes into a test
+task literal-of
+  take value, like dynamic
+  like text
+
+  fork test, admission-is-list(value)
+    hold
+      host parts, make list
+      walk admission-items(value)
+        take one
+        parts/push(literal-of(one))
+      back <[{admission-joined(parts, <, >)}]>
+  fork test, admission-identical(admission-type-of(value), <string>)
+    hold
+      back <text \<{admission-text-of(value)}\>>
+  back admission-string-of(value)
+
+bind admission-type-of
+  take value, like dynamic
+  like text
+  case node
+    text <typeof $value>
+
+bind admission-string-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+task literal-of-input
+  take input, like list, like dynamic
+  like text
+
+  host parts, make list
+  walk input
+    take one
+    parts/push(literal-of(one))
+  back admission-joined(parts, <, >)
+
+bind admission-disagreement
+  take result, like dynamic
+  take literal, like text
+  like dynamic
+  case node
+    text <(\{ ...$result.disagreement, literal: $literal \})>
+
+bind admission-pending
+  take verdict, like dynamic
+  take twin, like dynamic
+  take reference, like dynamic
+  take cases, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ verdict: $verdict, twin: $twin, reference: $reference, cases: $cases \})>
+
+bind admission-failed
+  take reason, like text
+  like dynamic
+  case node
+    text <(\{ ok: false, reason: $reason \})>
+
+bind admission-passed
+  take verdicts, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ ok: true, verdicts: $verdicts \})>
+
+# Admit each twin of a module, or refuse it with the reason
+task admit
+  take ask, like dynamic
+  like dynamic
+  mark async
+
+  host source, admission-member(ask, <source>)
+  host resolve, admission-member(ask, <resolve>)
+  host dir, admission-text-of(admission-member(ask, <dir>))
+  host native-run, admission-member(ask, <nativeRun>)
+  admission-mkdir(dir)
+
+  host loaded, build-exposed(source, resolve, dir, admission-nothing(0))
+  fork test, not(loaded/built)
+    hold
+      back admission-failed(<the module does not build: {loaded/problem}>)
+
+  host verdicts, make list
+  host count, admission-number-or(admission-member(ask, <cases>), 2000)
+  host limit, admission-number-or(admission-member(ask, <limit>), 120)
+  host native-count, admission-number-or(admission-member(ask, <native>), 40)
+  host pending, make list
+
+  walk loaded/twins
+    take twin
+    # a test twin stands in for a task in a test and is not claimed equivalent: nothing to compare (mocks spec 2.1)
+    fork test, admission-is-truthy(twin-checking/is-test-twin(twin))
+      hold
+        turn next
+
+    host of, admission-text-of(admission-member(twin, <of>))
+    host name, admission-text-of(admission-member(twin, <name>))
+    host reference, admission-find-function(loaded/program, of)
+    host verdict, admission-new-verdict(of, name)
+    verdicts/push(verdict)
+
+    fork test, not(admission-is-truthy(reference))
+      hold
+        admission-set(verdict, <reason>, <`{of}` is not in the build>)
+        turn next
+
+    host conditions, make list(admission-member(twin, <have>), admission-member(twin, <test>))
+    host first-seen, admission-empty(0)
+    host boundaries, integers-in(conditions, first-seen)
+    host generators, make list
+    save missing, <>
+    walk admission-params-of(reference)
+      take param
+      host generator, generator-for(admission-member(param, <type>), boundaries)
+      generators/push(generator)
+      fork test, and(is-equal(missing, <>), not(is-equal(generator/refusal, <>)))
+        hold
+          save missing, generator/refusal
+    fork test, not(is-equal(missing, <>))
+      hold
+        admission-set(verdict, <reason>, <cannot generate inputs: {missing}>)
+        turn next
+
+    host state, admission-seed-state(admission-number-or(admission-member(ask, <seed>), 20261002))
+    host inputs, make list
+    save drawn, 0
+    walk test
+      hook test, is-below(drawn, count)
+      hook hold
+        host args, make list
+        walk generators
+          take generator
+          args/push(draw-input(generator, state))
+        inputs/push(args)
+        save drawn, add(drawn, 1)
+    admission-set(verdict, <cases>, inputs/length)
+
+    admission-stderr(<admit: {of}/{name}: comparing {inputs/length} inputs\n>)
+
+    host result, compare-in-child(dir, admission-request(loaded/module, of, name, inputs, true), limit)
+    fork test, admission-has-key(result, <timedOut>)
+      hold
+        admission-set(verdict, <reason>, <did not finish comparing in {limit} s: a twin that never returns where its task does is a wrong answer>)
+        turn next
+    fork test, admission-has-key(result, <failed>)
+      hold
+        admission-set(verdict, <reason>, <the comparison could not run: {admission-text-of(admission-member(result, <failed>))}>)
+        turn next
+
+    host compared, admission-member(result, <compared>)
+    admission-set(verdict, <compared>, compared)
+
+    fork test, admission-is-truthy(admission-member(result, <disagreement>))
+      hold
+        host disagreement, admission-disagreement(result, literal-of-input(admission-items(admission-member(admission-member(result, <disagreement>), <input>))))
+        admission-set(verdict, <disagreement>, disagreement)
+        admission-set(verdict, <reason>, <disagrees on {admission-text-of(admission-member(disagreement, <literal>))}: `{of}` gives {admission-text-of(admission-member(disagreement, <reference>))}, `{name}` gives {admission-text-of(admission-member(disagreement, <twin>))}>)
+        turn next
+
+    host enough, admission-enough(count)
+    fork test, admission-is-below(compared, enough)
+      hold
+        admission-set(verdict, <reason>, <only {compared} of {count} generated inputs met the twin's conditions, too few to be evidence>)
+        turn next
+
+    # the mutants: a comparison that cannot catch a wrong twin proves nothing. One that never returns is caught
+    host no-path, admission-empty(0)
+    host no-sites, make list
+    host every-site, mutant-sites(admission-member(twin, <body>), no-path, no-sites)
+    host sites, admission-first-of(every-site, admission-number-or(admission-member(ask, <mutants>), 8))
+    admission-stderr(<admit: {of}/{name}: {sites/length} mutants\n>)
+
+    walk sites
+      take site
+      save adjust
+        task
+          take twins, like list, like dynamic
+          like list, like dynamic
+          back mutated-twins(twins, of, name, site)
+      host mutant, build-exposed(source, resolve, dir, adjust)
+      fork test, not(mutant/built)
+        hold
+          turn next
+      admission-count-mutant(verdict, <built>)
+      host judged, compare-in-child(dir, admission-request(mutant/module, of, name, inputs, false), admission-least(limit, 30))
+      fork test, or(admission-has-key(judged, <timedOut>), and(admission-has-key(judged, <first>), admission-is-truthy(admission-member(judged, <first>))))
+        hold
+          admission-count-mutant(verdict, <caught>)
+
+    host mutants, admission-member(verdict, <mutants>)
+    host built-count, admission-number-or(admission-member(mutants, <built>), 0)
+    fork test, and(is-above(built-count, 0), is-equal(admission-number-or(admission-member(mutants, <caught>), 0), 0))
+      hold
+        admission-set(verdict, <reason>, <none of {built-count} deliberately wrong copies of the twin was caught, so agreement here is not evidence>)
+        turn next
+
+    # replayed natively below, with every other twin of the module, in one build per toolchain
+    fork test, and(admission-is-truthy(native-run), is-above(native-count, 0))
+      hold
+        pending/push(admission-pending(verdict, twin, reference, admission-first-of(inputs, native-count)))
+
+    admission-set(verdict, <admitted>, true)
+    admission-set(verdict, <reason>, <agreed on {compared} of {inputs/length} inputs that met its conditions, caught {admission-member(mutants, <caught>)} of {built-count} mutants>)
+
+  # the native replay: every twin still admitted, the same inputs, ONE build per toolchain
+  host replaying, make list
+  walk pending
+    take one
+    fork test, admission-is-truthy(admission-member(admission-member(one, <verdict>), <admitted>))
+      hold
+        replaying/push(one)
+
+  fork test, and(admission-is-truthy(native-run), is-above(replaying/length, 0))
+    hold
+      host driver, native-driver(admission-text-of(admission-member(source, <text>)), replaying)
+      walk make list(<rust>, <swift>, <kotlin>)
+        take env
+        fork test, admission-starts-with-nul(driver)
+          hold
+            walk replaying
+              take one
+              admission-native-set(admission-member(one, <verdict>), env, <not replayed: {admission-after-first(driver)}>)
+            turn next
+
+        admission-stderr(<admit: replaying {replaying/length} twin(s) on {env}\n>)
+        host ran, admission-native-run(native-run, env, driver)
+        host counts, admission-native-counts(ran)
+        save at, 0
+        walk replaying
+          take one
+          host replay-cases, admission-length(admission-member(one, <cases>))
+          host one-verdict, admission-member(one, <verdict>)
+          fork test, not(admission-is-ok(ran))
+            hold
+              admission-native-set(one-verdict, env, <not replayed: {admission-text-of(admission-member(ran, <why>))}>)
+            miss
+              host disagreed, admission-map-get(counts, at)
+              fork test, admission-identical(disagreed, 0)
+                hold
+                  admission-native-set(one-verdict, env, <agreed on {replay-cases}>)
+                miss
+                  admission-native-set(one-verdict, env, <DISAGREED on {admission-or-question(disagreed)} of {replay-cases}>)
+          save at, add(at, 1)
+
+      walk replaying
+        take one
+        host one-verdict, admission-member(one, <verdict>)
+        host native, admission-native-disagreement(one-verdict)
+        fork test, admission-is-truthy(native)
+          hold
+            admission-set(one-verdict, <admitted>, false)
+            admission-set(one-verdict, <reason>, <agrees in TypeScript and not on {admission-text-of(admission-item(native, 0))}: {admission-text-of(admission-item(native, 1))}>)
+
+  back admission-passed(verdicts)
+
+bind admission-is-below
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+  case node
+    text <($first \< $second)>
+
+bind admission-starts-with-nul
+  take text, like text
+  like boolean
+  case node
+    text <$text.startsWith(String.fromCharCode(0))>
+
+bind admission-after-first
+  take text, like text
+  like text
+  case node
+    text <$text.slice(1)>
+
+bind admission-or-question
+  take value, like dynamic
+  like text
+  case node
+    text <String($value ?? "?")>
+
+bind admission-nul
+  take unused, like number
+  like text
+  case node
+    text <String.fromCharCode(0)>
+
+# a call of `task` on one case's values, its first line at `depth` spaces
+task replay-call
+  take task, like text
+  take depth, like number
+  take values, like list, like text
+  like list, like text
+
+  host lines, make list(<{admission-repeat(< >, depth)}call {task}>)
+  walk values
+    take value
+    lines/push(<{admission-repeat(< >, add(depth, 2))}read {value}>)
+  back lines
+
+# A Term program that replays `cases` on a native backend: the module's own text, plus a `compute` task that runs the
+# twin and its task on each case where the twin's conditions hold and prints how many disagreed. Lists of numbers and
+# numbers only: anything else is not replayed natively, and says so (a NUL, then why)
+task native-driver
+  take module, like text
+  take entries, like list, like dynamic
+  like text
+
+  # each case is a task of its own answering 1 when the twin's conditions hold and the two disagree, else 0: a few
+  # lines each, so the checker's work stays proportional to the cases rather than to their square
+  host tasks, make list
+  host sums, make list
+  save k, 0
+  walk entries
+    take entry
+    host twin, admission-member(entry, <twin>)
+    host of, admission-text-of(admission-member(twin, <of>))
+    host label, admission-text-of(admission-member(twin, <name>))
+    host kinds, make list
+    walk admission-params-of(admission-member(entry, <reference>))
+      take param
+      kinds/push(admission-replay-kind(param))
+    walk kinds
+      take kind
+      fork test, is-equal(kind, <>)
+        hold
+          back <{admission-nul(0)}the native replay covers numbers and lists of numbers>
+
+    host names, make list
+    save i, 0
+    walk admission-items(admission-member(entry, <cases>))
+      take args
+      host name, <replay-{k}-{i}>
+      names/push(name)
+      host values, make list
+      host arguments, admission-items(args)
+      save p, 0
+      walk arguments
+        take one
+        values/push(<a{p}>)
+        save p, add(p, 1)
+      host lines, make list(<task {name}>, <  like number>)
+      save p, 0
+      walk arguments
+        take value
+        fork test, is-equal(get(kinds, p), <number>)
+          hold
+            lines/push(<  host {get(values, p)}, code {admission-string-of(value)}>)
+          miss
+            lines/push(<  save {get(values, p)}>)
+            lines/push(<    make list>)
+            walk admission-items(value)
+              take item
+              lines/push(<  call push>)
+              lines/push(<    bind list, read {get(values, p)}>)
+              lines/push(<    bind item, code {admission-string-of(item)}>)
+        save p, add(p, 1)
+
+      lines/push(<  fork test>)
+      lines/push(<    hook test>)
+      walk replay-call(twin-naming/guard-task(of, label), 6, values)
+        take line
+        lines/push(line)
+      lines/push(<    hook hold>)
+      lines/push(<      fork test>)
+      lines/push(<        hook test>)
+      lines/push(<          call is-unequal>)
+      walk replay-call(of, 12, values)
+        take line
+        lines/push(line)
+      walk replay-call(twin-naming/twin-task(of, label), 12, values)
+        take line
+        lines/push(line)
+      lines/push(<        hook hold>)
+      lines/push(<          send back, code 1>)
+      lines/push(<  send back, code 0>)
+      tasks/push(admission-joined(lines, <\n>))
+      save i, add(i, 1)
+
+    sums/push(<  save d{k}, code 0>)
+    walk names
+      take name
+      sums/push(<  save d{k}>)
+      sums/push(<    call add>)
+      sums/push(<      read d{k}>)
+      sums/push(<      call {name}>)
+    save k, add(k, 1)
+
+  host shown, make list
+  save at, 0
+  walk entries
+    take entry
+    shown/push(<d{at}=\{\{d{at}\}\}>)
+    save at, add(at, 1)
+  host main, make list(<task {replay-task()}>, <  like text>)
+  walk sums
+    take sum
+    main/push(sum)
+  main/push(<  send back, text \<{admission-joined(shown, < >)}\>>)
+
+  back <{module}\n{admission-joined(tasks, <\n\n>)}\n\n{admission-joined(main, <\n>)}\n>

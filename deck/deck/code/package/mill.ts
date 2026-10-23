@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/mill.ts had, with
-// their shapes, answered by deck/deck/code/package/grammar-reading.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/grammar-reading.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { DeckManifest, Lockfile, RoleConfig } from '@term/deck/code/form'
 import * as grammarReading from '@term/deck/code/package/grammar-reading'
 import { GRAMMARS, refusedNow } from './grammars'
 import { code, fromPort } from './manifest'
-
 
 export function parseManifestMill(input: { text: string }): DeckManifest {
   return fromPort(refusedNow(() => grammarReading.parseManifestMill(input.text, GRAMMARS)) as never)

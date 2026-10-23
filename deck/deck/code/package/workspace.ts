@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/workspace.ts had, with
-// their shapes, answered by deck/deck/code/package/workspace-finding.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/workspace-finding.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { DeckManifest } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/workspace-finding'
 import { GRAMMARS, refused } from './grammars'
 import { fromPort } from './manifest'
-
 
 export type Workspace = DeckManifest & { dir: string }
 

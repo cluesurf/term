@@ -1,0 +1,18 @@
+# One compiler-fuzzing campaign, as a standalone child-process entry, for running from SOURCE: compiler-hunt.tree
+# spawns this module's emitted port, the sibling of its own, under tsx. The built CLI does not use it: it carries
+# `run-fuzz-campaign` in its own bundle and forks itself, because a file beside the running module does not exist
+# inside host/line.js.
+#
+# Usage (spawned, not run by hand): tsx fuzz-entry.ts <report-out> <probe-file> <runs> <seed> [<corpus.json>] [<budget>]
+#
+# Ported from deck/test/code/fuzz-campaign.ts (term-cli-in-term-0110), which compiler-fuzz.ts's original ran.
+
+load ./compiler-fuzzing
+  find run-fuzz-campaign
+
+bind campaign-arguments
+  like list, like text
+  case node
+    text <process.argv.slice(2)>
+
+host campaign-report, run-fuzz-campaign(campaign-arguments())

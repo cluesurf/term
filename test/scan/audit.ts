@@ -4,10 +4,18 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
-import { runScan } from '@term/scan/code/scan'
-import { localDatabaseSource } from '@term/scan/code/advisory'
-import { planUpgrades, applyUpgrades } from '@term/scan/code/fix'
-import type { DependencyFinding } from '@term/scan/code/form'
+// On the Term ports of @term/scan since term-cli-in-term-0116: positional parameters, a left-out flag passed as
+// undefined (the port reads it as the original's default did).
+import { runScan } from '@term/scan/code/scan-running'
+import { localDatabaseSource } from '@term/scan/code/advisory-sources'
+import { planUpgrades, applyUpgrades } from '@term/scan/code/upgrade-fixing'
+
+type DependencyFinding = {
+  kind: 'dependency'
+  node: { name: string; version: string; direct: boolean }
+  severity: string
+  fixVersion?: string
+}
 
 let pass = 0
 let fail = 0
@@ -87,12 +95,7 @@ async function main(): Promise<void> {
   )
 
   // scan with ONLY the local advisory source (no network), plus the code scan
-  const result = await runScan({
-    root,
-    deps: true,
-    code: true,
-    sources: [localDatabaseSource(path.join(root, 'advisory'), 'term')],
-  })
+  const result = await runScan(root, true, true, [localDatabaseSource(path.join(root, 'advisory'), 'term')], undefined, undefined)
 
   ok(result.dependencyCount === 2, 'reads both locked dependencies', `got ${result.dependencyCount}`)
 
@@ -125,7 +128,7 @@ async function main(): Promise<void> {
 
   // the fixer rewrites the manifest to the safe version
   const upgrades = planUpgrades(depFindings)
-  const applied = await applyUpgrades({ root, upgrades, write: true })
+  const applied = await applyUpgrades(root, upgrades, true)
   ok(applied.applied.length === 1, 'applies one upgrade')
 
   const rewritten = await fsp.readFile(path.join(root, 'deck.tree'), 'utf-8')
@@ -139,12 +142,7 @@ async function main(): Promise<void> {
   // post-install state by bumping the lock too and re-scanning)
   const fixedLock = LOCKFILE.replace('code <1.1.0>', 'code <1.3.0>')
   await fsp.writeFile(path.join(root, 'lock.tree'), fixedLock)
-  const after = await runScan({
-    root,
-    deps: true,
-    code: false,
-    sources: [localDatabaseSource(path.join(root, 'advisory'), 'term')],
-  })
+  const after = await runScan(root, true, false, [localDatabaseSource(path.join(root, 'advisory'), 'term')], undefined, undefined)
   ok(
     after.findings.filter(f => f.kind === 'dependency').length === 0,
     'no dependency findings after upgrading to the fixed version',

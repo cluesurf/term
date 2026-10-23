@@ -1,10 +1,10 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/install.ts had, with
-// their shapes, answered by deck/deck/code/package/installing.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/installing.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { DeckManifest } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/installing'
 import { GRAMMARS, refused } from './grammars'
 import { portManifest } from './manifest'
-
 
 export async function install(input: { root: string; clean?: boolean; offline?: boolean }): Promise<{ decks: number; need?: unknown }> {
   return (await refused(() => port.install(input.root, input.clean ?? false, input.offline ?? false, GRAMMARS))) as never

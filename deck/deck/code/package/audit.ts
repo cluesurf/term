@@ -1,9 +1,9 @@
 // A FACE (term-cli-in-term-0115, INTEGRATE @term/deck): the exports deck/deck/code/audit.ts had, with
-// their shapes, answered by deck/deck/code/package/advisory-audit.tree. The logic is Term; this file only converts shapes for TypeScript callers.
+// their shapes, answered by deck/deck/code/package/advisory-audit.tree.
+// The logic is Term; this file only converts shapes for TypeScript callers.
 import type { FetchConfig } from '@term/deck/code/form'
 import * as port from '@term/deck/code/package/advisory-audit'
 import { GRAMMARS, refused } from './grammars'
-
 
 export type Advisory = { name: string; version: string; severity: string; title: string; url: string; vulnerableRange: string }
 export type AuditResult = { advisories: Advisory[]; bySeverity: Record<string, number>; packageCount: number; available: boolean }

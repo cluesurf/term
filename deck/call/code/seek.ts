@@ -4,10 +4,11 @@
 
 import { verifyInstall } from '@cluesurf/deck.tree'
 import fsp from 'fs/promises'
-import { runScan, failsThreshold } from '@term/scan/code/scan'
-import { toJson } from '@term/scan/code/report'
-import { toSarifJson } from '@term/scan/code/sarif'
-import { planUpgrades, applyUpgrades } from '@term/scan/code/fix'
+// the Term ports of @term/scan (term-cli-in-term-0116): positional parameters, a left-out one passed as undefined
+import { runScan, failsThreshold } from '@term/scan/code/scan-running'
+import { toJson } from '@term/scan/code/scan-reporting'
+import { toSarifJson } from '@term/scan/code/sarif-writing'
+import { planUpgrades, applyUpgrades } from '@term/scan/code/upgrade-fixing'
 import { closeRun, count, failRun, field, location, openRun, printData, report } from '@term/call/code/output'
 
 type ScanResult = Awaited<ReturnType<typeof runScan>>
@@ -78,11 +79,7 @@ async function runAudit(input: {
   openRun({ verb: 'seek', root: input.root, facts: ['--audit', ...(input.code ? ['--code'] : [])] })
 
   try {
-    const result = await runScan({
-      root: input.root,
-      deps: true,
-      code: input.code ?? false,
-    })
+    const result = await runScan(input.root, true, input.code ?? false, undefined, undefined, undefined)
 
     // write a SARIF file for GitHub code scanning when asked, regardless of the console format
     if (input.sarif) {
@@ -176,7 +173,7 @@ async function applyFixes(root: string, result: ScanResult): Promise<void> {
     return
   }
 
-  const { applied } = await applyUpgrades({ root, upgrades, write: true })
+  const { applied } = await applyUpgrades(root, upgrades, true)
 
   if (applied.length === 0) {
     report({ glyph: 'warning', verb: 'fix', subject: 'Upgrades were computed but no manifest line matched, so nothing was written' })
