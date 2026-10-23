@@ -13,6 +13,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
 import { BACKENDS, runOn } from './shared/run-on'
+import type { Ran } from './shared/run-on'
 
 let pass = 0
 let fail = 0
@@ -179,6 +180,78 @@ if (!only || only === 'typescript') {
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
   ok('a text passed where the mask declares a number is refused', !wrong.ok && wrong.diagnostics.some(d => d.message.includes('expected number, found text')), wrong.ok ? 'compiled' : wrong.diagnostics.map(d => d.message).join(' | '))
+}
+
+// the product of a mask's task, RUN past i64 on each native backend (term-compiler-0019, gap 113). `side` is 2^62, which
+// fits an i64, so `measure` alone answers it; `twice` doubles it through the mask to 2^63, and the program stops with
+// excess there, as a plain multiply does. On TypeScript 2^62 is already past 2^53 where `side` is made, so the stop
+// comes before the mask and TypeScript's proof is the emitted check above
+const PAST = (body: string): string => `mask measurer
+  task measure
+    take self
+
+    like number
+
+form box
+  link side, like number
+
+suit box
+  wear measurer
+    task measure
+      take self
+
+      like number
+
+      back self/side
+
+task twice
+  head t, need measurer
+  take x, like t
+
+  like number
+
+  back multiply(measure(x), 2)
+
+task plain
+  take n, like number
+
+  like number
+
+  # two statements, so the simplifier keeps the task and swiftc cannot fold the product at the call
+  save doubled, multiply(n, 2)
+  back doubled
+
+task run
+  like text
+
+  save big, multiply(2147483648, 2147483648)
+  save b, make box, bind side, big
+  back <{${body}}>
+`
+
+for (const backend of BACKENDS.filter(b => b !== 'typescript' && (!only || b === only))) {
+  const within = runOn({ backend, program: PAST('measure(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-within' })
+
+  if (within.form === 'skipped') {
+    console.log(`skip  ${backend} range run: ${within.reason}`)
+    continue
+  }
+
+  ok(`${backend}: a mask task answers 2^62 unchanged`, within.form === 'ran' && within.output === '4611686018427387904', within.form === 'ran' ? `got ${JSON.stringify(within.output)}` : `${within.stage}: ${within.reason}`)
+
+  // the plain product of the same value, beside it: Rust and Kotlin stop with excess, Swift's `*` traps (number.ts),
+  // and the product through the mask must stop exactly as the plain one does
+  const stopOf = (ran: Ran): string =>
+    ran.form !== 'failed' || ran.stage !== 'run' ? 'no stop' : /excess/i.test(ran.reason) ? 'excess' : /^exit null/.test(ran.reason) ? 'trap' : 'other'
+  const plain = runOn({ backend, program: PAST('plain(big)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-plain' })
+  const past = runOn({ backend, program: PAST('twice(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-past' })
+  const wanted = backend === 'swift' ? 'trap' : 'excess'
+  ok(`${backend}: a plain multiply to 2^63 stops (${wanted})`, stopOf(plain) === wanted, plain.form === 'ran' ? `ran and printed ${JSON.stringify(plain.output)}` : `${plain.stage}: ${plain.reason}`)
+  ok(
+    `${backend}: twice through the mask, 2^63, stops as the plain multiply does (${wanted})`,
+    stopOf(past) === wanted,
+    past.form === 'ran' ? `ran and printed ${JSON.stringify(past.output)}` : `${past.stage}: ${past.reason}`,
+  )
 }
 
 console.log(`\nmask-native: ${pass} pass, ${fail} fail`)

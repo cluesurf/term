@@ -42,6 +42,7 @@ import {
   listFacts,
   borrowedRecords,
   borrowedTexts,
+  inspectFormsOf,
 } from '@term/make/code/compile/backend'
 import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import { privateForms } from '@term/make/code/compile/place'
@@ -808,6 +809,8 @@ function emitRustPass(
     implFn: implFn as never,
     raising: flagsOf(raising),
     recordFields: recordFields as never,
+    inspectForms: inspectFormsOf(program) as never,
+    inspectWalkers: new Map<string, string>(),
     exceptionForms: flagsOf(exceptionForms),
     nativeAliases: flagsOf(nativeAliases),
     functionParams: new Map([...functionParams].map(([name, params]) => [name, params.map(p => boxed(p))])) as never,
@@ -1019,7 +1022,8 @@ function emitRustPass(
       reuseBuilt: [...st.reuseBuilt],
       boxedForms: [...boxedForms],
       payloads: [...payloads].map(([key, name]) => ({ key, name })),
-      formWalk: rustFormWalk(st.fillSpecs, st.meltSpecs),
+      // and the walkers a lowered `inspect` wrote, one per form it met (term/base-v1 decision 001)
+      formWalk: [...rustFormWalk(st.fillSpecs, st.meltSpecs), ...[...facts.inspectWalkers.values()].filter(text => text !== '')],
       wake,
     } as never,
     program as never,

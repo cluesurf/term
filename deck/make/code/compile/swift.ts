@@ -21,7 +21,7 @@ import type {
   Statement,
   Type,
 } from '@term/make/code/compile/node'
-import { reassigned } from '@term/make/code/compile/backend'
+import { inspectFormsOf, reassigned } from '@term/make/code/compile/backend'
 import type { FormSpec } from '@term/make/code/compile/backend'
 import {
   fillTasks,
@@ -1124,6 +1124,9 @@ export function emitSwift(
     variantFields,
     caseFieldNames,
     recordFields,
+    // a lowered `inspect`'s forms and the walkers it writes (term/base-v1 decision 001)
+    inspectForms: inspectFormsOf(program),
+    inspectWalkers: new Map<string, string>(),
     sharedForms: flags(sharedForms),
     exceptionForms: flags(exceptionForms),
     unionForms: flags(unionForms),
@@ -1626,7 +1629,7 @@ export function emitSwift(
     wake.push(`func wakeHive() -> Void {\n${calls}\n}`)
   }
 
-  const text = [...imports, ...prelude, ...body, ...swiftNames.swiftFormWalk([...st.fillSpecs.values()] as never, [...st.meltSpecs.values()] as never, SWIFT_FORM_HELPERS), ...wake].join('\n\n') + '\n'
+  const text = [...imports, ...prelude, ...body, ...swiftNames.swiftFormWalk([...st.fillSpecs.values()] as never, [...st.meltSpecs.values()] as never, SWIFT_FORM_HELPERS), ...[...facts.inspectWalkers.values()].filter(text => text !== ''), ...wake].join('\n\n') + '\n'
 
   // with `units`, each module's statements still marked, for the caller to write one file per module
   return options?.units ? text : unmarked(text)

@@ -31,6 +31,8 @@ load ./node
 load ./backend-shapes
   find form-spec
   find form-kind
+  find inspect-kind
+  find inspect-field
 
 load ../term/quote
   find json-quote
@@ -534,3 +536,129 @@ task kotlin-form-walkers
     save form-name, kotlin-pascal(spec/form)
     push(out, <fun __melt{form-name}(value: {form-name}): Data \{\n    val list = mutableListOf\<DataEntry\>()\n{join-texts(lines, <\n>)}\n    return DataHash(list = list)\n\}>)
   back out
+
+# ---- inspect: a value as one line of Term construction (term/base-v1 decision 001) ----
+
+# the text `inspect` writes for a value of the kind (backend-shapes.tree `inspect-kind`). A record or a union is a call of
+# its walker, written into `walkers` once by its key; every scalar is debug.tree's own task, so its bytes are every
+# backend's. `spell` is the emitter's Kotlin type for a Term type, `class-of` a case's class by its form and case
+task kotlin-inspect-of
+  take kind, like inspect-kind
+  take value, like text
+  take walkers, like hash, like text, like text
+  take spell
+    like task
+      take given, like type
+      like text
+  take class-of
+    like task
+      take form-name, like text
+      take case-name, like text
+      like text
+  like text
+
+  sift kind
+    case text
+      back <showText({value})>
+    case number
+      back <showInteger({value})>
+    case decimal
+      back <showDecimal({value})>
+    case flag
+      back <showFlag({value})>
+    case blank
+      back <"void">
+    case list
+      link item
+      back <("list(" + ({value}).joinToString(", ") \{ x -\> {kotlin-inspect-of(item, <x>, walkers, spell, class-of)} \} + ")")>
+    case map
+      link keys
+      link values
+      back <("hash(" + ({value}).entries.joinToString(", ") \{ e -\> {kotlin-inspect-of(keys, <e.key>, walkers, spell, class-of)} + " " + {kotlin-inspect-of(values, <e.value>, walkers, spell, class-of)} \} + ")")>
+    case record
+      kotlin-inspect-walker(kind, walkers, spell, class-of)
+      back <__inspect{kotlin-pascal(kind/key)}({value})>
+    case union
+      kotlin-inspect-walker(kind, walkers, spell, class-of)
+      back <__inspect{kotlin-pascal(kind/key)}({value})>
+    case again
+      back <__inspect{kotlin-pascal(kind/key)}({value})>
+    # a caught exception: its form and its note, and its flow
+    case raised
+      back <(({value}).form + "(note " + showText(({value}).note) + ", flow list())")>
+    case opaque
+      back <"opaque({kind/name})">
+
+# `name(field value, ...)` from the texts of the fields, or the name alone for none
+task kotlin-inspect-named
+  take name, like text
+  take parts, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(parts/length, 0)
+    hold
+      back <"{name}">
+  back <("{name}(" + listOf({join-texts(parts, <, >)}).joinToString(", ") + ")")>
+
+# a record's or a union's walker, written once by its key: a `when` over a union's case classes. A case class carries
+# only the type arguments its own fields mention (`heads`), so it is tested with that many stars and read through a cast
+task kotlin-inspect-walker
+  take kind, like inspect-kind
+  take walkers, like hash, like text, like text
+  take spell
+    like task
+      take given, like type
+      like text
+  take class-of
+    like task
+      take form-name, like text
+      take case-name, like text
+      like text
+  mark private
+
+  sift kind
+    case record
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save parts, make list
+      walk fields
+        take field
+        push(parts, <("{field/name} " + {kotlin-inspect-of(field/kind, <value.{kotlin-camel(field/name)}>, walkers, spell, class-of)})>)
+      walkers/set(key, <fun __inspect{kotlin-pascal(key)}(value: {spell(kind/type)}): String = {kotlin-inspect-named(name, parts)}>)
+    case union
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save arms, make list
+      walk cases
+        take one
+        save cls, class-of(name, one/name)
+        save parts, make list
+        walk one/fields
+          take field
+          push(parts, <("{field/name} " + {kotlin-inspect-of(field/kind, <c.{kotlin-camel(field/name)}>, walkers, spell, class-of)})>)
+        save shown, kotlin-inspect-named(one/name, parts)
+        fork test, is-equal(one/fields/length, 0)
+          hold
+            push(arms, <  is {cls} -\> {shown}>)
+          miss
+            save stars, make list
+            save args, make list
+            walk one/heads
+              take head
+              push(stars, <*>)
+              push(args, spell(head))
+            save tested, cls
+            save cast, cls
+            fork test, is-above(stars/length, 0)
+              hold
+                save tested, <{cls}\<{join-texts(stars, <, >)}\>>
+                save cast, <{cls}\<{join-texts(args, <, >)}\>>
+            push(arms, <  is {tested} -\> run \{ val c = value as {cast}; {shown} \}>)
+      walkers/set(key, <@Suppress("UNCHECKED_CAST", "USELESS_CAST")\nfun __inspect{kotlin-pascal(key)}(value: {spell(kind/type)}): String = when (value) \{\n{join-texts(arms, <\n>)}\n  else -\> "opaque({name})"\n\}>)
+    miss
+      save nothing, 0

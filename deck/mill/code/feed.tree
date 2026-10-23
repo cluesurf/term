@@ -848,6 +848,8 @@ task int-bytes
   like list
     like u8
   save result
+    like list
+      like u8
     make list
   save rest, read value
   save index, code 0

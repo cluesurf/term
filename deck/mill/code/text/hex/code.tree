@@ -84,6 +84,8 @@ task read-hex
   like list
     like u8
   save result
+    like list
+      like u8
     make list
   save index, code 0
   walk test

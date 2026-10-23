@@ -14,7 +14,10 @@ load @term/base/hold/text/code/convert
   find utf-16-of-code-points
 
 test utf-16-decodes-a-surrogate-pair
-  save units, make list
+  save units
+    like list
+      like u16
+    make list
   call units/push
     code 97
   call units/push
@@ -126,7 +129,10 @@ test utf-8-round-trips-to-utf-16
         code 56606
 
 test lone-surrogate-becomes-replacement
-  save units, make list
+  save units
+    like list
+      like u16
+    make list
   call units/push
     code 55296
   save points

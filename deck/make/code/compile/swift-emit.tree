@@ -60,6 +60,7 @@ load ./swift-names
   find collect-array-eq
   find body-throws
   find join-texts
+  find swift-inspect-of
 
 load ./backend-shapes
   find collection-call
@@ -78,6 +79,7 @@ load ./backend-shapes
   find form-spec
   find record-field
   find collection-op
+  find inspect-kind-of
 
 load ./backend-names
   find names-in
@@ -156,6 +158,10 @@ form swift-facts
   # by form and case, `rope/leaf`
   link case-field-names, like hash, like text, like list, like text
   link record-fields, like hash, like text, like list, like record-field
+  # every form of the program by name, which a lowered `inspect` walks, and the walkers it wrote, by key
+  # (backend-shapes.tree `inspect-kind-of`, swift-names.tree `swift-inspect-of`)
+  link inspect-forms, like hash, like text, like statement
+  link inspect-walkers, like hash, like text, like text
   link shared-forms, like hash, like text, like boolean
   link exception-forms, like hash, like text, like boolean
   link union-forms, like hash, like text, like boolean
@@ -1889,6 +1895,24 @@ task emit-call
             hold
               back <{list-text}.count>
           back <(\{ () -\> Int in {list-text}.append({emit-expr(get(args, 1), field-scope, st, facts)}); return {list-text}.count \})()>
+      # `inspect(value)`: walked by the type the checker stamped where it was written (term/base-v1 decision 001)
+      fork test, and(is-equal(callee-name, <inspect-form>), is-above(args/length, 0))
+        hold
+          save shown, get(args, 0)
+          save static-type, expression-type(shown)
+          sift into
+            case some
+              link stamped
+              save static-type, make(some, stamped)
+            case none
+              save nothing, 0
+          save kind, inspect-kind-of(static-type, facts/inspect-forms, make list)
+          save spell
+            task
+              take given, like type
+              like text
+              back swift-type(make(some, given), st, facts)
+          back swift-inspect-of(kind, <({emit-expr(shown, field-scope, st, facts)})>, facts/inspect-walkers, spell)
       # `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form
       fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
         hold

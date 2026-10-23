@@ -23,7 +23,7 @@ load @term/base/bit
 task utf-16-code-points
   take units
     like list
-      like number
+      like u16
   like list
     like number
   save points, make list
@@ -112,8 +112,11 @@ task utf-8-of-code-points
     like list
       like number
   like list
-    like number
-  save bytes, make list
+    like u8
+  save bytes
+    like list
+      like u8
+    make list
   save i, code 0
   walk test
     hook test
@@ -212,7 +215,7 @@ task utf-8-of-code-points
 task utf-8-code-points
   take bytes
     like list
-      like number
+      like u8
   like list
     like number
   save points, make list
@@ -338,8 +341,11 @@ task utf-16-of-code-points
     like list
       like number
   like list
-    like number
-  save units, make list
+    like u16
+  save units
+    like list
+      like u16
+    make list
   save i, code 0
   walk test
     hook test

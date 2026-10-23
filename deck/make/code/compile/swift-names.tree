@@ -31,6 +31,8 @@ load ./backend-shapes
   find collection-call
   find form-spec
   find form-kind
+  find inspect-kind
+  find inspect-field
 
 load ./type-text
   find integer-text
@@ -798,3 +800,120 @@ task swift-form-walk
     save name, pascal(spec/form)
     push(out, <func __melt{name}(_ value: {name}) -\> DataForm \{\n  var list: [DataEntry] = []\n{join-texts(lines, <\n>)}\n  return .hash(list: SeedList(list))\n\}>)
   back out
+
+# ---- inspect: a value as one line of Term construction (term/base-v1 decision 001) ----
+
+# the text `inspect` writes for a value of the kind (backend-shapes.tree `inspect-kind`). A record or a union is a call of
+# its walker, written into `walkers` once by its key; every scalar is debug.tree's own task, so its bytes are every
+# backend's. `spell` is the emitter's Swift type for a Term type
+task swift-inspect-of
+  take kind, like inspect-kind
+  take value, like text
+  take walkers, like hash, like text, like text
+  take spell
+    like task
+      take given, like type
+      like text
+  like text
+
+  sift kind
+    case text
+      back <showText(value: {value})>
+    case number
+      back <showInteger(value: {value})>
+    case decimal
+      back <showDecimal(value: {value})>
+    case flag
+      back <showFlag(value: {value})>
+    case blank
+      back <"void">
+    case list
+      link item
+      swift-inspect-helpers(walkers)
+      back <(["list(", __inspectItems({value}).map \{ (x) -\> String in {swift-inspect-of(item, <x>, walkers, spell)} \}.joined(separator: ", "), ")"].joined())>
+    case map
+      link keys
+      link values
+      back <(["hash(", ({value}).data.map \{ (e) -\> String in [{swift-inspect-of(keys, <e.key>, walkers, spell)}, " ", {swift-inspect-of(values, <e.value>, walkers, spell)}].joined() \}.joined(separator: ", "), ")"].joined())>
+    case record
+      swift-inspect-walker(kind, walkers, spell)
+      back <__inspect{pascal(kind/key)}({value})>
+    case union
+      swift-inspect-walker(kind, walkers, spell)
+      back <__inspect{pascal(kind/key)}({value})>
+    case again
+      back <__inspect{pascal(kind/key)}({value})>
+    # a caught exception: its form and its note, and its flow
+    case raised
+      back <([({value}).form, "(note ", showText(value: ({value}).note), ", flow list())"].joined())>
+    case opaque
+      back <"opaque({kind/name})">
+
+# the items of a list, whether a field's own array or a shared `SeedList`
+task swift-inspect-helpers
+  take walkers, like hash, like text, like text
+  mark private
+
+  fork test, walkers/has(<>)
+    hold
+      back
+  walkers/set(<>, <func __inspectItems\<T\>(_ xs: SeedList\<T\>) -\> [T] \{ return xs.data \}\nfunc __inspectItems\<T\>(_ xs: [T]) -\> [T] \{ return xs \}>)
+
+# `name(field value, ...)` from the texts of the fields, or the name alone for none
+task swift-inspect-named
+  take name, like text
+  take parts, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(parts/length, 0)
+    hold
+      back <"{name}">
+  back <(["{name}(", [{join-texts(parts, <, >)}].joined(separator: ", "), ")"].joined())>
+
+# a record's or a union's walker, written once by its key: a switch over a union's cases
+task swift-inspect-walker
+  take kind, like inspect-kind
+  take walkers, like hash, like text, like text
+  take spell
+    like task
+      take given, like type
+      like text
+  mark private
+
+  sift kind
+    case record
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save parts, make list
+      walk fields
+        take field
+        push(parts, <(["{field/name} ", {swift-inspect-of(field/kind, <value.{camel(field/name)}>, walkers, spell)}].joined())>)
+      walkers/set(key, <func __inspect{pascal(key)}(_ value: {spell(kind/type)}) -\> String \{\n  return {swift-inspect-named(name, parts)}\n\}>)
+    case union
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save arms, make list
+      walk cases
+        take one
+        save parts, make list
+        save bound, make list
+        save at, 0
+        walk one/fields
+          take field
+          push(bound, <a{at}>)
+          push(parts, <(["{field/name} ", {swift-inspect-of(field/kind, <a{at}>, walkers, spell)}].joined())>)
+          save at, add(at, 1)
+        save shown, swift-inspect-named(one/name, parts)
+        fork test, is-equal(one/fields/length, 0)
+          hold
+            push(arms, <  case .{camel(one/name)}: return {shown}>)
+          miss
+            push(arms, <  case let .{camel(one/name)}({join-texts(bound, <, >)}): return {shown}>)
+      walkers/set(key, <func __inspect{pascal(key)}(_ value: {spell(kind/type)}) -\> String \{\n  switch value \{\n{join-texts(arms, <\n>)}\n  \}\n\}>)
+    miss
+      save nothing, 0

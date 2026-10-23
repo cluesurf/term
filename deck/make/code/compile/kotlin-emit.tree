@@ -59,6 +59,7 @@ load ./kotlin-names
   find sub-self
   find float-literal
   find is-decimal
+  find kotlin-inspect-of
 
 load ./kotlin-facts
   find reuse-variant
@@ -86,6 +87,7 @@ load ./backend-shapes
   find spec-forms
   find refuse-any
   find record-field
+  find inspect-kind-of
 
 load ./backend-names
   find names-in
@@ -178,6 +180,10 @@ form kotlin-facts
   link binds, like hash, like text, like statement
   # every struct form's declared fields
   link record-fields, like hash, like text, like list, like record-field
+  # every form of the program by name, which a lowered `inspect` walks, and the walkers it wrote, by key
+  # (backend-shapes.tree `inspect-kind-of`, kotlin-names.tree `kotlin-inspect-of`)
+  link inspect-forms, like hash, like text, like statement
+  link inspect-walkers, like hash, like text, like text
   link shared-forms, like hash, like text, like boolean
   link union-forms, like hash, like text, like boolean
   link float-forms, like hash, like text, like boolean

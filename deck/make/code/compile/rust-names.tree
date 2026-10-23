@@ -60,6 +60,8 @@ load ./backend-shapes
   find form-spec
   find spec-field
   find form-kind
+  find inspect-kind
+  find inspect-field
 
 # ---- small helpers ----
 
@@ -2829,3 +2831,127 @@ task rust-form-helpers
   mark private
 
   back <#[cold]\n#[inline(never)]\nfn __term_mismatch(path: String, reason: String) -\> TermException \{\n    let path = if path.is_empty() \{ ".".to_string() \} else \{ path \};\n    let link: std::collections::HashMap\<String, String\> = [("thing".to_string(), "data".to_string()), ("path".to_string(), path), ("reason".to_string(), reason)].into_iter().collect();\n    TermException(Box::new(TermRaised \{ host: "@term/host".to_string(), form: "data-mismatch".to_string(), note: "Data does not fit the shape".to_string(), code: String::new(), time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0), link: std::rc::Rc::new(link), base: std::rc::Rc::new(()) \}))\n\}\nfn __term_path(path: &str, key: &str) -\> String \{ if path.is_empty() \{ key.to_string() \} else \{ format!("\{\}/\{\}", path, key) \} \}\nfn __term_kind(value: &Data) -\> &'static str \{\n    match value \{ Data::Hash \{ .. \} =\> "a map", Data::Array \{ .. \} =\> "a list", Data::Blank =\> "void", Data::Text \{ .. \} =\> "text", Data::Number \{ .. \} =\> "number", Data::Decimal \{ .. \} =\> "decimal", Data::Flag \{ .. \} =\> "flag", Data::Graft \{ .. \} =\> "a fuse" \}\n\}\nfn __term_entries(value: Data, path: String) -\> Result\<std::rc::Rc\<std::cell::RefCell\<Vec\<DataEntry\>\>\>, TermException\> \{\n    match value \{ Data::Hash \{ list \} =\> Ok(list), other =\> Err(__term_mismatch(path, format!("is \{\} where a map belongs", __term_kind(&other)))) \}\n\}\nfn __term_text(value: Option\<Data\>, path: String, optional: bool) -\> Result\<String, TermException\> \{\n    match value \{ Some(Data::Text \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(String::new()) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where text belongs", __term_kind(&other)))) \}\n\}\nfn __term_number(value: Option\<Data\>, path: String, optional: bool) -\> Result\<i64, TermException\> \{\n    match value \{ Some(Data::Number \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(0) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where number belongs", __term_kind(&other)))) \}\n\}\nfn __term_decimal(value: Option\<Data\>, path: String, optional: bool) -\> Result\<f64, TermException\> \{\n    match value \{ Some(Data::Decimal \{ value \}) =\> Ok(value), Some(Data::Number \{ value \}) =\> Ok(value as f64), None | Some(Data::Blank) =\> if optional \{ Ok(0.0) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where decimal belongs", __term_kind(&other)))) \}\n\}\nfn __term_flag(value: Option\<Data\>, path: String, optional: bool) -\> Result\<bool, TermException\> \{\n    match value \{ Some(Data::Flag \{ value \}) =\> Ok(value), None | Some(Data::Blank) =\> if optional \{ Ok(false) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \}, Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where flag belongs", __term_kind(&other)))) \}\n\}\nfn __term_data(value: Option\<Data\>, path: String, optional: bool) -\> Result\<Data, TermException\> \{\n    match value \{ Some(d) =\> Ok(d), None =\> if optional \{ Ok(Data::Blank) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \} \}\n\}\nfn __term_list\<T\>(value: Option\<Data\>, path: String, optional: bool, item: &dyn Fn(Data, String) -\> Result\<T, TermException\>) -\> Result\<std::rc::Rc\<std::cell::RefCell\<Vec\<T\>\>\>, TermException\> \{\n    match value \{\n        Some(Data::Array \{ list \}) =\> Ok(std::rc::Rc::new(std::cell::RefCell::new(list.borrow().iter().enumerate().map(|(i, d)| item(d.clone(), __term_path(&path, &i.to_string()))).collect::\<Result\<Vec\<T\>, TermException\>\>()?))),\n        None | Some(Data::Blank) =\> if optional \{ Ok(std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))) \} else \{ Err(__term_mismatch(path, "is missing".to_string())) \},\n        Some(other) =\> Err(__term_mismatch(path, format!("is \{\} where a list belongs", __term_kind(&other)))),\n    \}\n\}>
+
+# ---- inspect: a value as one line of Term construction (term/base-v1 decision 001) ----
+
+# the text `inspect` writes for a value of the kind (backend-shapes.tree `inspect-kind`). `value` is a reference, `&T`.
+# A record or a union is a call of its walker, written into `walkers` once by its key; every scalar is debug.tree's own
+# task, so its bytes are every backend's
+task rust-inspect-of
+  take kind, like inspect-kind
+  take value, like text
+  take walkers, like hash, like text, like text
+  take context, like rust-type-context
+  take payloads, like hash, like text, like text
+  like text
+
+  sift kind
+    case text
+      back <show_text(({value}).clone())>
+    case number
+      back <show_integer(*({value}))>
+    case decimal
+      back <show_decimal(*({value}))>
+    case flag
+      back <show_flag(*({value}))>
+    case blank
+      back <"void".to_string()>
+    case list
+      link item
+      rust-inspect-helpers(walkers)
+      back <\{ let mut parts: Vec\<String\> = Vec::new(); TermInspectSeq::term_each({value}, &mut |x| parts.push({rust-inspect-of(item, <x>, walkers, context, payloads)})); format!("list(\{\})", parts.join(", ")) \}>
+    case map
+      link keys
+      link values
+      back <\{ let mut parts: Vec\<String\> = Vec::new(); for (k, x) in ({value}).borrow().iter() \{ parts.push(format!("\{\} \{\}", {rust-inspect-of(keys, <k>, walkers, context, payloads)}, {rust-inspect-of(values, <x>, walkers, context, payloads)})); \} format!("hash(\{\})", parts.join(", ")) \}>
+    case record
+      rust-inspect-walker(kind, walkers, context, payloads)
+      back <__inspect_{snake(kind/key)}({value})>
+    case union
+      rust-inspect-walker(kind, walkers, context, payloads)
+      back <__inspect_{snake(kind/key)}({value})>
+    case again
+      back <__inspect_{snake(kind/key)}({value})>
+    # a caught exception: its form and its note, and its flow
+    case raised
+      back <format!("\{\}(note \{\}, flow list())", ({value}).form, show_text(({value}).note.clone()))>
+    case opaque
+      back <"opaque({kind/name})".to_string()>
+
+# the trait a list is walked through, whether a field's own `Vec` or a shared `Rc<RefCell<Vec>>`
+task rust-inspect-helpers
+  take walkers, like hash, like text, like text
+  mark private
+
+  fork test, walkers/has(<>)
+    hold
+      back
+  walkers/set(<>, <trait TermInspectSeq \{ type Item; fn term_each(&self, f: &mut dyn FnMut(&Self::Item)); \}\nimpl\<T\> TermInspectSeq for Vec\<T\> \{ type Item = T; fn term_each(&self, f: &mut dyn FnMut(&T)) \{ for x in self.iter() \{ f(x) \} \} \}\nimpl\<T\> TermInspectSeq for std::rc::Rc\<std::cell::RefCell\<Vec\<T\>\>\> \{ type Item = T; fn term_each(&self, f: &mut dyn FnMut(&T)) \{ for x in self.borrow().iter() \{ f(x) \} \} \}>)
+
+# `name(field value, ...)` from the texts of the fields, or the name alone for none
+task rust-inspect-named
+  take name, like text
+  take parts, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(parts/length, 0)
+    hold
+      back <"{name}".to_string()>
+  back <format!("{name}(\{\})", [{join-texts(parts, <, >)}].join(", "))>
+
+# a record's or a union's walker, written once by its key: a match over a union's cases, its fields read through the
+# reference (a case held in a payload box through the box)
+task rust-inspect-walker
+  take kind, like inspect-kind
+  take walkers, like hash, like text, like text
+  take context, like rust-type-context
+  take payloads, like hash, like text, like text
+  mark private
+
+  sift kind
+    case record
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save parts, make list
+      walk fields
+        take field
+        push(parts, <format!("{field/name} \{\}", {rust-inspect-of(field/kind, <&value.{snake(field/name)}>, walkers, context, payloads)})>)
+      walkers/set(key, <fn __inspect_{snake(key)}(value: &{rust-type-of(kind/type, context)}) -\> String \{\n    {rust-inspect-named(name, parts)}\n\}>)
+    case union
+      fork test, walkers/has(key)
+        hold
+          back
+      walkers/set(key, <>)
+      save spelled, rust-type-of(kind/type, context)
+      save owner, get(split(spelled, <\<>), 0)
+      save arms, make list
+      walk cases
+        take one
+        save variant, <{owner}::{pascal(one/name)}>
+        save parts, make list
+        save boxed, payloads/has(<{name}/{one/name}>)
+        save names, make list
+        walk one/fields
+          take field
+          save at, <{snake(field/name)}>
+          fork test, boxed
+            hold
+              save at, <&__node.{snake(field/name)}>
+          push(names, snake(field/name))
+          push(parts, <format!("{field/name} \{\}", {rust-inspect-of(field/kind, at, walkers, context, payloads)})>)
+        save shown, rust-inspect-named(one/name, parts)
+        fork test, is-equal(one/fields/length, 0)
+          hold
+            push(arms, <        {variant} =\> {shown},>)
+          miss
+            fork test, boxed
+              hold
+                push(arms, <        {variant}(__node) =\> {shown},>)
+              miss
+                push(arms, <        {variant} \{ {join-texts(names, <, >)}, .. \} =\> {shown},>)
+      walkers/set(key, <#[allow(unreachable_patterns)]\nfn __inspect_{snake(key)}(value: &{spelled}) -\> String \{\n    match value \{\n{join-texts(arms, <\n>)}\n        _ =\> "opaque({name})".to_string(),\n    \}\n\}>)
+    miss
+      save nothing, 0

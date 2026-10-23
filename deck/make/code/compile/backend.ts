@@ -784,3 +784,9 @@ export function lastReads(body: Statement[], many?: WeakSet<object>): WeakSet<ob
 
   return new WeakSet(found.last as object[])
 }
+
+// every form of the program by name, which a lowered `inspect` walks on each backend (backend-shapes.tree
+// `inspect-kind-of`, term/base-v1 decision 001)
+export function inspectFormsOf(program: Program): Map<string, Statement> {
+  return shapes.inspectForms(program as never) as never
+}

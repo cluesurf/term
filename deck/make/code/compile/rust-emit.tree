@@ -107,6 +107,7 @@ load ./rust-names
   find rust-string
   find rust-char
   find json-text
+  find rust-inspect-of
   find collect-vars
   find mutated-captures
   find used-names
@@ -141,6 +142,7 @@ load ./backend-shapes
   find form-spec-of
   find spec-forms
   find refuse-any
+  find inspect-kind-of
   find form-spec
   find record-field
   find collection-op
@@ -232,6 +234,10 @@ form rust-facts
   link impl-fn, like hash, like text, like statement
   link raising, like hash, like text, like boolean
   link record-fields, like hash, like text, like list, like record-field
+  # every form of the program by name, which a lowered `inspect` walks, and the walkers it wrote, by key
+  # (backend-shapes.tree `inspect-kind-of`, rust-names.tree `rust-inspect-of`)
+  link inspect-forms, like hash, like text, like statement
+  link inspect-walkers, like hash, like text, like text
   link exception-forms, like hash, like text, like boolean
   link native-aliases, like hash, like text, like boolean
   link function-params, like hash, like text, like list, like maybe, like type
@@ -3864,6 +3870,19 @@ task emit-call
                 miss
                   save nothing, 0
 
+      # `inspect(value)`: walked by the type the checker stamped where it was written (term/base-v1 decision 001)
+      fork test, and(callee-variable, and(is-equal(callee-name, <inspect-form>), is-above(call-args/length, 0)))
+        hold
+          save shown, first-arg(call-args)
+          save static-type, expression-type(shown)
+          sift into
+            case some
+              link stamped
+              save static-type, make(some, stamped)
+            case none
+              save nothing, 0
+          save kind, inspect-kind-of(static-type, facts/inspect-forms, make list)
+          back rust-inspect-of(kind, <&({emit-expr(shown, st, facts)})>, facts/inspect-walkers, facts/context, facts/payloads)
       # `call fill` and `call melt` with a form: a function per form, generated at the end of the module
       fork test, and(callee-variable, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>)))
         hold
